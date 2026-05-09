@@ -1,0 +1,359 @@
+import { useState } from "react";
+import type {
+  AspectVariant,
+  StageAspect,
+  StageState,
+} from "@book-forge/shared";
+import type {
+  AccumulatedContext,
+  StageAdapter,
+  VariantGenerator,
+} from "./types.js";
+
+interface Props<TPayload> {
+  stage: StageState;
+  /** Current StudioState revision — passed back to parent on patch. */
+  revision: number;
+  adapter: StageAdapter<TPayload>;
+  generator: VariantGenerator<TPayload>;
+  /** Parent callback that owns the API patch. Returns new state + revision
+   *  after server confirms. */
+  onPatch: (
+    expectedRevision: number,
+    next: StageState,
+  ) => Promise<{ stage: StageState; revision: number }>;
+}
+
+const STATUS_LABEL: Record<StageAspect["status"], string> = {
+  pending: "ожидает",
+  generating: "генерация…",
+  reviewing: "выбор",
+  accepted: "принято",
+  skipped: "пропущено",
+};
+
+export function AspectRunner<TPayload>({
+  stage,
+  revision,
+  adapter,
+  generator,
+  onPatch,
+}: Props<TPayload>) {
+  const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
+  const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>(
+    {},
+  );
+
+  if (stage.aspects.length === 0) {
+    return (
+      <p className="text-sm text-[var(--color-muted-foreground)]">
+        В стадии нет аспектов. Запустите генерацию плейбука (Phase C2).
+      </p>
+    );
+  }
+
+  function buildAccumulatedContext(skip?: string): AccumulatedContext {
+    return {
+      acceptedAspects: stage.aspects
+        .filter(
+          (a) =>
+            a.status === "accepted" &&
+            a.id !== skip &&
+            a.finalPayload !== undefined,
+        )
+        .sort((a, b) => a.order - b.order)
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          finalPayload: a.finalPayload,
+        })),
+    };
+  }
+
+  function buildNextStage(
+    updater: (a: StageAspect) => StageAspect,
+    aspectId: string,
+  ): StageState {
+    return {
+      ...stage,
+      status: stage.status === "not_started" ? "in_progress" : stage.status,
+      aspects: stage.aspects.map((a) => (a.id === aspectId ? updater(a) : a)),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async function applyPatch(
+    aspectId: string,
+    next: StageState,
+  ): Promise<void> {
+    setErrorByAspect((p) => ({ ...p, [aspectId]: "" }));
+    setBusyAspectId(aspectId);
+    try {
+      await onPatch(revision, next);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErrorByAspect((p) => ({ ...p, [aspectId]: msg }));
+    } finally {
+      setBusyAspectId(null);
+    }
+  }
+
+  async function handleGenerate(aspect: StageAspect): Promise<void> {
+    setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
+    setBusyAspectId(aspect.id);
+    try {
+      const variants = await generator.generate({
+        aspect,
+        accumulated: buildAccumulatedContext(aspect.id),
+      });
+      const next = buildNextStage(
+        (a) => ({
+          ...a,
+          status: "reviewing" as const,
+          variants,
+          ...(a.selectedVariantId !== undefined
+            ? { selectedVariantId: undefined }
+            : {}),
+        }),
+        aspect.id,
+      );
+      await onPatch(revision, next);
+    } catch (e) {
+      setErrorByAspect((p) => ({
+        ...p,
+        [aspect.id]: e instanceof Error ? e.message : String(e),
+      }));
+    } finally {
+      setBusyAspectId(null);
+    }
+  }
+
+  async function handleAccept(
+    aspect: StageAspect,
+    variant: AspectVariant,
+  ): Promise<void> {
+    const next = buildNextStage(
+      (a) => ({
+        ...a,
+        status: "accepted" as const,
+        selectedVariantId: variant.id,
+        finalPayload: variant.payload,
+        variants: a.variants.map((v) =>
+          v.id === variant.id
+            ? { ...v, status: "accepted" as const }
+            : v.status === "accepted"
+              ? { ...v, status: "rejected" as const }
+              : v,
+        ),
+      }),
+      aspect.id,
+    );
+    await applyPatch(aspect.id, next);
+  }
+
+  async function handleSkip(aspect: StageAspect): Promise<void> {
+    const next = buildNextStage(
+      (a) => ({ ...a, status: "skipped" as const }),
+      aspect.id,
+    );
+    await applyPatch(aspect.id, next);
+  }
+
+  async function handleRestore(aspect: StageAspect): Promise<void> {
+    const next = buildNextStage(
+      (a) => ({ ...a, status: "pending" as const }),
+      aspect.id,
+    );
+    await applyPatch(aspect.id, next);
+  }
+
+  async function handleEdit(aspect: StageAspect): Promise<void> {
+    const next = buildNextStage(
+      (a) => ({
+        ...a,
+        status: "reviewing" as const,
+        ...(a.selectedVariantId !== undefined
+          ? { selectedVariantId: undefined }
+          : {}),
+        ...(a.finalPayload !== undefined ? { finalPayload: undefined } : {}),
+      }),
+      aspect.id,
+    );
+    await applyPatch(aspect.id, next);
+  }
+
+  function renderVariantPayload(variant: AspectVariant): React.ReactNode {
+    const parsed = adapter.payloadSchema.safeParse(variant.payload);
+    if (!parsed.success) {
+      return (
+        <p className="text-xs text-red-600">
+          Не удалось разобрать payload: {parsed.error.message}
+        </p>
+      );
+    }
+    return adapter.renderVariant(parsed.data);
+  }
+
+  function renderFinalPayload(payload: unknown): React.ReactNode {
+    const parsed = adapter.payloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      return (
+        <p className="text-xs text-red-600">
+          Не удалось разобрать финальный payload: {parsed.error.message}
+        </p>
+      );
+    }
+    return adapter.renderFinal(parsed.data);
+  }
+
+  return (
+    <ul
+      aria-label="aspects"
+      className="flex flex-col gap-4 border border-[var(--color-border)] rounded-lg p-4"
+    >
+      {stage.aspects.map((aspect) => {
+        const busy = busyAspectId === aspect.id;
+        const err = errorByAspect[aspect.id];
+        return (
+          <li
+            key={aspect.id}
+            data-aspect-id={aspect.id}
+            className="flex flex-col gap-2"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="flex items-baseline gap-2">
+                <span className="font-medium">{aspect.name}</span>
+                {aspect.required && (
+                  <span className="text-xs text-amber-700">(обязательно)</span>
+                )}
+              </div>
+              <span
+                aria-label={`status-${aspect.status}`}
+                className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]"
+              >
+                {STATUS_LABEL[aspect.status]}
+              </span>
+            </div>
+
+            {aspect.description && (
+              <p className="text-xs text-[var(--color-muted-foreground)]">
+                {aspect.description}
+              </p>
+            )}
+
+            {aspect.status === "pending" && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleGenerate(aspect)}
+                  disabled={busy}
+                  className={
+                    "text-sm border rounded-md px-3 py-1 " +
+                    (busy
+                      ? "bg-[var(--color-muted)] cursor-not-allowed"
+                      : "border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white")
+                  }
+                >
+                  {busy ? "Генерируем…" : "Сгенерировать варианты"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSkip(aspect)}
+                  disabled={busy}
+                  className="text-sm border rounded-md px-3 py-1 border-[var(--color-border)] hover:bg-[var(--color-muted)]"
+                >
+                  Пропустить
+                </button>
+              </div>
+            )}
+
+            {aspect.status === "reviewing" && aspect.variants.length > 0 && (
+              <div className="flex flex-col gap-2 border-l-2 border-[var(--color-border)] pl-3">
+                {aspect.variants.map((v) => (
+                  <div key={v.id} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                        {v.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleAccept(aspect, v)}
+                        disabled={busy}
+                        className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
+                      >
+                        Принять
+                      </button>
+                    </div>
+                    {renderVariantPayload(v)}
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate(aspect)}
+                    disabled={busy}
+                    className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                  >
+                    Перегенерировать
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSkip(aspect)}
+                    disabled={busy}
+                    className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                  >
+                    Пропустить
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {aspect.status === "accepted" &&
+              aspect.finalPayload !== undefined && (
+                <div className="flex flex-col gap-2">
+                  {renderFinalPayload(aspect.finalPayload)}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(aspect)}
+                      disabled={busy}
+                      className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSkip(aspect)}
+                      disabled={busy}
+                      className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            {aspect.status === "skipped" && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => handleRestore(aspect)}
+                  disabled={busy}
+                  className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                >
+                  Восстановить
+                </button>
+              </div>
+            )}
+
+            {err && (
+              <p role="alert" className="text-xs text-red-600">
+                {err}
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
