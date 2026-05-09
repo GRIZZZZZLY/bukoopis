@@ -1,4 +1,4 @@
-import type { AspectVariant, StageId } from "@book-forge/shared";
+import type { AspectVariant, EntitySetPayload, StageId } from "@book-forge/shared";
 import { api } from "@/api/client";
 import type {
   GenerateInput,
@@ -93,6 +93,41 @@ export function createLLMPlaybookGenerator(args: {
         input.existingAspectNames ?? [],
       );
       return { aspects: r.aspects };
+    },
+  };
+}
+
+/** LLM-backed VariantGenerator for entity_set stages (characters/items). */
+export function createLLMEntityVariantGenerator(args: {
+  bookId: number;
+  stageId: "characters" | "items";
+}): VariantGenerator<EntitySetPayload> {
+  return {
+    async generate(input) {
+      if (input.refineFrom) {
+        throw new Error("refine for entity_set not supported in Phase E");
+      }
+      const r = await api.generateAspectEntityVariants(
+        args.bookId,
+        args.stageId,
+        input.aspect.id,
+        {
+          aspect: {
+            id: input.aspect.id,
+            name: input.aspect.name,
+            ...(input.aspect.description !== undefined
+              ? { description: input.aspect.description }
+              : {}),
+            payloadKind: "entity_set",
+          },
+          accumulated: input.accumulated.acceptedAspects.map((a) => ({
+            id: a.id,
+            name: a.name,
+            finalPayload: a.finalPayload,
+          })),
+        },
+      );
+      return r.variants;
     },
   };
 }
