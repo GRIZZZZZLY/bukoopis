@@ -117,7 +117,10 @@ export function StudioPage() {
           {STAGE_IDS.map((id) => {
             const stage = studio.stages[id];
             const href =
-              id === "world" || id === "lore"
+              id === "world" ||
+              id === "lore" ||
+              id === "characters" ||
+              id === "items"
                 ? `/books/${bookId}/studio/${id}`
                 : undefined;
             return (

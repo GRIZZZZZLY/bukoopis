@@ -2,6 +2,7 @@ import {
   createBrowserRouter,
   Navigate,
   RouterProvider,
+  useParams,
 } from "react-router-dom";
 import { BooksListPage } from "@/pages/BooksListPage";
 import { BookPage } from "@/pages/BookPage";
@@ -13,6 +14,15 @@ import {
 import { UsagePage } from "@/pages/UsagePage";
 import { StudioPage } from "@/pages/StudioPage";
 import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
+import { EntityStagePage } from "@/pages/EntityStagePage";
+
+function StagePageDispatch() {
+  const { stageId } = useParams<{ stageId: string }>();
+  if (stageId === "characters" || stageId === "items") {
+    return <EntityStagePage />;
+  }
+  return <MarkdownStagePage />;
+}
 
 const router = createBrowserRouter([
   {
@@ -33,7 +43,7 @@ const router = createBrowserRouter([
   },
   {
     path: "/books/:bookId/studio/:stageId",
-    element: <MarkdownStagePage />,
+    element: <StagePageDispatch />,
   },
   {
     path: "/books/:bookId/chapters/:chapterId",
