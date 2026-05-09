@@ -19,6 +19,9 @@ let chapterId: number;
 beforeEach(async () => {
   t = makeTestApp();
   delete process.env.ANTHROPIC_API_KEY;
+  // Force inline back to api in tests — subscription default would try to
+  // spawn the Claude Code CLI subprocess and stall the 5s test timeout.
+  process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ inline: "api" });
   const b = await sendJson<BookJson>(t.app, "/api/books", "POST", {
     title: "Inline-test",
     premise: "p",
@@ -31,7 +34,10 @@ beforeEach(async () => {
   );
   chapterId = ch.id;
 });
-afterEach(() => t.cleanup());
+afterEach(() => {
+  delete process.env.LLM_AGENT_BACKEND_MAP;
+  return t.cleanup();
+});
 
 describe("inline endpoint", () => {
   it("404 when chapter missing", async () => {

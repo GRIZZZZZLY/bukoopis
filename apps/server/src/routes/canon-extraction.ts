@@ -525,6 +525,37 @@ function createHookFromCandidate(
   return Number(info.lastInsertRowid);
 }
 
+function createRelationshipFromCandidate(
+  sqlite: DatabaseType,
+  bookId: number,
+  c: StoredRelationshipCandidate,
+): number {
+  const lookup = sqlite.prepare(
+    "SELECT id FROM characters WHERE book_id = ? AND name = ? LIMIT 1",
+  );
+  const fromRow = lookup.get(bookId, c.fromName) as { id: number } | undefined;
+  const toRow = lookup.get(bookId, c.toName) as { id: number } | undefined;
+  if (!fromRow) {
+    throw new Error(
+      `relationship accept: character "${c.fromName}" not found in book — accept the character candidate first`,
+    );
+  }
+  if (!toRow) {
+    throw new Error(
+      `relationship accept: character "${c.toName}" not found in book — accept the character candidate first`,
+    );
+  }
+  const now = new Date().toISOString();
+  const info = sqlite
+    .prepare(
+      `INSERT INTO relationships
+       (book_id, from_character_id, to_character_id, type, tension, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(bookId, fromRow.id, toRow.id, c.type, c.tension, null, now, now);
+  return Number(info.lastInsertRowid);
+}
+
 function applyAcceptDecision(
   sqlite: DatabaseType,
   bookId: number,
@@ -565,7 +596,7 @@ function applyAcceptDecision(
     } else if (kind === "hook") {
       entityId = createHookFromCandidate(sqlite, bookId, chapterId, c);
     } else {
-      throw new Error("relationship accept not supported in MVP");
+      entityId = createRelationshipFromCandidate(sqlite, bookId, c);
     }
   }
 

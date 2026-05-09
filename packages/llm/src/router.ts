@@ -13,7 +13,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   character: "api",
   writer: "subscription",
   editor: "subscription",
-  inline: "api",
+  inline: "subscription",
   summarizer: "subscription",
   canon_guard: "api",
   critic_canon: "api",
