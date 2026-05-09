@@ -365,6 +365,20 @@ export const api = {
     }),
   getStudioWarnings: (bookId: number) =>
     req<StudioWarning[]>(`/api/books/${bookId}/studio-warnings`),
+  refineConceptField: (
+    bookId: number,
+    field: "protagonist" | "conflict" | "stakes" | "logline",
+    draft?: string,
+  ) =>
+    req<{
+      variants: Array<{ id: string; label: string; payload: string }>;
+    }>(`/api/books/${bookId}/concept/refine`, {
+      method: "POST",
+      body: JSON.stringify({
+        field,
+        ...(draft !== undefined ? { draft } : {}),
+      }),
+    }),
 };
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
