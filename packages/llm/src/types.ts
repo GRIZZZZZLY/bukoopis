@@ -24,7 +24,8 @@ export interface AgentStructuredContract<I, O> {
 }
 
 export const AGENT_NAMES = [
-  "plot",
+  "plot_outline",
+  "plot_chapter_plan",
   "lore",
   "character",
   "writer",
@@ -61,4 +62,7 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "critic_editor",
   "critic_reader",
   "canon_guard",
+  "plot_outline",
+  "plot_chapter_plan",
+  "style_extractor",
 ]);

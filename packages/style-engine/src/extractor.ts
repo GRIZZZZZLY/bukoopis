@@ -2,7 +2,12 @@
 // hard dep cycle (llm depends on shared, agents depends on llm), style-engine
 // also depends on llm. We accept this — style-engine is a leaf consumer of
 // llm, never the other way around.
-import { callStructured, type StructuredUsage } from "@book-forge/llm";
+import {
+  registerAgentContract,
+  dispatchStructured,
+  type AgentStructuredContract,
+  type StructuredUsage,
+} from "@book-forge/llm";
 import {
   styleFingerprintSchema,
   type StyleFingerprint,
@@ -32,14 +37,11 @@ const SYSTEM = `Ты — Style Extractor. Анализируешь корпус 
 
 Возвращай structured output по схеме.`;
 
-export async function runStyleExtractor(
-  input: StyleExtractInput,
-): Promise<StyleFingerprint> {
+function buildStyleExtractorPrompt(input: StyleExtractInput): string {
   const sceneBlock = input.scenes
     .map((s, i) => `### Scene ${i + 1}\n${s}`)
     .join("\n\n---\n\n");
-
-  const prompt = [
+  return [
     `Автор: ${input.authorName}`,
     `Язык: ${input.language}`,
     `Количество сцен в выборке: ${input.scenes.length}`,
@@ -49,17 +51,55 @@ export async function runStyleExtractor(
     "Корпус:",
     sceneBlock,
   ].join("\n");
+}
 
-  return await callStructured({
-    agentName: "style_extractor",
-    model: input.model ?? "sonnet",
-    system: SYSTEM,
-    prompt,
-    schema: styleFingerprintSchema,
-    schemaName: "submit_style_fingerprint",
-    schemaDescription:
+const styleExtractorContract: AgentStructuredContract<
+  StyleExtractInput,
+  StyleFingerprint
+> = {
+  agentName: "style_extractor",
+  getOutputSchema: () => styleFingerprintSchema,
+  systemPrompt: SYSTEM,
+  buildPrompt: buildStyleExtractorPrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_style_fingerprint",
+    toolDescription:
       "Submit a structured style fingerprint extracted from the author's corpus.",
+  },
+};
+
+export function registerStyleExtractorContract(): void {
+  registerAgentContract(styleExtractorContract);
+}
+
+export async function runStyleExtractor(
+  input: StyleExtractInput,
+): Promise<StyleFingerprint> {
+  const { raw, diagnostics } = await dispatchStructured<
+    StyleExtractInput,
+    StyleFingerprint
+  >({
+    agentName: "style_extractor",
+    payload: input,
+    model: input.model ?? "sonnet",
     maxTokens: 4096,
-    onUsage: input.onUsage,
   });
+  if (input.onUsage) {
+    try {
+      input.onUsage({
+        modelId: diagnostics.modelId,
+        inputTokens: diagnostics.inputTokens,
+        outputTokens: diagnostics.outputTokens,
+        cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+        cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+      });
+    } catch (e) {
+      console.warn(
+        "[style-engine/extractor] onUsage callback threw:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  return raw;
 }

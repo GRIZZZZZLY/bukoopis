@@ -104,7 +104,7 @@ describe("streamText backend dispatch", () => {
 
   it("agentName='plot' (api default) routes to ApiBackendClient", async () => {
     const gen = streamText({
-      agentName: "plot",
+      agentName: "plot_outline",
       model: "sonnet",
       system: "x",
       prompt: "y",

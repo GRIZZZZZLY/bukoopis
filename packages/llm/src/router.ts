@@ -7,7 +7,8 @@ import {
 } from "./types.js";
 
 const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
-  plot: "api",
+  plot_outline: "api",
+  plot_chapter_plan: "api",
   lore: "api",
   character: "api",
   writer: "subscription",
@@ -21,6 +22,37 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   critic_reader: "api",
   style_extractor: "api",
 };
+
+// One-time deprecation warnings for compat aliases (etap 0.2.4 / Phase 4).
+const warnedKeys = new Set<string>();
+function warnOnce(key: string, message: string): void {
+  if (warnedKeys.has(key)) return;
+  warnedKeys.add(key);
+  console.warn(message);
+}
+
+/** Mutates `map` in place: if a deprecated "plot" key is present, copies its
+ *  value onto plot_outline + plot_chapter_plan (without overwriting explicit
+ *  entries) and removes the legacy key. Emits a one-shot deprecation warning. */
+function applyPlotCompatAlias(
+  map: Record<string, unknown>,
+  mapEnvName: string,
+): void {
+  if ("plot" in map) {
+    const v = map.plot;
+    if (map.plot_outline === undefined) {
+      map.plot_outline = v;
+    }
+    if (map.plot_chapter_plan === undefined) {
+      map.plot_chapter_plan = v;
+    }
+    warnOnce(
+      `${mapEnvName}.plot`,
+      `[llm/router] ${mapEnvName}: "plot" key is deprecated, use plot_outline and plot_chapter_plan`,
+    );
+    delete map.plot;
+  }
+}
 
 const VALID_BACKENDS: ReadonlySet<LLMBackend> = new Set(["api", "subscription"]);
 const VALID_AGENTS: ReadonlySet<string> = new Set(AGENT_NAMES);
@@ -40,8 +72,11 @@ function parseEnvOverrides(): Partial<Record<AgentName, LLMBackend>> {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {};
   }
+  const obj = parsed as Record<string, unknown>;
+  // Apply legacy "plot" compat BEFORE the VALID_AGENTS filter strips it.
+  applyPlotCompatAlias(obj, "LLM_AGENT_BACKEND_MAP");
   const out: Partial<Record<AgentName, LLMBackend>> = {};
-  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(obj)) {
     if (!VALID_AGENTS.has(k)) continue;
     if (typeof v !== "string" || !VALID_BACKENDS.has(v as LLMBackend)) continue;
     out[k as AgentName] = v as LLMBackend;
@@ -102,8 +137,10 @@ function parseEnvModeMap(): Partial<Record<AgentName, StructuredMode>> {
     return {};
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const obj = parsed as Record<string, unknown>;
+  applyPlotCompatAlias(obj, "LLM_SUBSCRIPTION_STRUCTURED_MODE_MAP");
   const out: Partial<Record<AgentName, StructuredMode>> = {};
-  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(obj)) {
     if (!VALID_AGENTS.has(k)) continue;
     if (typeof v !== "string" || !VALID_MODES.has(v as StructuredMode)) continue;
     out[k as AgentName] = v as StructuredMode;

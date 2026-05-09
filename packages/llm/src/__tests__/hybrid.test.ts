@@ -47,7 +47,7 @@ describe("generateThenStructure", () => {
     callStructuredMock.mockResolvedValueOnce({ kind: "ok", n: 7 });
 
     const out = await generateThenStructure({
-      agentName: "plot",
+      agentName: "plot_outline",
       textModel: "opus",
       textSystem: "S1",
       textPrompt: "P1",
@@ -76,7 +76,7 @@ describe("generateThenStructure", () => {
       prompt: string;
       schemaName: string;
     };
-    expect(extractArgs.agentName).toBe("plot");
+    expect(extractArgs.agentName).toBe("plot_outline");
     expect(extractArgs.model).toBe("sonnet");
     expect(extractArgs.prompt).toBe("Текст: alpha beta");
     expect(extractArgs.schemaName).toBe("submit_x");
@@ -106,7 +106,7 @@ describe("generateThenStructure", () => {
 
     const events: Array<{ stage: string; modelId: string; inputTokens: number; outputTokens: number }> = [];
     await generateThenStructure({
-      agentName: "plot",
+      agentName: "plot_outline",
       textModel: "opus",
       textSystem: "s",
       textPrompt: "p",
@@ -144,7 +144,7 @@ describe("generateThenStructure", () => {
 
     await expect(
       generateThenStructure({
-        agentName: "plot",
+        agentName: "plot_outline",
         textModel: "opus",
         textSystem: "s",
         textPrompt: "p",
@@ -173,7 +173,7 @@ describe("generateThenStructure", () => {
     callStructuredMock.mockResolvedValueOnce({ kind: "x", n: 0 });
 
     await generateThenStructure({
-      agentName: "plot",
+      agentName: "plot_outline",
       textModel: "opus",
       textSystem: "s",
       textPrompt: "p",

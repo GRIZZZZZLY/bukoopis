@@ -15,10 +15,6 @@ const KNOWN_FREE_TEXT_OR_NOLLM: AgentName[] = [
   "inline",
   "lore",
   "character",
-  // Phase 4-5 will move these out of the exclusion list as their
-  // contracts get registered:
-  "plot",
-  "style_extractor",
 ];
 
 describe("STRUCTURED_AGENT_NAMES drift guard", () => {

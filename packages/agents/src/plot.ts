@@ -1,10 +1,9 @@
 import { z } from "zod";
 import {
-  callStructured,
-  generateThenStructure,
-  type HybridUsageEvent,
+  registerAgentContract,
+  dispatchStructured,
+  type AgentStructuredContract,
   type StructuredUsage,
-  type SystemBlock,
 } from "@book-forge/llm";
 import {
   bookOutlineVariantSchema,
@@ -16,29 +15,15 @@ import {
 
 export type UsageHandler = (usage: StructuredUsage) => void;
 
-function hybridUsageToStructured(handler: UsageHandler): (e: HybridUsageEvent) => void {
-  // Emit each stage's usage as a separate StructuredUsage event so pricing
-  // (getModelRates) receives raw model IDs and computes per-stage cost
-  // correctly. Caller's usage logger will see two rows per hybrid call:
-  // one for the subscription generate pass (zero-cost via local-LLM rate
-  // table) and one for the api extract pass.
-  return (e) =>
-    handler({
-      modelId: e.modelId,
-      inputTokens: e.inputTokens,
-      outputTokens: e.outputTokens,
-      cacheCreationInputTokens: e.cacheCreationInputTokens,
-      cacheReadInputTokens: e.cacheReadInputTokens,
-    });
-}
-
 const bookOutlineToolSchema = z.object({
   variants: z.array(bookOutlineVariantSchema).min(1).max(5),
 });
+type BookOutlineToolResult = z.infer<typeof bookOutlineToolSchema>;
 
 const chapterBeatSheetToolSchema = z.object({
   variants: z.array(chapterBeatSheetVariantSchema).min(1).max(5),
 });
+type ChapterBeatSheetToolResult = z.infer<typeof chapterBeatSheetToolSchema>;
 
 const SYSTEM_BOOK_OUTLINE = `Ты — Plot Agent, специалист по структуре художественной литературы. Работаешь на русском языке.
 
@@ -56,6 +41,8 @@ const SYSTEM_CHAPTER_PLAN = `Ты — Plot Agent. Работаешь на рус
 
 Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats.`;
 
+// ─────────── Outline ───────────
+
 export interface GenerateBookOutlineInput {
   bookTitle: string;
   premise: string;
@@ -64,43 +51,72 @@ export interface GenerateBookOutlineInput {
   onUsage?: UsageHandler;
 }
 
+function buildBookOutlinePrompt(input: GenerateBookOutlineInput): string {
+  const variants = input.config?.variants ?? 2;
+  return [
+    `Книга: "${input.bookTitle}"`,
+    `Язык: ${input.language}`,
+    `Премиса автора:\n${input.premise}`,
+    `\nСгенерируй ровно ${variants} существенно различных вариантов outline.`,
+  ].join("\n\n---\n\n");
+}
+
+const plotOutlineContract: AgentStructuredContract<
+  GenerateBookOutlineInput,
+  BookOutlineToolResult
+> = {
+  agentName: "plot_outline",
+  getOutputSchema: () => bookOutlineToolSchema,
+  systemPrompt: SYSTEM_BOOK_OUTLINE,
+  buildPrompt: buildBookOutlinePrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_book_outlines",
+    toolDescription:
+      "Submit N alternative high-level book outlines. Each variant must differ substantively.",
+  },
+};
+
+export function registerPlotOutlineContract(): void {
+  registerAgentContract(plotOutlineContract);
+}
+
 export async function generateBookOutline(
   input: GenerateBookOutlineInput,
 ): Promise<BookOutlineVariant[]> {
   const variants = input.config?.variants ?? 2;
-
-  // Pass 1: subscription prose (markdown). The Plot agent writes outline
-  // variants as headed markdown — humanly readable and no JSON-prompting
-  // fragility on the heavy generation pass.
-  const proseSystem = `${SYSTEM_BOOK_OUTLINE}\n\n---\n\nКнига: "${input.bookTitle}"\nЯзык: ${input.language}\nПремиса автора:\n${input.premise}\n\n---\n\nФорматирование: верни ${variants} вариантов в markdown. Каждый вариант начинается с заголовка \"## Вариант N: <label>\" и содержит подзаголовки \"Logline\", \"Synopsis\", \"Темы\", \"Протагонист\", \"Антагонист\", \"Сеттинг\", \"Арки\", \"Оценка глав\". Ничего лишнего. Никакого JSON.`;
-  const prosePrompt = `Сгенерируй ровно ${variants} существенно различных вариантов outline в markdown.`;
-
-  // Pass 2: api structured extraction. Sonnet re-reads the markdown and
-  // emits the typed `bookOutlineToolSchema` — reliable tool_use path.
-  const extractSystem = `Ты — парсер. Получаешь markdown с N вариантами book outline. Извлекаешь их в structured формате по предоставленной схеме. Никакого редактирования содержания — только извлечение полей.`;
-  const buildExtractPrompt = (prose: string) =>
-    `Markdown с вариантами:\n\n${prose}\n\n---\n\nИзвлеки ровно ${variants} вариантов в structured формате (submit_book_outlines).`;
-
-  const result = await generateThenStructure({
-    agentName: "plot",
-    textModel: input.config?.model ?? "opus",
-    textSystem: proseSystem,
-    textPrompt: prosePrompt,
-    extractModel: "sonnet",
-    extractSystem,
-    extractPrompt: buildExtractPrompt,
-    extractSchema: bookOutlineToolSchema,
-    extractSchemaName: "submit_book_outlines",
-    extractSchemaDescription:
-      "Submit N alternative high-level book outlines, each parsed verbatim from the provided markdown.",
-    extractMaxTokens: 8192,
-    ...(input.onUsage
-      ? { onUsage: hybridUsageToStructured(input.onUsage) }
+  const { raw, diagnostics } = await dispatchStructured<
+    GenerateBookOutlineInput,
+    BookOutlineToolResult
+  >({
+    agentName: "plot_outline",
+    payload: input,
+    model: input.config?.model ?? "sonnet",
+    ...(input.config?.temperature !== undefined
+      ? { temperature: input.config.temperature }
       : {}),
+    maxTokens: 8192,
   });
-
-  return result.variants.slice(0, variants);
+  if (input.onUsage) {
+    try {
+      input.onUsage({
+        modelId: diagnostics.modelId,
+        inputTokens: diagnostics.inputTokens,
+        outputTokens: diagnostics.outputTokens,
+        cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+        cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+      });
+    } catch (e) {
+      console.warn(
+        "[plot/outline] onUsage callback threw:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  return raw.variants.slice(0, variants);
 }
+
+// ─────────── Chapter plan (beat-sheet) ───────────
 
 export interface GenerateChapterPlanInput {
   bookTitle: string;
@@ -113,13 +129,8 @@ export interface GenerateChapterPlanInput {
   onUsage?: UsageHandler;
 }
 
-export async function generateChapterPlan(
-  input: GenerateChapterPlanInput,
-): Promise<ChapterBeatSheetVariant[]> {
+function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
   const variants = input.config?.variants ?? 2;
-
-  // Stable: SYSTEM + book + premise + outline + previous summary. Volatile:
-  // current chapter intent + variants count.
   const stableParts: string[] = [
     `Книга: "${input.bookTitle}"`,
     `Премиса: ${input.bookPremise}`,
@@ -132,32 +143,65 @@ export async function generateChapterPlan(
       `Что было в предыдущих главах:\n${input.previousChaptersSummary}`,
     );
   }
-  const stableSystem = `${SYSTEM_CHAPTER_PLAN}\n\n---\n\n${stableParts.join("\n\n")}`;
-  const system: SystemBlock[] = [
-    { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
-  ];
-
   const volatileParts: string[] = [
     `Текущая глава: "${input.chapterTitle}"`,
     `Намерение автора:\n${input.intent}`,
     `Сгенерируй ровно ${variants} существенно различных beat-sheet вариантов.`,
   ];
+  return [...stableParts, ...volatileParts].join("\n\n---\n\n");
+}
 
-  const result = await callStructured({
-    agentName: "plot",
-    model: input.config?.model ?? "sonnet",
-    system,
-    prompt: volatileParts.join("\n\n"),
-    schema: chapterBeatSheetToolSchema,
-    schemaName: "submit_chapter_beat_sheets",
-    schemaDescription:
+const plotChapterPlanContract: AgentStructuredContract<
+  GenerateChapterPlanInput,
+  ChapterBeatSheetToolResult
+> = {
+  agentName: "plot_chapter_plan",
+  getOutputSchema: () => chapterBeatSheetToolSchema,
+  systemPrompt: SYSTEM_CHAPTER_PLAN,
+  buildPrompt: buildChapterPlanPrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_chapter_beat_sheets",
+    toolDescription:
       "Submit N alternative chapter beat-sheets, each a coherent sequence of beats with goal/conflict/outcome.",
+  },
+};
+
+export function registerPlotChapterPlanContract(): void {
+  registerAgentContract(plotChapterPlanContract);
+}
+
+export async function generateChapterPlan(
+  input: GenerateChapterPlanInput,
+): Promise<ChapterBeatSheetVariant[]> {
+  const variants = input.config?.variants ?? 2;
+  const { raw, diagnostics } = await dispatchStructured<
+    GenerateChapterPlanInput,
+    ChapterBeatSheetToolResult
+  >({
+    agentName: "plot_chapter_plan",
+    payload: input,
+    model: input.config?.model ?? "sonnet",
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 8192,
-    onUsage: input.onUsage,
   });
-
-  return result.variants.slice(0, variants);
+  if (input.onUsage) {
+    try {
+      input.onUsage({
+        modelId: diagnostics.modelId,
+        inputTokens: diagnostics.inputTokens,
+        outputTokens: diagnostics.outputTokens,
+        cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+        cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+      });
+    } catch (e) {
+      console.warn(
+        "[plot/chapter_plan] onUsage callback threw:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  return raw.variants.slice(0, variants);
 }

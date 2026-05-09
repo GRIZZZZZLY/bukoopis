@@ -18,8 +18,11 @@ describe("resolveBackend default map", () => {
   it("summarizer → subscription (etap 0.2.3)", () => {
     expect(resolveBackend("summarizer")).toBe("subscription");
   });
-  it("plot → api", () => {
-    expect(resolveBackend("plot")).toBe("api");
+  it("plot_outline → api", () => {
+    expect(resolveBackend("plot_outline")).toBe("api");
+  });
+  it("plot_chapter_plan → api", () => {
+    expect(resolveBackend("plot_chapter_plan")).toBe("api");
   });
   it("critic_canon → api", () => {
     expect(resolveBackend("critic_canon")).toBe("api");
@@ -43,7 +46,7 @@ describe("resolveBackend env override", () => {
   });
   it("ignores unknown agent names in env map", () => {
     process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ bogus: "subscription" });
-    expect(resolveBackend("plot")).toBe("api");
+    expect(resolveBackend("plot_outline")).toBe("api");
   });
   it("ignores invalid backend values in env map", () => {
     process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ writer: "magic" });

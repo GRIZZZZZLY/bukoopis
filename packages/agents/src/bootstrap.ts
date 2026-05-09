@@ -3,6 +3,10 @@ import { registerStyleCriticContract } from "./critics/style.js";
 import { registerEditorCriticContract } from "./critics/editor.js";
 import { registerReaderCriticContract } from "./critics/reader.js";
 import { registerCanonGuardContract } from "./canon-extractor.js";
+import {
+  registerPlotOutlineContract,
+  registerPlotChapterPlanContract,
+} from "./plot.js";
 
 /**
  * Registers all agent structured-output contracts. Must be called once at
@@ -20,4 +24,6 @@ export function registerAllAgentContracts(): void {
   registerEditorCriticContract();
   registerReaderCriticContract();
   registerCanonGuardContract();
+  registerPlotOutlineContract();
+  registerPlotChapterPlanContract();
 }

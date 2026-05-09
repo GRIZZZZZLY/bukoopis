@@ -9,4 +9,8 @@ export {
   type ParsedReference,
 } from "./parsers.js";
 export { detectFatigueWords } from "./fatigue.js";
-export { runStyleExtractor, type StyleExtractInput } from "./extractor.js";
+export {
+  runStyleExtractor,
+  registerStyleExtractorContract,
+  type StyleExtractInput,
+} from "./extractor.js";
