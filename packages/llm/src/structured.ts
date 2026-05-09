@@ -4,9 +4,8 @@ import { getAnthropicClient } from "./client.js";
 import { resolveModelId } from "./models.js";
 import { withRetry } from "./retry.js";
 import { buildSystemParam, type SystemBlock } from "./stream.js";
-import { LLMError, LLMValidationError } from "./errors.js";
-import { resolveBackendForCall } from "./router.js";
-import type { AgentName } from "./types.js";
+import { LLMValidationError } from "./errors.js";
+import type { AgentName, AgentStructuredContract } from "./types.js";
 import type { ModelChoice } from "@book-forge/shared";
 
 export { LLMValidationError };
@@ -34,56 +33,65 @@ export interface StructuredCallOptions<T> {
   cacheableSystem?: boolean;
 }
 
-export async function callStructured<T>(
-  opts: StructuredCallOptions<T>,
-): Promise<T> {
-  // Hard routing rule: any request carrying an outputSchema is forced to api.
-  // Provider is fixed to "anthropic" here — structured output is anthropic-only.
-  const backend = resolveBackendForCall({
-    agentName: opts.agentName,
-    provider: "anthropic",
-    hasOutputSchema: true,
-  });
-  if (backend !== "api") {
-    throw new LLMError(
-      `[invariant] callStructured resolved to backend="${backend}" — outputSchema must force "api"`,
-    );
-  }
+export interface StructuredCallInternal<I> {
+  agentName: AgentName;
+  payload: I;
+  /** Resolved at the call site by the public entry point. */
+  systemBlocks?: SystemBlock[] | string;
+  cacheableSystem?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  onUsage?: (usage: StructuredUsage) => void;
+  model: ModelChoice;
+}
 
+/**
+ * Anthropic API tool_use path. Used both by the legacy `callStructured`
+ * wrapper and the new dispatcher for `backend === "api"`.
+ */
+export async function callViaAnthropicApi<I, O>(
+  contract: AgentStructuredContract<I, O>,
+  outputSchema: ZodType<O>,
+  input: StructuredCallInternal<I>,
+): Promise<O> {
   const client = getAnthropicClient();
-  const inputSchema = z.toJSONSchema(opts.schema);
-
+  const inputSchema = z.toJSONSchema(outputSchema);
+  const toolName = contract.mcp?.toolName ?? `submit_${contract.agentName}`;
   const tool = {
-    name: opts.schemaName,
-    description: opts.schemaDescription,
+    name: toolName,
+    description:
+      contract.mcp?.toolDescription ??
+      `Submit structured output for ${contract.agentName}.`,
     input_schema: inputSchema as Anthropic.Tool["input_schema"],
   } satisfies Anthropic.Tool;
-
-  // Newer Anthropic models (Opus 4.7+) deprecate `temperature`. Pass it only
-  // when caller explicitly opts in.
-  const modelId = resolveModelId(opts.model);
+  const modelId = resolveModelId(input.model);
   const cacheable =
-    opts.cacheableSystem ?? process.env.LLM_PROMPT_CACHE !== "0";
-  const systemParam = buildSystemParam(opts.system, cacheable);
+    input.cacheableSystem ?? process.env.LLM_PROMPT_CACHE !== "0";
+  const systemParam = buildSystemParam(
+    input.systemBlocks ?? contract.systemPrompt,
+    cacheable,
+  );
+  const userPrompt = contract.buildPrompt(input.payload);
+
   const res = await withRetry(() =>
     client.messages.create({
       model: modelId,
-      max_tokens: opts.maxTokens ?? 8192,
+      max_tokens: input.maxTokens ?? 8192,
       system: systemParam as Anthropic.MessageCreateParams["system"],
       tools: [tool],
-      tool_choice: { type: "tool", name: opts.schemaName },
-      messages: [{ role: "user", content: opts.prompt }],
-      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      tool_choice: { type: "tool", name: toolName },
+      messages: [{ role: "user", content: userPrompt }],
+      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
     }),
   );
 
-  if (opts.onUsage) {
+  if (input.onUsage) {
     const usage = res.usage as typeof res.usage & {
       cache_creation_input_tokens?: number | null;
       cache_read_input_tokens?: number | null;
     };
     try {
-      opts.onUsage({
+      input.onUsage({
         modelId,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
@@ -100,7 +108,7 @@ export async function callStructured<T>(
 
   const block = res.content.find(
     (b): b is Anthropic.ToolUseBlock =>
-      b.type === "tool_use" && b.name === opts.schemaName,
+      b.type === "tool_use" && b.name === toolName,
   );
   if (!block) {
     throw new LLMValidationError(
@@ -108,7 +116,7 @@ export async function callStructured<T>(
       res.content,
     );
   }
-  const parsed = opts.schema.safeParse(block.input);
+  const parsed = outputSchema.safeParse(block.input);
   if (!parsed.success) {
     throw new LLMValidationError(
       `tool input failed schema validation: ${parsed.error.message}`,
@@ -116,4 +124,40 @@ export async function callStructured<T>(
     );
   }
   return parsed.data;
+}
+
+/**
+ * Legacy entry point. Always routes through the Anthropic API tool_use path,
+ * regardless of LLM_AGENT_BACKEND_MAP. This guarantees no behavioural change
+ * for unmigrated callers (plot, canon-extractor, critics/base, style-engine)
+ * while migrated agents go through dispatchStructured separately.
+ *
+ * Phase 6 cleanup may remove this once every caller has migrated.
+ */
+export async function callStructured<T>(
+  opts: StructuredCallOptions<T>,
+): Promise<T> {
+  const adHocContract: AgentStructuredContract<{ prompt: string }, T> = {
+    agentName: opts.agentName,
+    getOutputSchema: () => opts.schema,
+    systemPrompt: typeof opts.system === "string" ? opts.system : "",
+    buildPrompt: (i) => i.prompt,
+    defaultMode: "mcp_submit_tool",
+    mcp: {
+      toolName: opts.schemaName,
+      toolDescription: opts.schemaDescription,
+    },
+  };
+  return callViaAnthropicApi(adHocContract, opts.schema, {
+    agentName: opts.agentName,
+    payload: { prompt: opts.prompt },
+    systemBlocks: opts.system,
+    model: opts.model,
+    ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+    ...(opts.maxTokens !== undefined ? { maxTokens: opts.maxTokens } : {}),
+    ...(opts.cacheableSystem !== undefined
+      ? { cacheableSystem: opts.cacheableSystem }
+      : {}),
+    ...(opts.onUsage !== undefined ? { onUsage: opts.onUsage } : {}),
+  });
 }
