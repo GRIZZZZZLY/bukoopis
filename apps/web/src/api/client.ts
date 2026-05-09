@@ -1,5 +1,6 @@
 import type {
   Book,
+  BookConcept,
   BookOutline,
   Chapter,
   ChapterPlan,
@@ -20,6 +21,8 @@ import type {
   Item,
   Location,
   Relationship,
+  StudioState,
+  StudioWarning,
   UpdateBookInput,
   UpdateChapterInput,
   UpdateCharacterInput,
@@ -340,6 +343,28 @@ export const api = {
       db: "ok" | "missing";
       vec: boolean;
     }>("/api/health"),
+
+  // ── Studio ──
+  getConcept: (bookId: number) =>
+    req<BookConcept>(`/api/books/${bookId}/concept`),
+  patchConcept: (bookId: number, next: BookConcept) =>
+    req<BookConcept>(`/api/books/${bookId}/concept`, {
+      method: "PATCH",
+      body: JSON.stringify(next),
+    }),
+  getStudioState: (bookId: number) =>
+    req<StudioState>(`/api/books/${bookId}/studio-state`),
+  patchStudioState: (
+    bookId: number,
+    expectedRevision: number,
+    next: StudioState,
+  ) =>
+    req<StudioState>(`/api/books/${bookId}/studio-state`, {
+      method: "PATCH",
+      body: JSON.stringify({ expectedRevision, next }),
+    }),
+  getStudioWarnings: (bookId: number) =>
+    req<StudioWarning[]>(`/api/books/${bookId}/studio-warnings`),
 };
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
