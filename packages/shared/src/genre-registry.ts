@@ -12,8 +12,8 @@ export interface ToneDefinition {
   promptHints: string[];
 }
 
-// Phase A seed — кратко. Расширяется в Phase B1.
 export const GENRES: readonly GenreDefinition[] = [
+  // ─── Fantasy tree ───────────────────────────────────────────
   {
     id: "fantasy",
     label: "Фэнтези",
@@ -32,6 +32,20 @@ export const GENRES: readonly GenreDefinition[] = [
     promptHints: ["центральная любовная линия", "эмоциональный накал"],
   },
   {
+    id: "fantasy.high_fantasy",
+    label: "Высокое фэнтези",
+    parentId: "fantasy",
+    promptHints: ["эпичный масштаб", "выраженная мифология"],
+    incompatibleWith: ["sci_fi.hard_sci_fi"],
+  },
+  {
+    id: "fantasy.urban_fantasy",
+    label: "Городское фэнтези",
+    parentId: "fantasy",
+    promptHints: ["современный город", "магия скрыта от обывателей"],
+  },
+  // ─── Sci-fi tree ────────────────────────────────────────────
+  {
     id: "sci_fi",
     label: "Научная фантастика",
     promptHints: ["технологии как двигатель", "будущее или альтернативное настоящее"],
@@ -45,14 +59,57 @@ export const GENRES: readonly GenreDefinition[] = [
     incompatibleWith: ["fantasy"],
   },
   {
+    id: "sci_fi.space_opera",
+    label: "Космоопера",
+    parentId: "sci_fi",
+    promptHints: ["масштаб галактики", "героика, политика и звездные флоты"],
+  },
+  {
+    id: "sci_fi.cyberpunk",
+    label: "Киберпанк",
+    parentId: "sci_fi",
+    promptHints: ["high tech / low life", "корпорации", "цифровая идентичность"],
+  },
+  // ─── Mystery / thriller tree ────────────────────────────────
+  {
+    id: "mystery",
+    label: "Детектив",
+    promptHints: ["загадка", "расследование", "ключи и улики"],
+  },
+  {
+    id: "mystery.cozy_mystery",
+    label: "Уютный детектив",
+    parentId: "mystery",
+    promptHints: ["камерное место действия", "минимум насилия"],
+  },
+  {
     id: "thriller",
     label: "Триллер",
     promptHints: ["напряжение", "опасность", "темп"],
   },
+  // ─── Horror ─────────────────────────────────────────────────
+  {
+    id: "horror",
+    label: "Хоррор",
+    promptHints: ["страх", "сверхъестественное или психологическое"],
+  },
+  // ─── Romance tree ──────────────────────────────────────────
+  {
+    id: "romance",
+    label: "Любовный роман",
+    promptHints: ["центральная любовная линия", "счастливый или горько-сладкий финал"],
+  },
+  // ─── Literary ──────────────────────────────────────────────
   {
     id: "literary",
     label: "Литературное",
     promptHints: ["язык", "психологизм", "символика"],
+  },
+  // ─── Historical ────────────────────────────────────────────
+  {
+    id: "historical",
+    label: "Историческое",
+    promptHints: ["реальная эпоха", "достоверность деталей"],
   },
 ] as const;
 
@@ -63,6 +120,9 @@ export const TONES: readonly ToneDefinition[] = [
   { id: "comedic", label: "Комедийный", promptHints: ["юмор", "лёгкость"] },
   { id: "hopeful", label: "Светлый", promptHints: ["надежда", "тёплые финалы"] },
   { id: "melancholic", label: "Меланхоличный", promptHints: ["осенняя грусть"] },
+  { id: "tense", label: "Напряжённый", promptHints: ["саспенс", "ожидание удара"] },
+  { id: "whimsical", label: "Игривый", promptHints: ["сказочность", "лёгкая ирония"] },
+  { id: "epic", label: "Эпичный", promptHints: ["масштаб", "патетика"] },
 ] as const;
 
 const GENRE_INDEX = new Map(GENRES.map((g) => [g.id, g]));
@@ -74,4 +134,12 @@ export function getGenreById(id: string): GenreDefinition | undefined {
 
 export function getToneById(id: string): ToneDefinition | undefined {
   return TONE_INDEX.get(id);
+}
+
+export function getRootGenres(): GenreDefinition[] {
+  return GENRES.filter((g) => g.parentId === undefined);
+}
+
+export function getGenreChildren(id: string): GenreDefinition[] {
+  return GENRES.filter((g) => g.parentId === id);
 }
