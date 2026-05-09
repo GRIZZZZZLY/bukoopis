@@ -11,6 +11,7 @@ import { registerConceptRefinerContract } from "./concept/refiner.js";
 import { registerAspectPlaybookContract } from "./aspects/playbook.js";
 import { registerAspectVariantsContract } from "./aspects/variants.js";
 import { registerAspectRefineContract } from "./aspects/refine.js";
+import { registerAspectEntityVariantsContract } from "./aspects/entity-variants.js";
 
 /**
  * Registers all agent structured-output contracts. Must be called once at
@@ -36,4 +37,5 @@ export function registerAllAgentContracts(): void {
   registerAspectPlaybookContract();
   registerAspectVariantsContract();
   registerAspectRefineContract();
+  registerAspectEntityVariantsContract();
 }

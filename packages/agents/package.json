@@ -11,7 +11,8 @@
     "./concept/refiner": "./src/concept/refiner.ts",
     "./aspects/playbook": "./src/aspects/playbook.ts",
     "./aspects/variants": "./src/aspects/variants.ts",
-    "./aspects/refine": "./src/aspects/refine.ts"
+    "./aspects/refine": "./src/aspects/refine.ts",
+    "./aspects/entity-variants": "./src/aspects/entity-variants.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
