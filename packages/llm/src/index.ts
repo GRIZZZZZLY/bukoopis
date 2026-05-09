@@ -28,8 +28,12 @@ export {
 export {
   resolveBackend,
   resolveBackendForCall,
+  resolveStructuredMode,
 } from "./router.js";
-export type { ResolveBackendForCallInput } from "./router.js";
+export type {
+  ResolveBackendForCallInput,
+  ResolveStructuredModeInput,
+} from "./router.js";
 
 // Hybrid pipeline: subscription text + api structured extraction (etap 0.2.3)
 export { generateThenStructure } from "./hybrid.js";

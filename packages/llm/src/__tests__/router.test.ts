@@ -55,7 +55,7 @@ describe("resolveBackend env override", () => {
   });
 });
 
-describe("resolveBackendForCall hard rules", () => {
+describe("resolveBackendForCall semantics", () => {
   beforeEach(() => {
     delete process.env.LLM_AGENT_BACKEND_MAP;
   });
@@ -63,14 +63,14 @@ describe("resolveBackendForCall hard rules", () => {
     delete process.env.LLM_AGENT_BACKEND_MAP;
   });
 
-  it("hasOutputSchema=true forces api even when agent default is subscription", () => {
+  it("hasOutputSchema=true preserves agent default (subscription) — etap 0.2.4 dropped the hard-rule", () => {
     expect(
       resolveBackendForCall({
         agentName: "writer",
         provider: "anthropic",
         hasOutputSchema: true,
       }),
-    ).toBe("api");
+    ).toBe("subscription");
   });
   it("ollama provider coerces writer (subscription default) to api", () => {
     expect(
