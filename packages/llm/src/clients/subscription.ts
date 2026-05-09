@@ -44,6 +44,14 @@ function buildOptions(
 ): BuiltOptions {
   const modelId = resolveModelId(model);
   const sys = flattenSystem(system);
+  // Force SDK onto Claude Code CLI credentials by stripping
+  // ANTHROPIC_API_KEY from the spawn env. Without this, the SDK prefers
+  // the API key (intended for non-subscription auth) and fails with 401
+  // when the key is invalid/empty/missing.
+  const subscriptionEnv: Record<string, string | undefined> = {
+    ...process.env,
+  };
+  delete subscriptionEnv.ANTHROPIC_API_KEY;
   const opts: Options = {
     model: modelId,
     systemPrompt: sys,
@@ -57,6 +65,7 @@ function buildOptions(
     // Single-turn: caller provides full prompt as a string, we expect one
     // assistant turn back.
     maxTurns: 1,
+    env: subscriptionEnv,
   };
   if (signal) opts.abortController = abortControllerFromSignal(signal);
   return { options: opts, modelId };

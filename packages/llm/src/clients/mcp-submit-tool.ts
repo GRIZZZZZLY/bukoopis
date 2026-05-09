@@ -121,6 +121,14 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   const mcpServer = createSdkMcpServer({ name: serverName, tools: [submitTool] });
 
   const userPrompt = contract.buildPrompt(input.payload);
+  // Force SDK onto Claude Code CLI credentials by stripping
+  // ANTHROPIC_API_KEY from the spawn env. Without this, the SDK prefers
+  // the API key (intended for non-subscription auth) and fails with 401
+  // when the key is invalid/empty/missing.
+  const subscriptionEnv: Record<string, string | undefined> = {
+    ...process.env,
+  };
+  delete subscriptionEnv.ANTHROPIC_API_KEY;
   const options: Options = {
     model: resolveModelId(input.model),
     systemPrompt: input.systemPromptOverride ?? contract.systemPrompt,
@@ -128,6 +136,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     mcpServers: { [serverName]: mcpServer },
     allowedTools: [`mcp__${serverName}__${mcp.toolName}`],
     maxTurns: input.maxTurnsOverride ?? mcp.maxTurns ?? 3,
+    env: subscriptionEnv,
   };
 
   const q = query({
