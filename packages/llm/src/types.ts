@@ -57,4 +57,7 @@ export function effectiveBackend(
  *  __tests__/structured-agents-parity.test.ts enforces deliberate growth. */
 export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>([
   "critic_canon",
+  "critic_style",
+  "critic_editor",
+  "critic_reader",
 ]);

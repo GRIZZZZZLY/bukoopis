@@ -1,5 +1,12 @@
+import type { z } from "zod";
 import type { CriticReport } from "@book-forge/shared";
-import { runCritic, type CriticInput } from "./base.js";
+import { criticReportSchema } from "@book-forge/shared";
+import {
+  registerAgentContract,
+  dispatchStructured,
+  type AgentStructuredContract,
+} from "@book-forge/llm";
+import { type CriticInput } from "./base.js";
 
 const SYSTEM = `Ты — Reader-Experience критик. Твоя задача — представить себя обычным читателем и оценить эмоциональный отклик на текст.
 
@@ -23,14 +30,58 @@ Severity:
 
 const TASK = `Прочитай главу как читатель. Где я отключился? Где сопереживал? Достигнута ли заявленная эмоциональная цель? Объясни конкретно, со ссылками на фрагменты.`;
 
+const readerOutputSchema = criticReportSchema.omit({ critic: true });
+type ReaderCriticOutput = z.infer<typeof readerOutputSchema>;
+
+function buildReaderPrompt(input: CriticInput): string {
+  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
+  if (input.previousChaptersSummary) {
+    stableParts.push(
+      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
+    );
+  }
+  if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.loreContext) stableParts.push(input.loreContext);
+
+  const volatileParts: string[] = [
+    `Глава: "${input.chapterTitle}"`,
+    `POV: ${input.pov}`,
+    `Эмоциональная цель: ${input.emotionalGoal}`,
+    `Текст главы:\n\n${input.chapterText}`,
+    `\nЗадача:\n${TASK}`,
+  ];
+
+  return [...stableParts, ...volatileParts].join("\n\n---\n\n");
+}
+
+const readerCriticContract: AgentStructuredContract<CriticInput, ReaderCriticOutput> = {
+  agentName: "critic_reader",
+  getOutputSchema: () => readerOutputSchema,
+  systemPrompt: SYSTEM,
+  buildPrompt: buildReaderPrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_critique_reader",
+    toolDescription:
+      "Submit a structured critique report from the reader-experience critic. Return all issues found with severity and concrete suggestions.",
+  },
+};
+
+export function registerReaderCriticContract(): void {
+  registerAgentContract(readerCriticContract);
+}
+
 export async function runReaderExperienceAgent(
   input: CriticInput,
 ): Promise<CriticReport> {
-  return runCritic({
-    critic: "reader",
+  const { raw } = await dispatchStructured<CriticInput, ReaderCriticOutput>({
     agentName: "critic_reader",
-    system: SYSTEM,
-    task: TASK,
-    input,
+    payload: input,
+    model: input.config?.model ?? "sonnet",
+    ...(input.config?.temperature !== undefined
+      ? { temperature: input.config.temperature }
+      : {}),
+    maxTokens: 4096,
   });
+  return { ...raw, critic: "reader" } as CriticReport;
 }

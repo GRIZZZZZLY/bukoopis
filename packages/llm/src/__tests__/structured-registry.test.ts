@@ -65,7 +65,9 @@ describe("structured-registry", () => {
   });
 
   it("assertAllStructuredAgentsHaveContracts passes when all registered", () => {
-    registerAgentContract(makeContract("critic_canon", "submit_critique_canon"));
+    for (const name of STRUCTURED_AGENT_NAMES) {
+      registerAgentContract(makeContract(name, `submit_${name}`));
+    }
     expect(() => assertAllStructuredAgentsHaveContracts()).not.toThrow();
   });
 
