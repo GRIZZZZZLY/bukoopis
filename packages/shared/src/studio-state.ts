@@ -66,6 +66,19 @@ export const STAGE_STATUSES = [
 export const stageStatusSchema = z.enum(STAGE_STATUSES);
 export type StageStatus = z.infer<typeof stageStatusSchema>;
 
+export const ENTITY_KINDS = ["character", "location", "item"] as const;
+export const entityKindSchema = z.enum(ENTITY_KINDS);
+export type EntityKind = z.infer<typeof entityKindSchema>;
+
+export const ENTITY_CANDIDATE_STATUSES = [
+  "proposed",
+  "accepted",
+  "rejected",
+  "merged",
+] as const;
+export const entityCandidateStatusSchema = z.enum(ENTITY_CANDIDATE_STATUSES);
+export type EntityCandidateStatus = z.infer<typeof entityCandidateStatusSchema>;
+
 // ─────────────── leaf schemas ───────────────
 
 export const contextRefSchema = z.object({
@@ -95,9 +108,9 @@ export type AspectVariant = z.infer<typeof aspectVariantSchema>;
 
 export const entityCandidateSchema = z.object({
   tempId: z.string().min(1),
-  kind: z.enum(["character", "location", "item"]),
+  kind: entityKindSchema,
   profile: z.unknown(),
-  status: z.enum(["proposed", "accepted", "rejected", "merged"]),
+  status: entityCandidateStatusSchema,
   materializedEntityId: z.number().int().positive().optional(),
   mergedIntoEntityId: z.number().int().positive().optional(),
 });
@@ -122,7 +135,7 @@ export const stageAspectSchema = z.object({
   finalPayload: z.unknown().optional(),
   emits: z
     .object({
-      kind: z.enum(["character", "location", "item"]),
+      kind: entityKindSchema,
       entityIds: z.array(z.number().int().positive()),
     })
     .optional(),
