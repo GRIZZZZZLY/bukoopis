@@ -713,11 +713,83 @@ Run a real chapter or critique against the user's Max-5. Record in a phase log:
 
 ## 12. Implementation order summary
 
-1. Phase 0.1 — Zod 4 monorepo migration (own PR; green tests at parity).
-2. Phase 0.2 — SDK capability spike (own PR; decision matrix recorded as appendix).
-3. Phase 1 — registry, contract, dispatcher, mode 1, pilot `critic_canon`.
-4. Phase 2 — mode 2, env switches.
+1. Phase 0.1 — Zod 4 monorepo migration (own PR; green tests at parity). **DONE 2026-05-09.**
+2. Phase 0.2 — SDK capability spike (own PR; decision matrix recorded as appendix §13). **DONE 2026-05-09 — see §13 for outcome.**
+3. Phase 1 — registry, contract, dispatcher, **mcp_submit_tool pilot** (revised from "mode 1" per §13.4 spike outcome — native_output_format unavailable in observed SDK build), pilot agent `critic_canon`.
+4. Phase 2 — env switches + observability around `LLMNoToolCallError` / `LLMMultipleToolCallsError` (mode 1 deferred until SDK exposes `outputFormat` correctly).
 5. Phase 3 — remaining critics.
 6. Phase 4 — `plot_outline`, `plot_chapter_plan`, `canon_guard`, `style_extractor`.
 7. Phase 5 — `critic_dialogue`, `foreshadowing_planner`.
-8. Phase 6 — cleanup, optional retirement of `generateThenStructure`.
+8. Phase 6 — cleanup, optional retirement of `generateThenStructure`, re-evaluate `native_output_format` if a future SDK release exposes the field.
+
+---
+
+## 13. Appendix — Phase 0.2 SDK capability spike results (2026-05-09)
+
+Spike script: [`packages/llm/scripts/spike-agent-sdk.ts`](../../packages/llm/scripts/spike-agent-sdk.ts). Raw output: [`.planning/spike-output.md`](../spike-output.md). SDK version: `@anthropic-ai/claude-agent-sdk@0.2.136`. Auth: Claude Code CLI subscription (Max-5). Model alias used: `sonnet`.
+
+### 13.1 Decision matrix
+
+| Probe | Mode | Path | Result | Duration ms | Turns | Tool calls | result.subtype | Notes |
+|---|---|---|---|---|---|---|---|---|
+| A | native_output_format | happy | ❌ | 12 347 | 1 | — | success | `result.structured_output` was **not present** on the result message; no `outputFormat`-style field was honoured; assistant returned plain text content |
+| B | native_output_format | adversarial_invalid | ❌ | 148 786 | 1 | — | success | Same: no structured_output, no error subtype. Long duration (~149s) suggests the model produced verbose prose under the adversarial system prompt |
+| C | mcp_submit_tool | happy | ✅ | 42 643 | 2 | 1 | success | Tool invoked exactly once, payload captured: `{city: "Paris", population: 2100000, isCapital: true}` |
+| D | mcp_submit_tool | no_tool (observational) | observed | 10 381 | 1 | 0 | success | With prose-friendly system prompt, model emitted no tool call — confirms MCP tools are model-controlled |
+| E | mcp_submit_tool | double_call (observational) | observed | 40 512 | 3 | 2 | success | When asked for two submissions, model invoked tool twice. Took 3 turns |
+| F | mcp_submit_tool | handler_isError (observational) | observed | 14 143 | 2 | 1 | success | Despite handler always returning `isError: true`, model invoked tool only once and the SDK did **not** auto-retry. The loop terminated at 2 turns |
+
+### 13.2 SDK message subtypes encountered
+
+Across all probes, the dispatcher's switch statement (Phase 1) must handle:
+
+- `system:hook_started`, `system:hook_progress`, `system:hook_response`, `system:init`
+- `assistant`
+- `user` (only in MCP probes — emitted to deliver tool_result back to the model)
+- `rate_limit_event`
+- `result:success`
+
+No `result:error` was observed in any probe — even adversarial native cases produced `result:success`. Auth-failure subtypes were not exercised in this spike (would require a deliberately broken `claude login` state).
+
+### 13.3 Critical finding — native_output_format unavailable
+
+Probes A and B both completed without exposing a `structured_output` field on the `result` message. The SDK 0.2.136 either silently ignores the `outputFormat` option name we passed, or this option is reserved for non-subscription auth modes (or for a different SDK build channel). Either way: **`native_output_format` is not viable for Phase 1+ in the current build**.
+
+Three possible follow-ups (out of scope for Phase 0.2 — to triage in Phase 6 or a dedicated investigation):
+1. Search the `sdk.d.ts` for the actual field name (might be `output_format` snake_case, `responseFormat`, `outputSchema`, etc.).
+2. Try the same probe under direct API key auth to see if `outputFormat` works in API mode but not subscription.
+3. Wait for a newer SDK release that documents structured output more explicitly.
+
+### 13.4 Default mode chosen for Phase 1+
+
+**`mcp_submit_tool` is the default subscription mode**, not `native_output_format`. Rationale:
+
+- Probe C demonstrates 100% reliability of the MCP path (correct payload, exactly 1 tool call, terminating result).
+- Native path returns no structured output in the observed SDK build, making it unusable today.
+- MCP latency (~13-43s for happy paths) is acceptable per the user's earlier latency-tolerance decision.
+
+`hybrid_generate_extract` remains opt-in for very large outputs that might exceed MCP tool result size limits — Phase 1 ships its plumbing but does not exercise it by default.
+
+`native_output_format` is **deprecated for now** (not removed from the Mode enum — its plumbing remains so we can re-enable later without re-architecting). Spec §3.4 description stays in place as "future state" reference.
+
+### 13.5 Operational signals for Phase 1
+
+- **`maxTurns`**: MCP happy path used 2 turns. Double-call used 3. handler-isError used 2. Phase 1 dispatcher should default to `mcpMaxTurns: 3` (matches spec §3.5) — no need to bump higher.
+- **Tool retry on `isError`**: SDK does **not** auto-retry. Phase 1's `LLMValidationError` mapping for an `isError` capture is correct as designed — the dispatcher itself must surface the failure; there is no implicit retry layer to deduplicate against.
+- **Quota cost reported by SDK**: each MCP happy call reports `total_cost_usd ≈ $0.10-0.17` and `cache_read_input_tokens ≈ 30 000`. The cache-read mass is the Claude Code system prompt (always loaded). It is free under subscription but counts as quota usage — full novel-writing sessions need the headroom Max-5 already provides.
+- **Subscription `usage` payload shape**: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` plus `service_tier`, `cache_creation.ephemeral_1h_input_tokens` (1h-cache breakdown). The dispatcher's `extractUsage` already handles the first four; it can ignore the rest or surface them via `diagnostics`.
+
+### 13.6 Risks confirmed or refuted by the spike
+
+- Risk #1 (`outputFormat` availability with subscription auth): **NOT AVAILABLE in 0.2.136**. Logged as known limitation; Phase 1 ships mcp_submit_tool only.
+- Risk #2 (MCP `tool()` + Zod 4 integration): **WORKS**. Used `fixtureSchema.shape` (ZodRawShape) as the third arg to `tool()`. Probe C captured a correctly-typed payload.
+- Risk #3 (`maxTurns` calibration): MCP happy path = 2 turns. Default `mcpMaxTurns: 3` is sufficient.
+- Risk #4 (`allowedTools` semantics): **CONFIRMED** that `allowedTools` + `tools: []` does not force a tool call (Probe D); it only pre-approves access. Phase 1's hard contract prompt + post-call `toolCallCount === 1` invariant remains necessary.
+- Risk #5 (Quota accounting per tool_use round): each MCP happy probe = 1 SDK `query()` call, regardless of internal turn count. The `result` message reports aggregated `usage`, not per-turn. Quota is "1 call per dispatcher invocation" from the user's Max-5 perspective.
+- Risk #8 (Zod v3/v4 peer mismatch): **NOT REPRODUCED**. SDK accepted `fixtureSchema.shape` from Zod 4.4.3 without runtime errors.
+
+### 13.7 Spec sections superseded by this appendix
+
+- §3.4 "Mode 1: native_output_format (default for subscription)" — its claim of being the default is **superseded**. Phase 1 ships mcp_submit_tool as default. §3.4 description is retained as future-state plumbing.
+- §6 Phase 1 description ("native pilot") — read in light of §13.4: pilot is mcp_submit_tool.
+- §11 Risk #1 — resolved as known limitation, not a blocker.
