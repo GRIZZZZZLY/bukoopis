@@ -1,0 +1,28 @@
+export { resolveModelId, MODEL_IDS } from "./models.js";
+export { callStructured, LLMValidationError } from "./structured.js";
+export type { StructuredCallOptions, StructuredUsage } from "./structured.js";
+export { streamText, buildSystemParam } from "./stream.js";
+export type { StreamCallOptions, StreamCallResult, SystemBlock } from "./stream.js";
+export { streamTextOllama } from "./ollama.js";
+export type { OllamaStreamOptions } from "./ollama.js";
+
+// Backend abstraction (etap 0.2.1)
+export type { LLMBackend, AgentName } from "./types.js";
+export { AGENT_NAMES, effectiveBackend } from "./types.js";
+export {
+  LLMError,
+  BackendNotImplementedError,
+  LLMAuthError,
+} from "./errors.js";
+export {
+  resolveBackend,
+  resolveBackendForCall,
+} from "./router.js";
+export type { ResolveBackendForCallInput } from "./router.js";
+
+// Hybrid pipeline: subscription text + api structured extraction (etap 0.2.3)
+export { generateThenStructure } from "./hybrid.js";
+export type {
+  GenerateThenStructureInput,
+  HybridUsageEvent,
+} from "./hybrid.js";

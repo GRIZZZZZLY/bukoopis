@@ -1,0 +1,22 @@
+{
+  "name": "book-forge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"pnpm --filter @book-forge/server dev\" \"pnpm --filter @book-forge/web dev\"",
+    "dev:server": "pnpm --filter @book-forge/server dev",
+    "dev:web": "pnpm --filter @book-forge/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "migrate": "pnpm --filter @book-forge/server migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

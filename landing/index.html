@@ -1,0 +1,1258 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BookForge — литературная машина для романистов</title>
+<meta name="description" content="Инструмент для длинной прозы. Пишет, правит, помнит — как литературная машина в подмастерьях у вашего пера." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --paper:        #F2E9D2;
+  --paper-deep:   #E7DBB8;
+  --paper-edge:   #D6C594;
+  --ink:          #181210;
+  --ink-soft:     #3B2D24;
+  --ink-faded:    #6B5847;
+  --oxblood:      #7B1E2B;
+  --rust:         #B7522F;
+  --gold:         #B7902F;
+  --leaf:         #4F5A2A;
+  --ai-cyan:      #1F5C58;
+  --rule:         rgba(24,18,16,.18);
+  --rule-strong:  rgba(24,18,16,.55);
+
+  --display: 'Fraunces', 'Big Caslon', Georgia, serif;
+  --body:    'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --mono:    'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  --tight: 0.94;
+  --tighter: 0.86;
+  --measure: 62ch;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+::selection{background:var(--oxblood);color:var(--paper)}
+
+html,body{
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.55;
+  font-feature-settings: "kern", "liga", "calt", "onum";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* paper grain via SVG noise + warm vignette */
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.35) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(120% 90% at 50% 110%, rgba(123,30,43,.10) 0%, rgba(0,0,0,0) 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.094 0 0 0 0 0.071 0 0 0 0 0.063 0 0 0 0.085 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: auto, auto, 240px 240px;
+  pointer-events:none;
+  mix-blend-mode: multiply;
+  z-index:1;
+}
+/* speckled foxing — older paper feel */
+body::after{
+  content:"";
+  position:fixed;inset:0;
+  background-image:
+    radial-gradient(circle at 14% 22%, rgba(123,30,43,.10), transparent 1.2px),
+    radial-gradient(circle at 78% 64%, rgba(123,30,43,.08), transparent 1.4px),
+    radial-gradient(circle at 41% 88%, rgba(183,82,47,.10), transparent 1.6px),
+    radial-gradient(circle at 92% 12%, rgba(91,71,55,.10), transparent 1.4px);
+  pointer-events:none;
+  z-index:1;
+  opacity:.7;
+}
+main, header, footer { position:relative; z-index:2; }
+
+/* ---- top colophon strip ---- */
+.colophon{
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items:center;
+  padding: 14px 32px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  border-bottom: 1px solid var(--rule);
+}
+.colophon .left { justify-self:start; }
+.colophon .right{ justify-self:end; }
+.colophon .center{
+  font-family: var(--display);
+  font-size: 14px;
+  letter-spacing: .42em;
+  color: var(--oxblood);
+  text-transform: uppercase;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ---- masthead ---- */
+.mast{
+  padding: 22px 32px 10px;
+  display:grid;
+  grid-template-columns: auto 1fr auto;
+  align-items:end;
+  gap: 24px;
+  border-bottom: 3px double var(--rule-strong);
+}
+.brand{
+  font-family: var(--display);
+  font-weight: 600;
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
+  font-size: clamp(34px, 4.6vw, 60px);
+  line-height: var(--tighter);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.brand .amp{
+  font-style: italic;
+  font-weight: 400;
+  color: var(--oxblood);
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+nav.primary{
+  justify-self: end;
+  display:flex; gap: 26px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+nav.primary a{
+  color: var(--ink-soft);
+  text-decoration:none;
+  position:relative;
+  padding-bottom:2px;
+  transition: color .25s ease;
+}
+nav.primary a::after{
+  content:"";
+  position:absolute; left:0; right:0; bottom:-2px;
+  height:1px; background: var(--oxblood);
+  transform: scaleX(0); transform-origin: right center;
+  transition: transform .35s cubic-bezier(.2,.7,.2,1);
+}
+nav.primary a:hover{ color: var(--oxblood); }
+nav.primary a:hover::after{ transform: scaleX(1); transform-origin: left center; }
+.cta-mini{
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 9px 16px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration:none;
+  transition: background .2s ease, transform .2s ease;
+}
+.cta-mini:hover{ background: var(--oxblood); border-color: var(--oxblood); transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--ink); }
+
+/* ---- folio rule under masthead ---- */
+.folio{
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  padding: 6px 32px 0;
+}
+.folio .center{ color: var(--oxblood); }
+.folio .right{ justify-self:end; }
+
+/* ---- hero ---- */
+.hero{
+  display:grid;
+  grid-template-columns: 1.05fr .95fr;
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+}
+.hero .left-col{
+  padding: 60px 40px 70px 40px;
+  position:relative;
+  border-right: 1px solid var(--rule);
+}
+.hero .right-col{
+  padding: 60px 40px 70px 40px;
+  position:relative;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 100%),
+    radial-gradient(70% 60% at 80% 20%, rgba(123,30,43,.08), transparent 70%);
+}
+.kicker{
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+  margin-bottom: 26px;
+  display:flex; align-items:center; gap:10px;
+}
+.kicker .dot{
+  width:6px; height:6px; background:var(--oxblood); border-radius:999px;
+  animation: pulse 2.4s infinite ease-in-out;
+}
+@keyframes pulse{ 0%,100%{opacity:.35; transform:scale(.8)} 50%{opacity:1; transform:scale(1.15)} }
+
+.headline{
+  font-family: var(--display);
+  font-weight: 350;
+  font-variation-settings: "opsz" 144, "SOFT" 30, "WONK" 1;
+  font-size: clamp(46px, 7.6vw, 124px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.headline .row { display:block; }
+.headline .ital{
+  font-style: italic;
+  font-weight: 300;
+  color: var(--oxblood);
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+.headline .indent { padding-left: 1.4em; }
+.headline .small  { font-size: 0.62em; letter-spacing: -0.02em; color: var(--ink-soft); }
+.headline .reveal{
+  opacity:0; transform: translateY(18px);
+  animation: rise .9s cubic-bezier(.2,.8,.2,1) forwards;
+}
+.headline .reveal:nth-child(1){ animation-delay: 0.05s }
+.headline .reveal:nth-child(2){ animation-delay: 0.20s }
+.headline .reveal:nth-child(3){ animation-delay: 0.38s }
+.headline .reveal:nth-child(4){ animation-delay: 0.58s }
+.headline .reveal:nth-child(5){ animation-delay: 0.80s }
+@keyframes rise{ to{ opacity:1; transform:none } }
+
+.lede{
+  margin-top: 36px;
+  max-width: 30em;
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  font-feature-settings: "kern", "onum", "liga";
+}
+.lede .dropcap{
+  font-family: var(--display);
+  font-weight: 350;
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
+  float:left;
+  font-size: 4.6em;
+  line-height: .82;
+  padding: 6px 14px 0 0;
+  color: var(--oxblood);
+  font-style: italic;
+}
+
+.cta-row{
+  margin-top: 44px;
+  display:flex; align-items:center; gap: 22px; flex-wrap: wrap;
+}
+.btn{
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  padding: 18px 26px;
+  text-decoration:none;
+  display:inline-flex; align-items:center; gap:14px;
+  transition: all .25s cubic-bezier(.2,.7,.2,1);
+}
+.btn-primary{
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  position:relative;
+  overflow:hidden;
+}
+.btn-primary::before{
+  content:"";
+  position:absolute; inset:0;
+  background: var(--oxblood);
+  transform: translateY(101%);
+  transition: transform .35s cubic-bezier(.2,.7,.2,1);
+}
+.btn-primary span { position:relative; z-index:1; }
+.btn-primary:hover::before{ transform: translateY(0); }
+.btn-primary:hover{ box-shadow: 4px 4px 0 var(--gold); transform: translate(-2px,-2px); }
+.btn-ghost{
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  background: transparent;
+}
+.btn-ghost:hover{ background: var(--ink); color: var(--paper); }
+.btn .arr{ font-family: var(--display); font-style: italic; font-weight:400; font-size: 18px; letter-spacing: 0; }
+
+.attrib{
+  margin-top: 56px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  display:grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 18px;
+  align-items:center;
+}
+.attrib .line{ height: 1px; background: var(--rule-strong); }
+
+/* ---- right column: live manuscript ---- */
+.ms-frame{
+  position:relative;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-strong);
+  padding: 30px 36px 36px 78px;
+  font-family: var(--body);
+  font-size: 16.5px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  min-height: 460px;
+  box-shadow:
+    -2px 2px 0 var(--paper-edge),
+    -4px 4px 0 var(--paper-edge),
+    -6px 6px 0 var(--paper-edge),
+    -8px 8px 18px rgba(24,18,16,.15);
+  transform: rotate(-0.6deg);
+  font-feature-settings: "kern", "onum", "liga";
+}
+/* ruled left margin */
+.ms-frame::before{
+  content:"";
+  position:absolute; top:0; bottom:0; left: 56px;
+  width:1px; background: var(--oxblood); opacity:.55;
+}
+/* line numbering */
+.ms-line{
+  display:grid;
+  grid-template-columns: 30px 1fr;
+  gap: 14px;
+  padding: 2px 0;
+  position:relative;
+}
+.ms-line .num{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--ink-faded);
+  padding-top: 6px;
+  text-align: right;
+}
+.ms-line .text{ position:relative; }
+.ms-line .text del{
+  text-decoration: line-through;
+  text-decoration-color: var(--rust);
+  text-decoration-thickness: 1.5px;
+  color: var(--ink-faded);
+  font-style: italic;
+}
+.ms-line .text ins{
+  text-decoration: none;
+  background: linear-gradient(to top, rgba(183,144,47,.30) 38%, transparent 38%);
+  padding: 0 2px;
+  font-style: italic;
+  color: var(--ink);
+}
+.ms-line .text .caret{
+  display:inline-block;
+  width: 8px; height: 1.05em;
+  background: var(--oxblood);
+  vertical-align: -0.18em;
+  margin-left: 2px;
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink{ 50%{ opacity:0 } }
+.ms-margin{
+  position:absolute; right: -180px; top: 38px;
+  width: 160px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  line-height: 1.7;
+  color: var(--ink-faded);
+}
+.ms-margin .arrow{ color: var(--oxblood); display:block; margin-bottom:6px; font-style:italic; text-transform:none; letter-spacing:.05em; font-family: var(--display); font-size:13px;}
+
+.ms-meta{
+  position:absolute;
+  bottom: 12px; left: 78px; right: 36px;
+  display:flex; justify-content:space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  border-top: 1px solid var(--rule);
+  padding-top: 10px;
+}
+.ms-meta .pill{
+  display:inline-flex; align-items:center; gap:8px;
+}
+.ms-meta .pill .dot{
+  width:5px;height:5px;border-radius:999px; background: var(--leaf);
+  box-shadow: 0 0 0 3px rgba(79,90,42,.20);
+}
+
+.ms-stamp{
+  position:absolute;
+  top: 26px; right: 24px;
+  border: 1.5px solid var(--oxblood);
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+  transform: rotate(8deg);
+  background: rgba(242,233,210,.4);
+}
+
+/* ---- pull quote ---- */
+.pull{
+  padding: 110px 80px 100px;
+  border-bottom: 3px double var(--rule-strong);
+  position:relative;
+  text-align:center;
+  background:
+    radial-gradient(40% 60% at 50% 50%, rgba(255,255,255,.35), transparent 80%);
+}
+.pull .mark{
+  font-family: var(--display);
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  font-weight: 300;
+  color: var(--oxblood);
+  font-size: clamp(140px, 18vw, 280px);
+  line-height: .6;
+  position:absolute;
+  left: 50%;
+  top: 30px;
+  transform: translateX(-50%);
+  opacity: .25;
+  user-select:none;
+}
+.pull q{
+  display:block;
+  position:relative;
+  font-family: var(--display);
+  font-weight: 320;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  font-size: clamp(26px, 3vw, 46px);
+  line-height: 1.22;
+  letter-spacing: -.012em;
+  color: var(--ink);
+  max-width: 32ch;
+  margin: 40px auto 0;
+}
+.pull q::before{ content:""; }
+.pull q::after { content:""; }
+.pull q em{ color: var(--oxblood); font-style: italic; font-weight: 320; }
+.pull cite{
+  display:block;
+  margin-top: 36px;
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+}
+.pull cite strong{ color: var(--ink-soft); font-weight:500; }
+
+/* ---- the craft (features) ---- */
+.craft{
+  padding: 100px 32px 120px;
+  border-bottom: 1px solid var(--rule);
+}
+.section-head{
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 70px;
+  padding: 0 8px;
+}
+.section-head .lbl{
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+}
+.section-head .lbl.right{ justify-self:end; }
+.section-head h2{
+  font-family: var(--display);
+  font-weight: 320;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  font-size: clamp(38px, 5.4vw, 78px);
+  line-height: 1;
+  letter-spacing: -.022em;
+  text-align:center;
+  color: var(--ink);
+}
+.section-head h2 em{
+  font-style: italic;
+  color: var(--oxblood);
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+}
+
+.craft-grid{
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--rule-strong);
+  border-left: 1px solid var(--rule-strong);
+}
+.craft-card{
+  grid-column: span 6;
+  padding: 44px 38px 50px;
+  border-right: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule-strong);
+  position:relative;
+  transition: background .35s ease;
+  cursor:default;
+}
+.craft-card:hover{ background: rgba(255,255,255,.4); }
+.craft-card .roman{
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 350;
+  font-size: 22px;
+  color: var(--oxblood);
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+}
+.craft-card h3{
+  margin-top: 18px;
+  font-family: var(--display);
+  font-weight: 350;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  font-size: clamp(26px, 2.6vw, 36px);
+  line-height: 1.04;
+  letter-spacing: -.018em;
+  color: var(--ink);
+}
+.craft-card .bar{
+  display:block;
+  height: 2px;
+  width: 38px;
+  background: var(--oxblood);
+  margin: 22px 0 18px;
+  transition: width .5s cubic-bezier(.2,.8,.2,1);
+}
+.craft-card:hover .bar{ width: 130px; }
+.craft-card p{
+  font-size: 16px;
+  color: var(--ink-soft);
+  max-width: 38ch;
+  line-height: 1.6;
+}
+.craft-card p em{ color: var(--oxblood); font-style: italic; }
+.craft-card .technical{
+  margin-top: 22px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  display:flex; flex-wrap: wrap; gap: 8px 14px;
+}
+.craft-card .technical span::before{ content:"·"; margin-right: 12px; color: var(--oxblood); }
+.craft-card .technical span:first-child::before{ content:""; margin-right: 0; }
+
+.craft-card.wide{ grid-column: span 12; }
+.craft-card.tall{ grid-column: span 4; }
+.craft-card.spread{ grid-column: span 8; }
+
+/* ---- the method (workflow) ---- */
+.method{
+  padding: 100px 32px 120px;
+  border-bottom: 3px double var(--rule-strong);
+  background:
+    linear-gradient(to bottom, transparent, rgba(123,30,43,.04));
+}
+.method-steps{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin-top: 60px;
+  border-top: 1px solid var(--rule-strong);
+}
+.step{
+  padding: 50px 36px 60px;
+  border-right: 1px solid var(--rule-strong);
+  position:relative;
+}
+.step:last-child{ border-right:none; }
+.step .num{
+  font-family: var(--display);
+  font-weight: 280;
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
+  font-size: 120px;
+  line-height: .85;
+  color: var(--oxblood);
+  letter-spacing: -.05em;
+  font-style: italic;
+}
+.step h4{
+  margin-top: 14px;
+  font-family: var(--display);
+  font-weight: 380;
+  font-size: 28px;
+  letter-spacing: -.015em;
+  color: var(--ink);
+}
+.step p{
+  margin-top: 14px;
+  font-size: 16px;
+  color: var(--ink-soft);
+  max-width: 36ch;
+  line-height: 1.6;
+}
+.step .tag{
+  position:absolute;
+  top: 50px;
+  right: 36px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  border: 1px solid var(--rule-strong);
+  padding: 4px 9px;
+}
+
+/* ---- excerpt: actual prose ---- */
+.excerpt{
+  padding: 110px 32px 140px;
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 50px;
+  border-bottom: 1px solid var(--rule);
+}
+.excerpt-page{
+  max-width: 720px;
+  margin: 0 auto;
+  position:relative;
+  padding: 70px 80px 80px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-strong);
+  box-shadow:
+    0 1px 0 var(--paper-edge),
+    0 4px 0 var(--paper-edge),
+    0 8px 0 var(--paper-edge),
+    0 14px 28px rgba(24,18,16,.18);
+  font-family: var(--body);
+  color: var(--ink-soft);
+  font-size: 18px;
+  line-height: 1.75;
+}
+.excerpt-page .chap-no{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+  text-align:center;
+  display:block;
+  margin-bottom: 4px;
+}
+.excerpt-page h5{
+  font-family: var(--display);
+  font-weight: 320;
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  font-size: 36px;
+  text-align:center;
+  letter-spacing: -.012em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.excerpt-page .ornament{
+  text-align:center;
+  font-family: var(--display);
+  color: var(--oxblood);
+  letter-spacing: 1.2em;
+  font-size: 18px;
+  margin-bottom: 38px;
+  opacity:.7;
+}
+.excerpt-page p{
+  text-indent: 1.6em;
+  margin-bottom: 0.4em;
+}
+.excerpt-page p:first-of-type{ text-indent: 0; }
+.excerpt-page p:first-of-type::first-letter{
+  font-family: var(--display);
+  float: left;
+  font-size: 5.4em;
+  line-height: 0.82;
+  padding: 8px 14px 0 0;
+  color: var(--oxblood);
+  font-weight: 360;
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+.excerpt-page .note{
+  display:block;
+  margin-top: 48px;
+  text-align:center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+}
+.excerpt-page .note span{ color: var(--oxblood); }
+
+/* ---- ledger / pricing ---- */
+.ledger{
+  padding: 100px 32px 130px;
+  border-bottom: 3px double var(--rule-strong);
+}
+.ledger-table{
+  margin-top: 60px;
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--ink);
+}
+.plan{
+  padding: 50px 36px 44px;
+  border-right: 1px solid var(--ink);
+  position:relative;
+  background: var(--paper-deep);
+  transition: background .35s ease, transform .35s cubic-bezier(.2,.7,.2,1);
+}
+.plan:last-child{ border-right:none; }
+.plan:hover{ background: var(--paper); transform: translateY(-4px); }
+.plan.featured{
+  background: var(--ink);
+  color: var(--paper);
+}
+.plan.featured h6, .plan.featured .price, .plan.featured ul li { color: var(--paper); }
+.plan.featured .small, .plan.featured .price-sub{ color: rgba(242,233,210,.6); }
+.plan.featured ul li::before{ color: var(--gold); }
+.plan.featured .pick{ background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.plan.featured:hover{ background: var(--ink); }
+
+.plan .label{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+}
+.plan h6{
+  margin-top: 6px;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 320;
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -.015em;
+}
+.plan .price{
+  margin-top: 30px;
+  font-family: var(--display);
+  font-weight: 280;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: var(--ink);
+}
+.plan .price .cur{ font-size: 26px; vertical-align: 24px; margin-left: 6px; color: var(--oxblood); }
+.plan .price-sub{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  margin-top: 6px;
+}
+.plan ul{
+  margin-top: 36px;
+  list-style:none;
+  display:flex; flex-direction:column; gap: 12px;
+  border-top: 1px solid var(--rule);
+  padding-top: 24px;
+}
+.plan ul li{
+  font-size: 15.5px;
+  color: var(--ink-soft);
+  display:grid;
+  grid-template-columns: 18px 1fr;
+  align-items: baseline;
+  line-height: 1.45;
+}
+.plan ul li::before{
+  content:"§";
+  font-family: var(--display);
+  color: var(--oxblood);
+  font-style: italic;
+}
+.pick{
+  display:inline-block;
+  margin-top: 36px;
+  width: 100%;
+  text-align:center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  padding: 16px 14px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  text-decoration:none;
+  cursor:pointer;
+  transition: all .25s ease;
+}
+.pick:hover{ background: var(--ink); color: var(--paper); }
+.plan.featured .pick:hover{ background: var(--paper); color: var(--ink); border-color: var(--paper); }
+
+/* ---- closing dispatch ---- */
+.dispatch{
+  padding: 130px 40px;
+  text-align:center;
+  position:relative;
+  border-bottom: 1px solid var(--rule);
+}
+.dispatch h3{
+  font-family: var(--display);
+  font-weight: 280;
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
+  font-size: clamp(46px, 6.6vw, 108px);
+  line-height: 1;
+  letter-spacing: -.025em;
+  max-width: 14ch;
+  margin: 0 auto;
+  color: var(--ink);
+}
+.dispatch h3 em{
+  font-style: italic;
+  color: var(--oxblood);
+  font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+}
+.dispatch p{
+  margin-top: 30px;
+  font-size: 18px;
+  color: var(--ink-soft);
+  max-width: 48ch;
+  margin-left:auto; margin-right:auto;
+}
+.dispatch .cta-row{ justify-content:center; }
+
+/* ---- footer ---- */
+footer{
+  padding: 50px 32px 38px;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items:start;
+  gap: 30px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  border-top: 3px double var(--rule-strong);
+}
+footer .center{
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: .04em;
+  color: var(--oxblood);
+  text-transform: none;
+}
+footer a{ color: var(--ink-soft); text-decoration:none; }
+footer a:hover{ color: var(--oxblood); }
+footer .right{ justify-self:end; text-align:right; }
+footer .right span{ display:block; }
+
+/* ---- responsive ---- */
+@media (max-width: 1100px){
+  .hero{ grid-template-columns: 1fr; }
+  .hero .left-col{ border-right:none; border-bottom: 1px solid var(--rule); }
+  .ms-margin{ position:static; width:auto; margin-top: 30px; }
+  .ms-frame{ transform:none; padding: 28px 26px 36px 56px;}
+  .ms-frame::before{ left: 30px; }
+  .ms-line{ grid-template-columns: 22px 1fr; gap: 12px; }
+  .ms-meta{ left: 56px; right: 26px; }
+  .craft-card, .craft-card.wide, .craft-card.spread, .craft-card.tall{ grid-column: span 12; }
+  .ledger-table, .method-steps{ grid-template-columns: 1fr; }
+  .step, .plan{ border-right:none; border-bottom:1px solid var(--ink); }
+  .step:last-child, .plan:last-child{ border-bottom:none; }
+}
+@media (max-width: 640px){
+  nav.primary{ display:none; }
+  .mast{ grid-template-columns: 1fr auto; }
+  .hero .left-col, .hero .right-col{ padding: 40px 22px 50px; }
+  .pull{ padding: 80px 24px 70px; }
+  .craft, .method, .ledger, .excerpt, .dispatch{ padding-left: 18px; padding-right: 18px; }
+  .excerpt-page{ padding: 40px 28px 50px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="colophon">
+    <span class="left">№ 001 — Том I</span>
+    <span class="center">Bookforge</span>
+    <span class="right">Anno mmxxvi · est. ⁂</span>
+  </div>
+
+  <div class="mast">
+    <div class="brand">Book<span class="amp">&amp;</span>Forge</div>
+    <nav class="primary" aria-label="главное меню">
+      <a href="#craft">Ремесло</a>
+      <a href="#method">Метод</a>
+      <a href="#excerpt">Отрывок</a>
+      <a href="#ledger">Реестр</a>
+      <a href="#journal">Журнал</a>
+    </nav>
+    <a class="cta-mini" href="#start">Начать черновик →</a>
+  </div>
+
+  <div class="folio">
+    <span class="left">рукоп.&nbsp;л.&nbsp;1<sup>r</sup> · лиц.</span>
+    <span class="center">— литературная машина —</span>
+    <span class="right">время чтения · 2&nbsp;мин 40&nbsp;с</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <section class="hero" id="start">
+    <div class="left-col">
+      <div class="kicker"><span class="dot"></span> инструмент письма · не чат-бот</div>
+
+      <h1 class="headline">
+        <span class="row reveal">Пишите</span>
+        <span class="row reveal ital indent">романы,</span>
+        <span class="row reveal small">вместе с</span>
+        <span class="row reveal">литературной</span>
+        <span class="row reveal ital indent">машиной.</span>
+      </h1>
+
+      <p class="lede">
+        <span class="dropcap">B</span>ookForge ведёт длинную прозу так, как это делает работающий романист&nbsp;— план до сцены, сцена до фразы, голос до украшения. Помнит ваших персонажей, держит ваш стиль и честно признаётся, в чём ещё не уверен.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#start"><span>Выковать рукопись</span><span class="arr">→</span></a>
+        <a class="btn btn-ghost" href="#excerpt">Прочесть отрывок главы</a>
+      </div>
+
+      <div class="attrib">
+        <span>авторов за столом · 1&nbsp;284</span>
+        <span class="line"></span>
+        <span>написано глав · 41&nbsp;720</span>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="ms-frame" aria-label="живая рукопись">
+        <span class="ms-stamp">черновик &middot; не для печати</span>
+
+        <div class="ms-line"><span class="num">i</span><span class="text">Маяк стоял, как свидетель, <del>упрямо против</del><ins> терпеливо перед </ins>серой</span></div>
+        <div class="ms-line"><span class="num">ii</span><span class="text">настойчивостью моря. Марра <del>пошла</del><ins> спустилась </ins>к камням,</span></div>
+        <div class="ms-line"><span class="num">iii</span><span class="text">и соль нашла её лицо <del>как</del><ins> так, как </ins>находит старая печаль:</span></div>
+        <div class="ms-line"><span class="num">iv</span><span class="text">сначала глаза, потом рот, последними руки. Она пришла</span></div>
+        <div class="ms-line"><span class="num">v</span><span class="text">не оплакивать <del>отца.</del><ins> то, чего уже нет. </ins>Она пришла за <em>письмом</em>.</span></div>
+        <div class="ms-line"><span class="num">vi</span><span class="text">Чайка рассекла воздух <del>пронзительно</del><ins> со своей маленькой обидой </ins>и</span></div>
+        <div class="ms-line"><span class="num">vii</span><span class="text">повернула к утёсам. Лампа над ней не горела. И не зажжётся</span></div>
+        <div class="ms-line"><span class="num">viii</span><span class="text">ни сегодня, ни завтра, ни — она подозревала — пока<span class="caret"></span></span></div>
+
+        <div class="ms-margin">
+          <span class="arrow">↳ примеч. на&nbsp;полях</span>
+          тон держится — близкое третье, прохладный регистр. раскрытие письма перенести в §3.
+        </div>
+
+        <div class="ms-meta">
+          <span class="pill"><span class="dot"></span> пишется · гл.&nbsp;1 · §i</span>
+          <span>1&nbsp;248&thinsp;/&thinsp;3&nbsp;200 сл. · 0,42&thinsp;коп./сл.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PULL QUOTE -->
+  <section class="pull">
+    <span class="mark">&laquo;</span>
+    <q>Большинство ИИ-инструментов пишут как <em>смышлёный чужак,</em> ни разу не дочитавший книгу до конца. BookForge пишет как тот, кто дочитал&nbsp;— и оставил пометки на&nbsp;полях.</q>
+    <cite><strong>Редакторская скамья</strong> &nbsp;·&nbsp; весенний выпуск &nbsp;·&nbsp; mmxxvi</cite>
+  </section>
+
+  <!-- THE CRAFT -->
+  <section class="craft" id="craft">
+    <div class="section-head">
+      <span class="lbl">часть первая</span>
+      <h2><em>Ремесло</em>&nbsp;— в&nbsp;четырёх инструментах.</h2>
+      <span class="lbl right">Разд. I — IV</span>
+    </div>
+
+    <div class="craft-grid">
+      <article class="craft-card">
+        <span class="roman">I.</span>
+        <h3>План, который <em>держится</em>.</h3>
+        <span class="bar"></span>
+        <p>Из одного замысла&nbsp;— рабочий хребет: акты, главы, удары, точки давления, где ваши герои обязаны измениться. <em>Не список&nbsp;— структура.</em></p>
+        <div class="technical">
+          <span>Граф плана</span><span>Поиск кульминаций</span><span>Трёхактовая · Save-the-cat</span>
+        </div>
+      </article>
+
+      <article class="craft-card">
+        <span class="roman">II.</span>
+        <h3>Голос, который <em>удержит</em>.</h3>
+        <span class="bar"></span>
+        <p>Вставьте пять абзацев своей прозы. Экстрактор стиля считывает ритм, регистр, форму фразы и узор&nbsp;— и пишет <em>вашим голосом,</em> главу за главой.</p>
+        <div class="technical">
+          <span>Извлечение стиля</span><span>Голос на книгу</span><span>Русский · английский</span>
+        </div>
+      </article>
+
+      <article class="craft-card">
+        <span class="roman">III.</span>
+        <h3>Критик <em>за столом</em>.</h3>
+        <span class="bar"></span>
+        <p>Каждый черновик читает второй ум&nbsp;— на штампы, потерянную связку, мелодраму, ленивый глагол. Возвращает замечания, как <em>строгий редактор,</em> и автор правит.</p>
+        <div class="technical">
+          <span>Критик-агент</span><span>Проверка связки</span><span>Регистр штампов</span>
+        </div>
+      </article>
+
+      <article class="craft-card">
+        <span class="roman">IV.</span>
+        <h3>Реестр <em>каждой копейки</em>.</h3>
+        <span class="bar"></span>
+        <p>Стоимость показана: по главам, по токенам, по кэш-попаданиям. Меняйте модели на каждую книгу&nbsp;— Opus, когда важно, локальная Gemma при свете лампы,&nbsp;— <em>не теряя нити</em>.</p>
+        <div class="technical">
+          <span>Модель на книгу</span><span>Кэш промптов</span><span>Локально · Ollama</span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- METHOD -->
+  <section class="method" id="method">
+    <div class="section-head">
+      <span class="lbl">часть вторая</span>
+      <h2><em>Метод</em>.</h2>
+      <span class="lbl right">три движения</span>
+    </div>
+
+    <div class="method-steps">
+      <article class="step">
+        <span class="tag">i. сюжет</span>
+        <span class="num">I</span>
+        <h4>Накрыть стол.</h4>
+        <p>Замысел, персонажи, мир. Машина возвращает план; вы отсекаете лишнее, оставляете удивительное и утверждаете хребет.</p>
+      </article>
+      <article class="step">
+        <span class="tag">ii. писать</span>
+        <span class="num">II</span>
+        <h4>Писать сцену.</h4>
+        <p>Глава пишется потоком, удар за ударом, вашим голосом. Остановите, перенаправьте, попросите тише фразу, холоднее глагол. Встроенные команды правят абзац, не переписывая всю главу.</p>
+      </article>
+      <article class="step">
+        <span class="tag">iii. править</span>
+        <span class="num">III</span>
+        <h4>Править — беспощадно.</h4>
+        <p>Критик читает. Вы читаете. Корректор сжимает. Каждый проход показывает, что изменилось, что устояло и какой ценой&nbsp;— в копейках, а не на&nbsp;веру.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- EXCERPT -->
+  <section class="excerpt" id="excerpt">
+    <div class="section-head">
+      <span class="lbl">проба пера</span>
+      <h2><em>Отрывок</em>.</h2>
+      <span class="lbl right">без названия · гл.&nbsp;iii</span>
+    </div>
+
+    <article class="excerpt-page">
+      <span class="chap-no">Глава третья</span>
+      <h5>О&nbsp;письмах и&nbsp;лампах</h5>
+      <div class="ornament">⁂</div>
+      <p>Письмо, когда оно пришло, не назвало себя. Оно явилось со второй почтой, между неоплаченным счётом и проспектом тепличных семян, и Марра едва не бросила его в огонь, прежде чем заметила печать&nbsp;— ту, которой не видела одиннадцать зим и думала, что не увидит уже никогда.</p>
+      <p>Она прочла его один раз стоя, один раз сидя и один раз вслух&nbsp;— пустой кухне, словно сама комната должна была быть свидетелем. Лампа дрогнула, когда она закончила. Кот, наблюдавший с комода с тем неодобрением, какое коты держат для человеческой погоды, спрыгнул и вышел.</p>
+      <p>Письмо было недлинным. Самые длинные письма, она усвоила от отца, говорят меньше прочих. В этом было четыре строки, подпись&nbsp;— одна буква. В нём было сказано где, в нём было сказано когда, и в нём было сказано&nbsp;— хоть и не прямо,&nbsp;— что она была неправа.</p>
+      <span class="note">черновик BookForge · голос закреплён за <span>«М.&thinsp;Г., серый реализм, близкое третье»</span> · нерешённых замечаний критика&nbsp;— 0</span>
+    </article>
+  </section>
+
+  <!-- LEDGER / PRICING -->
+  <section class="ledger" id="ledger">
+    <div class="section-head">
+      <span class="lbl">часть третья</span>
+      <h2><em>Реестр</em>.</h2>
+      <span class="lbl right">три подписки</span>
+    </div>
+
+    <div class="ledger-table">
+      <article class="plan">
+        <span class="label">Чин · I</span>
+        <h6>Послушник</h6>
+        <div class="price">0<span class="cur">₽</span></div>
+        <div class="price-sub">в месяц · навсегда</div>
+        <ul>
+          <li>Одна книга в&nbsp;работе</li>
+          <li>План книги и план главы</li>
+          <li>Локальная модель (Ollama, свои ключи)</li>
+          <li>Критик&nbsp;— базовый регистр</li>
+          <li>Реестр стоимости и&nbsp;экспорт</li>
+        </ul>
+        <a class="pick" href="#">Начать →</a>
+      </article>
+
+      <article class="plan featured">
+        <span class="label">Чин · II</span>
+        <h6>Подмастерье</h6>
+        <div class="price">1&nbsp;490<span class="cur">₽</span></div>
+        <div class="price-sub">в месяц · оплата за&nbsp;год</div>
+        <ul>
+          <li>До двенадцати книг</li>
+          <li>Переключатель моделей на&nbsp;книгу</li>
+          <li>Извлечение стиля и&nbsp;фиксация голоса</li>
+          <li>Критик&nbsp;— полный регистр</li>
+          <li>Кэш промптов и&nbsp;векторы</li>
+          <li>Встроенные команды правки</li>
+        </ul>
+        <a class="pick" href="#">Сесть за стол →</a>
+      </article>
+
+      <article class="plan">
+        <span class="label">Чин · III</span>
+        <h6>Мастерская</h6>
+        <div class="price">3&nbsp;990<span class="cur">₽</span></div>
+        <div class="price-sub">в месяц · для&nbsp;студий</div>
+        <ul>
+          <li>Безлимит книг и&nbsp;соавторов</li>
+          <li>Общие библиотеки стиля</li>
+          <li>Свои ключи (приоритет)</li>
+          <li>Opus с длинным контекстом по&nbsp;умолчанию</li>
+          <li>Ручная настройка профилей критика</li>
+        </ul>
+        <a class="pick" href="#">Обустроить мастерскую →</a>
+      </article>
+    </div>
+  </section>
+
+  <!-- DISPATCH -->
+  <section class="dispatch" id="journal">
+    <h3>Начните <em>книгу,</em> которую всё <em>не</em> пишете.</h3>
+    <p>Черновик за&nbsp;час. Первая глава при&nbsp;свете лампы. Готовая рукопись&nbsp;— прежде чем сменятся сезоны.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#"><span>Выковать первую главу</span><span class="arr">→</span></a>
+      <a class="btn btn-ghost" href="#">Читать журнал</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="left">
+    BookForge &nbsp;·&nbsp; mmxxvi <br>
+    <a href="#">github</a> &nbsp;·&nbsp; <a href="#">приватность</a> &nbsp;·&nbsp; <a href="#">правила</a>
+  </div>
+  <div class="center">— набрано Fraunces и&nbsp;Newsreader —</div>
+  <div class="right">
+    <span>набрано вручную · отпечатано в&nbsp;сети</span>
+    <span style="margin-top:6px;">литературная машина, est.&nbsp;⁂</span>
+  </div>
+</footer>
+
+<script>
+/* живая рукопись: каретка дописывает разные варианты концовки строки viii,
+   создавая ощущение «пишется прямо сейчас» */
+(function(){
+  const caretLine = document.querySelectorAll('.ms-line')[7];
+  if(!caretLine) return;
+  const text = caretLine.querySelector('.text');
+  const endings = [
+    "море не вспомнит имя её отца.",
+    "лампа сама не решит проснуться.",
+    "письмо не прочтёт другая рука.",
+    "она не ответит — или откажется отвечать."
+  ];
+  let i = 0, j = 0, mode = 'type';
+  const baseBefore = 'ни сегодня, ни завтра, ни — она подозревала — пока<span class="caret"></span>';
+
+  text.innerHTML = baseBefore;
+  const tail = document.createElement('span');
+  tail.style.fontStyle = 'italic';
+  tail.style.color = 'var(--ink)';
+  text.querySelector('.caret').before(tail);
+
+  function tick(){
+    const target = endings[i];
+    if(mode === 'type'){
+      if(j <= target.length){
+        tail.textContent = ' ' + target.slice(0, j);
+        j++;
+        setTimeout(tick, 38 + Math.random()*52);
+      } else {
+        mode = 'hold';
+        setTimeout(tick, 1800);
+      }
+    } else if(mode === 'hold'){
+      mode = 'erase';
+      setTimeout(tick, 60);
+    } else if(mode === 'erase'){
+      if(j > 0){
+        j--;
+        tail.textContent = ' ' + target.slice(0, j);
+        setTimeout(tick, 18);
+      } else {
+        i = (i+1) % endings.length;
+        mode = 'type';
+        setTimeout(tick, 350);
+      }
+    }
+  }
+  setTimeout(tick, 1600);
+})();
+
+/* лёгкий наклон рукописи от движения курсора */
+(function(){
+  const right = document.querySelector('.hero .right-col');
+  const ms = document.querySelector('.ms-frame');
+  if(!right || !ms) return;
+  right.addEventListener('mousemove', (e)=>{
+    const r = right.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top)  / r.height - 0.5;
+    ms.style.transform = `rotate(${-0.6 + x*1.2}deg) translate(${x*4}px, ${y*4}px)`;
+  });
+  right.addEventListener('mouseleave', ()=>{
+    ms.style.transform = 'rotate(-0.6deg)';
+  });
+})();
+</script>
+</body>
+</html>
