@@ -30,7 +30,9 @@ pre-migration grep + per-package typecheck after the bump):
 
 - `pnpm -r typecheck` green across 7 packages.
 - `pnpm -r test` green: 157 tests pass (shared 9, llm 43, web 14, server 91)
-  — same count as pre-migration baseline.
+  — same count as pre-migration baseline. The remaining workspace packages
+  (`packages/agents`, `packages/style-engine`, `packages/retrieval`) have no
+  test suites and pass via `--passWithNoTests`.
 - Single `zod@4.4.3` resolved in every workspace package (`pnpm list zod -r`).
 - `zod-to-json-schema` removed from `packages/llm/package.json`. It is
   retained as a transitive peer of `@langchain/langgraph` in the lockfile;
