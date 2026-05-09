@@ -17,11 +17,15 @@ import type {
   LocationProfile,
   ItemProfile,
   WriterProvider,
+  StudioEventType,
+  StudioEventPayload,
 } from "@book-forge/shared";
 import {
   characterProfileSchema,
   locationProfileSchema,
   itemProfileSchema,
+  studioEventTypeSchema,
+  studioEventPayloadSchema,
 } from "@book-forge/shared";
 
 export interface BookRow {
@@ -37,6 +41,8 @@ export interface BookRow {
   critic_model: string;
   writer_provider: string;
   writer_local_model: string | null;
+  concept: string | null;
+  studio_state: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -241,6 +247,46 @@ export function toCharacterKnowledge(r: CharacterKnowledgeRow): CharacterKnowled
     characterId: r.character_id,
     fact: r.fact,
     learnedInChapterId: r.learned_in_chapter_id,
+    createdAt: r.created_at,
+  };
+}
+
+// ─────────────── Studio events (Phase 4) ───────────────
+
+export interface StudioEventRow {
+  id: number;
+  book_id: number;
+  event_type: string;
+  stage_id: string | null;
+  aspect_id: string | null;
+  payload: string;
+  revision_before: number;
+  revision_after: number;
+  created_at: string;
+}
+
+export interface StudioEvent {
+  id: number;
+  bookId: number;
+  eventType: StudioEventType;
+  stageId: string | null;
+  aspectId: string | null;
+  payload: StudioEventPayload;
+  revisionBefore: number;
+  revisionAfter: number;
+  createdAt: string;
+}
+
+export function toStudioEvent(r: StudioEventRow): StudioEvent {
+  return {
+    id: r.id,
+    bookId: r.book_id,
+    eventType: studioEventTypeSchema.parse(r.event_type),
+    stageId: r.stage_id,
+    aspectId: r.aspect_id,
+    payload: studioEventPayloadSchema.parse(JSON.parse(r.payload)),
+    revisionBefore: r.revision_before,
+    revisionAfter: r.revision_after,
     createdAt: r.created_at,
   };
 }
