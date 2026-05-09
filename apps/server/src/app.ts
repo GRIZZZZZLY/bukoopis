@@ -12,6 +12,7 @@ import { createInlineRoute } from "./routes/inline.js";
 import { createStyleRoute } from "./routes/style.js";
 import { createUsageRoute } from "./routes/usage.js";
 import { createCanonExtractionRoute } from "./routes/canon-extraction.js";
+import { createStudioRoute } from "./routes/studio.js";
 
 export interface AppHandle {
   app: Hono;
@@ -44,6 +45,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
+  app.route("/api", createStudioRoute(sqlite));
 
   return {
     app,
