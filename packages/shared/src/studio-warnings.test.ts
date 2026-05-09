@@ -47,7 +47,10 @@ describe("computeStudioWarnings", () => {
       studioState: emptyStudioState(),
       canon: emptyCanon,
     });
-    expect(w.find((x) => x.id === "incompatible_genres")).toBeDefined();
+    expect(w.find((x) => x.id.startsWith("incompatible_genres"))).toBeDefined();
+    // Dedup: symmetric pair must not produce duplicate warnings.
+    const incompatPair = w.filter((x) => x.id.startsWith("incompatible_genres"));
+    expect(incompatPair).toHaveLength(1);
   });
 
   it("warns when plot started but logline empty", () => {

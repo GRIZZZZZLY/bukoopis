@@ -86,20 +86,25 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
     });
   }
 
-  // 5. Incompatible genre pair from registry.
+  // 5. Incompatible genre pair from registry. Dedup by sorted-pair key so
+  //    symmetric incompatibleWith entries (A→B and B→A) emit one warning.
+  const seenPairs = new Set<string>();
   for (const id of concept.genres) {
     const def = GENRES.find((g) => g.id === id);
     if (!def?.incompatibleWith) continue;
     for (const other of concept.genres) {
       if (other === id) continue;
-      if (def.incompatibleWith.includes(other)) {
-        out.push({
-          id: "incompatible_genres",
-          severity: "warning",
-          stageId: "concept",
-          message: `Жанры "${id}" и "${other}" помечены как несовместимые в реестре.`,
-        });
-      }
+      if (!def.incompatibleWith.includes(other)) continue;
+      const pairKey = [id, other].sort().join("␟");
+      if (seenPairs.has(pairKey)) continue;
+      seenPairs.add(pairKey);
+      const [a, b] = [id, other].sort();
+      out.push({
+        id: `incompatible_genres__${a}__${b}`,
+        severity: "warning",
+        stageId: "concept",
+        message: `Жанры "${a}" и "${b}" помечены как несовместимые в реестре.`,
+      });
     }
   }
 
