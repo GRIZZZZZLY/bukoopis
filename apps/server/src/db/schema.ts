@@ -32,6 +32,8 @@ export const books = sqliteTable(
     criticModel: text("critic_model").notNull().default("sonnet"),
     writerProvider: text("writer_provider").notNull().default("anthropic"),
     writerLocalModel: text("writer_local_model"),
+    concept: text("concept"),
+    studioState: text("studio_state"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -430,6 +432,37 @@ export const chapterVersions = sqliteTable(
     check(
       "chapter_versions_source_check",
       sql`${t.source} IN ('manual','agent')`,
+    ),
+  ],
+);
+
+// ─────────────── Studio audit (Phase A) ───────────────
+
+export const studioEvents = sqliteTable(
+  "studio_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    stageId: text("stage_id"),
+    aspectId: text("aspect_id"),
+    payload: text("payload").notNull(),
+    revisionBefore: integer("revision_before").notNull(),
+    revisionAfter: integer("revision_after").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_studio_events_book_created").on(t.bookId, t.createdAt),
+    check(
+      "studio_events_event_type_check",
+      sql`${t.eventType} IN (
+        'accept_variant','reject_variant','refine_variant','regen_variant',
+        'materialize_entity_set','entity_review_decision',
+        'import_merge','cross_book_copy','stage_skip',
+        'playbook_generate','aspect_create_manual','aspect_delete'
+      )`,
     ),
   ],
 );
