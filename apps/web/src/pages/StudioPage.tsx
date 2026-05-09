@@ -11,6 +11,7 @@ import type {
 import { computeRecommendedNextStage } from "@book-forge/shared";
 import { StageCard } from "@/components/studio/StageCard";
 import { WarningsFeed } from "@/components/studio/WarningsFeed";
+import { ConceptForm } from "@/components/studio/concept/ConceptForm";
 
 const STAGE_LABELS: Record<StageId, string> = {
   concept: "Концепт",
@@ -72,6 +73,13 @@ export function StudioPage() {
     studioState: studio,
   });
 
+  async function handleSaveConcept(next: BookConcept): Promise<BookConcept> {
+    const saved = await api.patchConcept(bookId, next);
+    setConcept(saved);
+    setWarnings(await api.getStudioWarnings(bookId));
+    return saved;
+  }
+
   return (
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
       <div className="flex justify-between items-baseline">
@@ -87,6 +95,8 @@ export function StudioPage() {
         </h2>
         <WarningsFeed warnings={warnings} />
       </section>
+
+      <ConceptForm initialConcept={concept} onSave={handleSaveConcept} />
 
       <section aria-labelledby="stages-heading" className="flex flex-col gap-3">
         <h2 id="stages-heading" className="text-lg font-semibold">
