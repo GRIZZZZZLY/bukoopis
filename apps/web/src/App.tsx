@@ -12,6 +12,7 @@ import {
 } from "@/pages/StyleProfilesPage";
 import { UsagePage } from "@/pages/UsagePage";
 import { StudioPage } from "@/pages/StudioPage";
+import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
 
 const router = createBrowserRouter([
   {
@@ -29,6 +30,10 @@ const router = createBrowserRouter([
   {
     path: "/books/:bookId/studio",
     element: <StudioPage />,
+  },
+  {
+    path: "/books/:bookId/studio/:stageId",
+    element: <MarkdownStagePage />,
   },
   {
     path: "/books/:bookId/chapters/:chapterId",

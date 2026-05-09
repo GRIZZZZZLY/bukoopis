@@ -116,6 +116,10 @@ export function StudioPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {STAGE_IDS.map((id) => {
             const stage = studio.stages[id];
+            const href =
+              id === "world" || id === "lore"
+                ? `/books/${bookId}/studio/${id}`
+                : undefined;
             return (
               <StageCard
                 key={id}
@@ -123,6 +127,7 @@ export function StudioPage() {
                 label={STAGE_LABELS[id]}
                 status={stage?.status ?? "not_started"}
                 recommended={recommended === id}
+                {...(href !== undefined ? { href } : {})}
               />
             );
           })}
