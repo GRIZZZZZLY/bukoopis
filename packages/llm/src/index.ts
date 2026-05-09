@@ -9,6 +9,14 @@ export type { OllamaStreamOptions } from "./ollama.js";
 // Backend abstraction (etap 0.2.1)
 export type { LLMBackend, AgentName } from "./types.js";
 export { AGENT_NAMES, effectiveBackend } from "./types.js";
+
+// Structured-output contract types (etap 0.2.4 — Phase 1)
+export type {
+  StructuredMode,
+  AgentMcpSpec,
+  AgentStructuredContract,
+} from "./types.js";
+export { STRUCTURED_AGENT_NAMES } from "./types.js";
 export {
   LLMError,
   BackendNotImplementedError,
