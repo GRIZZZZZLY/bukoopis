@@ -23,6 +23,10 @@ import {
   runAspectRefine,
   toStoredRefinedVariant,
 } from "@book-forge/agents/aspects/refine";
+import {
+  runAspectEntityVariants,
+  toStoredEntityVariants,
+} from "@book-forge/agents/aspects/entity-variants";
 import { stageIdSchema } from "@book-forge/shared";
 import { buildContextRef } from "../services/studio/contextHash.js";
 
@@ -52,12 +56,13 @@ const generateAspectBodySchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
     description: z.string().optional(),
+    payloadKind: z.enum(["markdown", "entity_set"]).optional(),
   }),
   accumulated: z.array(
     z.object({
       id: z.string().min(1),
       name: z.string().min(1),
-      finalPayload: z.string().min(1),
+      finalPayload: z.unknown(),
     }),
   ),
   draft: z.string().max(2000).optional(),
@@ -81,6 +86,25 @@ const refineAspectBodySchema = z.object({
       finalPayload: z.string().min(1),
     }),
   ),
+});
+
+const ENTITY_STAGES = new Set(["characters", "items"] as const);
+
+const entityProfileSchema = z.record(z.string(), z.unknown());
+
+const materializeBodySchema = z.object({
+  stageId: z.enum(["characters", "items"]),
+  aspectName: z.string().min(1).max(120),
+  candidates: z
+    .array(
+      z.object({
+        tempId: z.string().min(1),
+        decision: z.enum(["accept", "reject"]),
+        profile: entityProfileSchema,
+        mergedIntoId: z.number().int().positive().optional(),
+      }),
+    )
+    .min(1),
 });
 
 function loadCanonSummary(sqlite: DatabaseType, bookId: number): CanonSummary {
@@ -256,7 +280,16 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
         existingAspectNames: parsed.data.existingAspectNames ?? [],
         contextRef,
       });
-      return c.json({ aspects: result.aspects, contextRef });
+      const isEntity = ENTITY_STAGES.has(
+        stageParse.data as "characters" | "items",
+      );
+      const aspects = isEntity
+        ? result.aspects.map((a) => ({
+            ...a,
+            payloadKind: "entity_set" as const,
+          }))
+        : result.aspects;
+      return c.json({ aspects, contextRef });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json(
@@ -282,10 +315,80 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
       throw e;
     }
 
+    const stageId = stageParse.data;
+    const payloadKind = parsed.data.aspect.payloadKind ?? "markdown";
+
+    if (payloadKind === "entity_set") {
+      if (stageId !== "characters" && stageId !== "items") {
+        return c.json(
+          { error: "stage_not_entity", details: { stageId } },
+          400,
+        );
+      }
+      const accumulatedEntities = parsed.data.accumulated
+        .map((a) => {
+          const fp = a.finalPayload;
+          if (!fp || typeof fp !== "object") return null;
+          const candidates = (fp as { candidates?: unknown }).candidates;
+          if (!Array.isArray(candidates)) return null;
+          const finalEntities = (
+            candidates as Array<{
+              kind?: "character" | "location" | "item";
+              profile?: unknown;
+              status?: string;
+            }>
+          )
+            .filter((c) => c.status === "accepted" || c.status === "merged")
+            .map((c) => ({
+              kind: c.kind ?? "character",
+              profile: c.profile,
+            }));
+          return { name: a.name, finalEntities };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      const contextRefEntity = buildContextRef({
+        stageId,
+        concept,
+        accumulated: parsed.data.accumulated.map((a) => ({
+          id: a.id,
+          name: a.name,
+          finalPayload: JSON.stringify(a.finalPayload),
+        })),
+        extra: { kind: "entity_variants", aspectId: parsed.data.aspect.id },
+      });
+      try {
+        const result = await runAspectEntityVariants({
+          stageId,
+          concept,
+          aspect: parsed.data.aspect,
+          accumulated: accumulatedEntities,
+          contextRef: contextRefEntity,
+        });
+        const variants = toStoredEntityVariants(result, {
+          contextRef: contextRefEntity,
+          modelId: "subscription:claude-sonnet-4-6",
+        });
+        return c.json({ variants, contextRef: contextRefEntity });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return c.json(
+          { error: "aspect_entity_variants_failed", details: { message } },
+          500,
+        );
+      }
+    }
+
     const contextRef = buildContextRef({
-      stageId: stageParse.data,
+      stageId,
       concept,
-      accumulated: parsed.data.accumulated,
+      accumulated: parsed.data.accumulated.map((a) => ({
+        id: a.id,
+        name: a.name,
+        finalPayload:
+          typeof a.finalPayload === "string"
+            ? a.finalPayload
+            : JSON.stringify(a.finalPayload),
+      })),
       extra: {
         kind: "variants",
         aspectId: parsed.data.aspect.id,
@@ -294,12 +397,15 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     });
     try {
       const result = await runAspectVariants({
-        stageId: stageParse.data,
+        stageId,
         concept,
         aspect: parsed.data.aspect,
         accumulated: parsed.data.accumulated.map((a) => ({
           name: a.name,
-          finalPayload: a.finalPayload,
+          finalPayload:
+            typeof a.finalPayload === "string"
+              ? a.finalPayload
+              : JSON.stringify(a.finalPayload),
         })),
         ...(parsed.data.draft !== undefined ? { draft: parsed.data.draft } : {}),
         contextRef,
@@ -372,6 +478,75 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
         500,
       );
     }
+  });
+
+  r.post("/books/:id/aspects/:aspectId/materialize", async (c) => {
+    const id = Number(c.req.param("id"));
+    const aspectId = c.req.param("aspectId");
+    const body = await c.req.json().catch(() => null);
+    const parsed = materializeBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    const bookRow = sqlite
+      .prepare("SELECT id FROM books WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!bookRow) return notFound(c, "book");
+
+    const now = new Date().toISOString();
+    const createdEntityIds: number[] = [];
+    const candidatesAfter: Array<{
+      tempId: string;
+      decision: "accept" | "reject";
+      materializedEntityId?: number;
+      mergedIntoId?: number;
+    }> = [];
+
+    const insertChar = sqlite.prepare(
+      `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    const insertItem = sqlite.prepare(
+      `INSERT INTO items (book_id, name, profile_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+
+    for (const cand of parsed.data.candidates) {
+      if (cand.decision === "reject") {
+        candidatesAfter.push({ tempId: cand.tempId, decision: "reject" });
+        continue;
+      }
+      if (cand.mergedIntoId !== undefined) {
+        candidatesAfter.push({
+          tempId: cand.tempId,
+          decision: "accept",
+          mergedIntoId: cand.mergedIntoId,
+        });
+        continue;
+      }
+      const profileJson = JSON.stringify(cand.profile);
+      const profile = cand.profile as { name?: unknown };
+      const name = typeof profile.name === "string" ? profile.name : "Без имени";
+      let entityId: number;
+      if (parsed.data.stageId === "characters") {
+        const info = insertChar.run(id, name, profileJson, now, now);
+        entityId = Number(info.lastInsertRowid);
+      } else {
+        const info = insertItem.run(id, name, profileJson, now, now);
+        entityId = Number(info.lastInsertRowid);
+      }
+      createdEntityIds.push(entityId);
+      candidatesAfter.push({
+        tempId: cand.tempId,
+        decision: "accept",
+        materializedEntityId: entityId,
+      });
+    }
+
+    return c.json({
+      aspectId,
+      createdEntityIds,
+      candidates: candidatesAfter,
+    });
   });
 
   return r;
