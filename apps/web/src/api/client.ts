@@ -477,6 +477,76 @@ export const api = {
       `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/refine`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  generateAspectEntityVariants: (
+    bookId: number,
+    stageId: "characters" | "items",
+    aspectId: string,
+    body: {
+      aspect: { id: string; name: string; description?: string; payloadKind: "entity_set" };
+      accumulated: Array<{ id: string; name: string; finalPayload: unknown }>;
+    },
+  ) =>
+    req<{
+      variants: Array<{
+        id: string;
+        label: string;
+        payloadKind: "entity_set";
+        payload: {
+          candidates: Array<{
+            tempId: string;
+            kind: "character" | "location" | "item";
+            profile: unknown;
+            status: "proposed";
+          }>;
+        };
+        status: "generated";
+        editSource: "llm";
+        generatedAt: string;
+        modelId: string;
+        contextRef: {
+          hash: string;
+          summary: string;
+          includedAspectIds: string[];
+          includedEntityIds: string[];
+        };
+      }>;
+      contextRef: {
+        hash: string;
+        summary: string;
+        includedAspectIds: string[];
+        includedEntityIds: string[];
+      };
+    }>(
+      `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/generate`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  materializeEntitySet: (
+    bookId: number,
+    aspectId: string,
+    body: {
+      stageId: "characters" | "items";
+      aspectName: string;
+      candidates: Array<{
+        tempId: string;
+        decision: "accept" | "reject";
+        profile: unknown;
+        mergedIntoId?: number;
+      }>;
+    },
+  ) =>
+    req<{
+      aspectId: string;
+      createdEntityIds: number[];
+      candidates: Array<{
+        tempId: string;
+        decision: "accept" | "reject";
+        materializedEntityId?: number;
+        mergedIntoId?: number;
+      }>;
+    }>(`/api/books/${bookId}/aspects/${aspectId}/materialize`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
