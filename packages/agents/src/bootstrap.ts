@@ -7,6 +7,7 @@ import {
   registerPlotOutlineContract,
   registerPlotChapterPlanContract,
 } from "./plot.js";
+import { registerConceptRefinerContract } from "./concept/refiner.js";
 
 /**
  * Registers all agent structured-output contracts. Must be called once at
@@ -17,6 +18,7 @@ import {
  * Phase 3: critic_style, critic_editor, critic_reader.
  * Phase 4: plot_outline, plot_chapter_plan, canon_guard, style_extractor.
  * Phase 5: critic_dialogue, foreshadowing_planner.
+ * Phase B2 (Studio): concept_refiner.
  */
 export function registerAllAgentContracts(): void {
   registerCanonCriticContract();
@@ -26,4 +28,5 @@ export function registerAllAgentContracts(): void {
   registerCanonGuardContract();
   registerPlotOutlineContract();
   registerPlotChapterPlanContract();
+  registerConceptRefinerContract();
 }
