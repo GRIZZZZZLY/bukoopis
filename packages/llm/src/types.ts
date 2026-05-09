@@ -38,6 +38,7 @@ export const AGENT_NAMES = [
   "critic_editor",
   "critic_reader",
   "style_extractor",
+  "concept_refiner",
 ] as const;
 
 export type AgentName = (typeof AGENT_NAMES)[number];
@@ -65,4 +66,5 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "plot_outline",
   "plot_chapter_plan",
   "style_extractor",
+  "concept_refiner",
 ]);
