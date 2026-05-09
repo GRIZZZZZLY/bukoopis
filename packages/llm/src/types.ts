@@ -42,6 +42,7 @@ export const AGENT_NAMES = [
   "aspect_playbook",
   "aspect_variants",
   "aspect_refine",
+  "aspect_entity_variants",
 ] as const;
 
 export type AgentName = (typeof AGENT_NAMES)[number];
@@ -73,4 +74,5 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "aspect_playbook",
   "aspect_variants",
   "aspect_refine",
+  "aspect_entity_variants",
 ]);
