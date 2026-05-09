@@ -379,6 +379,104 @@ export const api = {
         ...(draft !== undefined ? { draft } : {}),
       }),
     }),
+  generateStagePlaybook: (
+    bookId: number,
+    stageId: string,
+    existingAspectNames: string[] = [],
+  ) =>
+    req<{
+      aspects: Array<{
+        name: string;
+        description: string;
+        required: boolean;
+        payloadKind: "markdown";
+      }>;
+      contextRef: {
+        hash: string;
+        summary: string;
+        includedAspectIds: string[];
+        includedEntityIds: string[];
+      };
+    }>(`/api/books/${bookId}/stages/${stageId}/playbook`, {
+      method: "POST",
+      body: JSON.stringify({ existingAspectNames }),
+    }),
+  generateAspectVariants: (
+    bookId: number,
+    stageId: string,
+    aspectId: string,
+    body: {
+      aspect: { id: string; name: string; description?: string };
+      accumulated: Array<{ id: string; name: string; finalPayload: string }>;
+      draft?: string;
+    },
+  ) =>
+    req<{
+      variants: Array<{
+        id: string;
+        label: string;
+        payloadKind: "markdown";
+        payload: string;
+        status: "generated";
+        editSource: "llm";
+        generatedAt: string;
+        modelId: string;
+        contextRef: {
+          hash: string;
+          summary: string;
+          includedAspectIds: string[];
+          includedEntityIds: string[];
+        };
+      }>;
+      contextRef: {
+        hash: string;
+        summary: string;
+        includedAspectIds: string[];
+        includedEntityIds: string[];
+      };
+    }>(
+      `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/generate`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  refineAspectVariant: (
+    bookId: number,
+    stageId: string,
+    aspectId: string,
+    body: {
+      aspect: { id: string; name: string; description?: string };
+      parentVariant: { id: string; label: string; payload: string };
+      instructions: string;
+      accumulated: Array<{ name: string; finalPayload: string }>;
+    },
+  ) =>
+    req<{
+      variant: {
+        id: string;
+        label: string;
+        payloadKind: "markdown";
+        payload: string;
+        status: "generated";
+        editSource: "refine";
+        parentVariantId: string;
+        generatedAt: string;
+        modelId: string;
+        contextRef: {
+          hash: string;
+          summary: string;
+          includedAspectIds: string[];
+          includedEntityIds: string[];
+        };
+      };
+      contextRef: {
+        hash: string;
+        summary: string;
+        includedAspectIds: string[];
+        includedEntityIds: string[];
+      };
+    }>(
+      `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/refine`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 };
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
