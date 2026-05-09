@@ -37,3 +37,13 @@ export type {
   GenerateThenStructureInput,
   HybridUsageEvent,
 } from "./hybrid.js";
+
+// Structured-output registry (etap 0.2.4 — Phase 1)
+export {
+  registerAgentContract,
+  getAgentContract,
+  clearStructuredRegistry,
+  listRegisteredAgents,
+  assertAllStructuredAgentsHaveContracts,
+  assertUniqueMcpToolNames,
+} from "./structured-registry.js";
