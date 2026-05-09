@@ -1,6 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { ZodType } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z, type ZodType } from "zod";
 import { getAnthropicClient } from "./client.js";
 import { resolveModelId } from "./models.js";
 import { withRetry } from "./retry.js";
@@ -52,14 +51,7 @@ export async function callStructured<T>(
   }
 
   const client = getAnthropicClient();
-  const jsonSchema = zodToJsonSchema(opts.schema, opts.schemaName);
-  const inputSchema =
-    "definitions" in jsonSchema &&
-    jsonSchema.definitions &&
-    typeof jsonSchema.definitions === "object" &&
-    opts.schemaName in jsonSchema.definitions
-      ? (jsonSchema.definitions as Record<string, unknown>)[opts.schemaName]
-      : jsonSchema;
+  const inputSchema = z.toJSONSchema(opts.schema);
 
   const tool = {
     name: opts.schemaName,
