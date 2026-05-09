@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { callStructured, type StructuredUsage, type SystemBlock } from "@book-forge/llm";
+import {
+  registerAgentContract,
+  dispatchStructured,
+  type AgentStructuredContract,
+  type StructuredUsage,
+} from "@book-forge/llm";
 import type { GenerationConfig, ModelChoice } from "@book-forge/shared";
 
 // ─────────── Types of canon already in book (passed as context) ───────────
@@ -161,35 +166,64 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-export async function extractCanon(
-  input: ExtractCanonInput,
-): Promise<CanonExtractionResult> {
-  const stableSystem = `${SYSTEM}\n\n---\n\nКанон книги (на момент извлечения):\n${formatExistingCanon(
-    input.existingCanon,
-  )}`;
-  const system: SystemBlock[] = [
-    { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
-  ];
-
-  const prompt = [
+function buildCanonGuardPrompt(input: ExtractCanonInput): string {
+  const existingCanonBlock = formatExistingCanon(input.existingCanon);
+  return [
+    `Канон книги (на момент извлечения):\n${existingCanonBlock}`,
     `Глава: "${input.chapterTitle}"`,
     `Текст главы:\n\n${input.chapterText}`,
     `\nЗадача:\n${TASK}`,
-  ].join("\n\n");
+  ].join("\n\n---\n\n");
+}
 
-  return callStructured({
-    agentName: "canon_guard",
-    model: input.model ?? input.config?.model ?? "sonnet",
-    system,
-    prompt,
-    schema: canonExtractionResultSchema,
-    schemaName: "submit_canon_extraction",
-    schemaDescription:
+const canonGuardContract: AgentStructuredContract<ExtractCanonInput, CanonExtractionResult> = {
+  agentName: "canon_guard",
+  getOutputSchema: () => canonExtractionResultSchema,
+  systemPrompt: SYSTEM,
+  buildPrompt: buildCanonGuardPrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_canon_extraction",
+    toolDescription:
       "Submit structured canon entities extracted from a chapter, with new/existing/ambiguous decisions vs the book's current canon.",
+  },
+};
+
+export function registerCanonGuardContract(): void {
+  registerAgentContract(canonGuardContract);
+}
+
+export async function extractCanon(
+  input: ExtractCanonInput,
+): Promise<CanonExtractionResult> {
+  const { raw, diagnostics } = await dispatchStructured<
+    ExtractCanonInput,
+    CanonExtractionResult
+  >({
+    agentName: "canon_guard",
+    payload: input,
+    model: input.model ?? input.config?.model ?? "sonnet",
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 4096,
-    onUsage: input.onUsage,
   });
+  if (input.onUsage) {
+    const usage: StructuredUsage = {
+      modelId: diagnostics.modelId,
+      inputTokens: diagnostics.inputTokens,
+      outputTokens: diagnostics.outputTokens,
+      cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+      cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+    };
+    try {
+      input.onUsage(usage);
+    } catch (e) {
+      console.warn(
+        "[canon-extractor] onUsage callback threw:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  return raw;
 }

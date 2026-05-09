@@ -60,4 +60,5 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "critic_style",
   "critic_editor",
   "critic_reader",
+  "canon_guard",
 ]);

@@ -18,7 +18,6 @@ const KNOWN_FREE_TEXT_OR_NOLLM: AgentName[] = [
   // Phase 4-5 will move these out of the exclusion list as their
   // contracts get registered:
   "plot",
-  "canon_guard",
   "style_extractor",
 ];
 
