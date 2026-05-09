@@ -13,6 +13,9 @@ export {
   LLMError,
   BackendNotImplementedError,
   LLMAuthError,
+  LLMNoToolCallError,
+  LLMMultipleToolCallsError,
+  LLMSchemaRetryExhaustedError,
 } from "./errors.js";
 export {
   resolveBackend,

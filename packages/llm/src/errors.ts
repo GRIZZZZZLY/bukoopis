@@ -31,3 +31,24 @@ export class LLMValidationError extends LLMError {
     this.name = "LLMValidationError";
   }
 }
+
+export class LLMNoToolCallError extends LLMError {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMNoToolCallError";
+  }
+}
+
+export class LLMMultipleToolCallsError extends LLMError {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMMultipleToolCallsError";
+  }
+}
+
+export class LLMSchemaRetryExhaustedError extends LLMError {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMSchemaRetryExhaustedError";
+  }
+}
