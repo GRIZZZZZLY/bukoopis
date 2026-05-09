@@ -1,0 +1,146 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { StageState } from "@book-forge/shared";
+import { PlaybookRunner } from "../PlaybookRunner";
+import type { PlaybookGenerator } from "../llmGenerators";
+
+function makeEmptyStage(): StageState {
+  return {
+    status: "not_started",
+    playbookGenerated: false,
+    aspects: [],
+  };
+}
+
+function makeGenerator(
+  result: Awaited<ReturnType<PlaybookGenerator["generate"]>>,
+): PlaybookGenerator {
+  return {
+    generate: vi.fn().mockResolvedValue(result),
+  };
+}
+
+describe("PlaybookRunner", () => {
+  it("renders Generate button when stage has no aspects", () => {
+    render(
+      <PlaybookRunner
+        stage={makeEmptyStage()}
+        revision={0}
+        generator={makeGenerator({ aspects: [] })}
+        onPatch={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking Generate shows proposed aspects for review", async () => {
+    const generator = makeGenerator({
+      aspects: [
+        { name: "география", description: "земли и воды", required: true, payloadKind: "markdown" },
+        { name: "магия", description: "правила колдовства", required: true, payloadKind: "markdown" },
+        { name: "технологии", description: "уровень развития", required: false, payloadKind: "markdown" },
+      ],
+    });
+    render(
+      <PlaybookRunner
+        stage={makeEmptyStage()}
+        revision={0}
+        generator={generator}
+        onPatch={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("география")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("магия")).toBeInTheDocument();
+    expect(screen.getByText("технологии")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Принять список/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("Принять список materializes aspects with new IDs and patches", async () => {
+    const generator = makeGenerator({
+      aspects: [
+        { name: "география", description: "земли и воды", required: true, payloadKind: "markdown" },
+        { name: "магия", description: "правила колдовства", required: false, payloadKind: "markdown" },
+      ],
+    });
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <PlaybookRunner
+        stage={makeEmptyStage()}
+        revision={2}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+    );
+    await waitFor(() =>
+      screen.getByRole("button", { name: /Принять список/ }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Принять список/ }),
+    );
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    const [rev, next] = onPatch.mock.calls[0]!;
+    expect(rev).toBe(2);
+    expect(next.aspects).toHaveLength(2);
+    expect(next.aspects[0]!.name).toBe("география");
+    expect(next.aspects[0]!.required).toBe(true);
+    expect(next.aspects[1]!.required).toBe(false);
+    expect(next.aspects[0]!.id).toMatch(/[0-9a-f-]{36}/);
+    expect(next.aspects[0]!.status).toBe("pending");
+    expect(next.aspects[0]!.payloadKind).toBe("markdown");
+    expect(next.aspects[0]!.source).toBe("llm");
+    expect(next.playbookGenerated).toBe(true);
+  });
+
+  it("toggling off an aspect excludes it from materialization", async () => {
+    const generator = makeGenerator({
+      aspects: [
+        { name: "география", description: "x", required: true, payloadKind: "markdown" },
+        { name: "магия", description: "y", required: true, payloadKind: "markdown" },
+      ],
+    });
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <PlaybookRunner
+        stage={makeEmptyStage()}
+        revision={0}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+    );
+    await waitFor(() =>
+      screen.getByRole("button", { name: /Принять список/ }),
+    );
+    const includes = screen.getAllByRole("checkbox", { name: /Включить/ });
+    expect(includes.length).toBe(2);
+    await userEvent.click(includes[1]!);
+    await userEvent.click(
+      screen.getByRole("button", { name: /Принять список/ }),
+    );
+    await waitFor(() => expect(onPatch).toHaveBeenCalled());
+    const [, next] = onPatch.mock.calls[0]!;
+    expect(next.aspects).toHaveLength(1);
+    expect(next.aspects[0]!.name).toBe("география");
+  });
+});
