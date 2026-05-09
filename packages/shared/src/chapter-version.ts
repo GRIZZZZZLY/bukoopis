@@ -8,7 +8,7 @@ export const proseMirrorDocSchema: z.ZodType<unknown> = z.lazy(() =>
     type: z.string(),
     content: z.array(proseMirrorDocSchema).optional(),
     text: z.string().optional(),
-    attrs: z.record(z.unknown()).optional(),
+    attrs: z.record(z.string(), z.unknown()).optional(),
     marks: z.array(z.unknown()).optional(),
   }),
 );
