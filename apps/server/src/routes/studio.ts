@@ -13,10 +13,23 @@ import {
   StudioConflictError,
 } from "../db/studio.js";
 import { notFound, validationFailed } from "../utils/errors.js";
+import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
   next: studioStateSchema,
+});
+
+const refineFieldSchema = z.enum([
+  "protagonist",
+  "conflict",
+  "stakes",
+  "logline",
+]);
+
+const refineConceptBodySchema = z.object({
+  field: refineFieldSchema,
+  draft: z.string().max(2000).optional(),
 });
 
 function loadCanonSummary(sqlite: DatabaseType, bookId: number): CanonSummary {
@@ -111,6 +124,55 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     } catch (e) {
       if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
       throw e;
+    }
+  });
+
+  r.post("/books/:id/concept/refine", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = refineConceptBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    let concept;
+    try {
+      concept = repo.loadConcept(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
+    }
+
+    const accumulated: {
+      protagonist?: string;
+      conflict?: string;
+      stakes?: string;
+    } = {};
+    if (parsed.data.field !== "protagonist" && concept.premise.protagonist) {
+      accumulated.protagonist = concept.premise.protagonist;
+    }
+    if (
+      (parsed.data.field === "stakes" || parsed.data.field === "logline") &&
+      concept.premise.conflict
+    ) {
+      accumulated.conflict = concept.premise.conflict;
+    }
+    if (parsed.data.field === "logline" && concept.premise.stakes) {
+      accumulated.stakes = concept.premise.stakes;
+    }
+
+    try {
+      const result = await runConceptRefiner({
+        field: parsed.data.field,
+        concept,
+        accumulated,
+        ...(parsed.data.draft !== undefined ? { draft: parsed.data.draft } : {}),
+      });
+      return c.json(result);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.json(
+        { error: "concept_refine_failed", details: { message } },
+        500,
+      );
     }
   });
 
