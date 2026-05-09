@@ -255,4 +255,83 @@ describe("AspectRunner", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/boom/);
     });
   });
+
+  it("clicking '✏️ Уточнить' opens inline refine form", async () => {
+    const reviewingAspect = makeAspect({
+      status: "reviewing",
+      variants: [
+        {
+          id: "v1",
+          label: "первый",
+          payloadKind: "markdown",
+          payload: "Variant payload one",
+          status: "generated",
+          editSource: "llm",
+          generatedAt: "2026-05-10T20:00:00.000Z",
+        },
+      ],
+    });
+    render(
+      <AspectRunner
+        stage={makeStage([reviewingAspect])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Уточнить/ }),
+    );
+    expect(screen.getByLabelText(/refine-instructions-v1/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Применить/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("submitting refine calls generator with refineFrom and patches with new variant + superseded parent", async () => {
+    const reviewingAspect = makeAspect({
+      status: "reviewing",
+      variants: [
+        {
+          id: "v1",
+          label: "первый",
+          payloadKind: "markdown",
+          payload: "исходный текст для рефайна",
+          status: "generated",
+          editSource: "llm",
+          generatedAt: "2026-05-10T20:00:00.000Z",
+        },
+      ],
+    });
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <AspectRunner
+        stage={makeStage([reviewingAspect])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Уточнить/ }));
+    await userEvent.type(
+      screen.getByLabelText(/refine-instructions-v1/),
+      "сделай мрачнее",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Применить/ }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    expect(generateSpy).toHaveBeenCalledTimes(1);
+    const callArg = generateSpy.mock.calls[0]![0];
+    expect(callArg.refineFrom).toBeDefined();
+    expect(callArg.refineFrom!.variantId).toBe("v1");
+    expect(callArg.refineFrom!.instructions).toBe("сделай мрачнее");
+    const [, next] = onPatch.mock.calls[0]!;
+    // mockGenerator returns 2 variants — so total = parent (superseded) + 2 new = 3
+    expect(next.aspects[0]!.variants).toHaveLength(3);
+    expect(next.aspects[0]!.variants[0]!.status).toBe("superseded");
+  });
 });

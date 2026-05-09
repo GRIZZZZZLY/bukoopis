@@ -43,6 +43,8 @@ export function AspectRunner<TPayload>({
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>(
     {},
   );
+  const [refiningVariantId, setRefiningVariantId] = useState<string | null>(null);
+  const [refineInstructions, setRefineInstructions] = useState<string>("");
 
   if (stage.aspects.length === 0) {
     return (
@@ -182,6 +184,56 @@ export function AspectRunner<TPayload>({
     await applyPatch(aspect.id, next);
   }
 
+  async function handleRefineSubmit(
+    aspect: StageAspect,
+    variant: AspectVariant,
+    instructions: string,
+  ): Promise<void> {
+    setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
+    setBusyAspectId(aspect.id);
+    try {
+      const parsed = adapter.payloadSchema.safeParse(variant.payload);
+      if (!parsed.success) {
+        throw new Error(
+          `payload не валиден: ${parsed.error.message}`,
+        );
+      }
+      const newVariants = await generator.generate({
+        aspect,
+        accumulated: buildAccumulatedContext(aspect.id),
+        refineFrom: {
+          variantId: variant.id,
+          payload: parsed.data,
+          instructions,
+        },
+      });
+      const next = buildNextStage(
+        (a) => ({
+          ...a,
+          variants: [
+            ...a.variants.map((v) =>
+              v.id === variant.id
+                ? { ...v, status: "superseded" as const }
+                : v,
+            ),
+            ...newVariants,
+          ],
+        }),
+        aspect.id,
+      );
+      await onPatch(revision, next);
+      setRefiningVariantId(null);
+      setRefineInstructions("");
+    } catch (e) {
+      setErrorByAspect((p) => ({
+        ...p,
+        [aspect.id]: e instanceof Error ? e.message : String(e),
+      }));
+    } finally {
+      setBusyAspectId(null);
+    }
+  }
+
   function renderVariantPayload(variant: AspectVariant): React.ReactNode {
     const parsed = adapter.payloadSchema.safeParse(variant.payload);
     if (!parsed.success) {
@@ -269,24 +321,85 @@ export function AspectRunner<TPayload>({
 
             {aspect.status === "reviewing" && aspect.variants.length > 0 && (
               <div className="flex flex-col gap-2 border-l-2 border-[var(--color-border)] pl-3">
-                {aspect.variants.map((v) => (
-                  <div key={v.id} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
-                        {v.label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleAccept(aspect, v)}
-                        disabled={busy}
-                        className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
-                      >
-                        Принять
-                      </button>
-                    </div>
-                    {renderVariantPayload(v)}
-                  </div>
-                ))}
+                {aspect.variants
+                  .filter((v) => v.status !== "superseded")
+                  .map((v) => {
+                    const isRefining = refiningVariantId === v.id;
+                    return (
+                      <div key={v.id} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                            {v.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAccept(aspect, v)}
+                            disabled={busy}
+                            className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
+                          >
+                            Принять
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRefiningVariantId(isRefining ? null : v.id);
+                              setRefineInstructions("");
+                            }}
+                            disabled={busy}
+                            className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                          >
+                            {isRefining ? "Закрыть" : "✏️ Уточнить"}
+                          </button>
+                        </div>
+                        {renderVariantPayload(v)}
+                        {isRefining && (
+                          <div className="flex flex-col gap-2 mt-1 border-l-2 border-blue-600 pl-3">
+                            <textarea
+                              value={refineInstructions}
+                              onChange={(e) =>
+                                setRefineInstructions(e.target.value)
+                              }
+                              placeholder="Сделай мрачнее, добавь фракцию X…"
+                              rows={2}
+                              aria-label={`refine-instructions-${v.id}`}
+                              className="border border-[var(--color-border)] rounded px-2 py-1 text-sm"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRefineSubmit(
+                                    aspect,
+                                    v,
+                                    refineInstructions,
+                                  )
+                                }
+                                disabled={busy || !refineInstructions.trim()}
+                                className={
+                                  "text-xs border rounded-md px-2 py-1 " +
+                                  (busy || !refineInstructions.trim()
+                                    ? "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] cursor-not-allowed"
+                                    : "bg-blue-600 text-white border-blue-600")
+                                }
+                              >
+                                Применить
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRefiningVariantId(null);
+                                  setRefineInstructions("");
+                                }}
+                                className="text-xs border border-[var(--color-border)] rounded-md px-2 py-1 hover:bg-[var(--color-muted)]"
+                              >
+                                Отменить
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 <div className="flex gap-2">
                   <button
                     type="button"
