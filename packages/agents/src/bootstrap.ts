@@ -8,6 +8,9 @@ import {
   registerPlotChapterPlanContract,
 } from "./plot.js";
 import { registerConceptRefinerContract } from "./concept/refiner.js";
+import { registerAspectPlaybookContract } from "./aspects/playbook.js";
+import { registerAspectVariantsContract } from "./aspects/variants.js";
+import { registerAspectRefineContract } from "./aspects/refine.js";
 
 /**
  * Registers all agent structured-output contracts. Must be called once at
@@ -19,6 +22,7 @@ import { registerConceptRefinerContract } from "./concept/refiner.js";
  * Phase 4: plot_outline, plot_chapter_plan, canon_guard, style_extractor.
  * Phase 5: critic_dialogue, foreshadowing_planner.
  * Phase B2 (Studio): concept_refiner.
+ * Phase C2 (Studio): aspect_playbook, aspect_variants, aspect_refine.
  */
 export function registerAllAgentContracts(): void {
   registerCanonCriticContract();
@@ -29,4 +33,7 @@ export function registerAllAgentContracts(): void {
   registerPlotOutlineContract();
   registerPlotChapterPlanContract();
   registerConceptRefinerContract();
+  registerAspectPlaybookContract();
+  registerAspectVariantsContract();
+  registerAspectRefineContract();
 }
