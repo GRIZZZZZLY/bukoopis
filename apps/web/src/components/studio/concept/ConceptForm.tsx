@@ -3,17 +3,28 @@ import type { BookConcept, Audience } from "@book-forge/shared";
 import { GenrePicker } from "./GenrePicker";
 import { TonePicker } from "./TonePicker";
 import { AudiencePicker } from "./AudiencePicker";
+import { PremiseFieldPuzzle, type PremiseField } from "./PremiseFieldPuzzle";
 
 interface Props {
   initialConcept: BookConcept;
   onSave: (next: BookConcept) => Promise<BookConcept>;
+  onRefine: (
+    field: PremiseField,
+    draft?: string,
+  ) => Promise<{
+    variants: Array<{ id: string; label: string; payload: string }>;
+  }>;
 }
 
 function isEqualConcept(a: BookConcept, b: BookConcept): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export function ConceptForm({ initialConcept, onSave }: Props) {
+export function ConceptForm({
+  initialConcept,
+  onSave,
+  onRefine,
+}: Props) {
   const [draft, setDraft] = useState<BookConcept>(initialConcept);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,46 +77,44 @@ export function ConceptForm({ initialConcept, onSave }: Props) {
         }
       />
 
-      <fieldset className="flex flex-col gap-2" aria-label="Премиса">
-        <legend className="text-sm font-medium">Премиса (черновик)</legend>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Протагонист</span>
-          <input
-            type="text"
-            value={draft.premise.protagonist ?? ""}
-            onChange={(e) => patchPremise("protagonist", e.target.value)}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Конфликт</span>
-          <input
-            type="text"
-            value={draft.premise.conflict ?? ""}
-            onChange={(e) => patchPremise("conflict", e.target.value)}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Ставки</span>
-          <input
-            type="text"
-            value={draft.premise.stakes ?? ""}
-            onChange={(e) => patchPremise("stakes", e.target.value)}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Логлайн</span>
-          <textarea
-            value={draft.premise.logline ?? ""}
-            onChange={(e) => patchPremise("logline", e.target.value)}
-            rows={2}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
-          />
-        </label>
+      <fieldset className="flex flex-col gap-3" aria-label="Премиса">
+        <legend className="text-sm font-medium">Премиса</legend>
+
+        <PremiseFieldPuzzle
+          label="Протагонист"
+          field="protagonist"
+          value={draft.premise.protagonist ?? ""}
+          onChange={(v) => patchPremise("protagonist", v)}
+          onRefine={onRefine}
+        />
+
+        <PremiseFieldPuzzle
+          label="Конфликт"
+          field="conflict"
+          value={draft.premise.conflict ?? ""}
+          onChange={(v) => patchPremise("conflict", v)}
+          onRefine={onRefine}
+        />
+
+        <PremiseFieldPuzzle
+          label="Ставки"
+          field="stakes"
+          value={draft.premise.stakes ?? ""}
+          onChange={(v) => patchPremise("stakes", v)}
+          onRefine={onRefine}
+        />
+
+        <PremiseFieldPuzzle
+          label="Логлайн"
+          field="logline"
+          value={draft.premise.logline ?? ""}
+          onChange={(v) => patchPremise("logline", v)}
+          onRefine={onRefine}
+          useTextarea
+        />
+
         <p className="text-xs text-[var(--color-muted-foreground)]">
-          Phase B1: ручной ввод. В Phase B2 эти поля заполнит пазл-рефайнер.
+          ✨ Кнопка под каждым полем спрашивает у LLM 2–3 альтернативы. Текущий черновик становится подсказкой.
         </p>
       </fieldset>
 

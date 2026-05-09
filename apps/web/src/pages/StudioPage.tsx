@@ -80,6 +80,13 @@ export function StudioPage() {
     return saved;
   }
 
+  async function handleRefine(
+    field: "protagonist" | "conflict" | "stakes" | "logline",
+    draft?: string,
+  ) {
+    return await api.refineConceptField(bookId, field, draft);
+  }
+
   return (
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
       <div className="flex justify-between items-baseline">
@@ -96,7 +103,11 @@ export function StudioPage() {
         <WarningsFeed warnings={warnings} />
       </section>
 
-      <ConceptForm initialConcept={concept} onSave={handleSaveConcept} />
+      <ConceptForm
+        initialConcept={concept}
+        onSave={handleSaveConcept}
+        onRefine={handleRefine}
+      />
 
       <section aria-labelledby="stages-heading" className="flex flex-col gap-3">
         <h2 id="stages-heading" className="text-lg font-semibold">

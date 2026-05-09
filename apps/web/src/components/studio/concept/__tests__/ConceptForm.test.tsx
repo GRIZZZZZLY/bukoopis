@@ -5,6 +5,8 @@ import { ConceptForm } from "../ConceptForm";
 import { emptyBookConcept, type BookConcept } from "@book-forge/shared";
 
 describe("ConceptForm", () => {
+  const noopRefine = vi.fn(async () => ({ variants: [] }));
+
   it("renders fields preloaded from initialConcept", () => {
     const c: BookConcept = emptyBookConcept();
     c.genres = ["fantasy"];
@@ -15,6 +17,7 @@ describe("ConceptForm", () => {
       <ConceptForm
         initialConcept={c}
         onSave={vi.fn().mockResolvedValue(c)}
+        onRefine={noopRefine}
       />,
     );
     expect(screen.getByDisplayValue("Тестовая премиса")).toBeInTheDocument();
@@ -26,14 +29,14 @@ describe("ConceptForm", () => {
 
   it("Save button is disabled when nothing changed", () => {
     const c = emptyBookConcept();
-    render(<ConceptForm initialConcept={c} onSave={vi.fn()} />);
+    render(<ConceptForm initialConcept={c} onSave={vi.fn()} onRefine={noopRefine} />);
     expect(screen.getByRole("button", { name: /Сохранить/ })).toBeDisabled();
   });
 
   it("Save button enables after a change and calls onSave with merged concept", async () => {
     const c = emptyBookConcept();
     const onSave = vi.fn().mockResolvedValue(c);
-    render(<ConceptForm initialConcept={c} onSave={onSave} />);
+    render(<ConceptForm initialConcept={c} onSave={onSave} onRefine={noopRefine} />);
     const logline = screen.getByLabelText(/Логлайн/);
     await userEvent.type(logline, "Г");
     const saveBtn = screen.getByRole("button", { name: /Сохранить/ });
@@ -47,7 +50,7 @@ describe("ConceptForm", () => {
   it("renders error when onSave rejects", async () => {
     const c = emptyBookConcept();
     const onSave = vi.fn().mockRejectedValue(new Error("boom"));
-    render(<ConceptForm initialConcept={c} onSave={onSave} />);
+    render(<ConceptForm initialConcept={c} onSave={onSave} onRefine={noopRefine} />);
     await userEvent.type(screen.getByLabelText(/Логлайн/), "x");
     await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
     await waitFor(() => {
