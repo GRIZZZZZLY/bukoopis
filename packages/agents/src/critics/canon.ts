@@ -1,5 +1,12 @@
+import type { z } from "zod";
 import type { CriticReport } from "@book-forge/shared";
-import { runCritic, type CriticInput } from "./base.js";
+import { criticReportSchema } from "@book-forge/shared";
+import {
+  registerAgentContract,
+  dispatchStructured,
+  type AgentStructuredContract,
+} from "@book-forge/llm";
+import { type CriticInput } from "./base.js";
 
 const SYSTEM = `Ты — Canon Guard, критик канона художественной книги. Работаешь на русском.
 
@@ -16,12 +23,56 @@ const TASK = `Проверь главу на противоречия канон
 
 Возвращай: список issues + overallNotes (1-3 предложения о состоянии канона главы).`;
 
+const canonOutputSchema = criticReportSchema.omit({ critic: true });
+type CanonCriticOutput = z.infer<typeof canonOutputSchema>;
+
+function buildCanonPrompt(input: CriticInput): string {
+  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
+  if (input.previousChaptersSummary) {
+    stableParts.push(
+      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
+    );
+  }
+  if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.loreContext) stableParts.push(input.loreContext);
+
+  const volatileParts: string[] = [
+    `Глава: "${input.chapterTitle}"`,
+    `POV: ${input.pov}`,
+    `Эмоциональная цель: ${input.emotionalGoal}`,
+    `Текст главы:\n\n${input.chapterText}`,
+    `\nЗадача:\n${TASK}`,
+  ];
+
+  return [...stableParts, ...volatileParts].join("\n\n---\n\n");
+}
+
+const canonCriticContract: AgentStructuredContract<CriticInput, CanonCriticOutput> = {
+  agentName: "critic_canon",
+  getOutputSchema: () => canonOutputSchema,
+  systemPrompt: SYSTEM,
+  buildPrompt: buildCanonPrompt,
+  defaultMode: "mcp_submit_tool",
+  mcp: {
+    toolName: "submit_critique_canon",
+    toolDescription:
+      "Submit a structured critique report from the canon critic. Return all issues found with severity and concrete suggestions.",
+  },
+};
+
+export function registerCanonCriticContract(): void {
+  registerAgentContract(canonCriticContract);
+}
+
 export async function runCanonGuard(input: CriticInput): Promise<CriticReport> {
-  return runCritic({
-    critic: "canon",
+  const { raw } = await dispatchStructured<CriticInput, CanonCriticOutput>({
     agentName: "critic_canon",
-    system: SYSTEM,
-    task: TASK,
-    input,
+    payload: input,
+    model: input.config?.model ?? "sonnet",
+    ...(input.config?.temperature !== undefined
+      ? { temperature: input.config.temperature }
+      : {}),
+    maxTokens: 4096,
   });
+  return { ...raw, critic: "canon" } as CriticReport;
 }
