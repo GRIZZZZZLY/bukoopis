@@ -51,3 +51,11 @@ export {
   assertAllStructuredAgentsHaveContracts,
   assertUniqueMcpToolNames,
 } from "./structured-registry.js";
+
+// Unified structured-output dispatcher (etap 0.2.4 — Phase 1)
+export { dispatchStructured } from "./dispatcher.js";
+export type {
+  DispatchStructuredInput,
+  DispatchStructuredResult,
+  StructuredDiagnostics,
+} from "./dispatcher.js";
