@@ -7,3 +7,5 @@ dist
 data/*.sqlite
 data/*.sqlite-*
 *.tsbuildinfo
+.planning/spike-stderr.log
+

@@ -1,0 +1,16 @@
+packages/agents/src/canon-extractor.ts
+packages/agents/src/plot.ts
+packages/llm/src/hybrid.ts
+packages/llm/src/structured.ts
+packages/llm/src/__tests__/hybrid.test.ts
+packages/shared/src/book.ts
+packages/shared/src/chapter-version.ts
+packages/shared/src/chapter.ts
+packages/shared/src/critique.ts
+packages/shared/src/entities.ts
+packages/shared/src/inline.ts
+packages/shared/src/plot.ts
+packages/shared/src/pricing.ts
+packages/shared/src/style.ts
+apps/server/src/routes/import-export.ts
+apps/server/src/utils/errors.ts

@@ -1,0 +1,10 @@
+=== z.record arity ===
+packages/shared/src/chapter-version.ts:11:    attrs: z.record(z.unknown()).optional(),
+
+=== .passthrough() ===
+
+=== z.string().email/url/uuid/datetime ===
+
+=== ZodError.errors ===
+
+=== chained .default().optional() ===
