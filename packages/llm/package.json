@@ -17,8 +17,7 @@
     "@anthropic-ai/sdk": "^0.65.0",
     "@book-forge/shared": "workspace:*",
     "p-retry": "^6.2.1",
-    "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.24.1"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

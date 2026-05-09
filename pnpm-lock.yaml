@@ -40,7 +40,7 @@ importers:
         version: 1.1.45(ws@8.20.0)
       '@langchain/langgraph':
         specifier: ^1.3.0
-        version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76)
+        version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
       '@langchain/langgraph-checkpoint-sqlite':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.45(ws@8.20.0))(@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0)))
@@ -63,8 +63,8 @@ importers:
         specifier: ^0.1.7-alpha.2
         version: 0.1.9
       zod:
-        specifier: ^3.24.1
-        version: 3.25.76
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.12
@@ -195,7 +195,7 @@ importers:
         version: 1.1.45(ws@8.20.0)
       '@langchain/langgraph':
         specifier: ^1.3.0
-        version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76)
+        version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
       '@langchain/langgraph-checkpoint-sqlite':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.45(ws@8.20.0))(@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0)))
@@ -203,8 +203,8 @@ importers:
         specifier: ^11.7.0
         version: 11.10.0
       zod:
-        specifier: ^3.24.1
-        version: 3.25.76
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.12
@@ -220,10 +220,10 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.136
-        version: 0.2.136(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+        version: 0.2.136(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       '@anthropic-ai/sdk':
         specifier: ^0.65.0
-        version: 0.65.0(zod@3.25.76)
+        version: 0.65.0(zod@4.4.3)
       '@book-forge/shared':
         specifier: workspace:*
         version: link:../shared
@@ -231,11 +231,8 @@ importers:
         specifier: ^6.2.1
         version: 6.2.1
       zod:
-        specifier: ^3.24.1
-        version: 3.25.76
-      zod-to-json-schema:
-        specifier: ^3.24.1
-        version: 3.25.2(zod@3.25.76)
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -269,8 +266,8 @@ importers:
   packages/shared:
     dependencies:
       zod:
-        specifier: ^3.24.1
-        version: 3.25.76
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -3507,8 +3504,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
 
@@ -3538,11 +3535,11 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.2.136':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk@0.2.136(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
+  '@anthropic-ai/claude-agent-sdk@0.2.136(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
-      '@anthropic-ai/sdk': 0.81.0(zod@3.25.76)
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
-      zod: 3.25.76
+      '@anthropic-ai/sdk': 0.81.0(zod@4.4.3)
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      zod: 4.4.3
     optionalDependencies:
       '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.2.136
       '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.2.136
@@ -3556,17 +3553,17 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@anthropic-ai/sdk@0.65.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.65.0(zod@4.4.3)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@anthropic-ai/sdk@0.81.0(zod@3.25.76)':
+  '@anthropic-ai/sdk@0.81.0(zod@4.4.3)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
   '@asamuzakjp/css-color@3.2.0':
     dependencies:
@@ -4143,7 +4140,7 @@ snapshots:
       langsmith: 0.6.3(ws@8.20.0)
       mustache: 4.2.0
       p-queue: 6.6.2
-      zod: 3.25.76
+      zod: 4.4.3
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -4180,7 +4177,7 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/langgraph@1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76)':
+  '@langchain/langgraph@1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@langchain/core': 1.1.45(ws@8.20.0)
       '@langchain/langgraph-checkpoint': 1.0.2(@langchain/core@1.1.45(ws@8.20.0))
@@ -4188,9 +4185,9 @@ snapshots:
       '@langchain/protocol': 0.0.15
       '@standard-schema/spec': 1.1.0
       uuid: 10.0.0
-      zod: 3.25.76
+      zod: 4.4.3
     optionalDependencies:
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -4204,7 +4201,7 @@ snapshots:
 
   '@langchain/protocol@0.0.15': {}
 
-  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.18)
       ajv: 8.20.0
@@ -4221,8 +4218,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
@@ -6315,8 +6312,8 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  zod@3.25.76: {}
+  zod@4.4.3: {}
