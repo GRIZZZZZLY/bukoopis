@@ -197,9 +197,17 @@ export function BookPage() {
 
   return (
     <main className="max-w-3xl mx-auto p-8 flex flex-col gap-6">
-      <Link to="/books" className="text-sm underline">
-        ← К списку книг
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link to="/books" className="text-sm underline">
+          ← К списку книг
+        </Link>
+        <Link
+          to={`/books/${bookId}/studio`}
+          className="text-sm border border-blue-600 text-blue-600 rounded-md px-3 py-1 hover:bg-blue-600 hover:text-white"
+        >
+          ✨ Открыть Studio
+        </Link>
+      </div>
 
       <section className="flex flex-col gap-3">
         <input
