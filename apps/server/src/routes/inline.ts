@@ -15,6 +15,10 @@ import {
 import type { ChapterRow, BookRow } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
+import {
+  loadStudioContext,
+  studioContextToPrompt,
+} from "../utils/studio-context.js";
 
 export function createInlineRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
@@ -65,7 +69,11 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
     ];
     if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
     bookContextLines.push(`Текущая глава: "${ch.title}"`);
-    const bookContext = bookContextLines.join("\n");
+    const baseBookContext = bookContextLines.join("\n");
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
+    const bookContext = studioCtx
+      ? `${baseBookContext}\n\n${studioCtx}`
+      : baseBookContext;
 
     const contextTexts = [
       ch.intent,

@@ -25,6 +25,10 @@ import { indexChapterVersion } from "@book-forge/retrieval";
 import { toVersion } from "../db/rows.js";
 import { loadStyleContext } from "../utils/style-context.js";
 import { logUsage } from "../utils/usageLogger.js";
+import {
+  loadStudioContext,
+  studioContextToPrompt,
+} from "../utils/studio-context.js";
 import type {
   ChapterRow,
   ChapterVersionRow,
@@ -242,7 +246,11 @@ export function createCritiqueRoute(
       `Премиса: ${book.premise ?? "(не задана)"}`,
     ];
     if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
-    const bookContext = bookContextLines.join("\n");
+    const baseBookContext = bookContextLines.join("\n");
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
+    const bookContext = studioCtx
+      ? `${baseBookContext}\n\n${studioCtx}`
+      : baseBookContext;
 
     const criticInput: CriticInput = {
       chapterText: version.content_text,
@@ -465,7 +473,11 @@ export function createCritiqueRoute(
       `Премиса: ${book.premise ?? "(не задана)"}`,
     ];
     if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
-    const bookContext = bookContextLines.join("\n");
+    const baseBookContext = bookContextLines.join("\n");
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
+    const bookContext = studioCtx
+      ? `${baseBookContext}\n\n${studioCtx}`
+      : baseBookContext;
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
