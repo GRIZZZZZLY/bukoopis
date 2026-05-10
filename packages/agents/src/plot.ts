@@ -47,18 +47,25 @@ export interface GenerateBookOutlineInput {
   bookTitle: string;
   premise: string;
   language: string;
+  studioContext?: string | null;
   config?: GenerationConfig;
   onUsage?: UsageHandler;
 }
 
 function buildBookOutlinePrompt(input: GenerateBookOutlineInput): string {
   const variants = input.config?.variants ?? 2;
-  return [
+  const parts: string[] = [
     `Книга: "${input.bookTitle}"`,
     `Язык: ${input.language}`,
     `Премиса автора:\n${input.premise}`,
+  ];
+  if (input.studioContext) {
+    parts.push(`Контекст studio:\n${input.studioContext}`);
+  }
+  parts.push(
     `\nСгенерируй ровно ${variants} существенно различных вариантов outline.`,
-  ].join("\n\n---\n\n");
+  );
+  return parts.join("\n\n---\n\n");
 }
 
 const plotOutlineContract: AgentStructuredContract<
@@ -122,6 +129,7 @@ export interface GenerateChapterPlanInput {
   bookTitle: string;
   bookPremise: string;
   bookOutline: string | null;
+  studioContext?: string | null;
   chapterTitle: string;
   intent: string;
   previousChaptersSummary: string | null;
@@ -135,6 +143,9 @@ function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
     `Книга: "${input.bookTitle}"`,
     `Премиса: ${input.bookPremise}`,
   ];
+  if (input.studioContext) {
+    stableParts.push(`Контекст studio:\n${input.studioContext}`);
+  }
   if (input.bookOutline) {
     stableParts.push(`Outline книги:\n${input.bookOutline}`);
   }
