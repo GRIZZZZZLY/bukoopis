@@ -26,6 +26,7 @@ export interface WriteChapterInput {
   bookTitle: string;
   bookPremise: string;
   bookOutline: string | null;
+  studioContext: string | null;
   chapterTitle: string;
   beatSheet: ChapterBeatSheetVariant;
   previousChaptersSummary: string | null;
@@ -74,6 +75,9 @@ export async function* writeChapter(
   ];
   if (input.bookOutline) {
     stableParts.push(`Outline книги:\n${input.bookOutline}`);
+  }
+  if (input.studioContext) {
+    stableParts.push(`Контекст studio:\n${input.studioContext}`);
   }
   if (input.previousChaptersSummary) {
     stableParts.push(
