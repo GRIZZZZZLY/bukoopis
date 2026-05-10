@@ -21,6 +21,10 @@ import {
 } from "@book-forge/agents";
 import { indexChapterVersion } from "@book-forge/retrieval";
 import { loadStyleContext } from "../utils/style-context.js";
+import {
+  loadStudioContext,
+  studioContextToPrompt,
+} from "../utils/studio-context.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 import { triggerVersionSummary } from "../utils/summary-trigger.js";
@@ -138,10 +142,12 @@ export function createPlotRoute(
       return badRequest(c, "premise required to generate outline");
     }
 
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, id));
     const variants = await runBookPlanning({
       bookTitle: ctx.title,
       premise: ctx.premise,
       language: ctx.language,
+      ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
       onUsage: (usage) =>
         logUsage(sqlite, {
@@ -215,6 +221,7 @@ export function createPlotRoute(
       ch.order_index,
     );
 
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
     const variants = await runChapterPlan({
       bookTitle: ctx.title,
       bookPremise: ctx.premise,
@@ -222,6 +229,7 @@ export function createPlotRoute(
       chapterTitle: ch.title,
       intent: parsed.data.intent,
       previousChaptersSummary: prevSummary,
+      ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
       onUsage: (usage) =>
         logUsage(sqlite, {
@@ -350,6 +358,7 @@ export function createPlotRoute(
         : null;
 
     const styleCtx = loadStyleContext(sqlite, ctx.styleProfileId);
+    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -369,6 +378,7 @@ export function createPlotRoute(
           characterContext,
           loreContext,
           styleContext: styleCtx.prompt,
+          studioContext: studioCtx,
           fatigueWords: styleCtx.fatigueBlacklist,
           config: { variants: 1, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.writerModel },
           provider: ctx.writerProvider,
