@@ -1,5 +1,6 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { hybridSearch } from "@book-forge/retrieval";
+import { rerankByRelevance, rerankEnabled } from "./rerank.js";
 
 /**
  * Phase 1 — wire `hybridSearch` into Writer/Plot.
@@ -67,21 +68,31 @@ export async function gatherRetrievedChunks(
 
   // Dedupe by chapter — hits are already RRF-ranked, keep the best chunk per
   // chapter so the block spreads across chapters instead of one dominating.
+  // When the reranker is enabled we keep a larger pool, then narrow to topK.
+  const poolCap = rerankEnabled() ? (opts.candidateK ?? topK * 4) : topK;
   const seen = new Set<number>();
-  const picked: RetrievedChunk[] = [];
+  const pool: RetrievedChunk[] = [];
   for (const h of hits) {
     const key = h.chapterId ?? -1;
     if (seen.has(key)) continue;
     seen.add(key);
-    picked.push({
+    pool.push({
       chapterOrder: h.chapterOrder,
       text: h.text,
       score: h.score,
     });
-    if (picked.length >= topK) break;
+    if (pool.length >= poolCap) break;
   }
 
-  if (picked.length === 0) return { chunks: [], promptBlock: null };
+  if (pool.length === 0) return { chunks: [], promptBlock: null };
+
+  // Off by default → exact passthrough (pool already capped at topK).
+  const picked = await rerankByRelevance(
+    pool,
+    query,
+    (c) => c.text,
+    topK,
+  );
 
   const blocks = picked
     .map((c) => {

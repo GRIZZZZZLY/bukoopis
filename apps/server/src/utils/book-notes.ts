@@ -6,6 +6,7 @@ import {
 import { getEmbeddingProvider } from "@book-forge/retrieval";
 import type { EpisodicNoteExtraction, NoteKind } from "@book-forge/shared";
 import { logUsage } from "./usageLogger.js";
+import { rerankByRelevance, rerankEnabled } from "./rerank.js";
 
 /**
  * Phase 4 — episodic memory repository.
@@ -129,11 +130,15 @@ export async function gatherRelevantNotes(
   if (open.length === 0) return [];
   if (open.length <= k) return open;
 
+  // Larger pool when the reranker is on, then narrow to k.
+  const poolK = rerankEnabled() ? Math.min(open.length, k * 4) : k;
+  const noteText = (n: OpenNote): string => `${n.title}\n${n.body}`;
+
   let qVec: Float32Array;
   try {
     qVec = await getEmbeddingProvider().embed(q);
   } catch {
-    return open.slice(0, k);
+    return rerankByRelevance(open.slice(0, poolK), q, noteText, k);
   }
 
   if (vecAvailable(sqlite)) {
@@ -146,7 +151,7 @@ export async function gatherRelevantNotes(
            WHERE v.embedding MATCH ? AND v.k = ?
            ORDER BY v.distance ASC`,
         )
-        .all(floatToBlob(qVec), k * 4) as Array<{
+        .all(floatToBlob(qVec), poolK * 4) as Array<{
         id: number;
         distance: number;
       }>;
@@ -156,9 +161,11 @@ export async function gatherRelevantNotes(
         if (!openIds.has(r.id)) continue;
         const note = byId.get(r.id);
         if (note) picked.push(note);
-        if (picked.length >= k) break;
+        if (picked.length >= poolK) break;
       }
-      if (picked.length > 0) return picked;
+      if (picked.length > 0) {
+        return rerankByRelevance(picked, q, noteText, k);
+      }
     } catch {
       /* fall through to JS cosine */
     }
@@ -175,9 +182,10 @@ export async function gatherRelevantNotes(
   for (const e of withEmb) {
     score.set(e.id, cosine(qVec, blobToFloat32(e.embedding)));
   }
-  return [...open]
+  const cosinePool = [...open]
     .sort((a, b) => (score.get(b.id) ?? -1) - (score.get(a.id) ?? -1))
-    .slice(0, k);
+    .slice(0, poolK);
+  return rerankByRelevance(cosinePool, q, noteText, k);
 }
 
 /**
