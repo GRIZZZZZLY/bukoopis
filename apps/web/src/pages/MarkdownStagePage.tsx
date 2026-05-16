@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
 import { api } from "@/api/client";
-import type { StageId, StageState, StudioState } from "@book-forge/shared";
+import type { BookConcept, StageId, StageState, StudioState } from "@book-forge/shared";
+import { StageStepper } from "@/components/studio/StageStepper";
 import { AspectRunner } from "@/components/studio/aspect-engine/AspectRunner";
 import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
 import { createMarkdownAdapter } from "@/components/studio/aspect-engine/markdownAdapter";
@@ -20,9 +21,9 @@ const STAGE_LABELS: Record<StageId, string> = {
   chapters: "Главы",
 };
 
-const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore"]);
+const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore", "plot"]);
 
-function isMarkdownStage(s: string): s is "world" | "lore" {
+function isMarkdownStage(s: string): s is "world" | "lore" | "plot" {
   return MARKDOWN_STAGES.has(s);
 }
 
@@ -34,9 +35,10 @@ export function MarkdownStagePage() {
   if (!rawStageId || !isMarkdownStage(rawStageId)) {
     return <Navigate to={`/books/${bookId}/studio`} replace />;
   }
-  const stageId: "world" | "lore" = rawStageId;
+  const stageId: "world" | "lore" | "plot" = rawStageId;
 
   const [studio, setStudio] = useState<StudioState | null>(null);
+  const [concept, setConcept] = useState<BookConcept | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,8 +46,14 @@ export function MarkdownStagePage() {
     let alive = true;
     (async () => {
       try {
-        const s = await api.getStudioState(bookId);
-        if (alive) setStudio(s);
+        const [s, c] = await Promise.all([
+          api.getStudioState(bookId),
+          api.getConcept(bookId),
+        ]);
+        if (alive) {
+          setStudio(s);
+          setConcept(c);
+        }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
@@ -83,7 +91,7 @@ export function MarkdownStagePage() {
       </main>
     );
   }
-  if (!studio) {
+  if (!studio || !concept) {
     return <main className="max-w-5xl mx-auto p-8">Загрузка…</main>;
   }
 
@@ -102,12 +110,13 @@ export function MarkdownStagePage() {
 
   return (
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-baseline">
-        <h1 className="text-3xl font-bold">{STAGE_LABELS[stageId]}</h1>
-        <Link to={`/books/${bookId}/studio`} className="text-sm underline">
-          ← к Studio
-        </Link>
-      </div>
+      <StageStepper
+        bookId={bookId}
+        concept={concept}
+        studioState={studio}
+        activeStageId={stageId}
+      />
+      <h1 className="text-3xl font-bold">{STAGE_LABELS[stageId]}</h1>
 
       {stage.aspects.length === 0 ? (
         <PlaybookRunner

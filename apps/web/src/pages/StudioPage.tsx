@@ -8,10 +8,12 @@ import type {
   StudioState,
   StudioWarning,
 } from "@book-forge/shared";
-import { computeRecommendedNextStage } from "@book-forge/shared";
+import { computeRecommendedNextStage, computeStudioProgress } from "@book-forge/shared";
 import { StageCard } from "@/components/studio/StageCard";
 import { WarningsFeed } from "@/components/studio/WarningsFeed";
 import { ConceptForm } from "@/components/studio/concept/ConceptForm";
+import { StageStepper } from "@/components/studio/StageStepper";
+import { stageRoute } from "@/lib/studio-routes";
 
 const STAGE_LABELS: Record<StageId, string> = {
   concept: "Концепт",
@@ -73,6 +75,9 @@ export function StudioPage() {
     studioState: studio,
   });
 
+  const progress = computeStudioProgress(concept, studio);
+  const continueStage = progress.recommended ?? "chapters";
+
   async function handleSaveConcept(next: BookConcept): Promise<BookConcept> {
     const saved = await api.patchConcept(bookId, next);
     setConcept(saved);
@@ -91,7 +96,7 @@ export function StudioPage() {
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
       <div className="flex justify-between items-baseline">
         <h1 className="text-3xl font-bold">Studio</h1>
-        <nav className="flex gap-3 text-sm">
+        <nav aria-label="Навигация по студии" className="flex gap-3 text-sm">
           <Link
             to={`/books/${bookId}/studio/settings`}
             className="underline"
@@ -105,6 +110,41 @@ export function StudioPage() {
             📚 Главы
           </Link>
         </nav>
+      </div>
+
+      <StageStepper
+        bookId={bookId}
+        concept={concept}
+        studioState={studio}
+        activeStageId="concept"
+      />
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div
+          className="h-2 flex-1 min-w-[8rem] rounded bg-[var(--color-muted)] overflow-hidden"
+          role="progressbar"
+          aria-label="Прогресс книги"
+          aria-valuemin={0}
+          aria-valuemax={7}
+          aria-valuenow={progress.doneCount}
+        >
+          <div
+            className="h-full bg-blue-500"
+            style={{ width: `${(progress.doneCount / 7) * 100}%` }}
+          />
+        </div>
+        <span className="text-sm text-[var(--color-muted-foreground)]">
+          Готово {progress.doneCount}/7
+          {progress.recommended
+            ? ` · Далее: ${STAGE_LABELS[progress.recommended]}`
+            : " · Книга проработана"}
+        </span>
+        <Link
+          to={stageRoute(bookId, continueStage)}
+          className="text-sm border border-blue-600 text-blue-600 rounded-md px-3 py-1 hover:bg-blue-600 hover:text-white"
+        >
+          Продолжить →
+        </Link>
       </div>
 
       <section aria-labelledby="warnings-heading" className="flex flex-col gap-2">
@@ -150,10 +190,6 @@ export function StudioPage() {
           })}
         </div>
       </section>
-
-      <p className="text-xs text-[var(--color-muted-foreground)]">
-        Phase A: dashboard shell. Контент стадий появится в фазах B–H.
-      </p>
     </main>
   );
 }

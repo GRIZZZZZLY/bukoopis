@@ -3,13 +3,16 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/AlertDialog";
 import { PageSkeleton } from "@/components/ui/Skeleton";
+import { StageStepper } from "@/components/studio/StageStepper";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { estimatePerChapterUsd } from "@/lib/chapter-cost";
 import type {
   Book,
+  BookConcept,
   BookStatus,
   ModelChoice,
+  StudioState,
   StyleProfile,
   WriterProvider,
 } from "@book-forge/shared";
@@ -25,6 +28,8 @@ export function SettingsStagePage() {
 
   const [book, setBook] = useState<Book | null>(null);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
+  const [concept, setConcept] = useState<BookConcept | null>(null);
+  const [studio, setStudio] = useState<StudioState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
@@ -42,12 +47,16 @@ export function SettingsStagePage() {
   async function load() {
     setError(null);
     try {
-      const [b, sp] = await Promise.all([
+      const [b, sp, c, s] = await Promise.all([
         api.getBook(id),
         api.listStyleProfiles(),
+        api.getConcept(id),
+        api.getStudioState(id),
       ]);
       setBook(b);
       setStyleProfiles(sp);
+      setConcept(c);
+      setStudio(s);
       setTitle(b.title);
       setStatus(b.status);
       setStyleProfileId(b.styleProfileId);
@@ -106,6 +115,15 @@ export function SettingsStagePage() {
     }
   }
 
+  if (!Number.isFinite(id)) {
+    return (
+      <main className="max-w-3xl mx-auto p-8">
+        <p role="alert" className="text-sm text-red-600">
+          Книга не найдена
+        </p>
+      </main>
+    );
+  }
   if (error) {
     return (
       <main className="max-w-3xl mx-auto p-8">
@@ -115,12 +133,13 @@ export function SettingsStagePage() {
       </main>
     );
   }
-  if (!book) {
+  if (!book || !concept || !studio) {
     return <PageSkeleton label="Настройки книги загружаются" />;
   }
 
   return (
     <main className="max-w-3xl mx-auto p-8 flex flex-col gap-6">
+      <StageStepper bookId={id} concept={concept} studioState={studio} />
       <div className="flex justify-between items-baseline">
         <h1 className="text-3xl font-bold">Настройки</h1>
         <Link to={`/books/${id}/studio`} className="text-sm underline">

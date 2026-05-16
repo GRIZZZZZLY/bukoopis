@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ChaptersStagePage } from "./ChaptersStagePage";
 import { api } from "@/api/client";
+import { emptyBookConcept, emptyStudioState } from "@book-forge/shared";
 
 vi.mock("@/api/client", () => ({
   api: {
@@ -11,6 +12,8 @@ vi.mock("@/api/client", () => ({
     listChapters: vi.fn(),
     createChapter: vi.fn(),
     updateChapter: vi.fn(),
+    getConcept: vi.fn(),
+    getStudioState: vi.fn(),
   },
 }));
 
@@ -58,16 +61,35 @@ describe("ChaptersStagePage", () => {
     m.listChapters.mockResolvedValue([
       { id: 11, title: "Глава раз", orderIndex: 10, status: "draft" },
     ] as never);
+    m.getConcept.mockResolvedValue(emptyBookConcept() as never);
+    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() =>
       expect(screen.getByText("Глава раз")).toBeInTheDocument(),
     );
   });
 
+  it("shows an error for a non-numeric bookId instead of an infinite skeleton", () => {
+    render(
+      <MemoryRouter initialEntries={["/books/abc/studio/chapters"]}>
+        <Routes>
+          <Route
+            path="/books/:bookId/studio/chapters"
+            element={<ChaptersStagePage />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Книга не найдена/)).toBeInTheDocument();
+    expect(m.getBook).not.toHaveBeenCalled();
+  });
+
   it("adds a chapter via the form", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listChapters.mockResolvedValue([] as never);
     m.createChapter.mockResolvedValue({} as never);
+    m.getConcept.mockResolvedValue(emptyBookConcept() as never);
+    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() => screen.getByPlaceholderText("Название главы"));
     await userEvent.type(

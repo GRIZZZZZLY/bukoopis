@@ -77,6 +77,64 @@ describe("computeStudioWarnings", () => {
   });
 });
 
+import { computeStudioProgress } from "./studio-warnings.js";
+import type { StudioState } from "./studio-state.js";
+
+describe("computeStudioProgress", () => {
+  function stateWith(
+    statuses: Partial<Record<string, "complete" | "skipped" | "in_progress">>,
+  ): StudioState {
+    const s = emptyStudioState();
+    for (const [id, status] of Object.entries(statuses)) {
+      s.stages[id] = { status: status!, playbookGenerated: false, aspects: [] };
+    }
+    return s;
+  }
+
+  it("empty studio: nothing done, recommended is concept", () => {
+    const p = computeStudioProgress(emptyBookConcept(), emptyStudioState());
+    expect(p.total).toBe(7);
+    expect(p.doneCount).toBe(0);
+    expect(p.recommended).toBe("concept");
+    expect(p.stages).toHaveLength(7);
+    expect(p.stages[0]).toEqual({ id: "concept", status: "current", done: false });
+  });
+
+  it("counts complete and skipped as done", () => {
+    const p = computeStudioProgress(
+      emptyBookConcept(),
+      stateWith({ concept: "complete", world: "skipped", lore: "complete" }),
+    );
+    expect(p.doneCount).toBe(3);
+    const byId = Object.fromEntries(p.stages.map((s) => [s.id, s]));
+    expect(byId.concept!.done).toBe(true);
+    expect(byId.world!.done).toBe(true);
+    expect(byId.lore!.done).toBe(true);
+    expect(byId.characters!.done).toBe(false);
+  });
+
+  it("marks the recommended stage as current", () => {
+    const p = computeStudioProgress(
+      emptyBookConcept(),
+      stateWith({ concept: "complete" }),
+    );
+    expect(p.recommended).toBe("world");
+    const world = p.stages.find((s) => s.id === "world")!;
+    expect(world.status).toBe("current");
+  });
+
+  it("all done: doneCount 7, recommended undefined, no current", () => {
+    const all = stateWith({
+      concept: "complete", world: "complete", lore: "complete",
+      characters: "complete", items: "complete", plot: "complete", chapters: "complete",
+    });
+    const p = computeStudioProgress(emptyBookConcept(), all);
+    expect(p.doneCount).toBe(7);
+    expect(p.recommended).toBeUndefined();
+    expect(p.stages.every((s) => s.status === "done")).toBe(true);
+  });
+});
+
 describe("computeRecommendedNextStage", () => {
   it("recommends concept on empty state", () => {
     expect(

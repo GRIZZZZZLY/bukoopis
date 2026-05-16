@@ -21,6 +21,7 @@ import type {
   Item,
   Location,
   Relationship,
+  StageId,
   StudioState,
   StudioWarning,
   UpdateBookInput,
@@ -365,6 +366,8 @@ export const api = {
     }),
   getStudioWarnings: (bookId: number) =>
     req<StudioWarning[]>(`/api/books/${bookId}/studio-warnings`),
+  listRecommended: () =>
+    req<Record<number, StageId>>("/api/books/recommended"),
   refineConceptField: (
     bookId: number,
     field: "protagonist" | "conflict" | "stakes" | "logline",

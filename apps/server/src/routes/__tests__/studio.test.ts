@@ -123,4 +123,34 @@ describe("studio routes", () => {
     const body = (await r.json()) as Array<{ id: string }>;
     expect(Array.isArray(body)).toBe(true);
   });
+
+  it("GET /api/books/recommended returns concept for a fresh book", async () => {
+    const id = await createBook();
+    const r = await send(t.app, "/api/books/recommended", "GET");
+    expect(r.status).toBe(200);
+    const map = (await r.json()) as Record<string, string>;
+    expect(map[String(id)]).toBe("concept");
+  });
+
+  it("GET /api/books/recommended advances after concept is completed", async () => {
+    const id = await createBook();
+    const current = await sendJson<{ revision: number }>(
+      t.app,
+      `/api/books/${id}/studio-state`,
+      "GET",
+    );
+    await send(t.app, `/api/books/${id}/studio-state`, "PATCH", {
+      expectedRevision: current.revision,
+      next: {
+        schemaVersion: 1,
+        revision: current.revision,
+        stages: {
+          concept: { status: "complete", playbookGenerated: false, aspects: [] },
+        },
+      },
+    });
+    const r = await send(t.app, "/api/books/recommended", "GET");
+    const map = (await r.json()) as Record<string, string>;
+    expect(map[String(id)]).toBe("world");
+  });
 });

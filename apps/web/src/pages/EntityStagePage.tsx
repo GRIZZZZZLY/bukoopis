@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
 import { api } from "@/api/client";
-import type { StageId, StageState, StudioState } from "@book-forge/shared";
+import type { BookConcept, StageId, StageState, StudioState } from "@book-forge/shared";
+import { StageStepper } from "@/components/studio/StageStepper";
 import { EntityStageRunner } from "@/components/studio/aspect-engine/EntityStageRunner";
 import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
 import {
@@ -29,6 +30,7 @@ export function EntityStagePage() {
   const stageId: "characters" | "items" = rawStageId;
 
   const [studio, setStudio] = useState<StudioState | null>(null);
+  const [concept, setConcept] = useState<BookConcept | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,8 +38,11 @@ export function EntityStagePage() {
     let alive = true;
     (async () => {
       try {
-        const s = await api.getStudioState(bookId);
-        if (alive) setStudio(s);
+        const [s, c] = await Promise.all([
+          api.getStudioState(bookId),
+          api.getConcept(bookId),
+        ]);
+        if (alive) { setStudio(s); setConcept(c); }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       }
@@ -87,7 +92,7 @@ export function EntityStagePage() {
       </main>
     );
   }
-  if (!studio) {
+  if (!studio || !concept) {
     return <main className="max-w-5xl mx-auto p-8">Загрузка…</main>;
   }
 
@@ -105,12 +110,13 @@ export function EntityStagePage() {
 
   return (
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-baseline">
-        <h1 className="text-3xl font-bold">{STAGE_LABELS[stageId]}</h1>
-        <Link to={`/books/${bookId}/studio`} className="text-sm underline">
-          ← к Studio
-        </Link>
-      </div>
+      <StageStepper
+        bookId={bookId}
+        concept={concept}
+        studioState={studio}
+        activeStageId={stageId as StageId}
+      />
+      <h1 className="text-3xl font-bold">{STAGE_LABELS[stageId]}</h1>
 
       {stage.aspects.length === 0 ? (
         <PlaybookRunner
