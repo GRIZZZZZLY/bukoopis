@@ -57,6 +57,21 @@ describe("SettingsStagePage", () => {
     expect(screen.queryByDisplayValue("СТАРЫЙ ЗАМЫСЕЛ")).not.toBeInTheDocument();
   });
 
+  it("shows an error for a non-numeric bookId instead of an infinite skeleton", () => {
+    render(
+      <MemoryRouter initialEntries={["/books/abc/studio/settings"]}>
+        <Routes>
+          <Route
+            path="/books/:bookId/studio/settings"
+            element={<SettingsStagePage />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Книга не найдена/)).toBeInTheDocument();
+    expect(m.getBook).not.toHaveBeenCalled();
+  });
+
   it("saves without sending premise", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);

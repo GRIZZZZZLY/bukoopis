@@ -106,6 +106,15 @@ export function SettingsStagePage() {
     }
   }
 
+  if (!Number.isFinite(id)) {
+    return (
+      <main className="max-w-3xl mx-auto p-8">
+        <p role="alert" className="text-sm text-red-600">
+          Книга не найдена
+        </p>
+      </main>
+    );
+  }
   if (error) {
     return (
       <main className="max-w-3xl mx-auto p-8">
