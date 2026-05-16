@@ -34,6 +34,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   });
 
   app.route("/api/health", createHealthRoute({ sqlite, hasVec }));
+  app.route("/api", createStudioRoute(sqlite));
   app.route("/api/books", createBooksRoute(sqlite));
   app.route("/api/chapters", createChaptersRoute(sqlite, hasVec));
   app.route("/api", createPlotRoute(sqlite, hasVec));
@@ -45,7 +46,6 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
-  app.route("/api", createStudioRoute(sqlite));
 
   return {
     app,

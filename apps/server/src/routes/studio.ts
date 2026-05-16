@@ -4,6 +4,7 @@ import {
   bookConceptSchema,
   studioStateSchema,
   computeStudioWarnings,
+  computeStudioProgress,
   type CanonSummary,
 } from "@book-forge/shared";
 import { z } from "zod";
@@ -126,6 +127,20 @@ function loadCanonSummary(sqlite: DatabaseType, bookId: number): CanonSummary {
 export function createStudioRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
+
+  r.get("/books/recommended", (c) => {
+    const rows = sqlite
+      .prepare("SELECT id FROM books")
+      .all() as { id: number }[];
+    const out: Record<number, string> = {};
+    for (const { id } of rows) {
+      const concept = repo.loadConcept(id);
+      const studioState = repo.loadStudioState(id);
+      const progress = computeStudioProgress(concept, studioState);
+      out[id] = progress.recommended ?? "chapters";
+    }
+    return c.json(out);
+  });
 
   r.get("/books/:id/concept", (c) => {
     const id = Number(c.req.param("id"));
