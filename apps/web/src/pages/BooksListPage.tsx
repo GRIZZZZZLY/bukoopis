@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { BookPlus } from "lucide-react";
@@ -11,6 +11,7 @@ export function BooksListPage() {
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
 
   async function load() {
     setError(null);
@@ -31,12 +32,10 @@ export function BooksListPage() {
     setCreating(true);
     setError(null);
     try {
-      await api.createBook({ title: title.trim() });
-      setTitle("");
-      await load();
+      const created = await api.createBook({ title: title.trim() });
+      navigate(`/books/${created.id}/studio`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setCreating(false);
     }
   }
@@ -133,7 +132,7 @@ export function BooksListPage() {
                 key={b.id}
                 className="border border-[var(--color-border)] rounded-md p-4 hover:bg-[var(--color-accent)] hover:shadow-sm transition-shadow"
               >
-                <Link to={`/books/${b.id}`} className="block">
+                <Link to={`/books/${b.id}/studio`} className="block">
                   <div className="font-medium">{b.title}</div>
                   <div className="text-xs text-[var(--color-muted-foreground)]">
                     {new Date(b.createdAt).toLocaleString("ru-RU")} · {b.status}
