@@ -126,3 +126,35 @@ export function computeRecommendedNextStage(
   }
   return undefined;
 }
+
+export interface StudioStageProgress {
+  id: StageId;
+  status: "done" | "current" | "todo";
+  done: boolean;
+}
+
+export interface StudioProgress {
+  stages: StudioStageProgress[];
+  doneCount: number;
+  total: 7;
+  recommended: StageId | undefined;
+}
+
+export function computeStudioProgress(
+  concept: BookConcept,
+  studioState: StudioState,
+): StudioProgress {
+  const recommended = computeRecommendedNextStage({ concept, studioState });
+  const stages: StudioStageProgress[] = STAGE_IDS.map((id) => {
+    const s = stageStatus(studioState, id) ?? "not_started";
+    const done = s === "complete" || s === "skipped";
+    const status: StudioStageProgress["status"] = done
+      ? "done"
+      : id === recommended
+        ? "current"
+        : "todo";
+    return { id, status, done };
+  });
+  const doneCount = stages.filter((s) => s.done).length;
+  return { stages, doneCount, total: 7, recommended };
+}
