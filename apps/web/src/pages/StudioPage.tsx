@@ -123,6 +123,7 @@ export function StudioPage() {
         <div
           className="h-2 flex-1 min-w-[8rem] rounded bg-[var(--color-muted)] overflow-hidden"
           role="progressbar"
+          aria-label="Прогресс книги"
           aria-valuemin={0}
           aria-valuemax={7}
           aria-valuenow={progress.doneCount}
