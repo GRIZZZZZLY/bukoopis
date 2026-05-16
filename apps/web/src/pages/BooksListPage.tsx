@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { BookPlus } from "lucide-react";
 import { api } from "@/api/client";
-import type { Book } from "@book-forge/shared";
+import { stageRoute } from "@/lib/studio-routes";
+import type { Book, StageId } from "@book-forge/shared";
 
 export function BooksListPage() {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recommended, setRecommended] = useState<Record<number, StageId>>({});
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -16,7 +18,13 @@ export function BooksListPage() {
   async function load() {
     setError(null);
     try {
-      setBooks(await api.listBooks());
+      const list = await api.listBooks();
+      setBooks(list);
+      try {
+        setRecommended(await api.listRecommended());
+      } catch {
+        setRecommended({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -138,6 +146,14 @@ export function BooksListPage() {
                     {new Date(b.createdAt).toLocaleString("ru-RU")} · {b.status}
                   </div>
                 </Link>
+                {recommended[b.id] ? (
+                  <Link
+                    to={stageRoute(b.id, recommended[b.id]!)}
+                    className="text-xs text-blue-600 underline mt-1 inline-block"
+                  >
+                    Продолжить →
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>
