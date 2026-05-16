@@ -499,7 +499,7 @@ export function ChapterPage() {
     <main className="max-w-6xl mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-[1fr_320px] gap-6 md:gap-8">
       <section className="flex flex-col gap-4 min-w-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Link to={`/books/${bookId}`} className="text-sm underline">
+          <Link to={`/books/${bookId}/studio/chapters`} className="text-sm underline">
             ← К книге
           </Link>
           <Button

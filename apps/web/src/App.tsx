@@ -5,7 +5,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { BooksListPage } from "@/pages/BooksListPage";
-import { BookPage } from "@/pages/BookPage";
+import { BookRedirect } from "@/pages/BookRedirect";
 import { ChapterPage } from "@/pages/ChapterPage";
 import {
   StyleProfilesListPage,
@@ -15,6 +15,8 @@ import { UsagePage } from "@/pages/UsagePage";
 import { StudioPage } from "@/pages/StudioPage";
 import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
 import { EntityStagePage } from "@/pages/EntityStagePage";
+import { ChaptersStagePage } from "@/pages/ChaptersStagePage";
+import { SettingsStagePage } from "@/pages/SettingsStagePage";
 
 function StagePageDispatch() {
   const { stageId } = useParams<{ stageId: string }>();
@@ -35,11 +37,19 @@ const router = createBrowserRouter([
   },
   {
     path: "/books/:bookId",
-    element: <BookPage />,
+    element: <BookRedirect />,
   },
   {
     path: "/books/:bookId/studio",
     element: <StudioPage />,
+  },
+  {
+    path: "/books/:bookId/studio/chapters",
+    element: <ChaptersStagePage />,
+  },
+  {
+    path: "/books/:bookId/studio/settings",
+    element: <SettingsStagePage />,
   },
   {
     path: "/books/:bookId/studio/:stageId",

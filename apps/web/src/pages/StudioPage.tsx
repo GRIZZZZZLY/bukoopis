@@ -91,9 +91,20 @@ export function StudioPage() {
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
       <div className="flex justify-between items-baseline">
         <h1 className="text-3xl font-bold">Studio</h1>
-        <Link to={`/books/${bookId}`} className="text-sm underline">
-          ← к книге
-        </Link>
+        <nav className="flex gap-3 text-sm">
+          <Link
+            to={`/books/${bookId}/studio/settings`}
+            className="underline"
+          >
+            ⚙ Настройки
+          </Link>
+          <Link
+            to={`/books/${bookId}/studio/chapters`}
+            className="underline"
+          >
+            📚 Главы
+          </Link>
+        </nav>
       </div>
 
       <section aria-labelledby="warnings-heading" className="flex flex-col gap-2">
@@ -120,9 +131,12 @@ export function StudioPage() {
               id === "world" ||
               id === "lore" ||
               id === "characters" ||
-              id === "items"
+              id === "items" ||
+              id === "plot"
                 ? `/books/${bookId}/studio/${id}`
-                : undefined;
+                : id === "chapters"
+                  ? `/books/${bookId}/studio/chapters`
+                  : undefined;
             return (
               <StageCard
                 key={id}
