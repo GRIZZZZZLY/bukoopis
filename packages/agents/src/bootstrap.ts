@@ -3,6 +3,7 @@ import { registerStyleCriticContract } from "./critics/style.js";
 import { registerEditorCriticContract } from "./critics/editor.js";
 import { registerReaderCriticContract } from "./critics/reader.js";
 import { registerCanonGuardContract } from "./canon-extractor.js";
+import { registerCanonFactExtractorContract } from "./canon-fact-extractor.js";
 import {
   registerPlotOutlineContract,
   registerPlotChapterPlanContract,
@@ -31,6 +32,7 @@ export function registerAllAgentContracts(): void {
   registerEditorCriticContract();
   registerReaderCriticContract();
   registerCanonGuardContract();
+  registerCanonFactExtractorContract();
   registerPlotOutlineContract();
   registerPlotChapterPlanContract();
   registerConceptRefinerContract();

@@ -21,6 +21,7 @@ import {
   type CriticInput,
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
+import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { indexChapterVersion } from "@book-forge/retrieval";
 import { toVersion } from "../db/rows.js";
 import { loadStyleContext } from "../utils/style-context.js";
@@ -248,9 +249,22 @@ export function createCritiqueRoute(
     if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
     const baseBookContext = bookContextLines.join("\n");
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
-    const bookContext = studioCtx
-      ? `${baseBookContext}\n\n${studioCtx}`
-      : baseBookContext;
+    // Phase 3: feed temporal canon facts to the Canon Guard critic so it can
+    // flag contradictions against what is *currently* true.
+    const factEntityNames = [
+      ...charResult.characters.map((cc) => cc.character.canonicalName),
+      ...loreResult.locations.map((l) => l.name),
+      ...loreResult.items.map((i) => i.name),
+    ];
+    const factsPrompt = renderActiveFactsPrompt(
+      sqlite,
+      book.id,
+      ch.order_index,
+      factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
+    );
+    const bookContext = `${baseBookContext}${
+      studioCtx ? `\n\n${studioCtx}` : ""
+    }${factsPrompt ? `\n\n${factsPrompt}` : ""}`;
 
     const criticInput: CriticInput = {
       chapterText: version.content_text,
@@ -475,9 +489,22 @@ export function createCritiqueRoute(
     if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
     const baseBookContext = bookContextLines.join("\n");
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
-    const bookContext = studioCtx
-      ? `${baseBookContext}\n\n${studioCtx}`
-      : baseBookContext;
+    // Phase 3: feed temporal canon facts to the Canon Guard critic so it can
+    // flag contradictions against what is *currently* true.
+    const factEntityNames = [
+      ...charResult.characters.map((cc) => cc.character.canonicalName),
+      ...loreResult.locations.map((l) => l.name),
+      ...loreResult.items.map((i) => i.name),
+    ];
+    const factsPrompt = renderActiveFactsPrompt(
+      sqlite,
+      book.id,
+      ch.order_index,
+      factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
+    );
+    const bookContext = `${baseBookContext}${
+      studioCtx ? `\n\n${studioCtx}` : ""
+    }${factsPrompt ? `\n\n${factsPrompt}` : ""}`;
 
     return streamSSE(c, async (stream) => {
       let fullText = "";

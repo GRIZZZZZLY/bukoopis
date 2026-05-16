@@ -5,6 +5,7 @@ export * from "./inline.js";
 export * from "./character.js";
 export * from "./lore.js";
 export * from "./canon-extractor.js";
+export * from "./canon-fact-extractor.js";
 export * from "./summarize-chapter.js";
 export * from "./meta-summarizer.js";
 export * from "./critics/index.js";

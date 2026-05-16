@@ -27,6 +27,7 @@ import {
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import { loadRollingChapterContext } from "../utils/rolling-context.js";
+import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 import { triggerVersionSummary } from "../utils/summary-trigger.js";
@@ -337,6 +338,27 @@ export function createPlotRoute(
         ? loreContextToPrompt(loreResult)
         : null;
 
+    // Phase 3: temporal canon facts for the entities in this scene. Injected
+    // at the route layer (not inside gatherCharacterContext) to keep the
+    // agents package free of the server-only book_facts table.
+    const factEntityNames = [
+      ...charResult.characters.map((cc) => cc.character.canonicalName),
+      ...loreResult.locations.map((l) => l.name),
+      ...loreResult.items.map((i) => i.name),
+    ];
+    const factsPrompt = renderActiveFactsPrompt(
+      sqlite,
+      ch.book_id,
+      ch.order_index,
+      factEntityNames.length > 0
+        ? { entityNames: factEntityNames }
+        : undefined,
+    );
+    const characterContextFinal =
+      factsPrompt !== null
+        ? `${characterContext ? `${characterContext}\n\n` : ""}${factsPrompt}`
+        : characterContext;
+
     const styleCtx = loadStyleContext(sqlite, ctx.styleProfileId);
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
     const writerRetrieved = await gatherRetrievedChunks(sqlite, {
@@ -361,7 +383,7 @@ export function createPlotRoute(
           chapterTitle: ch.title,
           beatSheet,
           previousChaptersSummary: prevSummary,
-          characterContext,
+          characterContext: characterContextFinal,
           loreContext,
           styleContext: styleCtx.prompt,
           studioContext: studioCtx,

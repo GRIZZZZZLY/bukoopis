@@ -2,6 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { summarizeChapter } from "@book-forge/agents";
 import { logUsage } from "./usageLogger.js";
 import { triggerMetaSummary } from "./rolling-context.js";
+import { triggerCanonFactExtraction } from "./book-facts.js";
 
 interface VersionRow {
   id: number;
@@ -79,6 +80,10 @@ export async function triggerVersionSummary(
     // Phase 2: roll older chapters into a bounded meta-summary. Fire-and-
     // forget; its own try/catch keeps the save flow safe.
     void triggerMetaSummary(sqlite, ch.book_id);
+
+    // Phase 3: extract temporal canon facts from this chapter. Same
+    // fire-and-forget contract — failure must not touch the save flow.
+    void triggerCanonFactExtraction(sqlite, versionId);
   } catch (e) {
     console.warn(
       "[summary] generation failed:",
