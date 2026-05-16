@@ -26,6 +26,7 @@ import {
   studioContextToPrompt,
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
+import { loadRollingChapterContext } from "../utils/rolling-context.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 import { triggerVersionSummary } from "../utils/summary-trigger.js";
@@ -90,39 +91,8 @@ function loadBookContext(
   };
 }
 
-function loadPreviousChaptersSummary(
-  sqlite: DatabaseType,
-  bookId: number,
-  beforeOrderIndex: number,
-): string | null {
-  const rows = sqlite
-    .prepare(
-      `SELECT c.id, c.title, c.order_index, v.content_text, v.summary
-       FROM chapters c
-       LEFT JOIN chapter_versions v ON v.id = c.current_version_id
-       WHERE c.book_id = ? AND c.order_index < ?
-       ORDER BY c.order_index ASC`,
-    )
-    .all(bookId, beforeOrderIndex) as Array<{
-    id: number;
-    title: string;
-    order_index: number;
-    content_text: string | null;
-    summary: string | null;
-  }>;
-  if (rows.length === 0) return null;
-  return rows
-    .map((r) => {
-      // Prefer LLM-generated compact summary over raw 1200-char slice.
-      const snippet = r.summary && r.summary.length > 0
-        ? r.summary
-        : r.content_text
-          ? r.content_text.slice(0, 1200)
-          : "(пусто)";
-      return `Глава #${r.order_index} «${r.title}»:\n${snippet}`;
-    })
-    .join("\n\n---\n\n");
-}
+// Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
+// (loadRollingChapterContext — bounded rolling window + meta-summary).
 
 export function createPlotRoute(
   sqlite: DatabaseType,
@@ -216,7 +186,7 @@ export function createPlotRoute(
     const ctx = loadBookContext(sqlite, ch.book_id);
     if (!ctx) return notFound(c, "book");
 
-    const prevSummary = loadPreviousChaptersSummary(
+    const prevSummary = loadRollingChapterContext(
       sqlite,
       ch.book_id,
       ch.order_index,
@@ -325,7 +295,7 @@ export function createPlotRoute(
 
     const ctx = loadBookContext(sqlite, ch.book_id);
     if (!ctx) return notFound(c, "book");
-    const prevSummary = loadPreviousChaptersSummary(
+    const prevSummary = loadRollingChapterContext(
       sqlite,
       ch.book_id,
       ch.order_index,

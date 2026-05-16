@@ -6,6 +6,7 @@ export * from "./character.js";
 export * from "./lore.js";
 export * from "./canon-extractor.js";
 export * from "./summarize-chapter.js";
+export * from "./meta-summarizer.js";
 export * from "./critics/index.js";
 export * from "./graphs/book-planning.js";
 export * from "./graphs/chapter-writing.js";

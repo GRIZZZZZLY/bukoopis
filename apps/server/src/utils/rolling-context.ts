@@ -1,0 +1,192 @@
+import type { Database as DatabaseType } from "better-sqlite3";
+import { metaSummarize } from "@book-forge/agents";
+import { logUsage } from "./usageLogger.js";
+
+/**
+ * Phase 2 — rolling-window previous-chapters context.
+ *
+ * Replaces the old linear `loadPreviousChaptersSummary` (every prior chapter
+ * verbatim → unbounded prompt growth). Now: the last `WINDOW` chapters keep
+ * their full per-chapter summary; everything older collapses into ONE
+ * `book_meta_summaries` row (regenerated fire-and-forget on a threshold).
+ */
+
+export const ROLLING_WINDOW = 3;
+
+interface ChapterRow {
+  title: string;
+  order_index: number;
+  content_text: string | null;
+  summary: string | null;
+}
+interface MetaRow {
+  covers_from_order: number;
+  covers_to_order: number;
+  summary_text: string;
+}
+
+function chapterSnippet(r: ChapterRow): string {
+  const snippet =
+    r.summary && r.summary.length > 0
+      ? r.summary
+      : r.content_text
+        ? r.content_text.slice(0, 1200)
+        : "(пусто)";
+  return `Глава #${r.order_index} «${r.title}»:\n${snippet}`;
+}
+
+/**
+ * Body for the "previous chapters" prompt section. Caller wraps it (Writer:
+ * "Краткое содержание предыдущих глав:\n...", Plot: "Что было…:\n...").
+ * Returns null when there are no prior chapters.
+ */
+export function loadRollingChapterContext(
+  sqlite: DatabaseType,
+  bookId: number,
+  beforeOrderIndex: number,
+  window: number = ROLLING_WINDOW,
+): string | null {
+  const rows = sqlite
+    .prepare(
+      `SELECT c.title, c.order_index, v.content_text, v.summary
+       FROM chapters c
+       LEFT JOIN chapter_versions v ON v.id = c.current_version_id
+       WHERE c.book_id = ? AND c.order_index < ?
+       ORDER BY c.order_index ASC`,
+    )
+    .all(bookId, beforeOrderIndex) as ChapterRow[];
+  if (rows.length === 0) return null;
+
+  const recent = rows.slice(-window);
+  const older = rows.slice(0, Math.max(0, rows.length - window));
+
+  const parts: string[] = [];
+
+  if (older.length > 0) {
+    const meta = sqlite
+      .prepare(
+        `SELECT covers_from_order, covers_to_order, summary_text
+         FROM book_meta_summaries WHERE book_id = ?`,
+      )
+      .get(bookId) as MetaRow | undefined;
+    const olderMax = older[older.length - 1]!.order_index;
+
+    if (meta && meta.covers_to_order >= olderMax) {
+      // Meta fully covers the older run.
+      parts.push(
+        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+      );
+    } else if (meta) {
+      // Meta covers a prefix; remaining older chapters fall back verbatim.
+      parts.push(
+        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+      );
+      const uncovered = older.filter(
+        (r) => r.order_index > meta.covers_to_order,
+      );
+      for (const r of uncovered) parts.push(chapterSnippet(r));
+    } else {
+      // No meta yet — graceful fallback to per-chapter (nothing lost).
+      for (const r of older) parts.push(chapterSnippet(r));
+    }
+  }
+
+  for (const r of recent) parts.push(chapterSnippet(r));
+
+  return parts.join("\n\n---\n\n");
+}
+
+/**
+ * Fire-and-forget: collapse all summarized chapters older than the rolling
+ * window into one meta-summary row. Idempotent — skips when the existing meta
+ * already covers the target range. Mirrors `triggerVersionSummary` (never
+ * throws into the caller's save flow).
+ */
+export async function triggerMetaSummary(
+  sqlite: DatabaseType,
+  bookId: number,
+  window: number = ROLLING_WINDOW,
+): Promise<void> {
+  try {
+    const summarized = sqlite
+      .prepare(
+        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary
+         FROM chapters c
+         JOIN chapter_versions v ON v.id = c.current_version_id
+         WHERE c.book_id = ?
+           AND v.summary IS NOT NULL
+           AND length(v.summary) > 0
+         ORDER BY c.order_index ASC`,
+      )
+      .all(bookId) as Array<{
+      order_index: number;
+      title: string;
+      summary: string;
+    }>;
+
+    if (summarized.length <= window) return; // nothing older than the window
+
+    const older = summarized.slice(0, summarized.length - window);
+    const coversFrom = older[0]!.order_index;
+    const coversTo = older[older.length - 1]!.order_index;
+
+    const existing = sqlite
+      .prepare(
+        `SELECT covers_to_order FROM book_meta_summaries WHERE book_id = ?`,
+      )
+      .get(bookId) as { covers_to_order: number } | undefined;
+    if (existing && existing.covers_to_order >= coversTo) return; // up to date
+
+    const bk = sqlite
+      .prepare("SELECT title, critic_model FROM books WHERE id = ?")
+      .get(bookId) as
+      | { title: string; critic_model: "sonnet" | "opus" }
+      | undefined;
+    if (!bk) return;
+
+    const result = await metaSummarize({
+      bookTitle: bk.title,
+      chapterSummaries: older.map((o) => ({
+        order: o.order_index,
+        title: o.title,
+        summary: o.summary,
+      })),
+      model: bk.critic_model ?? "sonnet",
+    });
+    if (!result.summary) return;
+
+    const now = new Date().toISOString();
+    sqlite
+      .prepare(
+        `INSERT INTO book_meta_summaries
+           (book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(book_id) DO UPDATE SET
+           covers_from_order = excluded.covers_from_order,
+           covers_to_order   = excluded.covers_to_order,
+           summary_text      = excluded.summary_text,
+           model_id          = excluded.model_id,
+           created_at        = excluded.created_at`,
+      )
+      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, now);
+
+    if (result.modelId !== "noop") {
+      logUsage(sqlite, {
+        route: "summary.meta",
+        model: result.modelId,
+        usage: {
+          inputTokens: result.tokens.input,
+          outputTokens: result.tokens.output,
+          cacheCreationInputTokens: result.tokens.cacheCreation,
+          cacheReadInputTokens: result.tokens.cacheRead,
+        },
+        bookId,
+      });
+    }
+  } catch (e) {
+    console.warn(
+      "[meta-summary] generation failed:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
