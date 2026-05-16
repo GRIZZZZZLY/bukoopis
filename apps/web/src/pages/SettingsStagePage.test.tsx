@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { SettingsStagePage } from "./SettingsStagePage";
 import { api } from "@/api/client";
+import { emptyBookConcept, emptyStudioState } from "@book-forge/shared";
 
 vi.mock("@/api/client", () => ({
   api: {
@@ -11,6 +12,8 @@ vi.mock("@/api/client", () => ({
     listStyleProfiles: vi.fn(),
     updateBook: vi.fn(),
     deleteBook: vi.fn(),
+    getConcept: vi.fn(),
+    getStudioState: vi.fn(),
   },
 }));
 
@@ -51,6 +54,8 @@ describe("SettingsStagePage", () => {
   it("renders settings without a Замысел/premise field", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);
+    m.getConcept.mockResolvedValue(emptyBookConcept() as never);
+    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() => screen.getByDisplayValue("Тест"));
     expect(screen.queryByText(/Замысел/)).not.toBeInTheDocument();
@@ -76,6 +81,8 @@ describe("SettingsStagePage", () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);
     m.updateBook.mockResolvedValue(book as never);
+    m.getConcept.mockResolvedValue(emptyBookConcept() as never);
+    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() => screen.getByDisplayValue("Тест"));
     await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));

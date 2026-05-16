@@ -22,9 +22,10 @@ import { OutlinePanel } from "@/components/OutlinePanel";
 import { ImportExportPanel } from "@/components/ImportExportPanel";
 import { SearchPanel } from "@/components/SearchPanel";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
+import { StageStepper } from "@/components/studio/StageStepper";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
-import type { Book, Chapter } from "@book-forge/shared";
+import type { Book, BookConcept, Chapter, StudioState } from "@book-forge/shared";
 
 export function ChaptersStagePage() {
   const { bookId } = useParams<{ bookId: string }>();
@@ -32,18 +33,24 @@ export function ChaptersStagePage() {
 
   const [book, setBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[] | null>(null);
+  const [concept, setConcept] = useState<BookConcept | null>(null);
+  const [studio, setStudio] = useState<StudioState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterTitle, setChapterTitle] = useState("");
 
   async function load() {
     setError(null);
     try {
-      const [b, chs] = await Promise.all([
+      const [b, chs, c, s] = await Promise.all([
         api.getBook(id),
         api.listChapters(id),
+        api.getConcept(id),
+        api.getStudioState(id),
       ]);
       setBook(b);
       setChapters(chs);
+      setConcept(c);
+      setStudio(s);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -86,18 +93,19 @@ export function ChaptersStagePage() {
       </main>
     );
   }
-  if (!book || chapters === null) {
+  if (!book || chapters === null || !concept || !studio) {
     return <PageSkeleton label="Главы загружаются" />;
   }
 
   return (
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-baseline">
-        <h1 className="text-3xl font-bold">Главы</h1>
-        <Link to={`/books/${id}/studio`} className="text-sm underline">
-          ← к Studio
-        </Link>
-      </div>
+      <StageStepper
+        bookId={id}
+        concept={concept}
+        studioState={studio}
+        activeStageId="chapters"
+      />
+      <h1 className="text-3xl font-bold">Главы</h1>
 
       <OutlinePanel book={book} onUpdated={load} />
 
