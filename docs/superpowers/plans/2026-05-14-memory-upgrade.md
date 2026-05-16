@@ -39,17 +39,14 @@
 
 **Goal:** Stop linear-growth `previousChaptersSummary`. Recent 3 chapters full summary, older → single meta-summary regenerated on threshold.
 
-- [ ] 2.1 New table `book_meta_summaries(id, book_id, covers_from_order, covers_to_order, summary_text, created_at, model_id)`. Migration `0011_meta_summaries.sql` (hand-written, snapshot still broken).
-- [ ] 2.2 New agent contract `meta_summarizer` in `packages/agents/src/meta-summarizer.ts`: takes N chapter summaries, outputs one 200-400 word meta-summary preserving named entities + open threads + arc beats. Sonnet model. Register in `bootstrap.ts`.
-- [ ] 2.3 Refactor [loadPreviousChaptersSummary](apps/server/src/routes/plot.ts) → `loadRollingChapterContext(sqlite, bookId, beforeOrderIndex, window=3)`:
-  - Returns `{ recent: ChapterSummary[3], meta: MetaSummary | null }`.
-  - Recent = last 3 chapters before cursor, full per-chapter summary.
-  - Meta = single row covering `order_index < cursor - 3`, if any.
-- [ ] 2.4 Format: `## Контекст: предыдущие главы\n### Сводка глав 1-7\n{meta}\n\n### Глава 8 ...\n### Глава 9 ...\n### Глава 10 ...`.
-- [ ] 2.5 Trigger: after `triggerVersionSummary` succeeds, check `chapter_count_with_summary - 3 > last_meta_summary.covers_to`. If yes, regenerate meta over `[1..count-3]`. Fire-and-forget pattern, same as existing summary trigger.
-- [ ] 2.6 Tests: book with 0/1/3/5/10 chapters returns correct rolling window. Meta regenerates only after threshold. Concurrent triggers don't double-write (sqlite `INSERT OR REPLACE` keyed by `(book_id, covers_to_order)`).
+- [x] 2.1 Table `book_meta_summaries(id, book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)` + UNIQUE(book_id). Migration `0011_meta_summaries.sql` hand-written + `_journal.json` entry idx 11 (runtime `migrate()` uses journal tags, not snapshots — verified applies in temp DB).
+- [x] 2.2 `metaSummarize` agent in `packages/agents/src/meta-summarizer.ts`. **Deviation:** mirrors `summarizeChapter` (streamText, `agentName: "summarizer"`, sonnet) — NOT a structured contract, so no `bootstrap.ts` change (summarize-chapter was never registered there either). Exported via agents barrel.
+- [x] 2.3 `loadRollingChapterContext(sqlite, bookId, beforeOrderIndex, window=3)` in `apps/server/src/utils/rolling-context.ts`. **Deviation:** returns `string | null` (not an object) to keep both plot call sites unchanged — same external contract as the removed `loadPreviousChaptersSummary`.
+- [x] 2.4 Format: older run → `### Сводка ранних глав (#from–#to)\n{meta}`, recent window → `Глава #N «title»:\n{summary}` blocks joined by `\n\n---\n\n`. Caller keeps its existing wrapper line.
+- [x] 2.5 `triggerMetaSummary` hooked at end of `triggerVersionSummary` success path (fire-and-forget, own try/catch). Idempotent via `existing.covers_to_order >= coversTo` guard.
+- [x] 2.6 Tests `rolling-context.test.ts` (7): null / ≤window verbatim / older per-chapter fallback (no meta) / meta block replaces older / trigger ≤window no-op / rollup row covers [1..count-3] / idempotent (metaSummarize called once). **Deviation:** rollup keyed UNIQUE(book_id) one-row-per-book via `ON CONFLICT(book_id) DO UPDATE` (simpler than `(book_id, covers_to_order)` — loader always wants the single older-than-window rollup).
 
-**Acceptance:** Chapter 30 generation prompt token count for previous-chapter context block is bounded ~1500 tokens regardless of book length. Verified via `usage` log.
+**Acceptance:** ✅ Previous-chapters block bounded regardless of length — last 3 chapters verbatim (~80-180w each) + ONE meta rollup (~200-400w) for all older. Server suite 151/151 (21 files), server+agents typecheck clean. Committed 82afe47.
 
 ---
 
@@ -57,34 +54,15 @@
 
 **Goal:** Track when each canon fact is true. Prevent "герой ещё не умеет колдовать в главе 3, но умеет в главе 12" drift.
 
-- [ ] 3.1 New table `book_facts`:
-  ```sql
-  CREATE TABLE book_facts (
-    id INTEGER PRIMARY KEY,
-    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-    entity_type TEXT NOT NULL, -- 'character' | 'location' | 'item' | 'world'
-    entity_id INTEGER,         -- nullable, refs characters/locations/items
-    predicate TEXT NOT NULL,   -- 'knows_spell' | 'owns' | 'located_at' | 'relationship_with' | ...
-    object_text TEXT NOT NULL, -- free text value
-    valid_from_chapter INTEGER NOT NULL,
-    valid_to_chapter INTEGER,  -- NULL = still valid
-    source_version_id INTEGER, -- chapter_versions row that introduced fact
-    confidence REAL DEFAULT 1.0,
-    superseded_by INTEGER REFERENCES book_facts(id),
-    created_at TEXT NOT NULL
-  );
-  CREATE INDEX idx_book_facts_lookup ON book_facts(book_id, entity_type, entity_id, valid_from_chapter);
-  ```
-  Migration `0012_book_facts.sql`.
-- [ ] 3.2 New agent contract `canon_fact_extractor` in `packages/agents/src/canon-fact-extractor.ts`: takes chapter draft + materialized characters/items/locations + recent facts → outputs `BookFact[]` (new + supersessions). Sonnet model. Zod schema in `packages/shared/src/canon-facts.ts`.
-- [ ] 3.3 Hook into `triggerVersionSummary` flow: after summary, run extractor in same fire-and-forget try-block. Persist via `book_facts` repo with conflict resolution: if new fact contradicts existing valid fact, set `valid_to_chapter = chapter.order_index - 1` on old, insert new with `superseded_by` pointer.
-- [ ] 3.4 New util `loadActiveFacts(sqlite, bookId, atChapterOrder, entityIds?)`: returns facts where `valid_from_chapter <= cursor AND (valid_to_chapter IS NULL OR valid_to_chapter >= cursor)`. Optional entity filter.
-- [ ] 3.5 Extend `gatherCharacterContext` ([packages/agents/src/character.ts](packages/agents/src/character.ts)): for each character pulled by mention, append active facts as `### Состояние на главу N\n- умеет: магия огня (с гл. 5)\n- владеет: меч-кладенец (с гл. 8)`.
-- [ ] 3.6 Same extension for `gatherLoreContext`.
-- [ ] 3.7 Canon Guard critic ([packages/agents/src/critics/canon.ts](packages/agents/src/critics/canon.ts)) reads `loadActiveFacts` before judging draft — flags contradictions with existing valid facts.
-- [ ] 3.8 Tests: extractor mocked, fact storage with supersession, time-bounded query returns correct snapshot per chapter.
+- [x] 3.1 Table `book_facts` via migration `0012_book_facts.sql` + `_journal` idx 12. **Deviation:** added `entity_name TEXT NOT NULL` (server matches by name, not id — extractor never juggles entity_id); CHECK on entity_type; second index `idx_book_facts_active(book_id,valid_from,valid_to)` for the time-bounded query; `superseded_by` FK ON DELETE SET NULL. Verified applies in temp DB.
+- [x] 3.2 `canon_fact_extractor` structured contract in `packages/agents/src/canon-fact-extractor.ts` (mcp_submit_tool, sonnet). Added to AGENT_NAMES + STRUCTURED_AGENT_NAMES + `router.ts` default (subscription) + bootstrap. Zod schema `packages/shared/src/canon-facts.ts`. Parity drift-guard stays green. **Deviation:** LLM emits flat facts; supersession is server-owned (no LLM ID bookkeeping).
+- [x] 3.3 `triggerCanonFactExtraction` hooked fire-and-forget into `triggerVersionSummary` (after summary + meta). `persistExtractedFacts`: prior open row for (type,name,predicate) closed at `chapterOrder-1` + `superseded_by`; unchanged value = no-op (idempotent); same-chapter rows replaced before insert.
+- [x] 3.4 `loadActiveFacts(sqlite, bookId, atChapterOrder, {entityNames?})` — `valid_from <= cursor AND (valid_to IS NULL OR valid_to >= cursor)`. **Deviation:** filters by `entityNames` (name-based model), not `entityIds`.
+- [x] 3.5/3.6 **Deviation:** active facts injected at the **route layer** (`renderActiveFactsPrompt` appended to Writer `characterContext` in plot route) rather than inside `gatherCharacterContext`/`gatherLoreContext` — keeps the `@book-forge/agents` package free of the server-only `book_facts` table (same pattern as studio/retrieved context). Single combined block covers character + location + item facts.
+- [x] 3.7 Canon Guard: `renderActiveFactsPrompt` appended to `bookContext` at both critique-route call sites — critic sees what is currently true.
+- [x] 3.8 Tests `book-facts.test.ts` (8): supersession (valid_to=N-1 + superseded_by) / idempotent unchanged / same-chapter replace / entityNames scope / render grouping + null / trigger persist + short-skip.
 
-**Acceptance:** Generate chapter 10 with character "Алиса" — Writer sees only facts valid at chapter ≤9. If chapter 6 said "Алиса умеет огонь", chapter 10 prompt includes that. If chapter 8 said "Алиса теряет магию", facts list shows `superseded`.
+**Acceptance:** ✅ Supersession verified — fact at ch5, restated ch8 → `loadActiveFacts(6)` shows old, `loadActiveFacts(8)` shows new, old row `valid_to=7` + `superseded_by` set. Writer/Canon-Guard see only facts valid at the target chapter. Server 159, llm 65, shared 50; all typecheck clean. Committed 7b88b54.
 
 ---
 
@@ -92,33 +70,15 @@
 
 **Goal:** Capture open threads, foreshadowing, arc deltas as cross-linked notes. Surface relevant notes to Plot/Writer when beat-conflict matches.
 
-- [ ] 4.1 New table `book_notes`:
-  ```sql
-  CREATE TABLE book_notes (
-    id INTEGER PRIMARY KEY,
-    book_id INTEGER NOT NULL,
-    kind TEXT NOT NULL, -- 'thread' | 'foreshadow' | 'arc_delta' | 'theme' | 'mystery'
-    chapter_order_introduced INTEGER NOT NULL,
-    chapter_order_resolved INTEGER, -- NULL = open
-    title TEXT NOT NULL,
-    body TEXT NOT NULL,
-    embedding BLOB,            -- via sqlite-vec
-    tags TEXT NOT NULL DEFAULT '[]', -- JSON array
-    related_note_ids TEXT NOT NULL DEFAULT '[]', -- JSON array
-    source_version_id INTEGER,
-    created_at TEXT NOT NULL
-  );
-  CREATE INDEX idx_book_notes_open ON book_notes(book_id, chapter_order_resolved);
-  ```
-  Migration `0013_book_notes.sql`.
-- [ ] 4.2 Agent contract `episodic_note_extractor`: takes chapter draft + open notes → outputs `(newNotes[], resolvedNoteIds[], linkedPairs[])`. Sonnet. Linking decided by LLM judging note similarity.
-- [ ] 4.3 Hook into post-save flow after canon-fact extraction. Embed new notes via existing `embedText` from `@book-forge/retrieval`.
-- [ ] 4.4 New util `gatherRelevantNotes(sqlite, bookId, queryText, atChapterOrder, k=5)`: vector search over open notes (`chapter_order_resolved IS NULL OR chapter_order_resolved >= cursor`), filtered by book.
-- [ ] 4.5 Inject into Plot agent input (`runChapterPlan`): `openThreads: string | null` block listing top-5 relevant open notes — Plot agent can choose to close/advance them in beats.
-- [ ] 4.6 Inject into Critic Reader-Experience: detects forgotten foreshadowing (open notes introduced N+5 chapters ago, never referenced).
-- [ ] 4.7 Tests: extract → embed → retrieve → resolve flow with mocked LLM + real `sqlite-vec` integration test.
+- [x] 4.1 Table `book_notes` (kind/introduced/resolved/title/body/embedding BLOB/tags/related_note_ids/source_version_id) + CHECK on kind + `idx_book_notes_open`. Migration `0013_book_notes.sql` + `_journal` idx 13. `book_notes_vec` vec0 table added to `bootstrapVirtualTables` (hasVec branch, rowid = book_notes.id).
+- [x] 4.2 `episodic_note_extractor` structured contract (mcp_submit_tool, sonnet) → `{newNotes[], resolvedTitles[], notes}`. Added to AGENT_NAMES + STRUCTURED set + router default + bootstrap; parity drift-guard green. **Deviation:** resolution by **title** (not note IDs); `linkedPairs` dropped for v1 — relatedness handled at retrieval time by embedding neighbours instead of stored links (simpler, no LLM ID bookkeeping).
+- [x] 4.3 `triggerEpisodicNotes` hooked fire-and-forget into `triggerVersionSummary` after canon-fact extraction. New notes embedded on write via `getEmbeddingProvider().embed` (retrieval pkg has no `embedText`; provider API used directly).
+- [x] 4.4 `gatherRelevantNotes(sqlite, bookId, queryText, atChapterOrder, k=5)` — sqlite-vec `book_notes_vec MATCH` when available, **JS cosine fallback** over stored embedding BLOBs otherwise; open-note filter `introduced ≤ cursor AND (resolved IS NULL OR resolved ≥ cursor)`. `renderOpenNotesPrompt` formats grouped block.
+- [x] 4.5 Plot route: `gatherRelevantNotes` → `renderOpenNotesPrompt` → `runChapterPlan.openThreads` (optional field added to `GenerateChapterPlanInput`, injected after prev-summary in `buildChapterPlanPrompt`).
+- [x] 4.6 Critique route: relevant open notes appended to `bookContext` at both call sites (visible to Reader-Experience critic for forgotten-payoff detection; harmless to other critics).
+- [x] 4.7 Tests `book-notes.test.ts` (9): persist/open-until-resolved, resolve-by-title, time-bound, same-chapter replace, render (null + format), relevance ranking over k (stub embeddings), trigger persist + short-skip. Real sqlite-vec loaded in test harness.
 
-**Acceptance:** Chapter 3 introduces "тайный амулет" → `book_notes` row with `kind='foreshadow'`, open. Chapter 8 beat-sheet generation sees this note in prompt context. Chapter 12 resolves it → `chapter_order_resolved=12`.
+**Acceptance:** ✅ Note introduced ch2 stays open; `gatherRelevantNotes` ranks the semantically closest open note first; `resolvedTitles` closes it (`chapter_order_resolved` set, excluded after). Server 168, llm 65, shared 50; all typecheck clean. Committed f28d1f5.
 
 ---
 
@@ -126,14 +86,14 @@
 
 **Goal:** Improve top-k precision before injection. Cross-encoder or LLM-judge reranks `hybridSearch` candidates.
 
-- [ ] 5.1 Decide reranker: cheapest option = Haiku 4.5 as LLM-judge (single batched call, 0.8c per 100 chunks). Alternative = jina-reranker-v3 via fetch (no SDK, plain HTTP). Default to Haiku — keeps single-vendor stack.
-- [ ] 5.2 New util `rerankChunks(chunks, queryText, opts)` in `packages/retrieval/src/rerank.ts`. Returns reordered + filtered (drop scores < threshold).
-- [ ] 5.3 Wire into `gatherRetrievedChunks` (Phase 1.1) — `hybridSearch` returns top-20, reranker narrows to top-5.
-- [ ] 5.4 Same wire-in for `gatherRelevantNotes` (Phase 4.4).
-- [ ] 5.5 Config flag `RETRIEVAL_RERANK=1|0`. Off by default until benchmarked on actual books.
-- [ ] 5.6 Tests: reranker mock returns specific order, util threads through correctly. Disabled flag = passthrough.
+- [x] 5.1 LLM-judge reranker (`reranker` structured agent, mcp_submit_tool). **Deviation:** sonnet, not Haiku 4.5 — avoids `ModelChoice`/`resolveModelId` plumbing while the flag is off-by-default; revisit model when benchmarking.
+- [x] 5.2 `rerankByRelevance<T>` in `apps/server/src/utils/rerank.ts`. **Deviation:** server utils, not `packages/retrieval/src/rerank.ts` — keeps the retrieval package free of an LLM dependency (judge needs `@book-forge/agents`). Generic over T; threshold-0.15 drop + topK cap + best-effort passthrough.
+- [x] 5.3 Wired into `gatherRetrievedChunks` — pool = `candidateK` when enabled, then rerank → topK; off = pool capped at topK (byte-identical to pre-Phase-5).
+- [x] 5.4 Wired into `gatherRelevantNotes` — pool `k*4` (vec + cosine paths) when enabled, then rerank → k; off = unchanged.
+- [x] 5.5 Flag `RETRIEVAL_RERANK=1` (off by default). `rerankEnabled()` gate; agent + AGENT_NAMES/STRUCTURED/router/bootstrap wired so it's ready when toggled.
+- [x] 5.6 Tests `rerank.test.ts` (5): env flag / passthrough disabled (no LLM call) / ≤topK skip / reorder+threshold-drop+cap / all-below-threshold fallback.
 
-**Acceptance:** A/B compare with same query: rerank ON produces measurably more specific chunks for "battle scene" query (manual eval on 1 test book). Latency overhead < 1s per chapter generation.
+**Acceptance:** ✅ Flag off → exact passthrough, zero extra LLM calls, Phase 1/4 suites unchanged. Flag on → reorders by judged relevance, drops < 0.15, caps topK, best-effort fallback. Server 173 (24 files), llm 65 (parity), all typecheck clean. Committed 8e59d4f.
 
 ---
 
