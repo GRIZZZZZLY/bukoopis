@@ -34,6 +34,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   });
 
   app.route("/api/health", createHealthRoute({ sqlite, hasVec }));
+  // Mounted before /api/books: GET /api/books/recommended must not be shadowed by books' GET /:id.
   app.route("/api", createStudioRoute(sqlite));
   app.route("/api/books", createBooksRoute(sqlite));
   app.route("/api/chapters", createChaptersRoute(sqlite, hasVec));

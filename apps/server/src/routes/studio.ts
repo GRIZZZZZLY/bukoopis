@@ -6,6 +6,7 @@ import {
   computeStudioWarnings,
   computeStudioProgress,
   type CanonSummary,
+  type StageId,
 } from "@book-forge/shared";
 import { z } from "zod";
 import {
@@ -132,7 +133,7 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     const rows = sqlite
       .prepare("SELECT id FROM books")
       .all() as { id: number }[];
-    const out: Record<number, string> = {};
+    const out: Record<number, StageId> = {};
     for (const { id } of rows) {
       const concept = repo.loadConcept(id);
       const studioState = repo.loadStudioState(id);
