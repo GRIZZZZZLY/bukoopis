@@ -130,6 +130,8 @@ export interface GenerateChapterPlanInput {
   bookPremise: string;
   bookOutline: string | null;
   studioContext?: string | null;
+  /** Phase 1 — top-k relevant chunks from prior chapters (hybridSearch). */
+  retrievedContext?: string | null;
   chapterTitle: string;
   intent: string;
   previousChaptersSummary: string | null;
@@ -145,6 +147,9 @@ function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
   ];
   if (input.studioContext) {
     stableParts.push(`Контекст studio:\n${input.studioContext}`);
+  }
+  if (input.retrievedContext) {
+    stableParts.push(input.retrievedContext);
   }
   if (input.bookOutline) {
     stableParts.push(`Outline книги:\n${input.bookOutline}`);

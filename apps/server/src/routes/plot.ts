@@ -25,6 +25,7 @@ import {
   loadStudioContext,
   studioContextToPrompt,
 } from "../utils/studio-context.js";
+import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 import { triggerVersionSummary } from "../utils/summary-trigger.js";
@@ -222,6 +223,12 @@ export function createPlotRoute(
     );
 
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
+    const planRetrieved = await gatherRetrievedChunks(sqlite, {
+      bookId: ch.book_id,
+      queryText: `${ch.title}\n${parsed.data.intent}`,
+      currentChapterOrder: ch.order_index,
+      hasVec,
+    });
     const variants = await runChapterPlan({
       bookTitle: ctx.title,
       bookPremise: ctx.premise,
@@ -230,6 +237,9 @@ export function createPlotRoute(
       intent: parsed.data.intent,
       previousChaptersSummary: prevSummary,
       ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
+      ...(planRetrieved.promptBlock !== null
+        ? { retrievedContext: planRetrieved.promptBlock }
+        : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
       onUsage: (usage) =>
         logUsage(sqlite, {
@@ -359,6 +369,12 @@ export function createPlotRoute(
 
     const styleCtx = loadStyleContext(sqlite, ctx.styleProfileId);
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
+    const writerRetrieved = await gatherRetrievedChunks(sqlite, {
+      bookId: ch.book_id,
+      queryText: beatBlob,
+      currentChapterOrder: ch.order_index,
+      hasVec,
+    });
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -379,6 +395,7 @@ export function createPlotRoute(
           loreContext,
           styleContext: styleCtx.prompt,
           studioContext: studioCtx,
+          retrievedContext: writerRetrieved.promptBlock,
           fatigueWords: styleCtx.fatigueBlacklist,
           config: { variants: 1, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.writerModel },
           provider: ctx.writerProvider,
