@@ -91,7 +91,7 @@ export function StudioPage() {
     <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
       <div className="flex justify-between items-baseline">
         <h1 className="text-3xl font-bold">Studio</h1>
-        <nav className="flex gap-3 text-sm">
+        <nav aria-label="Навигация по студии" className="flex gap-3 text-sm">
           <Link
             to={`/books/${bookId}/studio/settings`}
             className="underline"
@@ -150,10 +150,6 @@ export function StudioPage() {
           })}
         </div>
       </section>
-
-      <p className="text-xs text-[var(--color-muted-foreground)]">
-        Phase A: dashboard shell. Контент стадий появится в фазах B–H.
-      </p>
     </main>
   );
 }

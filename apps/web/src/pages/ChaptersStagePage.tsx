@@ -68,6 +68,15 @@ export function ChaptersStagePage() {
     }
   }
 
+  if (!Number.isFinite(id)) {
+    return (
+      <main className="max-w-5xl mx-auto p-8">
+        <p role="alert" className="text-sm text-red-600">
+          Книга не найдена
+        </p>
+      </main>
+    );
+  }
   if (error) {
     return (
       <main className="max-w-5xl mx-auto p-8">
@@ -99,7 +108,7 @@ export function ChaptersStagePage() {
       <SearchPanel bookId={id} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xl font-semibold">Главы</h2>
+        <h2 className="text-xl font-semibold">Список глав</h2>
 
         <form onSubmit={onAddChapter} className="flex gap-2">
           <input

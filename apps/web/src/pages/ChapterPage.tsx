@@ -500,7 +500,7 @@ export function ChapterPage() {
       <section className="flex flex-col gap-4 min-w-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <Link to={`/books/${bookId}/studio/chapters`} className="text-sm underline">
-            ← К книге
+            ← К главам
           </Link>
           <Button
             variant="outline"
