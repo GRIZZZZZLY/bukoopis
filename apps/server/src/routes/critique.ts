@@ -22,6 +22,10 @@ import {
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
+import {
+  gatherRelevantNotes,
+  renderOpenNotesPrompt,
+} from "../utils/book-notes.js";
 import { indexChapterVersion } from "@book-forge/retrieval";
 import { toVersion } from "../db/rows.js";
 import { loadStyleContext } from "../utils/style-context.js";
@@ -262,9 +266,24 @@ export function createCritiqueRoute(
       ch.order_index,
       factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
     );
+    // Phase 4: surface relevant open threads/foreshadowing so the
+    // Reader-Experience critic can flag forgotten payoffs.
+    const relevantNotes = await gatherRelevantNotes(
+      sqlite,
+      book.id,
+      `${ch.title}\n${emotionalGoal}`,
+      ch.order_index,
+    );
+    const notesPrompt = renderOpenNotesPrompt(
+      relevantNotes,
+      "Открытые линии",
+      ch.order_index,
+    );
     const bookContext = `${baseBookContext}${
       studioCtx ? `\n\n${studioCtx}` : ""
-    }${factsPrompt ? `\n\n${factsPrompt}` : ""}`;
+    }${factsPrompt ? `\n\n${factsPrompt}` : ""}${
+      notesPrompt ? `\n\n${notesPrompt}` : ""
+    }`;
 
     const criticInput: CriticInput = {
       chapterText: version.content_text,
@@ -502,9 +521,24 @@ export function createCritiqueRoute(
       ch.order_index,
       factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
     );
+    // Phase 4: surface relevant open threads/foreshadowing so the
+    // Reader-Experience critic can flag forgotten payoffs.
+    const relevantNotes = await gatherRelevantNotes(
+      sqlite,
+      book.id,
+      `${ch.title}\n${emotionalGoal}`,
+      ch.order_index,
+    );
+    const notesPrompt = renderOpenNotesPrompt(
+      relevantNotes,
+      "Открытые линии",
+      ch.order_index,
+    );
     const bookContext = `${baseBookContext}${
       studioCtx ? `\n\n${studioCtx}` : ""
-    }${factsPrompt ? `\n\n${factsPrompt}` : ""}`;
+    }${factsPrompt ? `\n\n${factsPrompt}` : ""}${
+      notesPrompt ? `\n\n${notesPrompt}` : ""
+    }`;
 
     return streamSSE(c, async (stream) => {
       let fullText = "";

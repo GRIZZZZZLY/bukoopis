@@ -132,6 +132,8 @@ export interface GenerateChapterPlanInput {
   studioContext?: string | null;
   /** Phase 1 — top-k relevant chunks from prior chapters (hybridSearch). */
   retrievedContext?: string | null;
+  /** Phase 4 — relevant open episodic notes (threads/foreshadow). */
+  openThreads?: string | null;
   chapterTitle: string;
   intent: string;
   previousChaptersSummary: string | null;
@@ -158,6 +160,9 @@ function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
     stableParts.push(
       `Что было в предыдущих главах:\n${input.previousChaptersSummary}`,
     );
+  }
+  if (input.openThreads) {
+    stableParts.push(input.openThreads);
   }
   const volatileParts: string[] = [
     `Текущая глава: "${input.chapterTitle}"`,

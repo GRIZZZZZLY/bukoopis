@@ -44,6 +44,7 @@ export const AGENT_NAMES = [
   "aspect_refine",
   "aspect_entity_variants",
   "canon_fact_extractor",
+  "episodic_note_extractor",
 ] as const;
 
 export type AgentName = (typeof AGENT_NAMES)[number];
@@ -77,4 +78,5 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "aspect_refine",
   "aspect_entity_variants",
   "canon_fact_extractor",
+  "episodic_note_extractor",
 ]);

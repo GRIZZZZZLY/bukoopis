@@ -31,6 +31,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
 );
 `;
 
+// Phase 4 — episodic notes vector index. rowid = book_notes.id.
+const NOTES_VEC_TABLE_SQL = `
+CREATE VIRTUAL TABLE IF NOT EXISTS book_notes_vec USING vec0(
+  rowid INTEGER PRIMARY KEY,
+  embedding float[${EMBEDDING_DIM}]
+);
+`;
+
 export function bootstrapVirtualTables(
   sqlite: DatabaseType,
   hasVec: boolean,
@@ -38,5 +46,6 @@ export function bootstrapVirtualTables(
   sqlite.exec(VIRTUAL_TABLES_SQL);
   if (hasVec) {
     sqlite.exec(VEC_TABLE_SQL);
+    sqlite.exec(NOTES_VEC_TABLE_SQL);
   }
 }

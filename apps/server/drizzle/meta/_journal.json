@@ -92,6 +92,13 @@
       "when": 1779100000000,
       "tag": "0012_book_facts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1779200000000,
+      "tag": "0013_book_notes",
+      "breakpoints": true
     }
   ]
 }

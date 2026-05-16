@@ -3,6 +3,7 @@ import { summarizeChapter } from "@book-forge/agents";
 import { logUsage } from "./usageLogger.js";
 import { triggerMetaSummary } from "./rolling-context.js";
 import { triggerCanonFactExtraction } from "./book-facts.js";
+import { triggerEpisodicNotes } from "./book-notes.js";
 
 interface VersionRow {
   id: number;
@@ -84,6 +85,9 @@ export async function triggerVersionSummary(
     // Phase 3: extract temporal canon facts from this chapter. Same
     // fire-and-forget contract — failure must not touch the save flow.
     void triggerCanonFactExtraction(sqlite, versionId);
+
+    // Phase 4: extract episodic notes (threads / foreshadowing / arcs).
+    void triggerEpisodicNotes(sqlite, versionId);
   } catch (e) {
     console.warn(
       "[summary] generation failed:",

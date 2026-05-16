@@ -28,6 +28,10 @@ import {
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import { loadRollingChapterContext } from "../utils/rolling-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
+import {
+  gatherRelevantNotes,
+  renderOpenNotesPrompt,
+} from "../utils/book-notes.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 import { triggerVersionSummary } from "../utils/summary-trigger.js";
@@ -200,6 +204,17 @@ export function createPlotRoute(
       currentChapterOrder: ch.order_index,
       hasVec,
     });
+    const planNotes = await gatherRelevantNotes(
+      sqlite,
+      ch.book_id,
+      `${ch.title}\n${parsed.data.intent}`,
+      ch.order_index,
+    );
+    const planOpenThreads = renderOpenNotesPrompt(
+      planNotes,
+      "Открытые линии",
+      ch.order_index,
+    );
     const variants = await runChapterPlan({
       bookTitle: ctx.title,
       bookPremise: ctx.premise,
@@ -211,6 +226,7 @@ export function createPlotRoute(
       ...(planRetrieved.promptBlock !== null
         ? { retrievedContext: planRetrieved.promptBlock }
         : {}),
+      ...(planOpenThreads !== null ? { openThreads: planOpenThreads } : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
       onUsage: (usage) =>
         logUsage(sqlite, {

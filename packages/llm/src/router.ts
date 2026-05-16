@@ -27,6 +27,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   aspect_refine: "subscription",
   aspect_entity_variants: "subscription",
   canon_fact_extractor: "subscription",
+  episodic_note_extractor: "subscription",
 };
 
 // One-time deprecation warnings for compat aliases (etap 0.2.4 / Phase 4).
