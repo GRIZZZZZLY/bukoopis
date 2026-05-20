@@ -258,7 +258,13 @@ export function BooksListPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center justify-between gap-3 px-6 py-3.5 bg-[var(--color-surface-3)] border-t border-[var(--color-border)]">
+                  <div
+                    className="flex items-center justify-between gap-3 px-6 py-3.5"
+                    style={{
+                      background: "var(--color-surface-3)",
+                      borderTop: "1px solid var(--color-border)",
+                    }}
+                  >
                     <span className="lw-mono text-[11px] text-[var(--color-text-muted)]">
                       {relativeTime(b.updatedAt ?? b.createdAt)}
                     </span>
