@@ -1,41 +1,138 @@
 @import "tailwindcss";
+@import "./styles/library-warm.css";
+@import "./styles/motion.css";
+
+/* ───────────────────────────────────────────────────────────────
+   Library Warm — design tokens (dark-only).
+   Source of truth: book_redisign/app/tokens.css.
+   Tailwind v4 @theme: --color-*/--font-*/--radius-* generate utilities.
+   shadcn-compat aliases (--color-primary, etc.) keep existing
+   primitives working while pointing at Library-Warm values.
+   ─────────────────────────────────────────────────────────────── */
 
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: hsl(222.2 47.4% 11.2%);
-  --color-primary-foreground: hsl(210 40% 98%);
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(222.2 84% 4.9%);
-  --radius: 0.5rem;
+  /* surfaces */
+  --color-bg:           #1A1410;
+  --color-surface-1:    #221A14;
+  --color-surface-2:    #2B2118;
+  --color-surface-3:    #342719;
+
+  /* borders */
+  --color-border:        #3A2D22;
+  --color-border-soft:   #2E241B;
+  --color-border-strong: #54402F;
+
+  /* text */
+  --color-text:         #EDE4D3;
+  --color-text-strong:  #FBF5E6;
+  --color-text-muted:   #9C8B73;
+  --color-text-faint:   #6E5F4D;
+
+  /* accents */
+  --color-brass:        #D49A4E;
+  --color-brass-soft:   #B07F33;
+  --color-brass-hi:     #E1A858;
+
+  --color-ink-red:      #C44536;
+  --color-ink-green:    #6A8E4E;
+  --color-ink-blue:     #5B7A99;
+  --color-ink-amber:    #C9A24A;
+
+  /* manuscript */
+  --color-paper:        #2B2118;
+  --color-margin-rule:  #54402F;
+
+  /* shadcn-compat aliases (used by apps/web/src/components/ui/*) */
+  --color-background:          var(--color-bg);
+  --color-foreground:          var(--color-text);
+  --color-primary:             var(--color-brass);
+  --color-primary-foreground:  #1A1410;
+  --color-secondary:           var(--color-surface-2);
+  --color-secondary-foreground:var(--color-text);
+  --color-muted:               var(--color-surface-1);
+  --color-muted-foreground:    var(--color-text-muted);
+  --color-accent:              var(--color-surface-3);
+  --color-accent-foreground:   var(--color-text-strong);
+  --color-destructive:         var(--color-ink-red);
+  --color-destructive-foreground: var(--color-text-strong);
+  --color-input:               var(--color-border);
+  --color-ring:                var(--color-brass);
+
+  /* radii */
+  --radius:          10px;
+  --radius-control:  6px;
+  --radius-card:     10px;
+  --radius-panel:    14px;
+  --radius-shell:    20px;
+
+  /* fonts */
+  --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-prose:   "Lora", ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans:    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Non-utility tokens (no Tailwind generation needed). */
+:root {
+  /* color tints / overlay */
+  --color-overlay:          rgba(10, 7, 5, 0.72);
+  --color-brass-glow:       rgba(212, 154, 78, 0.18);
+  --color-brass-tint:       rgba(212, 154, 78, 0.10);
+  --color-ink-red-tint:     rgba(196, 69, 54, 0.12);
+  --color-ink-green-tint:   rgba(106, 142, 78, 0.12);
+  --color-ink-blue-tint:    rgba(91, 122, 153, 0.14);
+  --color-ink-amber-tint:   rgba(201, 162, 74, 0.12);
+
+  /* shadows (warm) */
+  --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md:   0 6px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-border-soft);
+  --shadow-lg:   0 24px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--color-border-soft);
+  --shadow-glow: 0 0 0 3px var(--color-brass-glow);
+
+  /* motion */
+  --motion-1: 80ms;
+  --motion-2: 160ms;
+  --motion-3: 200ms;
+  --motion-4: 320ms;
+  --ease-in-out: cubic-bezier(0.22, 0.9, 0.32, 1);
+  --ease-hover:  cubic-bezier(0.4, 0, 0.6, 1);
+
+  /* layout */
+  --rail-l-collapsed: 60px;
+  --rail-l-expanded:  260px;
+  --rail-r:           400px;
+  --topbar-h:         56px;
+  --statusbar-h:      24px;
+  --manuscript-w:     680px;
+
+  /* paper-grain knob */
+  --grain-opacity: 0.5;
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv05";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+::selection {
+  background: rgba(212, 154, 78, 0.28);
+  color: var(--color-text-strong);
+}
+
+/* TipTap editor surface (preserved; re-themed inline in Phase 3). */
 .ProseMirror {
   min-height: 360px;
   outline: none;
   cursor: text;
   white-space: pre-wrap;
 }
-
-.ProseMirror p {
-  margin: 0 0 0.75em 0;
-}
-
+.ProseMirror p { margin: 0 0 0.75em 0; }
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--color-muted-foreground);
@@ -44,36 +141,25 @@ body {
   float: left;
 }
 
-/* Canon highlight marks (decorations applied by CanonHighlight extension). */
+/* Canon highlight marks (decorations from CanonHighlight extension). */
 .canon-mark {
   background-image: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.06) 0,
-    rgba(0, 0, 0, 0.06) 2px,
+    rgba(255, 255, 255, 0.04) 0,
+    rgba(255, 255, 255, 0.04) 2px,
     transparent 2px
   );
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+  border-bottom: 1px dashed rgba(212, 154, 78, 0.55);
   border-radius: 1px;
   padding: 0 1px;
   cursor: help;
-  transition: background-color 120ms ease;
+  transition: background-color var(--motion-1) var(--ease-hover);
 }
-.canon-mark:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-.canon-mark-character {
-  border-bottom-color: rgba(180, 60, 60, 0.55);
-}
-.canon-mark-location {
-  border-bottom-color: rgba(60, 120, 60, 0.55);
-}
-.canon-mark-item {
-  border-bottom-color: rgba(180, 130, 30, 0.55);
-}
-.canon-mark-hook {
-  border-bottom-color: rgba(60, 100, 180, 0.55);
-  border-bottom-style: dotted;
-}
-.canon-mark-relationship {
-  border-bottom-color: rgba(140, 60, 160, 0.55);
-}
+.canon-mark:hover { background-color: rgba(212, 154, 78, 0.08); }
+.canon-mark-character    { border-bottom-color: rgba(196, 69, 54, 0.65); }
+.canon-mark-location     { border-bottom-color: rgba(106, 142, 78, 0.65); }
+.canon-mark-item         { border-bottom-color: rgba(212, 154, 78, 0.75); }
+.canon-mark-hook         { border-bottom-color: rgba(91, 122, 153, 0.65); border-bottom-style: dotted; }
+.canon-mark-relationship { border-bottom-color: rgba(201, 162, 74, 0.65); }
+
+</invoke>
