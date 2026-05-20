@@ -111,7 +111,7 @@ export function PremiseFieldPuzzle({
                 <button
                   type="button"
                   onClick={() => pick(v)}
-                  className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
+                  className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] transition-colors"
                 >
                   Принять
                 </button>

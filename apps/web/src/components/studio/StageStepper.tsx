@@ -67,7 +67,7 @@ export function StageStepper({
             className={
               "inline-flex items-center gap-1 rounded px-2 py-1 " +
               (isActive
-                ? "bg-blue-50 border border-blue-500 text-blue-700 font-medium"
+                ? "bg-[var(--color-brass-tint)] border border-[var(--color-brass)] text-[var(--color-brass)] font-medium"
                 : "hover:bg-[var(--color-muted)] text-[var(--color-foreground)]")
             }
           >

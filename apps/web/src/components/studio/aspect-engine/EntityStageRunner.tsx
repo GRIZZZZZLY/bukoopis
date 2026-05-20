@@ -305,7 +305,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleGenerate(aspect)}
                   disabled={busy}
-                  className="text-sm border border-blue-600 text-blue-600 rounded-md px-3 py-1 hover:bg-blue-600 hover:text-white disabled:opacity-50"
+                  className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50"
                 >
                   {busy ? "Генерируем…" : "Сгенерировать варианты"}
                 </button>
@@ -332,7 +332,7 @@ export function EntityStageRunner({
                         type="button"
                         onClick={() => handlePickVariant(aspect, v.id)}
                         disabled={busy}
-                        className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
+                        className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]"
                       >
                         Принять
                       </button>
@@ -354,7 +354,7 @@ export function EntityStageRunner({
             {aspect.status === "reviewing" &&
               aspect.selectedVariantId &&
               selectedVariant && (
-                <div className="flex flex-col gap-2 border-l-2 border-blue-600 pl-3">
+                <div className="flex flex-col gap-2 border-l-2 border-[var(--color-brass)] pl-3">
                   <p className="text-xs text-[var(--color-muted-foreground)]">
                     Просмотрите кандидатов и решите, какие из них сохранить:
                   </p>
@@ -400,7 +400,7 @@ export function EntityStageRunner({
                       type="button"
                       onClick={() => handleMaterialize(aspect)}
                       disabled={busy}
-                      className="text-sm border border-blue-600 bg-blue-600 text-white rounded-md px-3 py-1 disabled:opacity-50"
+                      className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:opacity-50"
                     >
                       {busy ? "Материализуем…" : "Материализовать"}
                     </button>

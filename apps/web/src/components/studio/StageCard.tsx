@@ -26,7 +26,7 @@ export function StageCard({
 }: StageCardProps) {
   const className =
     "border rounded-lg p-4 flex flex-col gap-2 " +
-    (recommended ? "border-blue-500 bg-blue-50" : "border-[var(--color-border)]") +
+    (recommended ? "border-[var(--color-brass)] bg-[var(--color-brass-tint)]" : "border-[var(--color-border)]") +
     (href ? " hover:bg-[var(--color-muted)] transition-colors" : "");
 
   const inner = (
@@ -41,7 +41,7 @@ export function StageCard({
         {status}
       </div>
       {recommended && (
-        <div className="text-xs text-blue-700">Рекомендуем сейчас →</div>
+        <div className="text-xs text-[var(--color-brass)]">Рекомендуем сейчас →</div>
       )}
     </>
   );

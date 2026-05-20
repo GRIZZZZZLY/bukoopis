@@ -303,7 +303,7 @@ export function AspectRunner<TPayload>({
                     "text-sm border rounded-md px-3 py-1 " +
                     (busy
                       ? "bg-[var(--color-muted)] cursor-not-allowed"
-                      : "border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white")
+                      : "border-[var(--color-brass)] text-[var(--color-brass)] hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]")
                   }
                 >
                   {busy ? "Генерируем…" : "Сгенерировать варианты"}
@@ -335,7 +335,7 @@ export function AspectRunner<TPayload>({
                             type="button"
                             onClick={() => handleAccept(aspect, v)}
                             disabled={busy}
-                            className="text-xs border border-blue-600 text-blue-600 rounded px-2 py-0.5 hover:bg-blue-600 hover:text-white"
+                            className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]"
                           >
                             Принять
                           </button>
@@ -353,7 +353,7 @@ export function AspectRunner<TPayload>({
                         </div>
                         {renderVariantPayload(v)}
                         {isRefining && (
-                          <div className="flex flex-col gap-2 mt-1 border-l-2 border-blue-600 pl-3">
+                          <div className="flex flex-col gap-2 mt-1 border-l-2 border-[var(--color-brass)] pl-3">
                             <textarea
                               value={refineInstructions}
                               onChange={(e) =>
@@ -379,7 +379,7 @@ export function AspectRunner<TPayload>({
                                   "text-xs border rounded-md px-2 py-1 " +
                                   (busy || !refineInstructions.trim()
                                     ? "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] cursor-not-allowed"
-                                    : "bg-blue-600 text-white border-blue-600")
+                                    : "bg-[var(--color-brass)] text-[var(--color-bg)] border-[var(--color-brass)]")
                                 }
                               >
                                 Применить

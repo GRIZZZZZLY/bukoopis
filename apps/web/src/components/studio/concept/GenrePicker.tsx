@@ -79,7 +79,7 @@ export function GenrePicker({ selected, onChange }: Props) {
         className={
           "border rounded-md px-3 py-1.5 text-sm " +
           (isOn
-            ? "bg-blue-600 text-white border-blue-600"
+            ? "bg-[var(--color-brass)] text-[var(--color-bg)] border-[var(--color-brass)]"
             : "border-[var(--color-border)] hover:bg-[var(--color-muted)]") +
           (isLeafLike ? "" : " font-medium")
         }

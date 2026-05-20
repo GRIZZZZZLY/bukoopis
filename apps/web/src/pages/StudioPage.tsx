@@ -129,7 +129,7 @@ export function StudioPage() {
           aria-valuenow={progress.doneCount}
         >
           <div
-            className="h-full bg-blue-500"
+            className="h-full bg-[var(--color-brass)]"
             style={{ width: `${(progress.doneCount / 7) * 100}%` }}
           />
         </div>
@@ -141,7 +141,7 @@ export function StudioPage() {
         </span>
         <Link
           to={stageRoute(bookId, continueStage)}
-          className="text-sm border border-blue-600 text-blue-600 rounded-md px-3 py-1 hover:bg-blue-600 hover:text-white"
+          className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] transition-colors"
         >
           Продолжить →
         </Link>

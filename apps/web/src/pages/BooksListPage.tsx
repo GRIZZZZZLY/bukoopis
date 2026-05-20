@@ -149,7 +149,7 @@ export function BooksListPage() {
                 {recommended[b.id] ? (
                   <Link
                     to={stageRoute(b.id, recommended[b.id]!)}
-                    className="text-xs text-blue-600 underline mt-1 inline-block"
+                    className="text-xs text-[var(--color-brass)] underline mt-1 inline-block"
                   >
                     Продолжить →
                   </Link>

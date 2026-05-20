@@ -132,7 +132,7 @@ export function ConceptForm({
           className={
             "border rounded-md px-4 py-1.5 text-sm " +
             (dirty && !saving
-              ? "bg-blue-600 text-white border-blue-600"
+              ? "bg-[var(--color-brass)] text-[var(--color-bg)] border-[var(--color-brass)]"
               : "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] cursor-not-allowed")
           }
         >

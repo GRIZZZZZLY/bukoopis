@@ -120,7 +120,7 @@ export function PlaybookRunner({
               "text-sm border rounded-md px-3 py-1 " +
               (busy
                 ? "bg-[var(--color-muted)] cursor-not-allowed"
-                : "border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white")
+                : "border-[var(--color-brass)] text-[var(--color-brass)] hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]")
             }
           >
             {busy ? "Генерируем…" : "Сгенерировать список аспектов"}
@@ -179,7 +179,7 @@ export function PlaybookRunner({
             "text-sm border rounded-md px-3 py-1 " +
             (busy || proposed.every((p) => !p.include)
               ? "bg-[var(--color-muted)] cursor-not-allowed"
-              : "border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white")
+              : "border-[var(--color-brass)] text-[var(--color-brass)] hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]")
           }
         >
           {busy ? "Сохраняем…" : "Принять список"}
