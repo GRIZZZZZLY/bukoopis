@@ -210,8 +210,8 @@ export function BooksListPage() {
           {books.map((b) => (
             <li key={b.id}>
               <article
-                className="lw-card p-0 overflow-hidden flex"
-                style={{ minHeight: 280, height: 280 }}
+                className="lw-card p-0 overflow-hidden flex flex-row"
+                style={{ height: 280, padding: 0 }}
               >
                 <div
                   className="lw-spine-v"
@@ -261,8 +261,9 @@ export function BooksListPage() {
                   <div
                     className="flex items-center justify-between gap-3 px-6 py-3.5"
                     style={{
-                      background: "var(--color-surface-3)",
-                      borderTop: "1px solid var(--color-border)",
+                      background: "var(--color-bg)",
+                      borderTop: "1px solid var(--color-border-strong)",
+                      boxShadow: "inset 0 1px 0 rgba(0,0,0,0.25)",
                     }}
                   >
                     <span className="lw-mono text-[11px] text-[var(--color-text-muted)]">
