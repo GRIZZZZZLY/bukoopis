@@ -276,7 +276,7 @@ export function EntityStageRunner({
   return (
     <ul
       aria-label="entity-aspects"
-      className="flex flex-col gap-4 border border-[var(--color-border)] rounded-lg p-4"
+      className="lw-card flex flex-col gap-4"
     >
       {stage.aspects.map((aspect) => {
         const busy = busyAspectId === aspect.id;
@@ -287,9 +287,27 @@ export function EntityStageRunner({
         const decisions = pendingDecisions[aspect.id] ?? {};
         return (
           <li key={aspect.id} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between">
-              <span className="font-medium">{aspect.name}</span>
-              <span className="text-xs uppercase text-[var(--color-muted-foreground)]">
+            <div className="flex items-baseline justify-between gap-2">
+              <span
+                className="text-[15px] text-[var(--color-text-strong)]"
+                style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+              >
+                {aspect.name}
+              </span>
+              <span
+                aria-label={`status-${aspect.status}`}
+                className="lw-pill"
+                data-tone={
+                  aspect.status === "accepted"
+                    ? "green"
+                    : aspect.status === "pending"
+                      ? "amber"
+                      : aspect.status === "generating" ||
+                          aspect.status === "reviewing"
+                        ? "brass"
+                        : undefined
+                }
+              >
                 {aspect.status}
               </span>
             </div>
@@ -428,7 +446,7 @@ export function EntityStageRunner({
             )}
 
             {err && (
-              <p role="alert" className="text-xs text-red-600">
+              <p role="alert" className="text-xs text-[var(--color-ink-red)]">
                 {err}
               </p>
             )}

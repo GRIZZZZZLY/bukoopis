@@ -116,7 +116,12 @@ export function MarkdownStagePage() {
         studioState={studio}
         activeStageId={stageId}
       />
-      <h1 className="text-3xl font-bold">{STAGE_LABELS[stageId]}</h1>
+      <h1
+        className="text-[28px] leading-tight"
+        style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+      >
+        {STAGE_LABELS[stageId]}
+      </h1>
 
       {stage.aspects.length === 0 ? (
         <PlaybookRunner

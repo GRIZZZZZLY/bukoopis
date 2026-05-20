@@ -238,7 +238,7 @@ export function AspectRunner<TPayload>({
     const parsed = adapter.payloadSchema.safeParse(variant.payload);
     if (!parsed.success) {
       return (
-        <p className="text-xs text-red-600">
+        <p className="text-xs text-[var(--color-ink-red)]">
           Не удалось разобрать payload: {parsed.error.message}
         </p>
       );
@@ -250,7 +250,7 @@ export function AspectRunner<TPayload>({
     const parsed = adapter.payloadSchema.safeParse(payload);
     if (!parsed.success) {
       return (
-        <p className="text-xs text-red-600">
+        <p className="text-xs text-[var(--color-ink-red)]">
           Не удалось разобрать финальный payload: {parsed.error.message}
         </p>
       );
@@ -261,7 +261,7 @@ export function AspectRunner<TPayload>({
   return (
     <ul
       aria-label="aspects"
-      className="flex flex-col gap-4 border border-[var(--color-border)] rounded-lg p-4"
+      className="lw-card flex flex-col gap-4"
     >
       {stage.aspects.map((aspect) => {
         const busy = busyAspectId === aspect.id;
@@ -274,14 +274,38 @@ export function AspectRunner<TPayload>({
           >
             <div className="flex items-baseline justify-between gap-2">
               <div className="flex items-baseline gap-2">
-                <span className="font-medium">{aspect.name}</span>
+                <span
+                  className="text-[15px] text-[var(--color-text-strong)]"
+                  style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+                >
+                  {aspect.name}
+                </span>
                 {aspect.required && (
-                  <span className="text-xs text-amber-700">(обязательно)</span>
+                  <span className="text-xs text-[var(--color-ink-amber)]">
+                    (обязательно)
+                  </span>
                 )}
               </div>
               <span
                 aria-label={`status-${aspect.status}`}
-                className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]"
+                className={
+                  "lw-pill " +
+                  (aspect.status === "accepted"
+                    ? ""
+                    : aspect.status === "pending"
+                      ? ""
+                      : "")
+                }
+                data-tone={
+                  aspect.status === "accepted"
+                    ? "green"
+                    : aspect.status === "pending"
+                      ? "amber"
+                      : aspect.status === "generating" ||
+                          aspect.status === "reviewing"
+                        ? "brass"
+                        : undefined
+                }
               >
                 {STATUS_LABEL[aspect.status]}
               </span>
@@ -460,7 +484,7 @@ export function AspectRunner<TPayload>({
             )}
 
             {err && (
-              <p role="alert" className="text-xs text-red-600">
+              <p role="alert" className="text-xs text-[var(--color-ink-red)]">
                 {err}
               </p>
             )}

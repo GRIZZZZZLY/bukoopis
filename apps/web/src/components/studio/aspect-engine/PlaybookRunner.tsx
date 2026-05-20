@@ -106,8 +106,8 @@ export function PlaybookRunner({
 
   if (proposed === null) {
     return (
-      <div className="flex flex-col gap-2 border border-[var(--color-border)] rounded-lg p-4">
-        <p className="text-sm text-[var(--color-muted-foreground)]">
+      <div className="lw-card flex flex-col gap-3">
+        <p className="text-sm text-[var(--color-text-muted)]">
           В стадии пока нет аспектов. Запустите генерацию плейбука: LLM
           предложит 5–9 ключевых полей, которые потом раскроем по одному.
         </p>
@@ -116,18 +116,18 @@ export function PlaybookRunner({
             type="button"
             onClick={handleGenerate}
             disabled={busy}
-            className={
-              "text-sm border rounded-md px-3 py-1 " +
-              (busy
-                ? "bg-[var(--color-muted)] cursor-not-allowed"
-                : "border-[var(--color-brass)] text-[var(--color-brass)] hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]")
-            }
+            className="lw-btn"
+            data-variant="primary"
+            data-size="sm"
           >
             {busy ? "Генерируем…" : "Сгенерировать список аспектов"}
           </button>
         </div>
         {error && (
-          <p role="alert" className="text-xs text-red-600">
+          <p
+            role="alert"
+            className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+          >
             {error}
           </p>
         )}
@@ -136,13 +136,18 @@ export function PlaybookRunner({
   }
 
   return (
-    <div className="flex flex-col gap-3 border border-[var(--color-border)] rounded-lg p-4">
-      <p className="text-sm font-medium">Предложенные аспекты</p>
+    <div className="lw-card flex flex-col gap-3">
+      <p
+        className="text-base"
+        style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+      >
+        Предложенные аспекты
+      </p>
       <ul className="flex flex-col gap-2">
         {proposed.map((p, i) => (
           <li
             key={`${p.name}-${i}`}
-            className="flex items-start gap-3 rounded p-2 hover:bg-[var(--color-muted)]"
+            className="flex items-start gap-3 rounded p-2 hover:bg-[var(--color-surface-2)] transition-colors"
           >
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -175,12 +180,9 @@ export function PlaybookRunner({
           type="button"
           onClick={handleAcceptAll}
           disabled={busy || proposed.every((p) => !p.include)}
-          className={
-            "text-sm border rounded-md px-3 py-1 " +
-            (busy || proposed.every((p) => !p.include)
-              ? "bg-[var(--color-muted)] cursor-not-allowed"
-              : "border-[var(--color-brass)] text-[var(--color-brass)] hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]")
-          }
+          className="lw-btn"
+          data-variant="primary"
+          data-size="sm"
         >
           {busy ? "Сохраняем…" : "Принять список"}
         </button>
@@ -188,7 +190,9 @@ export function PlaybookRunner({
           type="button"
           onClick={() => setProposed(null)}
           disabled={busy}
-          className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+          className="lw-btn"
+          data-variant="ghost"
+          data-size="sm"
         >
           Отменить
         </button>
@@ -196,13 +200,18 @@ export function PlaybookRunner({
           type="button"
           onClick={handleGenerate}
           disabled={busy}
-          className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+          className="lw-btn"
+          data-variant="ghost"
+          data-size="sm"
         >
           Перегенерировать
         </button>
       </div>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p
+          role="alert"
+          className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           {error}
         </p>
       )}
