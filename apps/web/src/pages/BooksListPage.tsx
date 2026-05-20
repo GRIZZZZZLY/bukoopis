@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BookPlus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { Pill, type PillTone } from "@/components/ui/pill";
+import { Kbd } from "@/components/ui/kbd";
 import { api } from "@/api/client";
 import { stageRoute } from "@/lib/studio-routes";
 import type { Book, BookStatus, StageId } from "@book-forge/shared";
@@ -18,25 +19,45 @@ const STATUS_TONE: Record<BookStatus, PillTone> = {
   active: "blue",
   archived: "default",
 };
+const STAGE_LABEL: Record<StageId, string> = {
+  concept: "Концепт",
+  world: "Мир",
+  lore: "Лор",
+  characters: "Персонажи",
+  items: "Предметы",
+  plot: "Сюжет",
+  chapters: "Главы",
+};
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return iso;
+  const diffMin = Math.floor((Date.now() - then) / 60_000);
+  if (diffMin < 1) return "только что";
+  if (diffMin < 60) return `${diffMin} мин назад`;
+  const h = Math.floor(diffMin / 60);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "вчера";
+  if (d < 7) return `${d} дн назад`;
+  return new Date(iso).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function spineColor(bookId: number): string {
+  const palette = ["#D49A4E", "#B5803A", "#E8B361", "#C89243", "#8E6126"];
+  return palette[bookId % palette.length]!;
 }
 
 export function BooksListPage() {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<Record<number, StageId>>({});
-  const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
   async function load() {
@@ -61,20 +82,20 @@ export function BooksListPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-    setCreating(true);
+    setBusy(true);
     setError(null);
     try {
       const created = await api.createBook({ title: title.trim() });
       navigate(`/books/${created.id}/studio`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setCreating(false);
+      setBusy(false);
     }
   }
 
   if (error) {
     return (
-      <main className="max-w-5xl mx-auto p-8">
+      <main className="max-w-[1280px] mx-auto px-8 pt-10 pb-24">
         <p
           role="alert"
           className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
@@ -86,114 +107,183 @@ export function BooksListPage() {
   }
   if (books === null) return <PageSkeleton label="Список книг загружается" />;
 
-  const isEmpty = books.length === 0;
   const count = books.length;
+  const latest = books
+    .map((b) => b.updatedAt ?? b.createdAt)
+    .sort()
+    .at(-1);
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-1">
+    <main className="max-w-[1280px] mx-auto px-8 pt-10 pb-24 flex flex-col gap-8">
+      <header className="flex items-end justify-between gap-6 flex-wrap">
+        <div className="flex flex-col gap-2">
           <h1
-            className="text-[28px] leading-tight"
+            className="text-[36px] leading-[1.1] tracking-[-0.015em] text-[var(--color-text-strong)]"
             style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
           >
             Ваши книги
           </h1>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            {isEmpty
-              ? "Пока ни одной — начните с рабочего названия."
-              : count === 1
-                ? "1 книга в работе"
-                : `${count} книг в работе`}
-          </p>
+          <div className="text-sm text-[var(--color-text-muted)]">
+            {count === 0 ? (
+              "Здесь будет ваша первая книга."
+            ) : (
+              <>
+                {count} {count === 1 ? "книга" : "книг"}
+                {latest && (
+                  <>
+                    {" · последняя правка "}
+                    <span className="lw-mono text-[var(--color-text)]">
+                      {relativeTime(latest)}
+                    </span>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </div>
-        <form
-          onSubmit={onCreate}
-          className="flex gap-2 w-full sm:w-auto sm:min-w-[360px]"
-          aria-label="Создать новую книгу"
-        >
-          <input
-            className="lw-input"
-            placeholder="Например, «Маяк и письмо»"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            aria-label="Название книги"
-          />
-          <Button
-            type="submit"
-            disabled={creating || !title.trim()}
-            aria-busy={creating || undefined}
-          >
-            {creating ? "…" : "Создать"}
+        {!creating ? (
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            Новая книга
           </Button>
-        </form>
+        ) : (
+          <form
+            onSubmit={onCreate}
+            className="flex items-center gap-2"
+            aria-label="Создать новую книгу"
+          >
+            <input
+              className="lw-input w-[280px]"
+              autoFocus
+              placeholder="Название книги…"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              aria-label="Название книги"
+              disabled={busy}
+            />
+            <Button type="submit" disabled={busy || !title.trim()}>
+              {busy ? "…" : "Создать"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setCreating(false);
+                setTitle("");
+              }}
+              disabled={busy}
+            >
+              Отмена
+            </Button>
+          </form>
+        )}
       </header>
 
-      {isEmpty ? (
+      {count === 0 ? (
         <section
-          className="border border-dashed border-[var(--color-border)] rounded-[var(--radius-shell)] p-10 flex flex-col items-center text-center gap-4"
+          className="lw-card p-10 flex flex-col items-center text-center gap-4 border-dashed"
           aria-label="Пустое состояние"
         >
           <div
-            className="size-16 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] inline-flex items-center justify-center"
+            className="size-14 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)] inline-flex items-center justify-center"
             aria-hidden="true"
           >
-            <BookPlus className="size-8 text-[var(--color-brass)]" />
+            <Plus className="size-7 text-[var(--color-brass)]" />
           </div>
-          <div className="flex flex-col gap-1.5 max-w-md">
-            <h2
-              className="text-xl"
-              style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-            >
-              Здесь будет ваша первая книга
-            </h2>
-            <p className="text-sm text-[var(--color-text-muted)]">
-              План, главы, канон и стиль — всё в одной книге. Дайте ей рабочее
-              название в форме сверху, остальное добавите потом.
-            </p>
-          </div>
+          <h2
+            className="text-xl"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            Создайте первую книгу
+          </h2>
+          <p className="text-sm text-[var(--color-text-muted)] max-w-sm">
+            Дайте ей рабочее название — план, главы, канон и стиль будут жить
+            здесь.
+          </p>
         </section>
       ) : (
         <ul
-          className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+          className="grid gap-5"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
           aria-label="Список книг"
         >
           {books.map((b) => (
-            <li key={b.id} className="relative">
-              <article className="lw-card flex flex-col gap-3 p-0 overflow-hidden h-full">
-                <div className="lw-spine" aria-hidden="true" />
-                <div className="flex flex-col gap-3 px-5 pt-3 pb-5 flex-1">
+            <li key={b.id}>
+              <article className="lw-card p-0 overflow-hidden h-[220px] flex flex-col">
+                <div
+                  className="relative"
+                  style={{
+                    height: 12,
+                    background: `linear-gradient(180deg, ${spineColor(b.id)}cc, ${spineColor(b.id)}, ${spineColor(b.id)}cc)`,
+                  }}
+                >
+                  <div
+                    className="lw-mono absolute inset-0 flex items-center px-3"
+                    style={{
+                      fontSize: 8,
+                      color: "rgba(26,20,16,0.55)",
+                      letterSpacing: "0.2em",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
+                    }}
+                    aria-hidden="true"
+                  >
+                    BKO · {String(b.id).padStart(4, "0")}
+                  </div>
+                </div>
+                <div className="lw-paper flex flex-col flex-1 px-[22px] py-5">
                   <Link
                     to={`/books/${b.id}/studio`}
-                    className="flex flex-col gap-1 outline-none"
+                    className="outline-none group/title"
                   >
-                    <h2
-                      className="text-[20px] leading-snug text-[var(--color-text-strong)] hover:text-[var(--color-brass)] transition-colors"
-                      style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+                    <h3
+                      className="text-[22px] leading-[1.15] tracking-[-0.01em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        fontWeight: 500,
+                        textWrap: "pretty",
+                      }}
                     >
                       {b.title}
-                    </h2>
-                    <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
-                      создана {formatDate(b.createdAt)}
-                    </p>
+                    </h3>
                   </Link>
-
-                  <div className="flex items-center justify-between gap-2 mt-auto">
-                    <Pill tone={STATUS_TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill>
-                    {recommended[b.id] ? (
+                  <div className="lw-mono text-[11px] text-[var(--color-text-faint)] mt-2.5">
+                    создана {relativeTime(b.createdAt)}
+                  </div>
+                  {recommended[b.id] && (
+                    <div className="lw-mono text-[11px] mt-2">
+                      <span className="text-[var(--color-text-faint)]">
+                        далее:{" "}
+                      </span>
                       <Link
                         to={stageRoute(b.id, recommended[b.id]!)}
-                        className="text-xs text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
+                        className="text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
+                        style={{ borderBottom: "1px solid currentColor" }}
                       >
-                        Продолжить →
+                        Продолжить → {STAGE_LABEL[recommended[b.id]!]}
                       </Link>
-                    ) : null}
+                    </div>
+                  )}
+                  <div className="flex-1" />
+                  <div className="flex justify-between items-center mt-3">
+                    <span className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+                      {relativeTime(b.updatedAt ?? b.createdAt)}
+                    </span>
+                    <Pill tone={STATUS_TONE[b.status]} dot>
+                      {STATUS_LABEL[b.status]}
+                    </Pill>
                   </div>
                 </div>
               </article>
             </li>
           ))}
         </ul>
+      )}
+
+      {count > 0 && (
+        <p className="lw-mono text-[12px] text-[var(--color-text-faint)] mt-2">
+          Нажмите <Kbd>N</Kbd> чтобы создать новую книгу
+        </p>
       )}
     </main>
   );

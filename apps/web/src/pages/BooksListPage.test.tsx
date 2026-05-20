@@ -28,7 +28,8 @@ describe("BooksListPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => screen.getByLabelText("Название книги"));
+    await waitFor(() => screen.getByRole("button", { name: /Новая книга/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Новая книга/ }));
     await userEvent.type(screen.getByLabelText("Название книги"), "Новая");
     await userEvent.click(screen.getByRole("button", { name: /Создать/ }));
     await waitFor(() =>
