@@ -118,7 +118,10 @@ export function SettingsStagePage() {
   if (!Number.isFinite(id)) {
     return (
       <main className="max-w-3xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Книга не найдена
         </p>
       </main>
@@ -127,7 +130,10 @@ export function SettingsStagePage() {
   if (error) {
     return (
       <main className="max-w-3xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Ошибка: {error}
         </p>
       </main>
@@ -138,59 +144,81 @@ export function SettingsStagePage() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto p-8 flex flex-col gap-6">
+    <main className="max-w-3xl mx-auto p-8 flex flex-col gap-8">
       <StageStepper bookId={id} concept={concept} studioState={studio} />
-      <div className="flex justify-between items-baseline">
-        <h1 className="text-3xl font-bold">Настройки</h1>
-        <Link to={`/books/${id}/studio`} className="text-sm underline">
+
+      <header className="flex justify-between items-end gap-4">
+        <div className="flex flex-col gap-1">
+          <h1
+            className="text-[28px] leading-tight"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            Настройки
+          </h1>
+          <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+            книга #{id}
+          </p>
+        </div>
+        <Link to={`/books/${id}/studio`} className="lw-link text-sm">
           ← к Studio
         </Link>
-      </div>
+      </header>
 
-      <section className="flex flex-col gap-3">
+      <section className="lw-card flex flex-col gap-4">
         <input
-          className="text-2xl font-bold border-b border-[var(--color-border)] py-1 outline-none focus:border-[var(--color-ring)]"
+          className="text-[28px] leading-tight border-b border-[var(--color-border)] py-1 outline-none focus:border-[var(--color-brass)] bg-transparent transition-colors"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          aria-label="Название книги"
         />
 
-        <label className="text-sm font-medium">Статус</label>
-        <select
-          className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm w-fit"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as BookStatus)}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <label className="text-sm font-medium">Стилевой профиль</label>
-        <select
-          className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm w-fit"
-          value={styleProfileId ?? ""}
-          onChange={(e) =>
-            setStyleProfileId(
-              e.target.value === "" ? null : Number(e.target.value),
-            )
-          }
-        >
-          <option value="">— без стиля —</option>
-          {styleProfiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-              {!p.fingerprint ? " (нет fingerprint)" : ""}
-            </option>
-          ))}
-        </select>
-
-        <div className="grid grid-cols-3 gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Writer model</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="lw-cap-upper">Статус</span>
             <select
-              className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
+              className="lw-input"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as BookStatus)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="lw-cap-upper">Стилевой профиль</span>
+            <select
+              className="lw-input"
+              value={styleProfileId ?? ""}
+              onChange={(e) =>
+                setStyleProfileId(
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
+            >
+              <option value="">— без стиля —</option>
+              {styleProfiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {!p.fingerprint ? " (нет fingerprint)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="lw-card flex flex-col gap-3">
+        <h2 className="lw-cap-upper">Модели</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="lw-cap">Writer</span>
+            <select
+              className="lw-input"
               value={writerModel}
               onChange={(e) => setWriterModel(e.target.value as ModelChoice)}
             >
@@ -201,10 +229,10 @@ export function SettingsStagePage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Plot model</span>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="lw-cap">Plot</span>
             <select
-              className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
+              className="lw-input"
               value={plotModel}
               onChange={(e) => setPlotModel(e.target.value as ModelChoice)}
             >
@@ -215,10 +243,10 @@ export function SettingsStagePage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Critic model</span>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="lw-cap">Critic</span>
             <select
-              className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
+              className="lw-input"
               value={criticModel}
               onChange={(e) => setCriticModel(e.target.value as ModelChoice)}
             >
@@ -230,79 +258,74 @@ export function SettingsStagePage() {
             </select>
           </label>
         </div>
-        <p className="text-xs text-[var(--color-muted-foreground)]">
-          Прогноз ~$
-          {writerProvider === "ollama"
-            ? estimatePerChapterUsd("sonnet", plotModel, criticModel).toFixed(2)
-            : estimatePerChapterUsd(writerModel, plotModel, criticModel).toFixed(
-                2,
-              )}
-          {" "}/ глава при текущих настройках (4k слов; без учёта prompt-кэша
+        <p className="text-xs text-[var(--color-text-muted)] lw-tabular">
+          Прогноз ~
+          <span className="lw-mono text-[var(--color-text-strong)]">
+            $
+            {writerProvider === "ollama"
+              ? estimatePerChapterUsd("sonnet", plotModel, criticModel).toFixed(2)
+              : estimatePerChapterUsd(writerModel, plotModel, criticModel).toFixed(2)}
+          </span>{" "}
+          / глава (4k слов; без учёта prompt-кэша
           {writerProvider === "ollama" ? "; Writer бесплатный — локальная модель" : ""}
           ).
         </p>
-
-        <fieldset
-          className="border border-[var(--color-border)] rounded-md p-3 flex flex-col gap-2"
-          aria-label="Провайдер для Writer"
-        >
-          <legend className="px-1 text-xs font-medium text-[var(--color-muted-foreground)]">
-            Provider для Writer
-          </legend>
-          <div className="flex flex-wrap gap-3 text-sm">
-            {PROVIDERS.map((p) => (
-              <label key={p} className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="writer-provider"
-                  value={p}
-                  checked={writerProvider === p}
-                  onChange={() => setWriterProvider(p)}
-                />
-                <span>
-                  {p === "anthropic" ? "Cloud (Anthropic)" : "Local (Ollama)"}
-                </span>
-              </label>
-            ))}
-          </div>
-          {writerProvider === "ollama" && (
-            <div className="flex flex-col gap-1">
-              <label
-                className="text-xs text-[var(--color-muted-foreground)]"
-                htmlFor="writer-local-model"
-              >
-                Тег локальной модели
-              </label>
-              <input
-                id="writer-local-model"
-                className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
-                value={writerLocalModel}
-                onChange={(e) => setWriterLocalModel(e.target.value)}
-                placeholder="например, qwen2.5:14b-instruct"
-              />
-              <p className="text-xs text-[var(--color-muted-foreground)]">
-                Сервер должен достигать Ollama по{" "}
-                <code>OLLAMA_BASE_URL</code> (по умолчанию{" "}
-                <code>http://127.0.0.1:11434</code>). Plot и Critic остаются на
-                cloud-моделях.
-              </p>
-            </div>
-          )}
-        </fieldset>
-
-        <div className="flex gap-2">
-          <Button onClick={onSave} disabled={saving}>
-            {saving ? "Сохранение…" : "Сохранить"}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setDeleteDialogOpen(true)}
-            aria-label={`Удалить книгу «${book.title}»`}
-          >
-            Удалить книгу
-          </Button>
-        </div>
       </section>
+
+      <fieldset
+        className="lw-card flex flex-col gap-3"
+        aria-label="Провайдер для Writer"
+      >
+        <legend className="lw-cap-upper px-1">Provider для Writer</legend>
+        <div className="flex flex-wrap gap-3 text-sm">
+          {PROVIDERS.map((p) => (
+            <label key={p} className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="writer-provider"
+                value={p}
+                checked={writerProvider === p}
+                onChange={() => setWriterProvider(p)}
+                className="accent-[var(--color-brass)]"
+              />
+              <span>{p === "anthropic" ? "Cloud (Anthropic)" : "Local (Ollama)"}</span>
+            </label>
+          ))}
+        </div>
+        {writerProvider === "ollama" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="lw-cap" htmlFor="writer-local-model">
+              Тег локальной модели
+            </label>
+            <input
+              id="writer-local-model"
+              className="lw-input"
+              value={writerLocalModel}
+              onChange={(e) => setWriterLocalModel(e.target.value)}
+              placeholder="например, qwen2.5:14b-instruct"
+            />
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Сервер должен достигать Ollama по{" "}
+              <code className="lw-mono">OLLAMA_BASE_URL</code> (по умолчанию{" "}
+              <code className="lw-mono">http://127.0.0.1:11434</code>). Plot и
+              Critic остаются на cloud-моделях.
+            </p>
+          </div>
+        )}
+      </fieldset>
+
+      <div className="flex gap-2">
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? "Сохранение…" : "Сохранить"}
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => setDeleteDialogOpen(true)}
+          aria-label={`Удалить книгу «${book.title}»`}
+        >
+          Удалить книгу
+        </Button>
+      </div>
 
       <ConfirmDialog
         open={deleteDialogOpen}

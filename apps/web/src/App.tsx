@@ -3,6 +3,7 @@ import {
   Navigate,
   RouterProvider,
   useParams,
+  Link,
 } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { BooksListPage } from "@/pages/BooksListPage";
@@ -18,6 +19,29 @@ import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
 import { EntityStagePage } from "@/pages/EntityStagePage";
 import { ChaptersStagePage } from "@/pages/ChaptersStagePage";
 import { SettingsStagePage } from "@/pages/SettingsStagePage";
+
+function NotFound() {
+  return (
+    <main className="max-w-md mx-auto p-12 flex flex-col items-center text-center gap-4">
+      <h1
+        className="text-[28px] leading-tight text-[var(--color-text-strong)]"
+        style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+      >
+        Страница потерялась
+      </h1>
+      <p className="text-sm text-[var(--color-text-muted)] max-w-sm">
+        Возможно, её перенесли в другую главу. Вернёмся к началу?
+      </p>
+      <Link
+        to="/books"
+        className="lw-btn"
+        data-variant="primary"
+      >
+        На главную
+      </Link>
+    </main>
+  );
+}
 
 function StagePageDispatch() {
   const { stageId } = useParams<{ stageId: string }>();
@@ -44,7 +68,7 @@ const router = createBrowserRouter([
       { path: "/style-profiles", element: <StyleProfilesListPage /> },
       { path: "/style-profiles/:profileId", element: <StyleProfilePage /> },
       { path: "/usage", element: <UsagePage /> },
-      { path: "*", element: <p className="p-8">Не найдено</p> },
+      { path: "*", element: <NotFound /> },
     ],
   },
 ]);

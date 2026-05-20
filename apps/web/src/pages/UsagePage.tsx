@@ -34,44 +34,63 @@ export function UsagePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (error) return <p className="p-8">Ошибка: {error}</p>;
-  if (!summary) return <p className="p-8">Загрузка…</p>;
+  if (error)
+    return (
+      <p
+        role="alert"
+        className="m-8 max-w-5xl text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+      >
+        Ошибка: {error}
+      </p>
+    );
+  if (!summary)
+    return <p className="p-8 text-sm text-[var(--color-text-muted)]">Загрузка…</p>;
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <Link to="/books" className="text-sm underline">
+    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
+      <Link to="/books" className="lw-link text-sm">
         ← К списку книг
       </Link>
-      <h1 className="text-3xl font-bold">Расходы LLM</h1>
+      <header className="flex flex-col gap-1">
+        <h1
+          className="text-[28px] leading-tight"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Расходы LLM
+        </h1>
+        <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+          per-route · per-day · последние 50 вызовов
+        </p>
+      </header>
 
       <section className="flex gap-2 items-end flex-wrap">
         <label className="text-xs flex flex-col gap-1">
-          <span>Book ID</span>
+          <span className="lw-cap-upper">Book ID</span>
           <input
             type="number"
             min={1}
             value={bookIdFilter}
             onChange={(e) => setBookIdFilter(e.target.value)}
             placeholder="все книги"
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 w-24 text-sm"
+            className="lw-input w-24"
           />
         </label>
         <label className="text-xs flex flex-col gap-1">
-          <span>От</span>
+          <span className="lw-cap-upper">От</span>
           <input
             type="date"
             value={fromFilter}
             onChange={(e) => setFromFilter(e.target.value)}
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+            className="lw-input"
           />
         </label>
         <label className="text-xs flex flex-col gap-1">
-          <span>До</span>
+          <span className="lw-cap-upper">До</span>
           <input
             type="date"
             value={toFilter}
             onChange={(e) => setToFilter(e.target.value)}
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+            className="lw-input"
           />
         </label>
         <Button onClick={load} disabled={loading}>
@@ -93,7 +112,12 @@ export function UsagePage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold">По маршрутам</h2>
+        <h2
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          По маршрутам
+        </h2>
         {summary.perRoute.length === 0 ? (
           <p className="text-sm text-[var(--color-muted-foreground)]">
             Нет данных в выбранном диапазоне.
@@ -129,7 +153,12 @@ export function UsagePage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold">По дням</h2>
+        <h2
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          По дням
+        </h2>
         {summary.perDay.length === 0 ? (
           <p className="text-sm text-[var(--color-muted-foreground)]">
             Нет дней с активностью.
@@ -140,7 +169,12 @@ export function UsagePage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xl font-semibold">Последние 50 вызовов</h2>
+        <h2
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Последние 50 вызовов
+        </h2>
         {summary.recent.length === 0 ? (
           <p className="text-sm text-[var(--color-muted-foreground)]">Пусто.</p>
         ) : (
@@ -189,9 +223,11 @@ export function UsagePage() {
 
 function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="border border-[var(--color-border)] rounded-md p-3">
-      <div className="text-xs text-[var(--color-muted-foreground)]">{title}</div>
-      <div className="text-lg font-medium mt-1">{value}</div>
+    <div className="lw-card">
+      <div className="lw-cap-upper">{title}</div>
+      <div className="lw-mono text-[18px] text-[var(--color-text-strong)] mt-1.5">
+        {value}
+      </div>
     </div>
   );
 }
@@ -215,7 +251,7 @@ function PerDaySpark({
               title={`${d.date}: $${d.costUsd.toFixed(4)} · ${d.calls} вызовов`}
             >
               <div
-                className="bg-[var(--color-primary)] w-full rounded-sm"
+                className="bg-[var(--color-brass)] w-full rounded-sm"
                 style={{ height: `${h}px` }}
               />
               <div className="text-[10px] text-[var(--color-muted-foreground)] rotate-45 origin-top-left">

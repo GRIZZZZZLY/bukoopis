@@ -45,25 +45,43 @@ export function StyleProfilesListPage() {
     }
   }
 
-  if (error) return <p className="p-8">Ошибка: {error}</p>;
-  if (list === null) return <p className="p-8">Загрузка…</p>;
+  if (error)
+    return (
+      <p
+        role="alert"
+        className="m-8 max-w-3xl text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+      >
+        Ошибка: {error}
+      </p>
+    );
+  if (list === null)
+    return <p className="p-8 text-sm text-[var(--color-text-muted)]">Загрузка…</p>;
 
   return (
-    <main className="max-w-3xl mx-auto p-8 flex flex-col gap-6">
-      <Link to="/books" className="text-sm underline">
-        ← К списку книг
-      </Link>
-      <h1 className="text-3xl font-bold">Стилевые профили</h1>
+    <main className="max-w-4xl mx-auto p-8 flex flex-col gap-8">
+      <header className="flex flex-col gap-1">
+        <h1
+          className="text-[28px] leading-tight"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Стилевые профили
+        </h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          {list.length === 0
+            ? "Профилей пока нет — извлеките голос из готовой книги."
+            : `${list.length} ${list.length === 1 ? "профиль" : "профилей"}`}
+        </p>
+      </header>
 
       <form onSubmit={onCreate} className="flex gap-2 flex-wrap">
         <input
-          className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-2 text-sm min-w-[200px]"
+          className="lw-input flex-1 min-w-[200px]"
           placeholder="Имя профиля (например: Пехов)"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <input
-          className="w-20 border border-[var(--color-input)] rounded-md px-2 py-2 text-sm"
+          className="lw-input w-24"
           placeholder="ru"
           value={language}
           onChange={(e) => setLanguage(e.target.value)}
@@ -74,24 +92,31 @@ export function StyleProfilesListPage() {
       </form>
 
       {list.length === 0 ? (
-        <p className="text-[var(--color-muted-foreground)]">
-          Нет профилей. Создай первый.
+        <p className="lw-card text-sm text-[var(--color-text-muted)] italic">
+          Нет профилей. Создайте первый — извлечём голос из загруженного корпуса.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {list.map((p) => (
-            <li
-              key={p.id}
-              className="border border-[var(--color-border)] rounded-md p-4 hover:bg-[var(--color-accent)]"
-            >
-              <Link to={`/style-profiles/${p.id}`} className="block">
-                <div className="font-medium">{p.name}</div>
-                <div className="text-xs text-[var(--color-muted-foreground)]">
+            <li key={p.id}>
+              <Link to={`/style-profiles/${p.id}`} className="lw-card block">
+                <div
+                  className="text-[18px] leading-snug text-[var(--color-text-strong)]"
+                  style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+                >
+                  {p.name}
+                </div>
+                <div className="lw-mono text-[11px] text-[var(--color-text-faint)] mt-1">
                   {p.language} · корпусов: {p.corporaCount} ·{" "}
-                  {p.totalChars.toLocaleString("ru-RU")} символов ·{" "}
-                  {p.fingerprint
-                    ? "fingerprint готов"
-                    : "fingerprint не извлечён"}
+                  {p.totalChars.toLocaleString("ru-RU")} символов
+                </div>
+                <div className="mt-2">
+                  <span
+                    className="lw-pill"
+                    data-tone={p.fingerprint ? "green" : "amber"}
+                  >
+                    {p.fingerprint ? "fingerprint готов" : "fingerprint не извлечён"}
+                  </span>
                 </div>
               </Link>
             </li>
@@ -190,19 +215,34 @@ export function StyleProfilePage() {
     }
   }
 
-  if (error) return <p className="p-8">Ошибка: {error}</p>;
-  if (!profile || corpora === null) return <p className="p-8">Загрузка…</p>;
+  if (error)
+    return (
+      <p
+        role="alert"
+        className="m-8 max-w-3xl text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+      >
+        Ошибка: {error}
+      </p>
+    );
+  if (!profile || corpora === null)
+    return <p className="p-8 text-sm text-[var(--color-text-muted)]">Загрузка…</p>;
 
   return (
-    <main className="max-w-3xl mx-auto p-8 flex flex-col gap-6">
-      <Link to="/style-profiles" className="text-sm underline">
+    <main className="max-w-3xl mx-auto p-8 flex flex-col gap-8">
+      <Link to="/style-profiles" className="lw-link text-sm">
         ← К списку профилей
       </Link>
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">{profile.name}</h1>
-          <p className="text-sm text-[var(--color-muted-foreground)]">
-            {profile.language} · {profile.description ?? "(без описания)"}
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex flex-col gap-1">
+          <h1
+            className="text-[28px] leading-tight"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            {profile.name}
+          </h1>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            <span className="lw-mono">{profile.language}</span> ·{" "}
+            {profile.description ?? "(без описания)"}
           </p>
         </div>
         <Button variant="destructive" onClick={onDeleteProfile}>
@@ -210,8 +250,13 @@ export function StyleProfilePage() {
         </Button>
       </div>
 
-      <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
-        <h2 className="text-xl font-semibold">Корпус (.txt / .md / .fb2 / .epub)</h2>
+      <section className="lw-card flex flex-col gap-3">
+        <h2
+          className="text-[18px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Корпус (.txt / .md / .fb2 / .epub)
+        </h2>
         <div className="text-sm text-[var(--color-muted-foreground)]">
           Всего корпусов: {profile.corporaCount} ·{" "}
           {profile.totalChars.toLocaleString("ru-RU")} символов
@@ -254,15 +299,25 @@ export function StyleProfilePage() {
         )}
       </section>
 
-      <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Style Extractor</h2>
+      <section className="lw-card flex flex-col gap-3">
+        <div className="flex justify-between items-center gap-3">
+          <h2
+            className="text-[18px]"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            Style Extractor
+          </h2>
           <Button onClick={onExtract} disabled={extracting || corpora.length === 0}>
             {extracting ? "Анализ…" : "Извлечь fingerprint"}
           </Button>
         </div>
         {extractError && (
-          <p className="text-sm text-red-600">Ошибка: {extractError}</p>
+          <p
+            role="alert"
+            className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+          >
+            Ошибка: {extractError}
+          </p>
         )}
         {profile.lastExtractedAt && (
           <p className="text-xs text-[var(--color-muted-foreground)]">
