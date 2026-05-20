@@ -125,14 +125,20 @@ body {
   color: var(--color-text-strong);
 }
 
-/* TipTap editor surface (preserved; re-themed inline in Phase 3). */
+/* TipTap editor surface — Lora manuscript prose on paper-warm. */
 .ProseMirror {
   min-height: 360px;
   outline: none;
   cursor: text;
   white-space: pre-wrap;
+  font-family: var(--font-prose);
+  font-size: 18px;
+  line-height: 1.75;
+  color: var(--color-text);
+  text-wrap: pretty;
 }
-.ProseMirror p { margin: 0 0 0.75em 0; }
+.ProseMirror p { margin: 0 0 16px 0; }
+.ProseMirror ::selection { background: rgba(212, 154, 78, 0.18); }
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--color-muted-foreground);

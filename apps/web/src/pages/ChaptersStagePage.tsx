@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/ui/Skeleton";
+import { Pill } from "@/components/ui/pill";
 import { OutlinePanel } from "@/components/OutlinePanel";
 import { ImportExportPanel } from "@/components/ImportExportPanel";
 import { SearchPanel } from "@/components/SearchPanel";
@@ -78,7 +79,10 @@ export function ChaptersStagePage() {
   if (!Number.isFinite(id)) {
     return (
       <main className="max-w-5xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Книга не найдена
         </p>
       </main>
@@ -87,7 +91,10 @@ export function ChaptersStagePage() {
   if (error) {
     return (
       <main className="max-w-5xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Ошибка: {error}
         </p>
       </main>
@@ -98,14 +105,29 @@ export function ChaptersStagePage() {
   }
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
+    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
       <StageStepper
         bookId={id}
         concept={concept}
         studioState={studio}
         activeStageId="chapters"
       />
-      <h1 className="text-3xl font-bold">Главы</h1>
+
+      <header className="flex flex-col gap-1">
+        <h1
+          className="text-[28px] leading-tight"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Главы
+        </h1>
+        <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+          {chapters.length === 0
+            ? "пока ни одной"
+            : chapters.length === 1
+              ? "1 глава"
+              : `${chapters.length} глав`}
+        </p>
+      </header>
 
       <OutlinePanel book={book} onUpdated={load} />
 
@@ -115,12 +137,17 @@ export function ChaptersStagePage() {
 
       <SearchPanel bookId={id} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xl font-semibold">Список глав</h2>
+      <section className="flex flex-col gap-4">
+        <h2
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Список глав
+        </h2>
 
         <form onSubmit={onAddChapter} className="flex gap-2">
           <input
-            className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
+            className="lw-input flex-1"
             placeholder="Название главы"
             value={chapterTitle}
             onChange={(e) => setChapterTitle(e.target.value)}
@@ -131,7 +158,9 @@ export function ChaptersStagePage() {
         </form>
 
         {chapters.length === 0 ? (
-          <p className="text-[var(--color-muted-foreground)]">Глав пока нет.</p>
+          <p className="lw-card text-sm text-[var(--color-text-muted)] italic">
+            Глав пока нет. Введите название выше — выкуем первую.
+          </p>
         ) : (
           <SortableChapterList
             chapters={chapters}
@@ -231,12 +260,12 @@ function SortableChapterItem({
     <li
       ref={setNodeRef}
       style={style}
-      className="border border-[var(--color-border)] rounded-md p-3 hover:bg-[var(--color-accent)] flex items-center gap-2"
+      className="lw-card flex items-center gap-3 p-3 group"
     >
       <button
         type="button"
         aria-label="Перетащить главу"
-        className="cursor-grab active:cursor-grabbing text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+        className="cursor-grab active:cursor-grabbing text-[var(--color-text-faint)] hover:text-[var(--color-brass)] transition-colors"
         {...attributes}
         {...listeners}
       >
@@ -244,18 +273,21 @@ function SortableChapterItem({
       </button>
       <Link
         to={`/books/${bookId}/chapters/${chapter.id}`}
-        className="block flex-1"
+        className="block flex-1 outline-none"
       >
-        <div className="flex justify-between items-center">
-          <div>
-            <span className="text-xs text-[var(--color-muted-foreground)] mr-2">
+        <div className="flex justify-between items-center gap-3">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="lw-mono text-[11px] text-[var(--color-text-faint)] shrink-0">
               #{chapter.orderIndex}
             </span>
-            <span className="font-medium">{chapter.title}</span>
+            <span
+              className="text-[16px] truncate group-hover:text-[var(--color-brass)] transition-colors"
+              style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+            >
+              {chapter.title}
+            </span>
           </div>
-          <span className="text-xs text-[var(--color-muted-foreground)]">
-            {chapter.status}
-          </span>
+          <Pill>{chapter.status}</Pill>
         </div>
       </Link>
     </li>

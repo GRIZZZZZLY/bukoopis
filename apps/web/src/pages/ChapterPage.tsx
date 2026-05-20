@@ -469,7 +469,10 @@ export function ChapterPage() {
   if (error) {
     return (
       <main className="max-w-3xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Ошибка: {error}
         </p>
       </main>
@@ -515,7 +518,8 @@ export function ChapterPage() {
         </div>
 
         <input
-          className="text-2xl font-bold border-b border-[var(--color-border)] py-1 outline-none focus:border-[var(--color-ring)]"
+          className="text-[28px] leading-tight border-b border-[var(--color-border)] py-1 outline-none focus:border-[var(--color-brass)] bg-transparent transition-colors"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           disabled={isPreview}
