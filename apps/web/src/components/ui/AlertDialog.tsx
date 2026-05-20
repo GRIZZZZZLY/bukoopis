@@ -57,7 +57,7 @@ export function AlertDialog({
       role="presentation"
     >
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[1px] animate-in fade-in"
+        className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-md animate-in fade-in"
         onClick={() => {
           if (closeOnOverlayClick) onClose();
         }}
@@ -75,7 +75,8 @@ export function AlertDialog({
       >
         <h2
           id="alert-dialog-title"
-          className="text-lg font-semibold text-[var(--color-foreground)]"
+          className="text-xl font-semibold text-[var(--color-foreground)]"
+          style={{ fontFamily: "var(--font-display)" }}
         >
           {title}
         </h2>

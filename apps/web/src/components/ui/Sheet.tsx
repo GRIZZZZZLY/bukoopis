@@ -44,7 +44,7 @@ export function Sheet({
     >
       <div
         className={cn(
-          "absolute inset-0 bg-black/40 transition-opacity",
+          "absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-md transition-opacity",
           open ? "opacity-100" : "opacity-0",
         )}
         onClick={onClose}

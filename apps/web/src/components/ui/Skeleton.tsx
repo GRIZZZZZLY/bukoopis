@@ -7,10 +7,7 @@ export function Skeleton({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn(
-        "animate-pulse rounded-md bg-[var(--color-muted)]",
-        className,
-      )}
+      className={cn("lw-skel rounded-md", className)}
       aria-hidden="true"
       {...props}
     />
