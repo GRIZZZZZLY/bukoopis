@@ -211,7 +211,7 @@ export function BooksListPage() {
             <li key={b.id}>
               <article
                 className="lw-card p-0 overflow-hidden flex"
-                style={{ minHeight: 240 }}
+                style={{ minHeight: 280, height: 280 }}
               >
                 <div
                   className="lw-spine-v"
@@ -223,16 +223,16 @@ export function BooksListPage() {
                   </span>
                 </div>
                 <div className="flex-1 flex flex-col min-w-0">
-                  <div className="lw-paper flex-1 flex flex-col px-5 pt-4 pb-3">
+                  <div className="lw-paper flex-1 flex flex-col px-6 pt-5 pb-4">
                     <div className="lw-cap-upper">
                       BKO · {String(b.id).padStart(4, "0")}
                     </div>
                     <Link
                       to={`/books/${b.id}/studio`}
-                      className="outline-none group/title mt-1"
+                      className="outline-none group/title mt-2"
                     >
                       <h3
-                        className="text-[26px] leading-[1.1] tracking-[-0.015em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
+                        className="text-[28px] leading-[1.1] tracking-[-0.015em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
                         style={{
                           fontFamily: "var(--font-display)",
                           fontWeight: 500,
@@ -242,12 +242,12 @@ export function BooksListPage() {
                         {b.title}
                       </h3>
                     </Link>
-                    <div className="lw-mono text-[11px] text-[var(--color-text-faint)] mt-3">
+                    <div className="lw-mono text-[12px] text-[var(--color-text-faint)] mt-4">
                       создана {relativeTime(b.createdAt)}
                     </div>
                     <div className="flex-1" />
                     {recommended[b.id] && (
-                      <div className="lw-mono text-[12px] mt-3">
+                      <div className="lw-mono text-[13px] mt-4">
                         <Link
                           to={stageRoute(b.id, recommended[b.id]!)}
                           className="text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
@@ -258,8 +258,8 @@ export function BooksListPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center justify-between gap-3 px-5 py-3 bg-[var(--color-surface-2)] border-t border-[var(--color-border-soft)]">
-                    <span className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+                  <div className="flex items-center justify-between gap-3 px-6 py-3.5 bg-[var(--color-surface-3)] border-t border-[var(--color-border)]">
+                    <span className="lw-mono text-[11px] text-[var(--color-text-muted)]">
                       {relativeTime(b.updatedAt ?? b.createdAt)}
                     </span>
                     <Pill tone={STATUS_TONE[b.status]} dot>
