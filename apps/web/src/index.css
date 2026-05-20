@@ -42,6 +42,15 @@
   --color-paper:        #2B2118;
   --color-margin-rule:  #54402F;
 
+  /* tone tints (overlay/glow live here too so var() resolves) */
+  --color-overlay:        rgba(10, 7, 5, 0.72);
+  --color-brass-glow:     rgba(212, 154, 78, 0.18);
+  --color-brass-tint:     rgba(212, 154, 78, 0.10);
+  --color-ink-red-tint:   rgba(196, 69, 54, 0.12);
+  --color-ink-green-tint: rgba(106, 142, 78, 0.12);
+  --color-ink-blue-tint:  rgba(91, 122, 153, 0.14);
+  --color-ink-amber-tint: rgba(201, 162, 74, 0.12);
+
   /* shadcn-compat aliases (used by apps/web/src/components/ui/*) */
   --color-background:          var(--color-bg);
   --color-foreground:          var(--color-text);
@@ -74,15 +83,6 @@
 
 /* Non-utility tokens (no Tailwind generation needed). */
 :root {
-  /* color tints / overlay */
-  --color-overlay:          rgba(10, 7, 5, 0.72);
-  --color-brass-glow:       rgba(212, 154, 78, 0.18);
-  --color-brass-tint:       rgba(212, 154, 78, 0.10);
-  --color-ink-red-tint:     rgba(196, 69, 54, 0.12);
-  --color-ink-green-tint:   rgba(106, 142, 78, 0.12);
-  --color-ink-blue-tint:    rgba(91, 122, 153, 0.14);
-  --color-ink-amber-tint:   rgba(201, 162, 74, 0.12);
-
   /* shadows (warm) */
   --shadow-sm:   0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md:   0 6px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-border-soft);
