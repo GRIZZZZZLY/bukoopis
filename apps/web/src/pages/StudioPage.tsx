@@ -60,14 +60,21 @@ export function StudioPage() {
   if (error) {
     return (
       <main className="max-w-5xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+        >
           Ошибка: {error}
         </p>
       </main>
     );
   }
   if (!concept || !studio || !warnings) {
-    return <main className="max-w-5xl mx-auto p-8">Загрузка…</main>;
+    return (
+      <main className="max-w-5xl mx-auto p-8 text-sm text-[var(--color-text-muted)]">
+        Загрузка…
+      </main>
+    );
   }
 
   const recommended = computeRecommendedNextStage({
@@ -93,24 +100,38 @@ export function StudioPage() {
   }
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-baseline">
-        <h1 className="text-3xl font-bold">Studio</h1>
-        <nav aria-label="Навигация по студии" className="flex gap-3 text-sm">
+    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
+      {/* hero */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1
+            className="text-[28px] leading-tight"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            Studio
+          </h1>
+          <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
+            книга #{bookId}
+          </p>
+        </div>
+        <nav
+          aria-label="Навигация по студии"
+          className="flex gap-2 text-sm"
+        >
           <Link
             to={`/books/${bookId}/studio/settings`}
-            className="underline"
+            className="lw-pill hover:text-[var(--color-text)] transition-colors"
           >
             ⚙ Настройки
           </Link>
           <Link
             to={`/books/${bookId}/studio/chapters`}
-            className="underline"
+            className="lw-pill hover:text-[var(--color-text)] transition-colors"
           >
             📚 Главы
           </Link>
         </nav>
-      </div>
+      </header>
 
       <StageStepper
         bookId={bookId}
@@ -119,49 +140,83 @@ export function StudioPage() {
         activeStageId="concept"
       />
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div
-          className="h-2 flex-1 min-w-[8rem] rounded bg-[var(--color-muted)] overflow-hidden"
-          role="progressbar"
-          aria-label="Прогресс книги"
-          aria-valuemin={0}
-          aria-valuemax={7}
-          aria-valuenow={progress.doneCount}
-        >
+      {/* progress + Продолжить */}
+      <section
+        aria-label="Прогресс книги"
+        className="lw-card flex items-center gap-4 flex-wrap"
+      >
+        <div className="flex flex-col gap-1.5 flex-1 min-w-[14rem]">
+          <span
+            className="text-sm text-[var(--color-text-strong)]"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+          >
+            Готово {progress.doneCount}/7
+            {progress.recommended
+              ? ` · Далее: ${STAGE_LABELS[progress.recommended]}`
+              : " · Книга проработана"}
+          </span>
           <div
-            className="h-full bg-[var(--color-brass)]"
-            style={{ width: `${(progress.doneCount / 7) * 100}%` }}
-          />
+            className="h-2 rounded bg-[var(--color-surface-2)] overflow-hidden border border-[var(--color-border-soft)]"
+            role="progressbar"
+            aria-label="Прогресс книги"
+            aria-valuemin={0}
+            aria-valuemax={7}
+            aria-valuenow={progress.doneCount}
+          >
+            <div
+              className="h-full bg-[var(--color-brass)] transition-[width] duration-200"
+              style={{ width: `${(progress.doneCount / 7) * 100}%` }}
+            />
+          </div>
         </div>
-        <span className="text-sm text-[var(--color-muted-foreground)]">
-          Готово {progress.doneCount}/7
-          {progress.recommended
-            ? ` · Далее: ${STAGE_LABELS[progress.recommended]}`
-            : " · Книга проработана"}
-        </span>
         <Link
           to={stageRoute(bookId, continueStage)}
-          className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] transition-colors"
+          className="lw-btn"
+          data-variant="primary"
         >
           Продолжить →
         </Link>
-      </div>
-
-      <section aria-labelledby="warnings-heading" className="flex flex-col gap-2">
-        <h2 id="warnings-heading" className="text-lg font-semibold">
-          Предупреждения
-        </h2>
-        <WarningsFeed warnings={warnings} />
       </section>
 
-      <ConceptForm
-        initialConcept={concept}
-        onSave={handleSaveConcept}
-        onRefine={handleRefine}
-      />
+      {/* warnings */}
+      {warnings.length > 0 && (
+        <section
+          aria-labelledby="warnings-heading"
+          className="flex flex-col gap-2"
+        >
+          <h2
+            id="warnings-heading"
+            className="lw-cap-upper"
+          >
+            Предупреждения
+          </h2>
+          <WarningsFeed warnings={warnings} />
+        </section>
+      )}
 
+      {/* concept */}
+      <section aria-labelledby="concept-heading" className="flex flex-col gap-3">
+        <h2
+          id="concept-heading"
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
+          Концепт
+        </h2>
+        <ConceptForm
+          initialConcept={concept}
+          onSave={handleSaveConcept}
+          onRefine={handleRefine}
+        />
+      </section>
+
+      {/* stages */}
       <section aria-labelledby="stages-heading" className="flex flex-col gap-3">
-        <h2 id="stages-heading" className="text-lg font-semibold">
+        <h2
+          id="stages-heading"
+          className="text-[22px]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+        >
           Стадии
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
