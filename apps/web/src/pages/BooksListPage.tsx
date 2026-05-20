@@ -204,68 +204,61 @@ export function BooksListPage() {
       ) : (
         <ul
           className="grid gap-5"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))" }}
           aria-label="Список книг"
         >
           {books.map((b) => (
             <li key={b.id}>
-              <article className="lw-card p-0 overflow-hidden h-[220px] flex flex-col">
+              <article
+                className="lw-card p-0 overflow-hidden flex"
+                style={{ minHeight: 240 }}
+              >
                 <div
-                  className="relative"
-                  style={{
-                    height: 12,
-                    background: `linear-gradient(180deg, ${spineColor(b.id)}cc, ${spineColor(b.id)}, ${spineColor(b.id)}cc)`,
-                  }}
+                  className="lw-spine-v"
+                  style={{ ["--spine-color" as string]: spineColor(b.id) }}
+                  aria-hidden="true"
                 >
-                  <div
-                    className="lw-mono absolute inset-0 flex items-center px-3"
-                    style={{
-                      fontSize: 8,
-                      color: "rgba(26,20,16,0.55)",
-                      letterSpacing: "0.2em",
-                      textTransform: "uppercase",
-                      fontWeight: 600,
-                    }}
-                    aria-hidden="true"
-                  >
-                    BKO · {String(b.id).padStart(4, "0")}
-                  </div>
+                  <span className="lw-spine-label">
+                    BKO · {String(b.id).padStart(4, "0")} · {STATUS_LABEL[b.status]}
+                  </span>
                 </div>
-                <div className="lw-paper flex flex-col flex-1 px-[22px] py-5">
-                  <Link
-                    to={`/books/${b.id}/studio`}
-                    className="outline-none group/title"
-                  >
-                    <h3
-                      className="text-[22px] leading-[1.15] tracking-[-0.01em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontWeight: 500,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {b.title}
-                    </h3>
-                  </Link>
-                  <div className="lw-mono text-[11px] text-[var(--color-text-faint)] mt-2.5">
-                    создана {relativeTime(b.createdAt)}
-                  </div>
-                  {recommended[b.id] && (
-                    <div className="lw-mono text-[11px] mt-2">
-                      <span className="text-[var(--color-text-faint)]">
-                        далее:{" "}
-                      </span>
-                      <Link
-                        to={stageRoute(b.id, recommended[b.id]!)}
-                        className="text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
-                        style={{ borderBottom: "1px solid currentColor" }}
-                      >
-                        Продолжить → {STAGE_LABEL[recommended[b.id]!]}
-                      </Link>
+                <div className="flex-1 flex flex-col min-w-0">
+                  <div className="lw-paper flex-1 flex flex-col px-5 pt-4 pb-3">
+                    <div className="lw-cap-upper">
+                      BKO · {String(b.id).padStart(4, "0")}
                     </div>
-                  )}
-                  <div className="flex-1" />
-                  <div className="flex justify-between items-center mt-3">
+                    <Link
+                      to={`/books/${b.id}/studio`}
+                      className="outline-none group/title mt-1"
+                    >
+                      <h3
+                        className="text-[26px] leading-[1.1] tracking-[-0.015em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
+                        style={{
+                          fontFamily: "var(--font-display)",
+                          fontWeight: 500,
+                          textWrap: "pretty",
+                        }}
+                      >
+                        {b.title}
+                      </h3>
+                    </Link>
+                    <div className="lw-mono text-[11px] text-[var(--color-text-faint)] mt-3">
+                      создана {relativeTime(b.createdAt)}
+                    </div>
+                    <div className="flex-1" />
+                    {recommended[b.id] && (
+                      <div className="lw-mono text-[12px] mt-3">
+                        <Link
+                          to={stageRoute(b.id, recommended[b.id]!)}
+                          className="text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
+                          style={{ borderBottom: "1px solid currentColor" }}
+                        >
+                          Продолжить → {STAGE_LABEL[recommended[b.id]!]}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-5 py-3 bg-[var(--color-surface-2)] border-t border-[var(--color-border-soft)]">
                     <span className="lw-mono text-[11px] text-[var(--color-text-faint)]">
                       {relativeTime(b.updatedAt ?? b.createdAt)}
                     </span>

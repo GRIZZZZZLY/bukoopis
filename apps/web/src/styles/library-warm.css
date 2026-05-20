@@ -237,6 +237,43 @@
   vertical-align: -2px;
 }
 
+/* ─── vertical spine (book card left edge) ─────────────── */
+
+.lw-spine-v {
+  width: 36px;
+  flex-shrink: 0;
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    var(--spine-color, var(--color-brass-soft)) 0%,
+    var(--spine-color, var(--color-brass)) 45%,
+    color-mix(in srgb, var(--spine-color, var(--color-brass)) 60%, black) 100%
+  );
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.18);
+}
+.lw-spine-v::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 12px, rgba(0, 0, 0, 0.08) 12px 13px);
+  pointer-events: none;
+}
+.lw-spine-v > .lw-spine-label {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  transform-origin: center;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(26, 20, 16, 0.62);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── shell (TopBar / LeftRail / StatusBar) ──────────────────── */
 
 .lw-topbar {
