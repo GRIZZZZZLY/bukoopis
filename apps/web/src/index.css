@@ -113,9 +113,12 @@
   --grain-opacity: 0.5;
 }
 
+html {
+  background-color: #1A1410;
+}
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+  background-color: #1A1410 !important;
+  color: #EDE4D3;
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
