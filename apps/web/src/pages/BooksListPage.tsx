@@ -204,69 +204,113 @@ export function BooksListPage() {
       ) : (
         <ul
           className="grid gap-5"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
           aria-label="Список книг"
         >
           {books.map((b) => (
             <li key={b.id}>
               <article
-                className="lw-card p-0 overflow-hidden flex flex-row"
-                style={{ height: 280, padding: 0 }}
+                className="overflow-hidden flex flex-col"
+                style={{
+                  height: 220,
+                  background: "var(--color-surface-1)",
+                  border: "1px solid var(--color-border-soft)",
+                  borderRadius: 12,
+                  cursor: "default",
+                  transition: "background 200ms, border-color 200ms, box-shadow 200ms",
+                }}
               >
                 <div
-                  className="lw-spine-v"
-                  style={{ ["--spine-color" as string]: spineColor(b.id) }}
                   aria-hidden="true"
+                  style={{
+                    height: 12,
+                    position: "relative",
+                    background: `linear-gradient(180deg, ${spineColor(b.id)}99, ${spineColor(b.id)} 50%, ${spineColor(b.id)}99)`,
+                    overflow: "hidden",
+                  }}
                 >
-                  <span className="lw-spine-label">
-                    BKO · {String(b.id).padStart(4, "0")} · {STATUS_LABEL[b.status]}
-                  </span>
-                </div>
-                <div className="flex-1 flex flex-col min-w-0">
-                  <div className="lw-paper flex-1 flex flex-col px-6 pt-5 pb-4">
-                    <div className="lw-cap-upper">
-                      BKO · {String(b.id).padStart(4, "0")}
-                    </div>
-                    <Link
-                      to={`/books/${b.id}/studio`}
-                      className="outline-none group/title mt-2"
-                    >
-                      <h3
-                        className="text-[28px] leading-[1.1] tracking-[-0.015em] text-[var(--color-text-strong)] m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
-                        style={{
-                          fontFamily: "var(--font-display)",
-                          fontWeight: 500,
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {b.title}
-                      </h3>
-                    </Link>
-                    <div className="lw-mono text-[12px] text-[var(--color-text-faint)] mt-4">
-                      создана {relativeTime(b.createdAt)}
-                    </div>
-                    <div className="flex-1" />
-                    {recommended[b.id] && (
-                      <div className="lw-mono text-[13px] mt-4">
-                        <Link
-                          to={stageRoute(b.id, recommended[b.id]!)}
-                          className="text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
-                          style={{ borderBottom: "1px solid currentColor" }}
-                        >
-                          Продолжить → {STAGE_LABEL[recommended[b.id]!]}
-                        </Link>
-                      </div>
-                    )}
-                  </div>
                   <div
-                    className="flex items-center justify-between gap-3 px-6 py-3.5"
+                    className="lw-mono"
                     style={{
-                      background: "var(--color-bg)",
-                      borderTop: "1px solid var(--color-border-strong)",
-                      boxShadow: "inset 0 1px 0 rgba(0,0,0,0.25)",
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 12px",
+                      fontSize: 8,
+                      color: "rgba(26,20,16,0.55)",
+                      letterSpacing: "0.2em",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
                     }}
                   >
-                    <span className="lw-mono text-[11px] text-[var(--color-text-muted)]">
+                    BKO · {String(b.id).padStart(4, "0")}
+                  </div>
+                </div>
+                <div
+                  className="lw-paper flex flex-col"
+                  style={{ flex: 1, padding: "18px 20px" }}
+                >
+                  <Link
+                    to={`/books/${b.id}/studio`}
+                    className="outline-none group/title"
+                  >
+                    <h3
+                      className="m-0 group-hover/title:text-[var(--color-brass)] transition-colors"
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        fontWeight: 500,
+                        fontSize: 22,
+                        lineHeight: 1.15,
+                        letterSpacing: "-0.01em",
+                        color: "var(--color-text-strong)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {b.title}
+                    </h3>
+                  </Link>
+                  <div
+                    className="lw-mono"
+                    style={{
+                      fontSize: 11,
+                      color: "var(--color-text-faint)",
+                      marginTop: 10,
+                    }}
+                  >
+                    создана {relativeTime(b.createdAt)}
+                  </div>
+                  {recommended[b.id] && (
+                    <div
+                      className="lw-mono"
+                      style={{ fontSize: 11, marginTop: 8 }}
+                    >
+                      <span style={{ color: "var(--color-text-faint)" }}>
+                        далее:{" "}
+                      </span>
+                      <Link
+                        to={stageRoute(b.id, recommended[b.id]!)}
+                        style={{
+                          color: "var(--color-brass)",
+                          borderBottom: "1px solid currentColor",
+                        }}
+                      >
+                        Продолжить → {STAGE_LABEL[recommended[b.id]!]}
+                      </Link>
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }} />
+                  <div
+                    className="flex items-center justify-between"
+                    style={{ marginTop: 12 }}
+                  >
+                    <span
+                      className="lw-mono"
+                      style={{
+                        fontSize: 11,
+                        color: "var(--color-text-faint)",
+                      }}
+                    >
                       {relativeTime(b.updatedAt ?? b.createdAt)}
                     </span>
                     <Pill tone={STATUS_TONE[b.status]} dot>
