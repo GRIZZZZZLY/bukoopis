@@ -51,11 +51,6 @@
   --color-ink-blue-tint:  rgba(91, 122, 153, 0.14);
   --color-ink-amber-tint: rgba(201, 162, 74, 0.12);
 
-  /* shadcn-compat aliases (used by apps/web/src/components/ui/*).
-     Tailwind v4 @theme will NOT resolve `var(...)` references between
-     keys — values must be literals or the alias resolves to undefined
-     and falls back to white. Keep these in sync with the base tokens
-     above. */
   --color-background:             #1A1410;
   --color-foreground:             #EDE4D3;
   --color-primary:                #D49A4E;
