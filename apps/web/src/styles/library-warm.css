@@ -141,16 +141,27 @@
 
 .lw-card {
   background: var(--color-surface-1);
-  border: 1px solid var(--color-border-soft);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-card);
   padding: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 6px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px var(--color-border-soft);
   transition:
     background var(--motion-2) var(--ease-in-out),
     border-color var(--motion-2) var(--ease-in-out),
     box-shadow var(--motion-2) var(--ease-in-out),
     transform var(--motion-2) var(--ease-in-out);
 }
-.lw-card:hover { background: var(--color-surface-2); box-shadow: var(--shadow-md); }
+.lw-card:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-brass-soft);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--color-border-strong);
+}
 
 .lw-input, .lw-textarea {
   width: 100%;
