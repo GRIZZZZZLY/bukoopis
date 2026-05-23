@@ -204,7 +204,7 @@ export function BooksListPage() {
       ) : (
         <ul
           className="grid gap-5"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, 320px)" }}
           aria-label="Список книг"
         >
           {books.map((b) => (
