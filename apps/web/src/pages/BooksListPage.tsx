@@ -271,14 +271,32 @@ export function BooksListPage() {
                     </h3>
                   </Link>
                   <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--color-text-muted)",
+                      marginTop: 6,
+                    }}
+                  >
+                    {b.language === "ru" ? "Русский" : b.language} · {STATUS_LABEL[b.status]}
+                  </div>
+                  <div
                     className="lw-mono"
                     style={{
                       fontSize: 11,
                       color: "var(--color-text-faint)",
                       marginTop: 10,
+                      display: "flex",
+                      gap: 16,
                     }}
                   >
-                    создана {relativeTime(b.createdAt)}
+                    <span>
+                      <span style={{ color: "var(--color-text-muted)" }}>—</span>{" "}
+                      глав
+                    </span>
+                    <span>
+                      <span style={{ color: "var(--color-text-muted)" }}>—</span>{" "}
+                      слов
+                    </span>
                   </div>
                   {recommended[b.id] && (
                     <div
