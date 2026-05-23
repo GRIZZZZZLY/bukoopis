@@ -5,21 +5,10 @@
    Source of truth: book_redisign/styles/library-warm.css.
    ─────────────────────────────────────────────────────────────── */
 
-/* ─── @font-face (vendoring TODO) ──────────────────────────────
-   Self-host under apps/web/public/fonts/ (Cyrillic + Latin subsets,
-   font-display: swap). Until vendored, the system stacks declared
-   in @theme (--font-display, --font-prose, --font-sans, --font-mono)
-   carry the look via fallbacks (Georgia / system-ui / ui-monospace).
-   Activate per family by dropping the .woff2 file and uncommenting:
-
-   @font-face {
-     font-family: "Fraunces";
-     src: url("/fonts/Fraunces-Variable.woff2") format("woff2-variations");
-     font-weight: 100 900; font-display: swap;
-     unicode-range: U+0000-024F, U+0400-04FF, U+2000-206F, U+20AC, U+2122;
-   }
-   …etc for Lora, Inter, JetBrains Mono.
-   ─────────────────────────────────────────────────────────────── */
+/* @font-face vendoring TODO: drop woff2 files under
+   apps/web/public/fonts/ (Cyrillic + Latin subsets, font-display swap)
+   for Fraunces / Lora / Inter / JetBrains Mono.
+   Until vendored, system stacks declared in @theme carry the look. */
 
 /* ─── focus ───────────────────────────────────────────────────── */
 
