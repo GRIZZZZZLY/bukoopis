@@ -51,21 +51,25 @@
   --color-ink-blue-tint:  rgba(91, 122, 153, 0.14);
   --color-ink-amber-tint: rgba(201, 162, 74, 0.12);
 
-  /* shadcn-compat aliases (used by apps/web/src/components/ui/*) */
-  --color-background:          var(--color-bg);
-  --color-foreground:          var(--color-text);
-  --color-primary:             var(--color-brass);
-  --color-primary-foreground:  #1A1410;
-  --color-secondary:           var(--color-surface-2);
-  --color-secondary-foreground:var(--color-text);
-  --color-muted:               var(--color-surface-1);
-  --color-muted-foreground:    var(--color-text-muted);
-  --color-accent:              var(--color-surface-3);
-  --color-accent-foreground:   var(--color-text-strong);
-  --color-destructive:         var(--color-ink-red);
-  --color-destructive-foreground: var(--color-text-strong);
-  --color-input:               var(--color-border);
-  --color-ring:                var(--color-brass);
+  /* shadcn-compat aliases (used by apps/web/src/components/ui/*).
+     Tailwind v4 @theme will NOT resolve `var(...)` references between
+     keys — values must be literals or the alias resolves to undefined
+     and falls back to white. Keep these in sync with the base tokens
+     above. */
+  --color-background:             #1A1410;
+  --color-foreground:             #EDE4D3;
+  --color-primary:                #D49A4E;
+  --color-primary-foreground:     #1A1410;
+  --color-secondary:              #2B2118;
+  --color-secondary-foreground:   #EDE4D3;
+  --color-muted:                  #221A14;
+  --color-muted-foreground:       #9C8B73;
+  --color-accent:                 #342719;
+  --color-accent-foreground:      #FBF5E6;
+  --color-destructive:            #C44536;
+  --color-destructive-foreground: #FBF5E6;
+  --color-input:                  #3A2D22;
+  --color-ring:                   #D49A4E;
 
   /* radii */
   --radius:          10px;
