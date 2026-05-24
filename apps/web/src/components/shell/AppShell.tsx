@@ -1,59 +1,23 @@
-import { Outlet, Link, NavLink, useLocation, useMatch } from "react-router-dom";
-import { Library, Palette, BarChart3 } from "lucide-react";
-import { Kbd } from "@/components/ui/kbd";
+import { useEffect, useState } from "react";
+import {
+  Outlet,
+  Link,
+  useLocation,
+  useMatch,
+  useNavigate,
+} from "react-router-dom";
+import {
+  BookOpen,
+  Feather,
+  Bookmark,
+  BarChart3,
+  Cog,
+  PanelLeft,
+  Search,
+  Sliders,
+} from "lucide-react";
 
-/** Library-Warm global chrome: TopBar (56) · LeftRail (60) · main · StatusBar (24). */
-export function AppShell() {
-  return (
-    <div className="lw min-h-screen grid grid-rows-[var(--topbar-h)_1fr_var(--statusbar-h)]">
-      <TopBar />
-      <div className="grid grid-cols-[var(--rail-l-collapsed)_1fr] min-h-0">
-        <LeftRail />
-        <main className="min-w-0 overflow-y-auto">
-          <Outlet />
-        </main>
-      </div>
-      <StatusBar />
-    </div>
-  );
-}
-
-/* ─── TopBar ───────────────────────────────────────────────── */
-
-function TopBar() {
-  return (
-    <header className="lw-topbar">
-      <Link
-        to="/books"
-        className="font-medium tracking-tight text-[var(--color-brass)] hover:text-[var(--color-brass-hi)] transition-colors"
-        style={{ fontFamily: "var(--font-display)", fontSize: 18 }}
-        aria-label="Bookopis — на главную"
-      >
-        Bookopis
-      </Link>
-      <span className="text-[var(--color-text-faint)]">/</span>
-      <Breadcrumb />
-      <div className="ml-auto flex items-center gap-3 text-sm text-[var(--color-text-muted)]">
-        <span className="hidden md:inline-flex items-center gap-1.5">
-          <Kbd>Cmd</Kbd>
-          <Kbd>K</Kbd>
-        </span>
-        <Link
-          to="/usage"
-          className="hidden sm:inline hover:text-[var(--color-text)] transition-colors"
-        >
-          Расходы
-        </Link>
-        <span
-          aria-hidden="true"
-          className="size-7 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-border)]"
-        />
-      </div>
-    </header>
-  );
-}
-
-/* ─── Breadcrumb (derived from pathname) ──────────────────── */
+type RailMode = "collapsed" | "expanded" | "hidden";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -65,122 +29,327 @@ const STAGE_LABEL: Record<string, string> = {
   settings: "Настройки",
 };
 
-function Breadcrumb() {
-  const { pathname } = useLocation();
-  const parts = pathname.split("/").filter(Boolean);
+const TOP_LEVEL_LABEL: Record<string, string> = {
+  "/style-profiles": "Профили стиля",
+  "/usage": "Использование",
+};
 
-  const crumbs: { label: string; to?: string; mono?: boolean }[] = [];
-  if (parts[0] === "books") {
-    crumbs.push({ label: "Книги", to: "/books" });
-    const bookId = parts[1];
-    if (bookId) {
-      crumbs.push({ label: `#${bookId}`, to: `/books/${bookId}/studio`, mono: true });
-      if (parts[2] === "studio") {
-        crumbs.push({ label: "Studio", to: `/books/${bookId}/studio` });
-        const stage = parts[3];
-        if (stage && STAGE_LABEL[stage])
-          crumbs.push({ label: STAGE_LABEL[stage] });
-      } else if (parts[2] === "chapters" && parts[3]) {
-        crumbs.push({ label: `Глава #${parts[3]}`, mono: true });
-      }
-    }
-  } else if (parts[0] === "style-profiles") {
-    crumbs.push({ label: "Профили стиля", to: "/style-profiles" });
-    if (parts[1]) crumbs.push({ label: `#${parts[1]}`, mono: true });
-  } else if (parts[0] === "usage") {
-    crumbs.push({ label: "Расходы" });
+/** Library-Warm global shell. Reference: book_redisign/bookopis/shell.jsx. */
+export function AppShell() {
+  const [railMode, setRailMode] = useState<RailMode>("expanded");
+  const [scrolled, setScrolled] = useState(false);
+
+  // Drive layout via body data attribute (CSS in styles/library-warm.css picks it up).
+  useEffect(() => {
+    document.body.dataset.rail = railMode;
+    return () => {
+      delete document.body.dataset.rail;
+    };
+  }, [railMode]);
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        display: "grid",
+        gridTemplateColumns: `${railMode === "expanded" ? 240 : railMode === "hidden" ? 0 : 60}px 1fr`,
+        gridTemplateRows: "56px 1fr 24px",
+        gridTemplateAreas: `
+          "rail topbar"
+          "rail main"
+          "rail status"
+        `,
+        transition: "grid-template-columns 200ms cubic-bezier(0.22, 0.9, 0.32, 1)",
+      }}
+    >
+      <TopBar scrolled={scrolled} />
+      <LeftRail railMode={railMode} setRailMode={setRailMode} />
+      <main
+        style={{ gridArea: "main", overflow: "auto", position: "relative" }}
+        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
+      >
+        <Outlet />
+      </main>
+      <StatusBar />
+    </div>
+  );
+}
+
+/* ─── TopBar ────────────────────────────────────────────── */
+
+function TopBar({ scrolled }: { scrolled: boolean }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const crumbs = useCrumbs();
+
+  return (
+    <header
+      className={`topbar ${scrolled ? "scrolled" : ""}`}
+      style={{ gridArea: "topbar" }}
+    >
+      <div
+        onClick={() => navigate("/books")}
+        className="wordmark"
+        style={{ cursor: "pointer" }}
+      >
+        Bookopis
+      </div>
+      <div className="crumbs">
+        {crumbs.map((c, i) => (
+          <span
+            key={i}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+          >
+            {i > 0 && <span className="crumb-sep">/</span>}
+            {c.to ? (
+              <span
+                style={{ cursor: "pointer" }}
+                onClick={() => navigate(c.to!)}
+              >
+                {c.label}
+              </span>
+            ) : (
+              <span className="crumb-current">{c.label}</span>
+            )}
+          </span>
+        ))}
+      </div>
+      <div style={{ flex: 1 }} />
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        style={{ gap: 8 }}
+        aria-label="Палитра команд (Cmd+K)"
+        title="Палитра команд · Cmd+K"
+      >
+        <Search size={14} aria-hidden="true" />
+        <span style={{ color: "var(--color-text-muted)" }}>
+          Найти что-нибудь…
+        </span>
+        <span className="kbd">⌘K</span>
+      </button>
+      <Link
+        to="/usage"
+        className="btn btn-ghost btn-sm"
+        style={{ textDecoration: "none" }}
+      >
+        Использование
+      </Link>
+      <div
+        className="avatar"
+        aria-label="Профиль"
+        title="Профиль"
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background:
+            "linear-gradient(140deg, var(--color-brass), var(--color-brass-soft))",
+          color: "#1A1410",
+          display: "grid",
+          placeItems: "center",
+          fontWeight: 600,
+          fontSize: 12,
+          // hide title when path-based suppression needed; leave as-is
+          marginLeft: 4,
+        }}
+      >
+        {avatarLetter(pathname)}
+      </div>
+    </header>
+  );
+}
+
+function avatarLetter(_pathname: string): string {
+  return "М";
+}
+
+interface Crumb {
+  label: string;
+  to?: string;
+}
+
+function useCrumbs(): Crumb[] {
+  const { pathname } = useLocation();
+  const crumbs: Crumb[] = [];
+
+  if (TOP_LEVEL_LABEL[pathname]) {
+    crumbs.push({ label: TOP_LEVEL_LABEL[pathname]! });
+    return crumbs;
   }
 
-  if (crumbs.length === 0) return null;
+  if (pathname.startsWith("/books")) {
+    crumbs.push({ label: "Книги", to: "/books" });
+    const parts = pathname.split("/").filter(Boolean); // ['books', ':id', ...]
+    const bookId = parts[1];
+    if (bookId && bookId !== "design-preview.html") {
+      crumbs.push({
+        label: `#${bookId}`,
+        to: `/books/${bookId}/studio`,
+      });
+      if (parts[2] === "studio") {
+        const stage = parts[3];
+        if (stage && STAGE_LABEL[stage]) {
+          crumbs.push({ label: STAGE_LABEL[stage]! });
+        } else {
+          crumbs.push({ label: "Studio" });
+        }
+      } else if (parts[2] === "chapters" && parts[3]) {
+        crumbs.push({ label: `Гл. ${parts[3]}` });
+      }
+    }
+  } else if (pathname.startsWith("/style-profiles")) {
+    crumbs.push({ label: "Профили стиля", to: "/style-profiles" });
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts[1]) crumbs.push({ label: `#${parts[1]}` });
+  }
 
-  return (
-    <nav aria-label="Хлебные крошки" className="lw-crumb">
-      {crumbs.map((c, i) => (
-        <span key={i} className="inline-flex items-center gap-2">
-          {i > 0 && <span className="sep">/</span>}
-          {c.to ? (
-            <Link
-              to={c.to}
-              className={
-                c.mono ? "lw-mono text-[var(--color-text-muted)]" : "hover:text-[var(--color-text)]"
-              }
-            >
-              {i === crumbs.length - 1 ? <b>{c.label}</b> : c.label}
-            </Link>
-          ) : (
-            <span className={c.mono ? "lw-mono" : ""}>
-              <b>{c.label}</b>
-            </span>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
+  return crumbs;
 }
 
-/* ─── LeftRail ─────────────────────────────────────────────── */
+/* ─── LeftRail ──────────────────────────────────────────── */
 
-function LeftRail() {
-  return (
-    <nav className="lw-leftrail" aria-label="Главная навигация">
-      <RailLink to="/books" label="Книги" icon={<Library className="size-5" aria-hidden="true" />} />
-      <RailLink
-        to="/style-profiles"
-        label="Стилевые профили"
-        icon={<Palette className="size-5" aria-hidden="true" />}
-      />
-      <RailLink
-        to="/usage"
-        label="Расходы"
-        icon={<BarChart3 className="size-5" aria-hidden="true" />}
-      />
-    </nav>
-  );
-}
-
-function RailLink({
-  to,
-  label,
-  icon,
-}: {
-  to: string;
+interface RailItem {
+  id: string;
   label: string;
+  to: string;
   icon: React.ReactNode;
+  kbd?: string;
+}
+
+function LeftRail({
+  railMode,
+  setRailMode,
+}: {
+  railMode: RailMode;
+  setRailMode: (m: RailMode) => void;
 }) {
-  // Treat any deep path under /books/* as active "Книги".
+  const navigate = useNavigate();
+  const expanded = railMode === "expanded";
+
+  const items: RailItem[] = [
+    {
+      id: "books",
+      label: "Книги",
+      to: "/books",
+      icon: <BookOpen size={18} aria-hidden="true" />,
+      kbd: "⌘B",
+    },
+    {
+      id: "styles",
+      label: "Профили стиля",
+      to: "/style-profiles",
+      icon: <Bookmark size={18} aria-hidden="true" />,
+    },
+    {
+      id: "usage",
+      label: "Использование",
+      to: "/usage",
+      icon: <BarChart3 size={18} aria-hidden="true" />,
+    },
+  ];
+
+  return (
+    <aside
+      className="leftrail"
+      aria-label="Главная навигация"
+      style={{ gridArea: "rail" }}
+    >
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        aria-label={expanded ? "Свернуть боковую панель" : "Развернуть боковую панель"}
+        title={expanded ? "Свернуть · Cmd+\\" : "Развернуть · Cmd+\\"}
+        onClick={() => setRailMode(expanded ? "collapsed" : "expanded")}
+        style={{ width: 32, height: 32, padding: 0, marginBottom: 8 }}
+      >
+        <PanelLeft size={16} aria-hidden="true" />
+      </button>
+
+      <div className="rail-section">
+        <div className="rail-section-label">Навигация</div>
+        {items.map((item) => (
+          <RailItemNode key={item.id} item={item} navigate={navigate} />
+        ))}
+      </div>
+
+      <div style={{ marginTop: "auto" }}>
+        <div className="divider" style={{ margin: "12px 0" }} />
+        <div
+          className="nav-item"
+          title="Подсказки"
+          onClick={() => navigate("/usage")}
+        >
+          <span className="icon">
+            <Sliders size={18} aria-hidden="true" />
+          </span>
+          <span className="label">Система</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function RailItemNode({
+  item,
+  navigate,
+}: {
+  item: RailItem;
+  navigate: (to: string) => void;
+}) {
   const inBooks = useMatch("/books/*") !== null;
   const inProfiles = useMatch("/style-profiles/*") !== null;
   const inUsage = useMatch("/usage") !== null;
   const active =
-    (to === "/books" && inBooks) ||
-    (to === "/style-profiles" && inProfiles) ||
-    (to === "/usage" && inUsage);
+    (item.to === "/books" && inBooks) ||
+    (item.to === "/style-profiles" && inProfiles) ||
+    (item.to === "/usage" && inUsage);
   return (
-    <NavLink
-      to={to}
-      end={to === "/usage"}
-      className="lw-railbtn"
-      data-active={active ? "true" : undefined}
-      aria-label={label}
-      title={label}
+    <div
+      className={`nav-item ${active ? "active" : ""}`}
+      onClick={() => navigate(item.to)}
+      title={item.kbd ? `${item.label} · ${item.kbd}` : item.label}
     >
-      {icon}
-      <span className="sr-only">{label}</span>
-    </NavLink>
+      <span className="icon">{item.icon}</span>
+      <span className="label">{item.label}</span>
+    </div>
   );
 }
 
-/* ─── StatusBar (stubbed mono strip) ──────────────────────── */
+/* ─── StatusBar ─────────────────────────────────────────── */
 
 function StatusBar() {
   return (
-    <footer className="lw-statusbar">
-      <span>агент: —</span>
-      <span>·</span>
-      <span>токены: —</span>
-      <span>·</span>
-      <span>cost: —</span>
-      <span className="ml-auto text-[var(--color-ink-green)]">online</span>
+    <footer
+      className="statusbar"
+      aria-label="Состояние сессии"
+      style={{ gridArea: "status" }}
+    >
+      <span>
+        <span className="dot dot-ok" /> Подключено
+      </span>
+      <span className="sep">·</span>
+      <span>
+        Бэкенд:{" "}
+        <span style={{ color: "var(--color-text)" }}>subscription</span>
+      </span>
+      <span className="sep">·</span>
+      <span>
+        Агент: <span style={{ color: "var(--color-text)" }}>—</span>
+      </span>
+      <span className="sep">·</span>
+      <span>
+        Токенов: <span style={{ color: "var(--color-text)" }}>0</span>
+      </span>
+      <span className="sep">·</span>
+      <span>
+        $ <span style={{ color: "var(--color-text)" }}>0.00</span>
+      </span>
+      <span style={{ flex: 1 }} />
+      <span>Авто-сохранение · только что</span>
+      <span className="sep">·</span>
+      <span className="kbd">⌘K</span>
+      <span style={{ color: "var(--color-text-faint)" }}>палитра</span>
     </footer>
   );
 }

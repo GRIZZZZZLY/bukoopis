@@ -392,6 +392,108 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .textarea { font-family: var(--font-ui); resize: vertical; min-height: 80px; }
 
+/* App shell — TopBar / LeftRail / StatusBar */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 20px;
+  background: var(--color-bg);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-2) var(--ease-out);
+  position: relative; z-index: 20;
+}
+.topbar.scrolled { border-bottom-color: var(--color-border-soft); }
+.topbar .wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--color-brass);
+  letter-spacing: -0.015em;
+}
+.topbar .crumbs {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+.topbar .crumb-sep { color: var(--color-text-faint); }
+.topbar .crumb-current { color: var(--color-text); }
+
+.leftrail {
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border-soft);
+  display: flex; flex-direction: column;
+  padding: 12px 8px;
+  gap: 4px;
+  overflow: hidden;
+  position: relative; z-index: 20;
+}
+.leftrail .rail-section { margin-top: 12px; }
+.leftrail .rail-section-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  padding: 6px 10px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--motion-2);
+}
+body[data-rail="expanded"] .rail-section-label { opacity: 1; }
+.leftrail .nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  position: relative;
+  transition:
+    background var(--motion-2) var(--ease-hover),
+    color var(--motion-2) var(--ease-hover);
+  cursor: pointer;
+}
+.leftrail .nav-item .icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.leftrail .nav-item .label {
+  opacity: 0;
+  transition: opacity var(--motion-2);
+  pointer-events: none;
+}
+body[data-rail="expanded"] .nav-item .label { opacity: 1; pointer-events: auto; }
+.leftrail .nav-item:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+.leftrail .nav-item.active {
+  color: var(--color-text-strong);
+  background: var(--color-surface-2);
+}
+.leftrail .nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -8px; top: 6px; bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-brass);
+}
+
+.statusbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+}
+.statusbar .sep { color: var(--color-text-faint); }
+.statusbar .dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  margin-right: 6px;
+}
+.statusbar .dot-ok    { background: var(--color-ink-green); }
+.statusbar .dot-busy  { background: var(--color-ink-amber); }
+.statusbar .dot-off   { background: var(--color-text-faint); }
+
 /* Spine — horizontal top stripe on book card */
 .spine {
   background: linear-gradient(180deg, var(--color-brass-soft), var(--color-brass) 30%, var(--color-brass-soft));
