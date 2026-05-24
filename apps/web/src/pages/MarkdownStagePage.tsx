@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams, Navigate } from "react-router-dom";
+import { useParams, Navigate, Link } from "react-router-dom";
 import { api } from "@/api/client";
-import type { BookConcept, StageId, StageState, StudioState } from "@book-forge/shared";
+import type {
+  BookConcept,
+  StageId,
+  StageState,
+  StudioState,
+} from "@book-forge/shared";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { AspectRunner } from "@/components/studio/aspect-engine/AspectRunner";
 import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
@@ -21,6 +26,12 @@ const STAGE_LABELS: Record<StageId, string> = {
   chapters: "Главы",
 };
 
+const STAGE_HINTS: Record<"world" | "lore" | "plot", string> = {
+  world: "География, фракции, технологии, климат. Внешний слой реальности книги.",
+  lore: "Мифы, история, культурные коды. Внутренний слой смыслов.",
+  plot: "Опорные сюжетные точки, повороты, арки. Костяк структуры.",
+};
+
 const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore", "plot"]);
 
 function isMarkdownStage(s: string): s is "world" | "lore" | "plot" {
@@ -28,8 +39,10 @@ function isMarkdownStage(s: string): s is "world" | "lore" | "plot" {
 }
 
 export function MarkdownStagePage() {
-  const { bookId: rawBookId, stageId: rawStageId } =
-    useParams<{ bookId: string; stageId: string }>();
+  const { bookId: rawBookId, stageId: rawStageId } = useParams<{
+    bookId: string;
+    stageId: string;
+  }>();
   const bookId = Number(rawBookId);
 
   if (!rawStageId || !isMarkdownStage(rawStageId)) {
@@ -70,12 +83,13 @@ export function MarkdownStagePage() {
     if (!studio) throw new Error("studio state not loaded");
     const nextStudio: StudioState = {
       ...studio,
-      stages: {
-        ...studio.stages,
-        [stageId]: nextStage,
-      },
+      stages: { ...studio.stages, [stageId]: nextStage },
     };
-    const saved = await api.patchStudioState(bookId, expectedRevision, nextStudio);
+    const saved = await api.patchStudioState(
+      bookId,
+      expectedRevision,
+      nextStudio,
+    );
     setStudio(saved);
     const savedStage = saved.stages[stageId];
     if (!savedStage) throw new Error("stage missing in saved state");
@@ -84,15 +98,38 @@ export function MarkdownStagePage() {
 
   if (error) {
     return (
-      <main className="max-w-5xl mx-auto p-8">
-        <p role="alert" className="text-sm text-red-600">
-          Ошибка: {error}
-        </p>
-      </main>
+      <div className="route">
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+          <p
+            role="alert"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-red)",
+              color: "var(--color-ink-red)",
+            }}
+          >
+            Ошибка: {error}
+          </p>
+        </div>
+      </div>
     );
   }
   if (!studio || !concept) {
-    return <main className="max-w-5xl mx-auto p-8">Загрузка…</main>;
+    return (
+      <div className="route">
+        <div
+          style={{
+            maxWidth: 1080,
+            margin: "0 auto",
+            padding: 32,
+            color: "var(--color-text-muted)",
+            fontSize: 13,
+          }}
+        >
+          Загрузка…
+        </div>
+      </div>
+    );
   }
 
   const stage: StageState = studio.stages[stageId] ?? {
@@ -109,36 +146,89 @@ export function MarkdownStagePage() {
   });
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-6">
-      <StageStepper
-        bookId={bookId}
-        concept={concept}
-        studioState={studio}
-        activeStageId={stageId}
-      />
-      <h1
-        className="text-[28px] leading-tight"
-        style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+    <div className="route" data-screen-label={`stage-${stageId}`}>
+      <div
+        style={{
+          maxWidth: 1080,
+          margin: "0 auto",
+          padding: "32px 32px 96px",
+        }}
       >
-        {STAGE_LABELS[stageId]}
-      </h1>
+        {/* Hero */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 24,
+            gap: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div className="caption" style={{ marginBottom: 6 }}>
+              Этап · {STAGE_LABELS[stageId]}
+            </div>
+            <h1
+              className="font-display"
+              style={{
+                fontSize: 32,
+                fontWeight: 500,
+                margin: 0,
+                color: "var(--color-text-strong)",
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {STAGE_LABELS[stageId]}
+            </h1>
+            <div
+              className="text-muted"
+              style={{ fontSize: 13, marginTop: 6, maxWidth: 640 }}
+            >
+              {STAGE_HINTS[stageId]}
+            </div>
+          </div>
+          <Link
+            to={`/books/${bookId}/studio`}
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: "none" }}
+          >
+            ← к Studio
+          </Link>
+        </div>
 
-      {stage.aspects.length === 0 ? (
-        <PlaybookRunner
-          stage={stage}
-          revision={studio.revision}
-          generator={playbookGenerator}
-          onPatch={handlePatch}
-        />
-      ) : (
-        <AspectRunner
-          stage={stage}
-          revision={studio.revision}
-          adapter={adapter}
-          generator={variantGenerator}
-          onPatch={handlePatch}
-        />
-      )}
-    </main>
+        {/* Stepper bar */}
+        <div
+          style={{ marginBottom: 28, overflowX: "auto", paddingBottom: 4 }}
+        >
+          <StageStepper
+            bookId={bookId}
+            concept={concept}
+            studioState={studio}
+            activeStageId={stageId}
+          />
+        </div>
+
+        {/* Workspace */}
+        <div className="panel" style={{ padding: 24 }}>
+          {stage.aspects.length === 0 ? (
+            <PlaybookRunner
+              stage={stage}
+              revision={studio.revision}
+              generator={playbookGenerator}
+              onPatch={handlePatch}
+            />
+          ) : (
+            <AspectRunner
+              stage={stage}
+              revision={studio.revision}
+              adapter={adapter}
+              generator={variantGenerator}
+              onPatch={handlePatch}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
