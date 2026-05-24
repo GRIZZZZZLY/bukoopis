@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import type { UsageSummary } from "@book-forge/shared";
 
@@ -36,196 +35,425 @@ export function UsagePage() {
 
   if (error)
     return (
-      <p
-        role="alert"
-        className="m-8 max-w-5xl text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
-      >
-        Ошибка: {error}
-      </p>
+      <div className="route">
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+          <p
+            role="alert"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-red)",
+              color: "var(--color-ink-red)",
+            }}
+          >
+            Ошибка: {error}
+          </p>
+        </div>
+      </div>
     );
   if (!summary)
-    return <p className="p-8 text-sm text-[var(--color-text-muted)]">Загрузка…</p>;
+    return (
+      <div className="route">
+        <div
+          style={{
+            maxWidth: 1080,
+            margin: "0 auto",
+            padding: 32,
+            color: "var(--color-text-muted)",
+            fontSize: 13,
+          }}
+        >
+          Загрузка…
+        </div>
+      </div>
+    );
 
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
-      <Link to="/books" className="lw-link text-sm">
-        ← К списку книг
-      </Link>
-      <header className="flex flex-col gap-1">
-        <h1
-          className="text-[28px] leading-tight"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+    <div className="route" data-screen-label="Usage">
+      <div
+        style={{
+          maxWidth: 1080,
+          margin: "0 auto",
+          padding: "32px 32px 96px",
+        }}
+      >
+        {/* Hero */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 24,
+            gap: 24,
+            flexWrap: "wrap",
+          }}
         >
-          Расходы LLM
-        </h1>
-        <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
-          per-route · per-day · последние 50 вызовов
-        </p>
-      </header>
+          <div>
+            <div className="caption" style={{ marginBottom: 6 }}>
+              Использование
+            </div>
+            <h1
+              className="font-display"
+              style={{
+                fontSize: 32,
+                fontWeight: 500,
+                margin: 0,
+                color: "var(--color-text-strong)",
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Расходы LLM
+            </h1>
+            <div
+              className="text-muted"
+              style={{ fontSize: 13, marginTop: 6 }}
+            >
+              per-route · per-day · последние 50 вызовов
+            </div>
+          </div>
+          <Link
+            to="/books"
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: "none" }}
+          >
+            ← К списку книг
+          </Link>
+        </div>
 
-      <section className="flex gap-2 items-end flex-wrap">
-        <label className="text-xs flex flex-col gap-1">
-          <span className="lw-cap-upper">Book ID</span>
-          <input
-            type="number"
-            min={1}
-            value={bookIdFilter}
-            onChange={(e) => setBookIdFilter(e.target.value)}
-            placeholder="все книги"
-            className="lw-input w-24"
+        {/* Filters */}
+        <div
+          className="panel"
+          style={{
+            padding: 20,
+            marginBottom: 16,
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span className="caption">Book ID</span>
+            <input
+              type="number"
+              min={1}
+              value={bookIdFilter}
+              onChange={(e) => setBookIdFilter(e.target.value)}
+              placeholder="все книги"
+              className="input"
+              style={{ width: 120 }}
+            />
+          </label>
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span className="caption">От</span>
+            <input
+              type="date"
+              value={fromFilter}
+              onChange={(e) => setFromFilter(e.target.value)}
+              className="input"
+              style={{ width: 160 }}
+            />
+          </label>
+          <label
+            style={{ display: "flex", flexDirection: "column", gap: 6 }}
+          >
+            <span className="caption">До</span>
+            <input
+              type="date"
+              value={toFilter}
+              onChange={(e) => setToFilter(e.target.value)}
+              className="input"
+              style={{ width: 160 }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={load}
+            disabled={loading}
+          >
+            {loading ? "…" : "Применить"}
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 24,
+          }}
+        >
+          <StatCard title="Всего" value={`$${summary.totalUsd.toFixed(4)}`} />
+          <StatCard title="Вызовов" value={String(summary.totalCalls)} />
+          <StatCard
+            title="Tokens in / out"
+            value={`${summary.totalInputTokens.toLocaleString("ru-RU")} / ${summary.totalOutputTokens.toLocaleString("ru-RU")}`}
           />
-        </label>
-        <label className="text-xs flex flex-col gap-1">
-          <span className="lw-cap-upper">От</span>
-          <input
-            type="date"
-            value={fromFilter}
-            onChange={(e) => setFromFilter(e.target.value)}
-            className="lw-input"
+          <StatCard
+            title="Cache read / create"
+            value={`${summary.totalCacheReadTokens.toLocaleString("ru-RU")} / ${summary.totalCacheCreationTokens.toLocaleString("ru-RU")}`}
           />
-        </label>
-        <label className="text-xs flex flex-col gap-1">
-          <span className="lw-cap-upper">До</span>
-          <input
-            type="date"
-            value={toFilter}
-            onChange={(e) => setToFilter(e.target.value)}
-            className="lw-input"
-          />
-        </label>
-        <Button onClick={load} disabled={loading}>
-          {loading ? "…" : "Применить"}
-        </Button>
-      </section>
+        </div>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Всего" value={`$${summary.totalUsd.toFixed(4)}`} />
-        <Card title="Вызовов" value={String(summary.totalCalls)} />
-        <Card
-          title="Tokens in / out"
-          value={`${summary.totalInputTokens.toLocaleString("ru-RU")} / ${summary.totalOutputTokens.toLocaleString("ru-RU")}`}
-        />
-        <Card
-          title="Cache read / create"
-          value={`${summary.totalCacheReadTokens.toLocaleString("ru-RU")} / ${summary.totalCacheCreationTokens.toLocaleString("ru-RU")}`}
-        />
-      </section>
+        {/* Per-route */}
+        <section style={{ marginBottom: 24 }}>
+          <h2
+            className="font-display"
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              margin: "0 0 12px",
+              color: "var(--color-text-strong)",
+            }}
+          >
+            По маршрутам
+          </h2>
+          {summary.perRoute.length === 0 ? (
+            <p
+              className="text-muted"
+              style={{ fontSize: 13, fontStyle: "italic" }}
+            >
+              Нет данных в выбранном диапазоне.
+            </p>
+          ) : (
+            <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: 13,
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr
+                    className="caption"
+                    style={{
+                      textAlign: "left",
+                      background: "var(--color-surface-2)",
+                    }}
+                  >
+                    <th style={{ padding: "10px 14px" }}>Маршрут</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
+                      Вызовов
+                    </th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
+                      Стоимость
+                    </th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
+                      Tokens in
+                    </th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
+                      Tokens out
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.perRoute.map((row) => (
+                    <tr
+                      key={row.route}
+                      style={{
+                        borderTop: "1px solid var(--color-border-soft)",
+                      }}
+                    >
+                      <td
+                        className="font-mono"
+                        style={{ padding: "10px 14px", fontSize: 12 }}
+                      >
+                        {row.route}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "10px 14px", textAlign: "right" }}
+                      >
+                        {row.calls}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "10px 14px", textAlign: "right" }}
+                      >
+                        ${row.costUsd.toFixed(4)}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "10px 14px", textAlign: "right" }}
+                      >
+                        {row.inputTokens.toLocaleString("ru-RU")}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "10px 14px", textAlign: "right" }}
+                      >
+                        {row.outputTokens.toLocaleString("ru-RU")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
-      <section className="flex flex-col gap-2">
-        <h2
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-        >
-          По маршрутам
-        </h2>
-        {summary.perRoute.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted-foreground)]">
-            Нет данных в выбранном диапазоне.
-          </p>
-        ) : (
-          <table className="w-full text-sm border border-[var(--color-border)] rounded-md">
-            <thead>
-              <tr className="text-left bg-[var(--color-muted)]">
-                <th className="p-2">Маршрут</th>
-                <th className="p-2 text-right">Вызовов</th>
-                <th className="p-2 text-right">Стоимость</th>
-                <th className="p-2 text-right">Tokens in</th>
-                <th className="p-2 text-right">Tokens out</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.perRoute.map((row) => (
-                <tr key={row.route} className="border-t border-[var(--color-border)]">
-                  <td className="p-2 font-mono text-xs">{row.route}</td>
-                  <td className="p-2 text-right">{row.calls}</td>
-                  <td className="p-2 text-right">${row.costUsd.toFixed(4)}</td>
-                  <td className="p-2 text-right">
-                    {row.inputTokens.toLocaleString("ru-RU")}
-                  </td>
-                  <td className="p-2 text-right">
-                    {row.outputTokens.toLocaleString("ru-RU")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+        {/* Per-day spark */}
+        <section style={{ marginBottom: 24 }}>
+          <h2
+            className="font-display"
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              margin: "0 0 12px",
+              color: "var(--color-text-strong)",
+            }}
+          >
+            По дням
+          </h2>
+          {summary.perDay.length === 0 ? (
+            <p
+              className="text-muted"
+              style={{ fontSize: 13, fontStyle: "italic" }}
+            >
+              Нет дней с активностью.
+            </p>
+          ) : (
+            <PerDaySpark data={summary.perDay} />
+          )}
+        </section>
 
-      <section className="flex flex-col gap-2">
-        <h2
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-        >
-          По дням
-        </h2>
-        {summary.perDay.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted-foreground)]">
-            Нет дней с активностью.
-          </p>
-        ) : (
-          <PerDaySpark data={summary.perDay} />
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-        >
-          Последние 50 вызовов
-        </h2>
-        {summary.recent.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted-foreground)]">Пусто.</p>
-        ) : (
-          <table className="w-full text-xs border border-[var(--color-border)] rounded-md">
-            <thead>
-              <tr className="text-left bg-[var(--color-muted)]">
-                <th className="p-2">Когда</th>
-                <th className="p-2">Маршрут</th>
-                <th className="p-2">Модель</th>
-                <th className="p-2 text-right">in</th>
-                <th className="p-2 text-right">out</th>
-                <th className="p-2 text-right">cache R/W</th>
-                <th className="p-2 text-right">$</th>
-                <th className="p-2 text-right">book/ch/v</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.recent.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-t border-[var(--color-border)]"
-                >
-                  <td className="p-2">
-                    {new Date(r.createdAt).toLocaleString("ru-RU")}
-                  </td>
-                  <td className="p-2 font-mono">{r.route}</td>
-                  <td className="p-2 font-mono">{r.model}</td>
-                  <td className="p-2 text-right">{r.inputTokens}</td>
-                  <td className="p-2 text-right">{r.outputTokens}</td>
-                  <td className="p-2 text-right">
-                    {r.cacheReadInputTokens}/{r.cacheCreationInputTokens}
-                  </td>
-                  <td className="p-2 text-right">${r.costUsd.toFixed(4)}</td>
-                  <td className="p-2 text-right text-[var(--color-muted-foreground)]">
-                    {r.bookId ?? "–"}/{r.chapterId ?? "–"}/{r.versionId ?? "–"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </main>
+        {/* Recent calls */}
+        <section>
+          <h2
+            className="font-display"
+            style={{
+              fontSize: 22,
+              fontWeight: 500,
+              margin: "0 0 12px",
+              color: "var(--color-text-strong)",
+            }}
+          >
+            Последние 50 вызовов
+          </h2>
+          {summary.recent.length === 0 ? (
+            <p
+              className="text-muted"
+              style={{ fontSize: 13, fontStyle: "italic" }}
+            >
+              Пусто.
+            </p>
+          ) : (
+            <div
+              className="panel"
+              style={{ padding: 0, overflow: "auto" }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: 12,
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr
+                    className="caption"
+                    style={{
+                      textAlign: "left",
+                      background: "var(--color-surface-2)",
+                    }}
+                  >
+                    <th style={{ padding: "10px 14px" }}>Когда</th>
+                    <th style={{ padding: "10px 14px" }}>Маршрут</th>
+                    <th style={{ padding: "10px 14px" }}>Модель</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>in</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>out</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>cache R/W</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>$</th>
+                    <th style={{ padding: "10px 14px", textAlign: "right" }}>book/ch/v</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.recent.map((r) => (
+                    <tr
+                      key={r.id}
+                      style={{
+                        borderTop: "1px solid var(--color-border-soft)",
+                      }}
+                    >
+                      <td style={{ padding: "8px 14px" }}>
+                        {new Date(r.createdAt).toLocaleString("ru-RU")}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px" }}
+                      >
+                        {r.route}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px" }}
+                      >
+                        {r.model}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px", textAlign: "right" }}
+                      >
+                        {r.inputTokens}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px", textAlign: "right" }}
+                      >
+                        {r.outputTokens}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px", textAlign: "right" }}
+                      >
+                        {r.cacheReadInputTokens}/{r.cacheCreationInputTokens}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{ padding: "8px 14px", textAlign: "right" }}
+                      >
+                        ${r.costUsd.toFixed(4)}
+                      </td>
+                      <td
+                        className="font-mono"
+                        style={{
+                          padding: "8px 14px",
+                          textAlign: "right",
+                          color: "var(--color-text-muted)",
+                        }}
+                      >
+                        {r.bookId ?? "–"}/{r.chapterId ?? "–"}/{r.versionId ?? "–"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 
-function Card({ title, value }: { title: string; value: string }) {
+function StatCard({ title, value }: { title: string; value: string }) {
   return (
-    <div className="lw-card">
-      <div className="lw-cap-upper">{title}</div>
-      <div className="lw-mono text-[18px] text-[var(--color-text-strong)] mt-1.5">
+    <div className="card" style={{ padding: 16 }}>
+      <div className="caption">{title}</div>
+      <div
+        className="font-mono"
+        style={{
+          fontSize: 18,
+          color: "var(--color-text-strong)",
+          marginTop: 8,
+        }}
+      >
         {value}
       </div>
     </div>
@@ -240,21 +468,47 @@ function PerDaySpark({
   const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
   const maxCost = Math.max(...sorted.map((d) => d.costUsd), 0.0001);
   return (
-    <div className="border border-[var(--color-border)] rounded-md p-3">
-      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${sorted.length}, 1fr)` }}>
+    <div className="panel" style={{ padding: 16 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${sorted.length}, 1fr)`,
+          gap: 6,
+          alignItems: "end",
+          minHeight: 80,
+        }}
+      >
         {sorted.map((d) => {
           const h = Math.max(2, (d.costUsd / maxCost) * 60);
           return (
             <div
               key={d.date}
-              className="flex flex-col items-center gap-1"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+              }}
               title={`${d.date}: $${d.costUsd.toFixed(4)} · ${d.calls} вызовов`}
             >
               <div
-                className="bg-[var(--color-brass)] w-full rounded-sm"
-                style={{ height: `${h}px` }}
+                style={{
+                  background: "var(--color-brass)",
+                  width: "100%",
+                  borderRadius: 2,
+                  height: `${h}px`,
+                }}
               />
-              <div className="text-[10px] text-[var(--color-muted-foreground)] rotate-45 origin-top-left">
+              <div
+                className="font-mono"
+                style={{
+                  fontSize: 9,
+                  color: "var(--color-text-faint)",
+                  transform: "rotate(45deg)",
+                  transformOrigin: "top left",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {d.date.slice(5)}
               </div>
             </div>
