@@ -468,14 +468,20 @@ export function ChapterPage() {
 
   if (error) {
     return (
-      <main className="max-w-3xl mx-auto p-8">
-        <p
-          role="alert"
-          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
-        >
-          Ошибка: {error}
-        </p>
-      </main>
+      <div className="route">
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: 32 }}>
+          <p
+            role="alert"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-red)",
+              color: "var(--color-ink-red)",
+            }}
+          >
+            Ошибка: {error}
+          </p>
+        </div>
+      </div>
     );
   }
   if (!chapter || versions === null || !editor) {
@@ -499,10 +505,18 @@ export function ChapterPage() {
   );
 
   return (
-    <main className="max-w-6xl mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-[1fr_320px] gap-6 md:gap-8">
+    <div className="route">
+      <main
+        className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6 md:gap-8"
+        style={{ maxWidth: 1280, margin: "0 auto", padding: "32px 32px 96px" }}
+      >
       <section className="flex flex-col gap-4 min-w-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Link to={`/books/${bookId}/studio/chapters`} className="text-sm underline">
+          <Link
+            to={`/books/${bookId}/studio/chapters`}
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: "none" }}
+          >
             ← К главам
           </Link>
           <Button
@@ -529,7 +543,12 @@ export function ChapterPage() {
         {isPreview && (
           <div
             role="status"
-            className="rounded-md border border-[var(--color-border)] bg-[var(--color-muted)] px-3 py-2 text-sm"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-amber)",
+              fontSize: 13,
+              padding: "10px 14px",
+            }}
           >
             Просмотр старой версии (#{previewVersion?.id}). Сохранение создаст
             новую версию-ветку.
@@ -581,14 +600,26 @@ export function ChapterPage() {
 
         {writing && writerBuffer && (
           <div
-            className="border border-[var(--color-ring)] rounded-md p-4 bg-[var(--color-muted)] max-h-[400px] overflow-auto"
+            className="panel streaming-edge"
+            style={{
+              padding: 16,
+              maxHeight: 400,
+              overflow: "auto",
+            }}
             aria-live="polite"
           >
-            <div className="text-xs text-[var(--color-muted-foreground)] mb-2">
-              Live stream (агент пишет, после завершения сохранится как
-              версия). Нажмите «Стоп» или Esc для отмены.
+            <div className="caption" style={{ marginBottom: 8 }}>
+              Live stream · агент пишет · Esc — отмена
             </div>
-            <pre className="whitespace-pre-wrap text-sm font-sans">
+            <pre
+              className="whitespace-pre-wrap"
+              style={{
+                fontFamily: "var(--font-ui)",
+                fontSize: 13,
+                color: "var(--color-text)",
+                margin: 0,
+              }}
+            >
               {writerBuffer}
             </pre>
           </div>
@@ -607,16 +638,32 @@ export function ChapterPage() {
         />
 
         <div
-          className="relative border border-[var(--color-border)] rounded-md p-4 max-w-none min-h-[280px]"
+          className="paper relative"
+          style={{
+            borderRadius: 14,
+            border: "1px solid var(--color-border-soft)",
+            padding: "32px 40px",
+            minHeight: 320,
+            cursor: "text",
+          }}
           onClick={() => editor.chain().focus().run()}
         >
-          <EditorContent editor={editor} />
-          {editor.isEmpty && !writing && !isPreview && (
-            <EmptyEditorHint
-              hasPlan={selectedPlan !== null}
-              onRunWriter={() => void onRunWriter()}
-            />
-          )}
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              maxWidth: 680,
+              margin: "0 auto",
+            }}
+          >
+            <EditorContent editor={editor} />
+            {editor.isEmpty && !writing && !isPreview && (
+              <EmptyEditorHint
+                hasPlan={selectedPlan !== null}
+                onRunWriter={() => void onRunWriter()}
+              />
+            )}
+          </div>
         </div>
 
         <AutosaveStatus
@@ -690,7 +737,8 @@ export function ChapterPage() {
       {blocker.state === "blocked" && (
         <DiscardOption onDiscard={handleBlockedDiscard} />
       )}
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -742,7 +790,17 @@ function SidebarPanels({
         runningSignal={canonRunningSignal}
       />
 
-      <h2 className="text-lg font-semibold">Версии</h2>
+      <h2
+        className="font-display"
+        style={{
+          fontSize: 20,
+          fontWeight: 500,
+          margin: 0,
+          color: "var(--color-text-strong)",
+        }}
+      >
+        Версии
+      </h2>
       {versions.length === 0 ? (
         <p className="text-sm text-[var(--color-muted-foreground)]">
           Версий пока нет. Сохраните, чтобы создать первую.
