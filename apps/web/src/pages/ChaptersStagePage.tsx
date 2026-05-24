@@ -15,8 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { GripVertical, Plus } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { Pill } from "@/components/ui/pill";
 import { OutlinePanel } from "@/components/OutlinePanel";
@@ -26,7 +25,12 @@ import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
-import type { Book, BookConcept, Chapter, StudioState } from "@book-forge/shared";
+import type {
+  Book,
+  BookConcept,
+  Chapter,
+  StudioState,
+} from "@book-forge/shared";
 
 export function ChaptersStagePage() {
   const { bookId } = useParams<{ bookId: string }>();
@@ -78,99 +82,214 @@ export function ChaptersStagePage() {
 
   if (!Number.isFinite(id)) {
     return (
-      <main className="max-w-5xl mx-auto p-8">
-        <p
-          role="alert"
-          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
-        >
-          Книга не найдена
-        </p>
-      </main>
+      <div className="route">
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+          <p
+            role="alert"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-red)",
+              color: "var(--color-ink-red)",
+            }}
+          >
+            Книга не найдена
+          </p>
+        </div>
+      </div>
     );
   }
   if (error) {
     return (
-      <main className="max-w-5xl mx-auto p-8">
-        <p
-          role="alert"
-          className="text-sm rounded-md px-3 py-2 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
-        >
-          Ошибка: {error}
-        </p>
-      </main>
+      <div className="route">
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+          <p
+            role="alert"
+            className="card"
+            style={{
+              borderLeft: "3px solid var(--color-ink-red)",
+              color: "var(--color-ink-red)",
+            }}
+          >
+            Ошибка: {error}
+          </p>
+        </div>
+      </div>
     );
   }
   if (!book || chapters === null || !concept || !studio) {
     return <PageSkeleton label="Главы загружаются" />;
   }
 
+  const countLabel =
+    chapters.length === 0
+      ? "пока ни одной"
+      : chapters.length === 1
+        ? "1 глава"
+        : `${chapters.length} глав`;
+
   return (
-    <main className="max-w-5xl mx-auto p-8 flex flex-col gap-8">
-      <StageStepper
-        bookId={id}
-        concept={concept}
-        studioState={studio}
-        activeStageId="chapters"
-      />
-
-      <header className="flex flex-col gap-1">
-        <h1
-          className="text-[28px] leading-tight"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+    <div className="route" data-screen-label="Chapters">
+      <div
+        style={{
+          maxWidth: 1080,
+          margin: "0 auto",
+          padding: "32px 32px 96px",
+        }}
+      >
+        {/* Hero */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 24,
+            gap: 24,
+            flexWrap: "wrap",
+          }}
         >
-          Главы
-        </h1>
-        <p className="lw-mono text-[11px] text-[var(--color-text-faint)]">
-          {chapters.length === 0
-            ? "пока ни одной"
-            : chapters.length === 1
-              ? "1 глава"
-              : `${chapters.length} глав`}
-        </p>
-      </header>
+          <div>
+            <div className="caption" style={{ marginBottom: 6 }}>
+              Этап · Главы
+            </div>
+            <h1
+              className="font-display"
+              style={{
+                fontSize: 32,
+                fontWeight: 500,
+                margin: 0,
+                color: "var(--color-text-strong)",
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Главы
+            </h1>
+            <div
+              className="text-muted"
+              style={{ fontSize: 13, marginTop: 6 }}
+            >
+              {countLabel}
+              {chapters.length > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-mono" style={{ color: "var(--color-text)" }}>
+                    {book.title}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <Link
+            to={`/books/${id}/studio`}
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: "none" }}
+          >
+            ← к Studio
+          </Link>
+        </div>
 
-      <OutlinePanel book={book} onUpdated={load} />
-
-      <KnowledgePanel bookId={id} />
-
-      <ImportExportPanel bookId={id} onImported={load} />
-
-      <SearchPanel bookId={id} />
-
-      <section className="flex flex-col gap-4">
-        <h2
-          className="text-[22px]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-        >
-          Список глав
-        </h2>
-
-        <form onSubmit={onAddChapter} className="flex gap-2">
-          <input
-            className="lw-input flex-1"
-            placeholder="Название главы"
-            value={chapterTitle}
-            onChange={(e) => setChapterTitle(e.target.value)}
-          />
-          <Button type="submit" disabled={!chapterTitle.trim()}>
-            + Новая глава
-          </Button>
-        </form>
-
-        {chapters.length === 0 ? (
-          <p className="lw-card text-sm text-[var(--color-text-muted)] italic">
-            Глав пока нет. Введите название выше — выкуем первую.
-          </p>
-        ) : (
-          <SortableChapterList
-            chapters={chapters}
+        {/* Stepper */}
+        <div style={{ marginBottom: 28, overflowX: "auto", paddingBottom: 4 }}>
+          <StageStepper
             bookId={id}
-            onReordered={(next) => setChapters(next)}
-            onPersistError={setError}
+            concept={concept}
+            studioState={studio}
+            activeStageId="chapters"
           />
-        )}
-      </section>
-    </main>
+        </div>
+
+        {/* Panels */}
+        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+          <OutlinePanel book={book} onUpdated={load} />
+        </div>
+        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+          <KnowledgePanel bookId={id} />
+        </div>
+        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+          <ImportExportPanel bookId={id} onImported={load} />
+        </div>
+        <div className="panel" style={{ padding: 16, marginBottom: 24 }}>
+          <SearchPanel bookId={id} />
+        </div>
+
+        {/* Chapter list */}
+        <section
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <h2
+              className="font-display"
+              style={{
+                fontSize: 22,
+                fontWeight: 500,
+                margin: 0,
+                color: "var(--color-text-strong)",
+              }}
+            >
+              Список глав
+            </h2>
+            <span
+              className="font-mono"
+              style={{ fontSize: 11, color: "var(--color-text-faint)" }}
+            >
+              {chapters.length} {chapters.length === 1 ? "глава" : "глав"}
+            </span>
+          </div>
+
+          <form
+            onSubmit={onAddChapter}
+            style={{ display: "flex", gap: 8 }}
+          >
+            <input
+              className="input"
+              placeholder="Название главы"
+              value={chapterTitle}
+              onChange={(e) => setChapterTitle(e.target.value)}
+              aria-label="Название главы"
+              style={{ flex: 1 }}
+            />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!chapterTitle.trim()}
+            >
+              <Plus size={14} aria-hidden="true" />
+              Новая глава
+            </button>
+          </form>
+
+          {chapters.length === 0 ? (
+            <div
+              className="card"
+              style={{
+                textAlign: "center",
+                padding: 24,
+                color: "var(--color-text-muted)",
+                fontSize: 13,
+                fontStyle: "italic",
+                borderStyle: "dashed",
+              }}
+            >
+              Глав пока нет. Введите название выше — выкуем первую.
+            </div>
+          ) : (
+            <SortableChapterList
+              chapters={chapters}
+              bookId={id}
+              onReordered={(next) => setChapters(next)}
+              onPersistError={setError}
+            />
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -194,8 +313,12 @@ function SortableChapterList({
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = chapters.findIndex((c) => String(c.id) === String(active.id));
-    const newIndex = chapters.findIndex((c) => String(c.id) === String(over.id));
+    const oldIndex = chapters.findIndex(
+      (c) => String(c.id) === String(active.id),
+    );
+    const newIndex = chapters.findIndex(
+      (c) => String(c.id) === String(over.id),
+    );
     if (oldIndex < 0 || newIndex < 0) return;
 
     const reordered = arrayMove(chapters, oldIndex, newIndex);
@@ -211,7 +334,9 @@ function SortableChapterList({
         return !prev || prev.orderIndex !== c.orderIndex;
       });
       await Promise.all(
-        changed.map((c) => api.updateChapter(c.id, { orderIndex: c.orderIndex })),
+        changed.map((c) =>
+          api.updateChapter(c.id, { orderIndex: c.orderIndex }),
+        ),
       );
       toast.success("Порядок глав обновлён");
     } catch (err) {
@@ -232,7 +357,17 @@ function SortableChapterList({
         items={chapters.map((c) => String(c.id))}
         strategy={verticalListSortingStrategy}
       >
-        <ul className="flex flex-col gap-2" aria-label="Главы (можно перетаскивать)">
+        <ul
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+          }}
+          aria-label="Главы (можно перетаскивать)"
+        >
           {chapters.map((c) => (
             <SortableChapterItem key={c.id} chapter={c} bookId={bookId} />
           ))}
@@ -256,40 +391,90 @@ function SortableChapterItem({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+  const tone: "amber" | "blue" | "green" | "default" =
+    chapter.status === "draft"
+      ? "amber"
+      : chapter.status === "in_review"
+        ? "blue"
+        : chapter.status === "final"
+          ? "green"
+          : "default";
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className="lw-card flex items-center gap-3 p-3 group"
-    >
-      <button
-        type="button"
-        aria-label="Перетащить главу"
-        className="cursor-grab active:cursor-grabbing text-[var(--color-text-faint)] hover:text-[var(--color-brass)] transition-colors"
-        {...attributes}
-        {...listeners}
+    <li ref={setNodeRef} style={style}>
+      <div
+        className="card hoverable"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "10px 14px",
+        }}
       >
-        <GripVertical className="size-4" aria-hidden="true" />
-      </button>
-      <Link
-        to={`/books/${bookId}/chapters/${chapter.id}`}
-        className="block flex-1 outline-none"
-      >
-        <div className="flex justify-between items-center gap-3">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <span className="lw-mono text-[11px] text-[var(--color-text-faint)] shrink-0">
+        <button
+          type="button"
+          aria-label="Перетащить главу"
+          className="btn btn-ghost btn-sm"
+          style={{
+            width: 28,
+            height: 28,
+            padding: 0,
+            cursor: "grab",
+            color: "var(--color-text-faint)",
+          }}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={14} aria-hidden="true" />
+        </button>
+        <Link
+          to={`/books/${bookId}/chapters/${chapter.id}`}
+          style={{
+            flex: 1,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            textDecoration: "none",
+            color: "inherit",
+            outline: "none",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
+            <span
+              className="font-mono"
+              style={{
+                fontSize: 11,
+                color: "var(--color-text-faint)",
+                flexShrink: 0,
+              }}
+            >
               #{chapter.orderIndex}
             </span>
             <span
-              className="text-[16px] truncate group-hover:text-[var(--color-brass)] transition-colors"
-              style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+              className="font-display"
+              style={{
+                fontSize: 16,
+                fontWeight: 500,
+                color: "var(--color-text-strong)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
               {chapter.title}
             </span>
           </div>
-          <Pill>{chapter.status}</Pill>
-        </div>
-      </Link>
+          <Pill tone={tone}>{chapter.status}</Pill>
+        </Link>
+      </div>
     </li>
   );
 }
