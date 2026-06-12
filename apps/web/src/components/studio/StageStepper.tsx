@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Check, Circle, Play } from "lucide-react";
 import {
   STAGE_IDS,
   computeStudioProgress,
@@ -18,11 +19,26 @@ const STAGE_LABELS: Record<StageId, string> = {
   chapters: "Главы",
 };
 
-const STATUS_ICON: Record<"done" | "current" | "todo", string> = {
-  done: "✓",
-  current: "▶",
-  todo: "●",
+type StepStatus = "complete" | "in_progress" | "todo" | "skipped";
+
+const PROGRESS_TO_STEP: Record<"done" | "current" | "todo", StepStatus> = {
+  done: "complete",
+  current: "in_progress",
+  todo: "todo",
 };
+
+function glyph(status: StepStatus) {
+  switch (status) {
+    case "complete":
+      return <Check aria-hidden="true" />;
+    case "in_progress":
+      return <Play aria-hidden="true" />;
+    case "skipped":
+      return <span aria-hidden="true">↷</span>;
+    default:
+      return <Circle aria-hidden="true" />;
+  }
+}
 
 interface StageStepperProps {
   bookId: number;
@@ -32,6 +48,7 @@ interface StageStepperProps {
   activeStageId?: StageId;
 }
 
+/** Reference: extracted app/stepper.jsx (.stepper / .step idiom). */
 export function StageStepper({
   bookId,
   concept,
@@ -42,40 +59,45 @@ export function StageStepper({
   const byId = new Map(progress.stages.map((s) => [s.id, s]));
 
   return (
-    <nav
-      aria-label="Этапы книги"
-      className="flex items-center gap-2 flex-wrap text-sm"
-    >
-      <span
-        className="text-xs font-medium text-[var(--color-muted-foreground)] mr-1"
+    <nav className="stepper" aria-label="Этапы книги">
+      <ol className="stepper-list">
+        {STAGE_IDS.map((id, i) => {
+          const skipped = studioState.stages[id]?.status === "skipped";
+          const status: StepStatus = skipped
+            ? "skipped"
+            : PROGRESS_TO_STEP[byId.get(id)?.status ?? "todo"];
+          const active = activeStageId === id;
+          return (
+            <li
+              key={id}
+              className={`step step-${status}${active ? " step-active" : ""}`}
+            >
+              <Link
+                to={stageRoute(bookId, id)}
+                className="step-inner"
+                data-stage-id={id}
+                {...(active ? { "aria-current": "step" as const } : {})}
+              >
+                <span className="step-num mono">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="step-glyph">{glyph(status)}</span>
+                <span className="step-label">{STAGE_LABELS[id]}</span>
+              </Link>
+              {i < STAGE_IDS.length - 1 && (
+                <span className="step-rail" aria-hidden="true" />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <div
+        className="stepper-counter mono"
         aria-label={`Готово ${progress.doneCount} из 7`}
       >
-        {progress.doneCount}/7
-      </span>
-      {STAGE_IDS.map((id) => {
-        const stage = byId.get(id);
-        const status = stage?.status ?? "todo";
-        const skipped = studioState.stages[id]?.status === "skipped";
-        const isActive = activeStageId === id;
-        const icon = skipped ? "↷" : STATUS_ICON[status];
-        return (
-          <Link
-            key={id}
-            to={stageRoute(bookId, id)}
-            data-stage-id={id}
-            {...(isActive ? { "aria-current": "step" as const } : {})}
-            className={
-              "inline-flex items-center gap-1 rounded px-2 py-1 " +
-              (isActive
-                ? "bg-[var(--color-brass-tint)] border border-[var(--color-brass)] text-[var(--color-brass)] font-medium"
-                : "hover:bg-[var(--color-muted)] text-[var(--color-foreground)]")
-            }
-          >
-            <span aria-hidden="true">{icon}</span>
-            <span>{STAGE_LABELS[id]}</span>
-          </Link>
-        );
-      })}
+        <span className="strong">{progress.doneCount}</span>
+        <span className="faint">/7</span>
+      </div>
     </nav>
   );
 }

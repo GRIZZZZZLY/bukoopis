@@ -49,7 +49,9 @@ describe("StageStepper", () => {
 
   it("shows the done count out of 7", () => {
     renderStepper({ studioState: stateWith({ concept: "complete", world: "skipped" }) });
-    expect(screen.getByText("2/7")).toBeInTheDocument();
+    // Counter renders as split spans ("2" + "/7") per reference markup —
+    // assert via its accessible label instead of a single text node.
+    expect(screen.getByLabelText("Готово 2 из 7")).toBeInTheDocument();
   });
 
   it("marks the active stage with aria-current=step", () => {
