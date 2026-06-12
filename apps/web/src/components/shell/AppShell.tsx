@@ -128,6 +128,13 @@ function TopBar({ scrolled }: { scrolled: boolean }) {
         </span>
         <span className="kbd">⌘K</span>
       </button>
+      <Link to="/style-profiles" className="style-pill" title="Профили стиля">
+        <span className="dot" />
+        <span className="font-mono" style={{ fontSize: 10, opacity: 0.6 }}>
+          стиль
+        </span>
+        Профили
+      </Link>
       <Link
         to="/usage"
         className="btn btn-ghost btn-sm"
@@ -135,25 +142,7 @@ function TopBar({ scrolled }: { scrolled: boolean }) {
       >
         Использование
       </Link>
-      <div
-        className="avatar"
-        aria-label="Профиль"
-        title="Профиль"
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background:
-            "linear-gradient(140deg, var(--color-brass), var(--color-brass-soft))",
-          color: "#1A1410",
-          display: "grid",
-          placeItems: "center",
-          fontWeight: 600,
-          fontSize: 12,
-          // hide title when path-based suppression needed; leave as-is
-          marginLeft: 4,
-        }}
-      >
+      <div className="avatar" aria-label="Профиль" title="Профиль">
         {avatarLetter(pathname)}
       </div>
     </header>

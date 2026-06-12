@@ -327,6 +327,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   height: 2px;
   background: var(--color-brass);
   border-radius: 1px 1px 0 0;
+  animation: page-in var(--motion-2) var(--ease-out);
 }
 
 /* Stepper */
@@ -373,6 +374,70 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-color: var(--color-brass);
 }
 .stepper-seg.skipped { color: var(--color-text-faint); }
+.stepper-seg .ord { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-faint); }
+.stepper-counter {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  color: var(--color-text-faint);
+  font-size: 11px;
+  align-self: center;
+  padding-right: 8px;
+}
+
+/* Toast */
+.toast-stack {
+  position: fixed; top: 72px; right: 20px; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-brass);
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: var(--shadow-md);
+  animation: stagger-in var(--motion-3) var(--ease-out);
+  pointer-events: auto;
+  min-width: 240px;
+}
+.toast.toast-error { border-left-color: var(--color-ink-red); }
+.toast.toast-success { border-left-color: var(--color-ink-green); }
+
+/* Tooltip */
+.tooltip-host { position: relative; }
+.tooltip-host > .tt {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%; transform: translateX(-50%) translateY(4px);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-brass-soft);
+  color: var(--color-text);
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--motion-2), transform var(--motion-2);
+  z-index: 60;
+}
+.tooltip-host:hover > .tt { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Inline-editable title look */
+.inline-edit {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 4px;
+  transition: background var(--motion-2), border-color var(--motion-2);
+  cursor: text;
+}
+.inline-edit:hover { background: var(--color-surface-2); }
+.inline-edit:focus { background: var(--color-surface-2); border-color: var(--color-brass-soft); outline: none; }
 
 /* Inputs */
 .input, .textarea, .select {
@@ -391,6 +456,13 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   box-shadow: var(--shadow-glow);
 }
 .textarea { font-family: var(--font-ui); resize: vertical; min-height: 80px; }
+
+/* Route container fade (reference: .route).
+   Scroll stays on <main> in our shell, so no overflow here. */
+.route {
+  min-height: 100%;
+  animation: page-in var(--motion-3) var(--ease-out);
+}
 
 /* App shell — TopBar / LeftRail / StatusBar */
 .topbar {
@@ -416,6 +488,43 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 .topbar .crumb-sep { color: var(--color-text-faint); }
 .topbar .crumb-current { color: var(--color-text); }
+.topbar .spacer { flex: 1; }
+.topbar .style-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px 4px 6px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+.topbar .style-pill:hover { text-decoration: none; border-color: var(--color-border-strong); }
+.topbar .style-pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-brass);
+}
+.topbar .avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(140deg, var(--color-brass), var(--color-brass-soft));
+  color: #1A1410;
+  display: grid; place-items: center;
+  font-weight: 600; font-size: 12px;
+}
+.topbar .chapter-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  display: flex; gap: 8px; align-items: baseline;
+}
+.topbar .chapter-title .prefix {
+  font-style: italic;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+.topbar .chapter-title .title {
+  font-weight: 500;
+  color: var(--color-text-strong);
+}
 
 .leftrail {
   background: var(--color-bg);
@@ -493,6 +602,8 @@ body[data-rail="expanded"] .nav-item .label { opacity: 1; pointer-events: auto; 
 .statusbar .dot-ok    { background: var(--color-ink-green); }
 .statusbar .dot-busy  { background: var(--color-ink-amber); }
 .statusbar .dot-off   { background: var(--color-text-faint); }
+.statusbar .spacer    { flex: 1; }
+.leftrail .rail-foot  { margin-top: auto; }
 
 /* Spine — horizontal top stripe on book card */
 .spine {
@@ -536,6 +647,55 @@ body[data-rail="expanded"] .nav-item .label { opacity: 1; pointer-events: auto; 
   color: var(--color-brass);
   animation: drop-cap-in var(--motion-4) var(--ease-out) both;
 }
+.manuscript .chapter-mark {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+}
+.manuscript h1.chapter-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--color-text-strong);
+  margin: 0 0 36px 0;
+}
+.manuscript .ins {
+  background: rgba(106, 142, 78, 0.14);
+  border-bottom: 1px solid var(--color-ink-green);
+  padding: 1px 1px;
+  border-radius: 2px;
+}
+.manuscript .del {
+  background: rgba(196, 69, 54, 0.12);
+  color: rgba(237, 228, 211, 0.55);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-ink-red);
+  padding: 1px 1px;
+  border-radius: 2px;
+}
+.manuscript .ai-streamed {
+  border-bottom: 1px dashed var(--color-brass-soft);
+}
+.manuscript .caret {
+  display: inline-block;
+  width: 8px; height: 1.1em;
+  border-bottom: 2px solid var(--color-brass);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: caret-blink 1s steps(2) infinite;
+}
+.manuscript .gutter-dot {
+  position: absolute;
+  left: 44px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-top: 12px;
+}
 
 .divider {
   height: 1px; width: 100%;
@@ -547,6 +707,16 @@ body[data-rail="expanded"] .nav-item .label { opacity: 1; pointer-events: auto; 
 .sev-amber { background: var(--color-ink-amber); }
 .sev-blue  { background: var(--color-ink-blue); }
 .sev-green { background: var(--color-ink-green); }
+
+/* Backdrop / Sheet */
+.backdrop {
+  position: absolute; inset: 0;
+  background: var(--color-overlay);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 40;
+  animation: page-in var(--motion-3) var(--ease-out);
+}
 
 /* ============================================================
    Backward-compat aliases for the old .lw-* class names used

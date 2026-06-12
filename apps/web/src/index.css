@@ -118,6 +118,8 @@ body {
   font-feature-settings: "ss01", "cv05";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden; /* app shell controls scroll (reference styles.css) */
 }
 
 ::selection {
