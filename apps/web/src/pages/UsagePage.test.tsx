@@ -69,7 +69,8 @@ describe("UsagePage", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText("$1.2340")).toBeInTheDocument();
+      // "$1.2340" appears both as the total stat and as the per-day bar value.
+      expect(screen.getAllByText("$1.2340").length).toBeGreaterThan(0);
     });
     expect(screen.getByText("writer.chapter")).toBeInTheDocument();
     expect(screen.getByText("$0.9000")).toBeInTheDocument();

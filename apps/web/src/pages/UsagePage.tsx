@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import type { UsageSummary } from "@book-forge/shared";
+
+function fmt(n: number): string {
+  return n.toLocaleString("ru-RU");
+}
 
 export function UsagePage() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -36,7 +39,7 @@ export function UsagePage() {
   if (error)
     return (
       <div className="route">
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -53,15 +56,7 @@ export function UsagePage() {
   if (!summary)
     return (
       <div className="route">
-        <div
-          style={{
-            maxWidth: 1080,
-            margin: "0 auto",
-            padding: 32,
-            color: "var(--color-text-muted)",
-            fontSize: 13,
-          }}
-        >
+        <div className="page muted" style={{ fontSize: 13 }}>
           Загрузка…
         </div>
       </div>
@@ -69,72 +64,28 @@ export function UsagePage() {
 
   return (
     <div className="route" data-screen-label="Usage">
-      <div
-        style={{
-          maxWidth: 1080,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 24,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="page page-usage">
+        <div className="page-head">
           <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Использование
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 32,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              Расходы LLM
-            </h1>
-            <div
-              className="text-muted"
-              style={{ fontSize: 13, marginTop: 6 }}
-            >
+            <h1>Расходы LLM</h1>
+            <p className="muted page-sub">
               per-route · per-day · последние 50 вызовов
-            </div>
+            </p>
           </div>
-          <Link
-            to="/books"
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
-          >
-            ← К списку книг
-          </Link>
         </div>
 
         {/* Filters */}
         <div
-          className="panel"
+          className="card"
           style={{
-            padding: 20,
-            marginBottom: 16,
             display: "flex",
             gap: 12,
             alignItems: "flex-end",
             flexWrap: "wrap",
           }}
         >
-          <label
-            style={{ display: "flex", flexDirection: "column", gap: 6 }}
-          >
-            <span className="caption">Book ID</span>
+          <label className="field">
+            <span className="field-label">Book ID</span>
             <input
               type="number"
               min={1}
@@ -145,10 +96,8 @@ export function UsagePage() {
               style={{ width: 120 }}
             />
           </label>
-          <label
-            style={{ display: "flex", flexDirection: "column", gap: 6 }}
-          >
-            <span className="caption">От</span>
+          <label className="field">
+            <span className="field-label">От</span>
             <input
               type="date"
               value={fromFilter}
@@ -157,10 +106,8 @@ export function UsagePage() {
               style={{ width: 160 }}
             />
           </label>
-          <label
-            style={{ display: "flex", flexDirection: "column", gap: 6 }}
-          >
-            <span className="caption">До</span>
+          <label className="field">
+            <span className="field-label">До</span>
             <input
               type="date"
               value={toFilter}
@@ -181,254 +128,129 @@ export function UsagePage() {
 
         {/* Stats */}
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-            marginBottom: 24,
-          }}
+          className="stat-row"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
         >
-          <StatCard title="Всего" value={`$${summary.totalUsd.toFixed(4)}`} />
-          <StatCard title="Вызовов" value={String(summary.totalCalls)} />
-          <StatCard
-            title="Tokens in / out"
-            value={`${summary.totalInputTokens.toLocaleString("ru-RU")} / ${summary.totalOutputTokens.toLocaleString("ru-RU")}`}
-          />
-          <StatCard
-            title="Cache read / create"
-            value={`${summary.totalCacheReadTokens.toLocaleString("ru-RU")} / ${summary.totalCacheCreationTokens.toLocaleString("ru-RU")}`}
-          />
+          <div className="card stat-card">
+            <div className="cap-upper">Всего</div>
+            <div className="stat-val mono">${summary.totalUsd.toFixed(4)}</div>
+          </div>
+          <div className="card stat-card">
+            <div className="cap-upper">Вызовов</div>
+            <div className="stat-val mono">{summary.totalCalls}</div>
+          </div>
+          <div className="card stat-card">
+            <div className="cap-upper">Tokens in / out</div>
+            <div className="stat-val mono" style={{ fontSize: 24 }}>
+              {fmt(summary.totalInputTokens)} / {fmt(summary.totalOutputTokens)}
+            </div>
+          </div>
+          <div className="card stat-card">
+            <div className="cap-upper">Cache read / create</div>
+            <div className="stat-val mono" style={{ fontSize: 24 }}>
+              {fmt(summary.totalCacheReadTokens)} /{" "}
+              {fmt(summary.totalCacheCreationTokens)}
+            </div>
+          </div>
         </div>
 
         {/* Per-route */}
-        <section style={{ marginBottom: 24 }}>
-          <h2
-            className="font-display"
-            style={{
-              fontSize: 22,
-              fontWeight: 500,
-              margin: "0 0 12px",
-              color: "var(--color-text-strong)",
-            }}
-          >
-            По маршрутам
-          </h2>
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 12 }}>
+            <h3>По маршрутам</h3>
+            <span className="cap mono faint">
+              {summary.perRoute.length} маршрут.
+            </span>
+          </div>
           {summary.perRoute.length === 0 ? (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
+            <p className="muted" style={{ fontSize: 13, fontStyle: "italic" }}>
               Нет данных в выбранном диапазоне.
             </p>
           ) : (
-            <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-              <table
-                style={{
-                  width: "100%",
-                  fontSize: 13,
-                  borderCollapse: "collapse",
-                }}
-              >
+            <div className="usage-table">
+              <table>
                 <thead>
-                  <tr
-                    className="caption"
-                    style={{
-                      textAlign: "left",
-                      background: "var(--color-surface-2)",
-                    }}
-                  >
-                    <th style={{ padding: "10px 14px" }}>Маршрут</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
-                      Вызовов
-                    </th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
-                      Стоимость
-                    </th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
-                      Tokens in
-                    </th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>
-                      Tokens out
-                    </th>
+                  <tr>
+                    <th>Маршрут</th>
+                    <th className="num">Вызовов</th>
+                    <th className="num">Стоимость</th>
+                    <th className="num">Tokens in</th>
+                    <th className="num">Tokens out</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.perRoute.map((row) => (
-                    <tr
-                      key={row.route}
-                      style={{
-                        borderTop: "1px solid var(--color-border-soft)",
-                      }}
-                    >
-                      <td
-                        className="font-mono"
-                        style={{ padding: "10px 14px", fontSize: 12 }}
-                      >
-                        {row.route}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "10px 14px", textAlign: "right" }}
-                      >
-                        {row.calls}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "10px 14px", textAlign: "right" }}
-                      >
-                        ${row.costUsd.toFixed(4)}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "10px 14px", textAlign: "right" }}
-                      >
-                        {row.inputTokens.toLocaleString("ru-RU")}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "10px 14px", textAlign: "right" }}
-                      >
-                        {row.outputTokens.toLocaleString("ru-RU")}
-                      </td>
+                    <tr key={row.route}>
+                      <td className="mono">{row.route}</td>
+                      <td className="num mono">{row.calls}</td>
+                      <td className="num mono">${row.costUsd.toFixed(4)}</td>
+                      <td className="num mono">{fmt(row.inputTokens)}</td>
+                      <td className="num mono">{fmt(row.outputTokens)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </section>
+        </div>
 
-        {/* Per-day spark */}
-        <section style={{ marginBottom: 24 }}>
-          <h2
-            className="font-display"
-            style={{
-              fontSize: 22,
-              fontWeight: 500,
-              margin: "0 0 12px",
-              color: "var(--color-text-strong)",
-            }}
-          >
-            По дням
-          </h2>
+        {/* Per-day */}
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 12 }}>
+            <h3>По дням</h3>
+            <span className="cap mono faint">USD</span>
+          </div>
           {summary.perDay.length === 0 ? (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
+            <p className="muted" style={{ fontSize: 13, fontStyle: "italic" }}>
               Нет дней с активностью.
             </p>
           ) : (
-            <PerDaySpark data={summary.perDay} />
+            <PerDayBars data={summary.perDay} />
           )}
-        </section>
+        </div>
 
         {/* Recent calls */}
-        <section>
-          <h2
-            className="font-display"
-            style={{
-              fontSize: 22,
-              fontWeight: 500,
-              margin: "0 0 12px",
-              color: "var(--color-text-strong)",
-            }}
-          >
-            Последние 50 вызовов
-          </h2>
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 12 }}>
+            <h3>Последние 50 вызовов</h3>
+            <span className="cap mono faint">{summary.recent.length} зап.</span>
+          </div>
           {summary.recent.length === 0 ? (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
+            <p className="muted" style={{ fontSize: 13, fontStyle: "italic" }}>
               Пусто.
             </p>
           ) : (
-            <div
-              className="panel"
-              style={{ padding: 0, overflow: "auto" }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  fontSize: 12,
-                  borderCollapse: "collapse",
-                }}
-              >
+            <div className="usage-table" style={{ overflowX: "auto" }}>
+              <table>
                 <thead>
-                  <tr
-                    className="caption"
-                    style={{
-                      textAlign: "left",
-                      background: "var(--color-surface-2)",
-                    }}
-                  >
-                    <th style={{ padding: "10px 14px" }}>Когда</th>
-                    <th style={{ padding: "10px 14px" }}>Маршрут</th>
-                    <th style={{ padding: "10px 14px" }}>Модель</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>in</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>out</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>cache R/W</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>$</th>
-                    <th style={{ padding: "10px 14px", textAlign: "right" }}>book/ch/v</th>
+                  <tr>
+                    <th>Когда</th>
+                    <th>Маршрут</th>
+                    <th>Модель</th>
+                    <th className="num">In</th>
+                    <th className="num">Out</th>
+                    <th className="num">Cache R/W</th>
+                    <th className="num">$</th>
+                    <th className="num">book/ch/v</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.recent.map((r) => (
-                    <tr
-                      key={r.id}
-                      style={{
-                        borderTop: "1px solid var(--color-border-soft)",
-                      }}
-                    >
-                      <td style={{ padding: "8px 14px" }}>
+                    <tr key={r.id}>
+                      <td className="mono">
                         {new Date(r.createdAt).toLocaleString("ru-RU")}
                       </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px" }}
-                      >
-                        {r.route}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px" }}
-                      >
-                        {r.model}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px", textAlign: "right" }}
-                      >
-                        {r.inputTokens}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px", textAlign: "right" }}
-                      >
-                        {r.outputTokens}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px", textAlign: "right" }}
-                      >
+                      <td className="mono">{r.route}</td>
+                      <td className="mono">{r.model}</td>
+                      <td className="num mono">{r.inputTokens}</td>
+                      <td className="num mono">{r.outputTokens}</td>
+                      <td className="num mono">
                         {r.cacheReadInputTokens}/{r.cacheCreationInputTokens}
                       </td>
-                      <td
-                        className="font-mono"
-                        style={{ padding: "8px 14px", textAlign: "right" }}
-                      >
-                        ${r.costUsd.toFixed(4)}
-                      </td>
-                      <td
-                        className="font-mono"
-                        style={{
-                          padding: "8px 14px",
-                          textAlign: "right",
-                          color: "var(--color-text-muted)",
-                        }}
-                      >
-                        {r.bookId ?? "–"}/{r.chapterId ?? "–"}/{r.versionId ?? "–"}
+                      <td className="num mono">${r.costUsd.toFixed(4)}</td>
+                      <td className="num mono muted">
+                        {r.bookId ?? "–"}/{r.chapterId ?? "–"}/
+                        {r.versionId ?? "–"}
                       </td>
                     </tr>
                   ))}
@@ -436,85 +258,40 @@ export function UsagePage() {
               </table>
             </div>
           )}
-        </section>
+        </div>
       </div>
     </div>
   );
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="card" style={{ padding: 16 }}>
-      <div className="caption">{title}</div>
-      <div
-        className="font-mono"
-        style={{
-          fontSize: 18,
-          color: "var(--color-text-strong)",
-          marginTop: 8,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function PerDaySpark({
+function PerDayBars({
   data,
 }: {
   data: Array<{ date: string; costUsd: number; calls: number }>;
 }) {
   const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
-  const maxCost = Math.max(...sorted.map((d) => d.costUsd), 0.0001);
+  const max = Math.max(...sorted.map((d) => d.costUsd), 0.0001);
   return (
-    <div className="panel" style={{ padding: 16 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${sorted.length}, 1fr)`,
-          gap: 6,
-          alignItems: "end",
-          minHeight: 80,
-        }}
-      >
-        {sorted.map((d) => {
-          const h = Math.max(2, (d.costUsd / maxCost) * 60);
-          return (
+    <div className="bar-chart">
+      {sorted.map((d) => (
+        <div
+          key={d.date}
+          className="bar-row"
+          title={`${d.date}: $${d.costUsd.toFixed(4)} · ${d.calls} вызовов`}
+        >
+          <span className="bar-label mono">{d.date.slice(5)}</span>
+          <div className="bar-track">
             <div
-              key={d.date}
+              className="bar-fill"
               style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 4,
+                width: `${(d.costUsd / max) * 100}%`,
+                background: "var(--color-brass)",
               }}
-              title={`${d.date}: $${d.costUsd.toFixed(4)} · ${d.calls} вызовов`}
-            >
-              <div
-                style={{
-                  background: "var(--color-brass)",
-                  width: "100%",
-                  borderRadius: 2,
-                  height: `${h}px`,
-                }}
-              />
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: 9,
-                  color: "var(--color-text-faint)",
-                  transform: "rotate(45deg)",
-                  transformOrigin: "top left",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {d.date.slice(5)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            />
+          </div>
+          <span className="bar-val mono">${d.costUsd.toFixed(4)}</span>
+        </div>
+      ))}
     </div>
   );
 }
