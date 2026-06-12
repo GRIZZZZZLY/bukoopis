@@ -6,9 +6,78 @@
    index.css @theme, legacy-compat layer at the bottom.
    ============================================================ */
 
+/* Token layer — plain :root, NOT Tailwind @theme. The @tailwindcss/vite
+   plugin tree-shakes @theme vars it doesn't see used in scanned sources
+   (this file is not scanned), so tokens must be defined here directly.
+   Mirrors the reference styles.css :root. */
 :root {
-  /* index.css @theme generates --font-sans; reference uses --font-ui */
-  --font-ui: var(--font-sans);
+  /* surfaces */
+  --color-bg:           #1A1410;
+  --color-surface-1:    #221A14;
+  --color-surface-2:    #2B2118;
+  --color-surface-3:    #342719;
+  --color-overlay:      rgba(10, 7, 5, 0.72);
+
+  /* borders */
+  --color-border:        #3A2D22;
+  --color-border-soft:   #2E241B;
+  --color-border-strong: #54402F;
+
+  /* text */
+  --color-text:         #EDE4D3;
+  --color-text-strong:  #FBF5E6;
+  --color-text-muted:   #9C8B73;
+  --color-text-faint:   #6E5F4D;
+
+  /* accents */
+  --color-brass:        #D49A4E;
+  --color-brass-soft:   #B07F33;
+  --color-brass-hi:     #E1A858;
+  --color-brass-glow:   rgba(212, 154, 78, 0.18);
+  --color-brass-tint:   rgba(212, 154, 78, 0.10);
+
+  --color-ink-red:        #C44536;
+  --color-ink-red-tint:   rgba(196, 69, 54, 0.12);
+  --color-ink-green:      #6A8E4E;
+  --color-ink-green-tint: rgba(106, 142, 78, 0.12);
+  --color-ink-blue:       #5B7A99;
+  --color-ink-blue-tint:  rgba(91, 122, 153, 0.14);
+  --color-ink-amber:      #C9A24A;
+  --color-ink-amber-tint: rgba(201, 162, 74, 0.12);
+
+  /* manuscript */
+  --color-paper:        #2B2118;
+  --color-margin-rule:  #54402F;
+
+  /* shadcn-compat aliases used by ui/ primitives */
+  --color-background:             #1A1410;
+  --color-foreground:             #EDE4D3;
+  --color-primary:                #D49A4E;
+  --color-primary-foreground:     #1A1410;
+  --color-secondary:              #2B2118;
+  --color-secondary-foreground:   #EDE4D3;
+  --color-muted:                  #221A14;
+  --color-muted-foreground:       #9C8B73;
+  --color-accent:                 #342719;
+  --color-accent-foreground:      #FBF5E6;
+  --color-destructive:            #C44536;
+  --color-destructive-foreground: #FBF5E6;
+  --color-input:                  #3A2D22;
+  --color-ring:                   #D49A4E;
+
+  /* radii */
+  --radius:          10px;
+  --radius-control:  6px;
+  --radius-card:     10px;
+  --radius-panel:    14px;
+  --radius-shell:    20px;
+
+  /* type */
+  --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-prose:   "Lora", ui-serif, Georgia, "Times New Roman", serif;
+  --font-ui:      "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans:    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 /* ─── paper grain ─────────────────────────────────────────── */

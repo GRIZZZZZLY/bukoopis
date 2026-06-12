@@ -8,7 +8,10 @@
    primitives working while pointing at Library-Warm values.
    ─────────────────────────────────────────────────────────────── */
 
-@theme {
+/* `static` — emit ALL tokens unconditionally. Without it Tailwind v4
+   tree-shakes vars it doesn't see used in scanned sources, and
+   library-warm.css (plain JS-imported CSS) is not scanned. */
+@theme static {
   /* surfaces */
   --color-bg:           #1A1410;
   --color-surface-1:    #221A14;
