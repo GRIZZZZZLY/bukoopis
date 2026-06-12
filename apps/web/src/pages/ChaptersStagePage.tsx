@@ -83,7 +83,7 @@ export function ChaptersStagePage() {
   if (!Number.isFinite(id)) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -101,7 +101,7 @@ export function ChaptersStagePage() {
   if (error) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -129,123 +129,64 @@ export function ChaptersStagePage() {
 
   return (
     <div className="route" data-screen-label="Chapters">
-      <div
-        style={{
-          maxWidth: 1080,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 24,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="page page-stage">
+        <StageStepper
+          bookId={id}
+          concept={concept}
+          studioState={studio}
+          activeStageId="chapters"
+        />
+
+        <div className="page-head">
           <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Этап · Главы
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 32,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              Главы
-            </h1>
-            <div
-              className="text-muted"
-              style={{ fontSize: 13, marginTop: 6 }}
-            >
+            <h1>Главы</h1>
+            <p className="muted page-sub">
               {countLabel}
               {chapters.length > 0 && (
                 <>
                   {" · "}
-                  <span className="font-mono" style={{ color: "var(--color-text)" }}>
-                    {book.title}
-                  </span>
+                  <span className="mono strong">{book.title}</span>
                 </>
               )}
-            </div>
+            </p>
           </div>
-          <Link
-            to={`/books/${id}/studio`}
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
-          >
-            ← к Studio
+          <Link to={`/books/${id}/studio`} className="btn btn-ghost btn-sm">
+            ← К Studio
           </Link>
         </div>
 
-        {/* Stepper */}
-        <div style={{ marginBottom: 28, overflowX: "auto", paddingBottom: 4 }}>
-          <StageStepper
-            bookId={id}
-            concept={concept}
-            studioState={studio}
-            activeStageId="chapters"
-          />
-        </div>
-
-        {/* Panels */}
-        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
+        {/* Plan */}
+        <div className="card panel-outline">
           <OutlinePanel book={book} onUpdated={load} />
         </div>
-        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
-          <KnowledgePanel bookId={id} />
+
+        {/* Canon + Import/Export */}
+        <div className="panel-row">
+          <div className="card">
+            <KnowledgePanel bookId={id} />
+          </div>
+          <div className="card">
+            <ImportExportPanel bookId={id} onImported={load} />
+          </div>
         </div>
-        <div className="panel" style={{ padding: 16, marginBottom: 16 }}>
-          <ImportExportPanel bookId={id} onImported={load} />
-        </div>
-        <div className="panel" style={{ padding: 16, marginBottom: 24 }}>
+
+        {/* Search */}
+        <div className="card">
           <SearchPanel bookId={id} />
         </div>
 
         {/* Chapter list */}
-        <section
-          style={{ display: "flex", flexDirection: "column", gap: 16 }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <h2
-              className="font-display"
-              style={{
-                fontSize: 22,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-              }}
-            >
-              Список глав
-            </h2>
-            <span
-              className="font-mono"
-              style={{ fontSize: 11, color: "var(--color-text-faint)" }}
-            >
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 12 }}>
+            <h3>Список глав</h3>
+            <span className="cap mono faint">
               {chapters.length} {chapters.length === 1 ? "глава" : "глав"}
             </span>
           </div>
 
           <form
             onSubmit={onAddChapter}
-            style={{ display: "flex", gap: 8 }}
+            style={{ display: "flex", gap: 8, marginBottom: 12 }}
           >
             <input
               className="input"
@@ -267,11 +208,10 @@ export function ChaptersStagePage() {
 
           {chapters.length === 0 ? (
             <div
-              className="card"
+              className="card muted"
               style={{
                 textAlign: "center",
                 padding: 24,
-                color: "var(--color-text-muted)",
                 fontSize: 13,
                 fontStyle: "italic",
                 borderStyle: "dashed",
@@ -287,7 +227,7 @@ export function ChaptersStagePage() {
               onPersistError={setError}
             />
           )}
-        </section>
+        </div>
       </div>
     </div>
   );
@@ -402,25 +342,20 @@ function SortableChapterItem({
   return (
     <li ref={setNodeRef} style={style}>
       <div
-        className="card hoverable"
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
-          padding: "10px 14px",
+          gap: 14,
+          padding: "12px 14px",
+          borderRadius: 8,
+          borderTop: "1px solid var(--color-border-soft)",
         }}
       >
         <button
           type="button"
           aria-label="Перетащить главу"
-          className="btn btn-ghost btn-sm"
-          style={{
-            width: 28,
-            height: 28,
-            padding: 0,
-            cursor: "grab",
-            color: "var(--color-text-faint)",
-          }}
+          className="chrack-grip"
+          style={{ background: "transparent", border: 0, cursor: "grab" }}
           {...attributes}
           {...listeners}
         >
@@ -433,10 +368,7 @@ function SortableChapterItem({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: 12,
-            textDecoration: "none",
-            color: "inherit",
-            outline: "none",
+            gap: 14,
             minWidth: 0,
           }}
         >
@@ -444,26 +376,16 @@ function SortableChapterItem({
             style={{
               display: "flex",
               alignItems: "baseline",
-              gap: 10,
+              gap: 14,
               minWidth: 0,
             }}
           >
-            <span
-              className="font-mono"
-              style={{
-                fontSize: 11,
-                color: "var(--color-text-faint)",
-                flexShrink: 0,
-              }}
-            >
-              #{chapter.orderIndex}
+            <span className="chrack-num mono" style={{ flexShrink: 0 }}>
+              #{String(chapter.orderIndex).padStart(2, "0")}
             </span>
             <span
-              className="font-display"
+              className="chrack-title"
               style={{
-                fontSize: 16,
-                fontWeight: 500,
-                color: "var(--color-text-strong)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",

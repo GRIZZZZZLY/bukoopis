@@ -99,7 +99,7 @@ export function MarkdownStagePage() {
   if (error) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -117,15 +117,7 @@ export function MarkdownStagePage() {
   if (!studio || !concept) {
     return (
       <div className="route">
-        <div
-          style={{
-            maxWidth: 1080,
-            margin: "0 auto",
-            padding: 32,
-            color: "var(--color-text-muted)",
-            fontSize: 13,
-          }}
-        >
+        <div className="page muted" style={{ fontSize: 13 }}>
           Загрузка…
         </div>
       </div>
@@ -147,70 +139,26 @@ export function MarkdownStagePage() {
 
   return (
     <div className="route" data-screen-label={`stage-${stageId}`}>
-      <div
-        style={{
-          maxWidth: 1080,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 24,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="page page-stage">
+        <StageStepper
+          bookId={bookId}
+          concept={concept}
+          studioState={studio}
+          activeStageId={stageId}
+        />
+
+        <div className="page-head">
           <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Этап · {STAGE_LABELS[stageId]}
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 32,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              {STAGE_LABELS[stageId]}
-            </h1>
-            <div
-              className="text-muted"
-              style={{ fontSize: 13, marginTop: 6, maxWidth: 640 }}
-            >
-              {STAGE_HINTS[stageId]}
-            </div>
+            <h1>{STAGE_LABELS[stageId]}</h1>
+            <p className="muted page-sub">{STAGE_HINTS[stageId]}</p>
           </div>
-          <Link
-            to={`/books/${bookId}/studio`}
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
-          >
-            ← к Studio
+          <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
+            ← К Studio
           </Link>
         </div>
 
-        {/* Stepper bar */}
-        <div
-          style={{ marginBottom: 28, overflowX: "auto", paddingBottom: 4 }}
-        >
-          <StageStepper
-            bookId={bookId}
-            concept={concept}
-            studioState={studio}
-            activeStageId={stageId}
-          />
-        </div>
-
         {/* Workspace */}
-        <div className="panel" style={{ padding: 24 }}>
+        <div className="card">
           {stage.aspects.length === 0 ? (
             <PlaybookRunner
               stage={stage}
