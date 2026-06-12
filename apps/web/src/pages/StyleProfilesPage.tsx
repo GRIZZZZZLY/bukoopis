@@ -4,12 +4,22 @@ import { Plus } from "lucide-react";
 import { api } from "@/api/client";
 import type { ReferenceCorpus, StyleProfile } from "@book-forge/shared";
 
+function profileWord(n: number): string {
+  const r = n % 10;
+  const rr = n % 100;
+  if (rr >= 11 && rr <= 14) return "профилей";
+  if (r === 1) return "профиль";
+  if (r >= 2 && r <= 4) return "профиля";
+  return "профилей";
+}
+
 export function StyleProfilesListPage() {
   const [list, setList] = useState<StyleProfile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [language, setLanguage] = useState("ru");
   const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   async function load() {
     setError(null);
@@ -34,6 +44,7 @@ export function StyleProfilesListPage() {
         language: language || "ru",
       });
       setName("");
+      setShowForm(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -45,7 +56,7 @@ export function StyleProfilesListPage() {
   if (error)
     return (
       <div className="route">
-        <div style={{ maxWidth: 960, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -62,15 +73,7 @@ export function StyleProfilesListPage() {
   if (list === null)
     return (
       <div className="route">
-        <div
-          style={{
-            maxWidth: 960,
-            margin: "0 auto",
-            padding: 32,
-            color: "var(--color-text-muted)",
-            fontSize: 13,
-          }}
-        >
+        <div className="page muted" style={{ fontSize: 13 }}>
           Загрузка…
         </div>
       </div>
@@ -78,94 +81,77 @@ export function StyleProfilesListPage() {
 
   return (
     <div className="route" data-screen-label="Style profiles">
-      <div
-        style={{
-          maxWidth: 960,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            marginBottom: 32,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="page page-styles">
+        <div className="page-head">
           <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Стиль
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 36,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              Стилевые профили
-            </h1>
-            <div
-              className="text-muted"
-              style={{ fontSize: 14, marginTop: 8 }}
-            >
-              {list.length === 0
-                ? "Профилей пока нет — извлеките голос из готовой книги."
-                : `${list.length} ${list.length === 1 ? "профиль" : "профилей"}`}
-            </div>
+            <h1>Профили стиля</h1>
+            <p className="muted page-sub">
+              Голос, к которому возвращается писатель. Извлекаются из готового
+              текста или собираются вручную.
+              {list.length > 0 && (
+                <>
+                  {" "}
+                  Сейчас: {list.length} {profileWord(list.length)}.
+                </>
+              )}
+            </p>
           </div>
+          {!showForm ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowForm(true)}
+            >
+              <Plus size={16} aria-hidden="true" />
+              Новый профиль
+            </button>
+          ) : (
+            <form
+              onSubmit={onCreate}
+              style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+              aria-label="Создать профиль стиля"
+            >
+              <input
+                className="input"
+                autoFocus
+                placeholder="Имя профиля (например: Пехов)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{ width: 220 }}
+              />
+              <input
+                className="input"
+                placeholder="ru"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                style={{ width: 64 }}
+                aria-label="Язык"
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={creating || !name.trim()}
+              >
+                {creating ? "…" : "Создать"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setShowForm(false)}
+              >
+                Отмена
+              </button>
+            </form>
+          )}
         </div>
 
-        {/* Create form */}
-        <form
-          onSubmit={onCreate}
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            marginBottom: 24,
-          }}
-        >
-          <input
-            className="input"
-            placeholder="Имя профиля (например: Пехов)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ flex: 1, minWidth: 220 }}
-          />
-          <input
-            className="input"
-            placeholder="ru"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            style={{ width: 80 }}
-          />
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={creating || !name.trim()}
-          >
-            <Plus size={14} aria-hidden="true" />
-            Создать
-          </button>
-        </form>
-
-        {/* List */}
         {list.length === 0 ? (
           <div
-            className="card"
+            className="card muted"
             style={{
               padding: 40,
               textAlign: "center",
               borderStyle: "dashed",
-              color: "var(--color-text-muted)",
               fontSize: 13,
               fontStyle: "italic",
             }}
@@ -174,66 +160,29 @@ export function StyleProfilesListPage() {
             корпуса.
           </div>
         ) : (
-          <ul
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: 16,
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-            }}
-          >
+          <div className="style-grid">
             {list.map((p) => (
-              <li key={p.id}>
-                <Link
-                  to={`/style-profiles/${p.id}`}
-                  className="card hoverable"
-                  style={{
-                    display: "block",
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  <div
-                    className="font-display"
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 500,
-                      lineHeight: 1.2,
-                      color: "var(--color-text-strong)",
-                    }}
-                  >
-                    {p.name}
-                  </div>
-                  <div
-                    className="font-mono"
-                    style={{
-                      fontSize: 11,
-                      color: "var(--color-text-faint)",
-                      marginTop: 6,
-                    }}
-                  >
-                    {p.language} · корпусов: {p.corporaCount} ·{" "}
-                    {p.totalChars.toLocaleString("ru-RU")} символов
-                  </div>
-                  <div style={{ marginTop: 12 }}>
-                    <span
-                      className={`pill pill-${p.fingerprint ? "green" : "amber"}`}
-                    >
-                      <span
-                        className="dot"
-                        style={{ background: "currentColor" }}
-                      />
-                      {p.fingerprint
-                        ? "fingerprint готов"
-                        : "fingerprint не извлечён"}
-                    </span>
-                  </div>
-                </Link>
-              </li>
+              <Link
+                key={p.id}
+                to={`/style-profiles/${p.id}`}
+                className="style-card"
+              >
+                <h2>{p.name}</h2>
+                <div className="cap muted">
+                  {p.language} · корпусов: {p.corporaCount} ·{" "}
+                  {p.totalChars.toLocaleString("ru-RU")} симв.
+                </div>
+                <div className="style-foot">
+                  <span className={`pill pill-${p.fingerprint ? "green" : "amber"}`}>
+                    <span className="dot" />
+                    {p.fingerprint
+                      ? "fingerprint готов"
+                      : "fingerprint не извлечён"}
+                  </span>
+                </div>
+              </Link>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -327,7 +276,7 @@ export function StyleProfilePage() {
   if (error)
     return (
       <div className="route">
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -344,15 +293,7 @@ export function StyleProfilePage() {
   if (!profile || corpora === null)
     return (
       <div className="route">
-        <div
-          style={{
-            maxWidth: 880,
-            margin: "0 auto",
-            padding: 32,
-            color: "var(--color-text-muted)",
-            fontSize: 13,
-          }}
-        >
+        <div className="page muted" style={{ fontSize: 13 }}>
           Загрузка…
         </div>
       </div>
@@ -360,58 +301,12 @@ export function StyleProfilePage() {
 
   return (
     <div className="route" data-screen-label="Style profile">
-      <div
-        style={{
-          maxWidth: 880,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 24,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Стилевой профиль · #{id}
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 32,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              {profile.name}
-            </h1>
-            <div
-              className="text-muted"
-              style={{ fontSize: 13, marginTop: 6 }}
-            >
-              <span className="font-mono">{profile.language}</span> ·{" "}
-              {profile.description ?? "(без описания)"}
-            </div>
-          </div>
-          <div
-            style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-          >
-            <Link
-              to="/style-profiles"
-              className="btn btn-ghost btn-sm"
-              style={{ textDecoration: "none" }}
-            >
-              ← К списку
-            </Link>
+      <div className="page page-style">
+        <div className="page-head">
+          <Link to="/style-profiles" className="back-link mono">
+            ← Профили стиля
+          </Link>
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
               className="btn btn-destructive btn-sm"
@@ -419,166 +314,6 @@ export function StyleProfilePage() {
             >
               Удалить
             </button>
-          </div>
-        </div>
-
-        {/* Corpus panel */}
-        <div
-          className="panel"
-          style={{
-            padding: 24,
-            marginBottom: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <h2
-              className="font-display"
-              style={{
-                fontSize: 20,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-              }}
-            >
-              Корпус
-            </h2>
-            <div
-              className="font-mono"
-              style={{
-                fontSize: 11,
-                color: "var(--color-text-faint)",
-              }}
-            >
-              {profile.corporaCount} файлов ·{" "}
-              {profile.totalChars.toLocaleString("ru-RU")} символов
-            </div>
-          </div>
-          <div className="text-muted" style={{ fontSize: 12 }}>
-            Поддерживаются:{" "}
-            <span className="font-mono">.txt</span>,{" "}
-            <span className="font-mono">.md</span>,{" "}
-            <span className="font-mono">.fb2</span>,{" "}
-            <span className="font-mono">.epub</span>
-          </div>
-          <input
-            type="file"
-            accept=".txt,.md,.markdown,.fb2,.epub"
-            onChange={onFile}
-            disabled={uploading}
-            style={{ fontSize: 13 }}
-          />
-          {uploading && (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
-              Загрузка…
-            </p>
-          )}
-          {corpora.length === 0 ? (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
-              Корпус пуст.
-            </p>
-          ) : (
-            <ul
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-              }}
-            >
-              {corpora.map((c) => (
-                <li
-                  key={c.id}
-                  className="card"
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 14px",
-                  }}
-                >
-                  <span style={{ fontSize: 13, minWidth: 0 }}>
-                    <strong style={{ color: "var(--color-text-strong)" }}>
-                      {c.filename}
-                    </strong>
-                    <span
-                      className="font-mono"
-                      style={{
-                        fontSize: 11,
-                        color: "var(--color-text-faint)",
-                        marginLeft: 8,
-                      }}
-                    >
-                      {c.format} · {c.charCount.toLocaleString("ru-RU")} симв ·{" "}
-                      {c.sceneCount} сцен
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-destructive btn-sm"
-                    onClick={async () => {
-                      await api.deleteCorpus(id, c.id);
-                      await load();
-                    }}
-                    aria-label={`Удалить ${c.filename}`}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Extractor panel */}
-        <div
-          className="panel"
-          style={{
-            padding: 24,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <h2
-              className="font-display"
-              style={{
-                fontSize: 20,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-              }}
-            >
-              Style Extractor
-            </h2>
             <button
               type="button"
               className="btn btn-primary"
@@ -588,121 +323,209 @@ export function StyleProfilePage() {
               {extracting ? "Анализ…" : "Извлечь fingerprint"}
             </button>
           </div>
-          {extractError && (
-            <p
-              role="alert"
-              className="card"
-              style={{
-                borderLeft: "3px solid var(--color-ink-red)",
-                color: "var(--color-ink-red)",
-                fontSize: 13,
-                padding: "10px 14px",
-              }}
-            >
-              Ошибка: {extractError}
-            </p>
-          )}
-          {profile.lastExtractedAt && (
-            <p
-              className="font-mono"
-              style={{ fontSize: 11, color: "var(--color-text-faint)" }}
-            >
-              Последний прогон:{" "}
-              {new Date(profile.lastExtractedAt).toLocaleString("ru-RU")}
-            </p>
-          )}
-          {profile.fingerprint ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                fontSize: 13,
-              }}
-            >
-              <FingerprintRow label="Voice" value={profile.fingerprint.voiceSummary} />
-              <FingerprintRow label="Время" value={profile.fingerprint.tense} />
-              <FingerprintRow
-                label="Ритм абзаца"
-                value={profile.fingerprint.paragraphRhythm}
-              />
-              <details>
-                <summary
-                  style={{
-                    cursor: "pointer",
-                    fontSize: 12,
-                    color: "var(--color-text-muted)",
-                  }}
-                >
-                  Полный fingerprint (JSON)
-                </summary>
-                <pre
-                  className="font-mono"
-                  style={{
-                    fontSize: 11,
-                    marginTop: 8,
-                    padding: 12,
-                    background: "var(--color-surface-2)",
-                    border: "1px solid var(--color-border-soft)",
-                    borderRadius: 8,
-                    overflow: "auto",
-                    maxHeight: 400,
-                  }}
-                >
-                  {JSON.stringify(profile.fingerprint, null, 2)}
-                </pre>
-              </details>
-              {profile.fatigueWords && (
-                <details>
-                  <summary
+        </div>
+
+        <div className="style-detail">
+          {/* Main column — profile + fingerprint */}
+          <section className="style-edit">
+            <div className="card">
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 14 }}
+              >
+                <div className="field">
+                  <span className="field-label">Имя профиля</span>
+                  <div className="input input-lg input-display" aria-readonly>
+                    {profile.name}
+                  </div>
+                </div>
+                <div className="field">
+                  <span className="field-label">Описание</span>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    <span className="mono">{profile.language}</span> ·{" "}
+                    {profile.description ?? "(без описания)"}
+                  </div>
+                </div>
+
+                {extractError && (
+                  <p
+                    role="alert"
+                    className="card"
                     style={{
-                      cursor: "pointer",
-                      fontSize: 12,
-                      color: "var(--color-text-muted)",
+                      borderLeft: "3px solid var(--color-ink-red)",
+                      color: "var(--color-ink-red)",
+                      fontSize: 13,
+                      padding: "10px 14px",
                     }}
                   >
-                    Fatigue-words (
-                    {profile.fatigueWords.blacklist.length} +{" "}
-                    {profile.fatigueWords.softWarn.length})
-                  </summary>
-                  <div style={{ fontSize: 12, marginTop: 8 }}>
-                    <strong>Blacklist:</strong>{" "}
-                    {profile.fatigueWords.blacklist.join(", ") || "—"}
-                  </div>
-                  <div style={{ fontSize: 12, marginTop: 4 }}>
-                    <strong>Soft-warn:</strong>{" "}
-                    {profile.fatigueWords.softWarn.join(", ") || "—"}
-                  </div>
-                </details>
+                    Ошибка: {extractError}
+                  </p>
+                )}
+                {profile.lastExtractedAt && (
+                  <p className="mono faint" style={{ fontSize: 11 }}>
+                    Последний прогон:{" "}
+                    {new Date(profile.lastExtractedAt).toLocaleString("ru-RU")}
+                  </p>
+                )}
+
+                {profile.fingerprint ? (
+                  <>
+                    <div className="field">
+                      <span className="field-label">Voice</span>
+                      <div className="strong" style={{ fontSize: 13 }}>
+                        {profile.fingerprint.voiceSummary}
+                      </div>
+                    </div>
+                    <div className="concept-row">
+                      <div className="field">
+                        <span className="field-label">Время</span>
+                        <div className="strong" style={{ fontSize: 13 }}>
+                          {profile.fingerprint.tense}
+                        </div>
+                      </div>
+                      <div className="field">
+                        <span className="field-label">Ритм абзаца</span>
+                        <div className="strong" style={{ fontSize: 13 }}>
+                          {profile.fingerprint.paragraphRhythm}
+                        </div>
+                      </div>
+                    </div>
+                    <details>
+                      <summary
+                        className="muted"
+                        style={{ cursor: "pointer", fontSize: 12 }}
+                      >
+                        Полный fingerprint (JSON)
+                      </summary>
+                      <pre
+                        className="mono"
+                        style={{
+                          fontSize: 11,
+                          marginTop: 8,
+                          padding: 12,
+                          background: "var(--color-surface-2)",
+                          border: "1px solid var(--color-border-soft)",
+                          borderRadius: 8,
+                          overflow: "auto",
+                          maxHeight: 400,
+                        }}
+                      >
+                        {JSON.stringify(profile.fingerprint, null, 2)}
+                      </pre>
+                    </details>
+                    {profile.fatigueWords && (
+                      <div className="field">
+                        <span className="field-label">
+                          Избегать ({profile.fatigueWords.blacklist.length} +{" "}
+                          {profile.fatigueWords.softWarn.length})
+                        </span>
+                        <div className="tag-row">
+                          {profile.fatigueWords.blacklist.map((w) => (
+                            <span key={w} className="tag-chip">
+                              {w}
+                            </span>
+                          ))}
+                          {profile.fatigueWords.softWarn.map((w) => (
+                            <span
+                              key={w}
+                              className="tag-chip"
+                              style={{ opacity: 0.6 }}
+                            >
+                              {w}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p
+                    className="muted"
+                    style={{ fontSize: 13, fontStyle: "italic" }}
+                  >
+                    Fingerprint ещё не извлечён. Загрузи корпус и нажми
+                    «Извлечь fingerprint».
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Aside — corpus sources */}
+          <aside className="style-samples">
+            <div className="card">
+              <div className="panel-head" style={{ marginBottom: 10 }}>
+                <h3>Источник</h3>
+                <span className="cap mono faint">
+                  {profile.corporaCount} файлов ·{" "}
+                  {profile.totalChars.toLocaleString("ru-RU")} симв.
+                </span>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                Поддерживаются: <span className="mono">.txt</span>,{" "}
+                <span className="mono">.md</span>,{" "}
+                <span className="mono">.fb2</span>,{" "}
+                <span className="mono">.epub</span>
+              </div>
+              <input
+                type="file"
+                accept=".txt,.md,.markdown,.fb2,.epub"
+                onChange={onFile}
+                disabled={uploading}
+                style={{ fontSize: 13, marginBottom: 10 }}
+              />
+              {uploading && (
+                <p
+                  className="muted"
+                  style={{ fontSize: 13, fontStyle: "italic" }}
+                >
+                  Загрузка…
+                </p>
+              )}
+              {corpora.length === 0 ? (
+                <p
+                  className="muted"
+                  style={{ fontSize: 13, fontStyle: "italic" }}
+                >
+                  Корпус пуст.
+                </p>
+              ) : (
+                <ol className="sample-list">
+                  {corpora.map((c) => (
+                    <li key={c.id} className="sample-item">
+                      <span className="cap mono faint">
+                        {c.format} · {c.charCount.toLocaleString("ru-RU")} симв
+                        · {c.sceneCount} сцен
+                      </span>
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                        }}
+                      >
+                        <strong className="strong" style={{ fontSize: 13 }}>
+                          {c.filename}
+                        </strong>
+                        <button
+                          type="button"
+                          className="btn btn-destructive btn-sm"
+                          onClick={async () => {
+                            await api.deleteCorpus(id, c.id);
+                            await load();
+                          }}
+                          aria-label={`Удалить ${c.filename}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               )}
             </div>
-          ) : (
-            <p
-              className="text-muted"
-              style={{ fontSize: 13, fontStyle: "italic" }}
-            >
-              Fingerprint ещё не извлечён. Загрузи корпус и нажми «Извлечь
-              fingerprint».
-            </p>
-          )}
+          </aside>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function FingerprintRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="caption">{label}</span>
-      <div
-        style={{
-          marginTop: 4,
-          color: "var(--color-text-strong)",
-          fontSize: 13,
-        }}
-      >
-        {value}
       </div>
     </div>
   );

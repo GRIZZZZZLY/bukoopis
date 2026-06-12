@@ -18,7 +18,6 @@ import type {
 
 const STATUSES: BookStatus[] = ["draft", "active", "archived"];
 const MODELS: ModelChoice[] = ["sonnet", "opus"];
-const PROVIDERS: WriterProvider[] = ["anthropic", "ollama"];
 
 const STATUS_RU: Record<BookStatus, string> = {
   draft: "черновик",
@@ -124,7 +123,7 @@ export function SettingsStagePage() {
   if (!Number.isFinite(id)) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -142,7 +141,7 @@ export function SettingsStagePage() {
   if (error) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: 32 }}>
+        <div className="page">
           <p
             role="alert"
             className="card"
@@ -161,116 +160,57 @@ export function SettingsStagePage() {
     return <PageSkeleton label="Настройки книги загружаются" />;
   }
 
+  const forecastUsd =
+    writerProvider === "ollama"
+      ? estimatePerChapterUsd("sonnet", plotModel, criticModel)
+      : estimatePerChapterUsd(writerModel, plotModel, criticModel);
+
   return (
     <div className="route" data-screen-label="Book settings">
-      <div
-        style={{
-          maxWidth: 760,
-          margin: "0 auto",
-          padding: "32px 32px 96px",
-        }}
-      >
-        {/* Hero */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 24,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="page page-stage">
+        <StageStepper bookId={id} concept={concept} studioState={studio} />
+
+        <div className="page-head">
           <div>
-            <div className="caption" style={{ marginBottom: 6 }}>
-              Книга · #{id}
-            </div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 32,
-                fontWeight: 500,
-                margin: 0,
-                color: "var(--color-text-strong)",
-                letterSpacing: "-0.015em",
-              }}
-            >
-              Настройки
-            </h1>
-            <div className="text-muted" style={{ fontSize: 13, marginTop: 6 }}>
-              Метаданные книги, модели агентов, провайдер.
-            </div>
+            <Link to={`/books/${id}/studio`} className="back-link mono">
+              ← к Studio
+            </Link>
+            <h1 style={{ marginTop: 4 }}>Настройки</h1>
           </div>
-          <Link
-            to={`/books/${id}/studio`}
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onSave}
+            disabled={saving}
           >
-            ← к Studio
-          </Link>
+            {saving ? "Сохранение…" : "Сохранить"}
+          </button>
         </div>
 
-        {/* Stepper */}
-        <div style={{ marginBottom: 28, overflowX: "auto", paddingBottom: 4 }}>
-          <StageStepper
-            bookId={id}
-            concept={concept}
-            studioState={studio}
-          />
-        </div>
-
-        {/* Identity panel */}
-        <div
-          className="panel"
-          style={{
-            padding: 24,
-            marginBottom: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          <input
-            className="font-display"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            aria-label="Название книги"
-            style={{
-              fontSize: 28,
-              fontWeight: 500,
-              lineHeight: 1.2,
-              color: "var(--color-text-strong)",
-              background: "transparent",
-              border: 0,
-              borderBottom: "1px solid var(--color-border)",
-              padding: "4px 0",
-              outline: "none",
-              transition: "border-color 160ms",
-            }}
-            onFocus={(e) =>
-              (e.currentTarget.style.borderBottomColor = "var(--color-brass)")
-            }
-            onBlur={(e) =>
-              (e.currentTarget.style.borderBottomColor = "var(--color-border)")
-            }
-          />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                fontSize: 13,
-              }}
-            >
-              <span className="caption">Статус</span>
+        {/* Identity */}
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 14 }}>
+            <h3>Идентичность</h3>
+          </div>
+          <div className="settings-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="book-title">
+                Название
+              </label>
+              <input
+                id="book-title"
+                className="input input-lg input-display"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                aria-label="Название книги"
+              />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="book-status">
+                Статус
+              </label>
               <select
+                id="book-status"
                 className="select"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as BookStatus)}
@@ -281,17 +221,13 @@ export function SettingsStagePage() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                fontSize: 13,
-              }}
-            >
-              <span className="caption">Стилевой профиль</span>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="book-style">
+                Профиль стиля
+              </label>
               <select
+                id="book-style"
                 className="select"
                 value={styleProfileId ?? ""}
                 onChange={(e) =>
@@ -308,61 +244,33 @@ export function SettingsStagePage() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           </div>
         </div>
 
-        {/* Models panel */}
-        <div
-          className="panel"
-          style={{
-            padding: 24,
-            marginBottom: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          <h2 className="caption" style={{ margin: 0 }}>
-            Модели агентов
-          </h2>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              gap: 12,
-            }}
-          >
+        {/* Models */}
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 14 }}>
+            <h3>Модели</h3>
+            <span className="cap mono faint">
+              ≈ ${forecastUsd.toFixed(2)} за главу
+            </span>
+          </div>
+          <div className="settings-grid">
             {(
               [
-                ["Writer", writerModel, setWriterModel] as const,
-                ["Plot", plotModel, setPlotModel] as const,
-                ["Critic", criticModel, setCriticModel] as const,
+                ["Писатель", writerModel, setWriterModel] as const,
+                ["Сюжет", plotModel, setPlotModel] as const,
+                ["Критик", criticModel, setCriticModel] as const,
               ]
             ).map(([label, value, setter]) => (
-              <label
-                key={label}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  fontSize: 13,
-                }}
-              >
-                <span
-                  className="font-mono"
-                  style={{
-                    fontSize: 11,
-                    color: "var(--color-text-muted)",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {label}
-                </span>
+              <div key={label} className="field">
+                <label className="field-label">{label}</label>
                 <select
                   className="select"
                   value={value}
                   onChange={(e) => setter(e.target.value as ModelChoice)}
+                  aria-label={label}
                 >
                   {MODELS.map((mm) => (
                     <option key={mm} value={mm}>
@@ -370,99 +278,64 @@ export function SettingsStagePage() {
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
             ))}
           </div>
-          <p
-            className="text-muted"
-            style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}
-          >
-            Прогноз ~
-            <span
-              className="font-mono"
-              style={{ color: "var(--color-text-strong)" }}
-            >
-              $
-              {writerProvider === "ollama"
-                ? estimatePerChapterUsd(
-                    "sonnet",
-                    plotModel,
-                    criticModel,
-                  ).toFixed(2)
-                : estimatePerChapterUsd(
-                    writerModel,
-                    plotModel,
-                    criticModel,
-                  ).toFixed(2)}
-            </span>{" "}
-            / глава (4k слов; без учёта prompt-кэша
+          <p className="muted tabular" style={{ fontSize: 12, marginTop: 12 }}>
+            Прогноз на главу 4k слов, без учёта prompt-кэша
             {writerProvider === "ollama"
               ? "; Writer бесплатный — локальная модель"
               : ""}
-            ).
+            .
           </p>
         </div>
 
-        {/* Provider panel */}
-        <fieldset
-          className="panel"
-          style={{
-            padding: 24,
-            marginBottom: 24,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            border: "1px solid var(--color-border-soft)",
-          }}
-          aria-label="Провайдер для Writer"
-        >
-          <legend
-            className="caption"
-            style={{ padding: "0 6px", marginLeft: -6 }}
-          >
-            Provider для Writer
-          </legend>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 16,
-              fontSize: 13,
-            }}
-          >
-            {PROVIDERS.map((p) => (
-              <label
-                key={p}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="writer-provider"
-                  value={p}
-                  checked={writerProvider === p}
-                  onChange={() => setWriterProvider(p)}
-                  style={{ accentColor: "var(--color-brass)" }}
-                />
-                <span>
-                  {p === "anthropic" ? "Cloud (Anthropic)" : "Local (Ollama)"}
-                </span>
-              </label>
-            ))}
+        {/* Provider */}
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 14 }}>
+            <h3>Провайдер</h3>
+          </div>
+          <div className="provider">
+            <label
+              className={`provider-card ${writerProvider === "anthropic" ? "provider-card-active" : ""}`}
+            >
+              <input
+                type="radio"
+                name="writer-provider"
+                value="anthropic"
+                checked={writerProvider === "anthropic"}
+                onChange={() => setWriterProvider("anthropic")}
+                style={{ accentColor: "var(--color-brass)" }}
+              />
+              <div>
+                <div className="strong">Anthropic</div>
+                <div className="muted cap">
+                  Облачный writer/plot/critic. Подписка.
+                </div>
+              </div>
+            </label>
+            <label
+              className={`provider-card ${writerProvider === "ollama" ? "provider-card-active" : ""}`}
+            >
+              <input
+                type="radio"
+                name="writer-provider"
+                value="ollama"
+                checked={writerProvider === "ollama"}
+                onChange={() => setWriterProvider("ollama")}
+                style={{ accentColor: "var(--color-brass)" }}
+              />
+              <div>
+                <div className="strong">Ollama (локально)</div>
+                <div className="muted cap">
+                  Локальный writer. Plot и Critic остаются на облаке.
+                </div>
+              </div>
+            </label>
           </div>
           {writerProvider === "ollama" && (
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: 8 }}
-            >
-              <label
-                className="caption"
-                htmlFor="writer-local-model"
-                style={{ textTransform: "none", letterSpacing: 0 }}
-              >
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="field-label" htmlFor="writer-local-model">
                 Тег локальной модели
               </label>
               <input
@@ -472,34 +345,37 @@ export function SettingsStagePage() {
                 onChange={(e) => setWriterLocalModel(e.target.value)}
                 placeholder="например, qwen2.5:14b-instruct"
               />
-              <p className="text-muted" style={{ fontSize: 12 }}>
-                Сервер должен достигать Ollama по{" "}
-                <code className="font-mono">OLLAMA_BASE_URL</code> (по умолчанию{" "}
-                <code className="font-mono">http://127.0.0.1:11434</code>). Plot
-                и Critic остаются на cloud-моделях.
+              <p className="field-hint">
+                Сервер должен достигать Ollama по OLLAMA_BASE_URL (по умолчанию
+                http://127.0.0.1:11434). Plot и Critic остаются на
+                cloud-моделях.
               </p>
             </div>
           )}
-        </fieldset>
+        </div>
 
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? "Сохранение…" : "Сохранить"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-destructive"
-            onClick={() => setDeleteDialogOpen(true)}
-            aria-label={`Удалить книгу «${book.title}»`}
-          >
-            Удалить книгу
-          </button>
+        {/* Danger zone */}
+        <div className="card panel-danger">
+          <div className="panel-head" style={{ marginBottom: 14 }}>
+            <h3 style={{ color: "var(--color-ink-red)" }}>Опасная зона</h3>
+          </div>
+          <div className="danger-row">
+            <div>
+              <div className="strong">Удалить книгу</div>
+              <div className="muted cap">
+                Удаляются главы, профиль, разборы и канон. Восстановление
+                невозможно.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+              aria-label={`Удалить книгу «${book.title}»`}
+            >
+              Удалить книгу
+            </button>
+          </div>
         </div>
 
         <ConfirmDialog
