@@ -75,7 +75,10 @@ describe("BooksListPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Маяк")).toBeInTheDocument();
+    // Title renders twice by design (spine emboss + card heading) — query the heading.
+    expect(
+      await screen.findByRole("heading", { name: "Маяк" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /Продолжить/ }),
     ).not.toBeInTheDocument();

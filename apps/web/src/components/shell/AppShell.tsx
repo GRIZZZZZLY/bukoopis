@@ -1,23 +1,13 @@
 import { useEffect, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import {
-  Outlet,
-  Link,
-  useLocation,
-  useMatch,
-  useNavigate,
-} from "react-router-dom";
-import {
-  BookOpen,
-  Feather,
-  Bookmark,
   BarChart3,
-  Cog,
-  PanelLeft,
+  BookOpen,
+  Compass,
+  Feather,
   Search,
-  Sliders,
+  Settings,
 } from "lucide-react";
-
-type RailMode = "collapsed" | "expanded" | "hidden";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -29,45 +19,88 @@ const STAGE_LABEL: Record<string, string> = {
   settings: "Настройки",
 };
 
-const TOP_LEVEL_LABEL: Record<string, string> = {
-  "/style-profiles": "Профили стиля",
-  "/usage": "Использование",
-};
+interface RouteInfo {
+  name:
+    | "books"
+    | "studio"
+    | "chapter"
+    | "style-profiles"
+    | "style-profile"
+    | "usage"
+    | "other";
+  bookId?: string;
+  stage?: string;
+  chapterId?: string;
+}
 
-/** Library-Warm global shell. Reference: book_redisign/bookopis/shell.jsx. */
+function parseRoute(pathname: string): RouteInfo {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] === "usage") return { name: "usage" };
+  if (parts[0] === "style-profiles") {
+    return parts[1]
+      ? { name: "style-profile" }
+      : { name: "style-profiles" };
+  }
+  if (parts[0] === "books") {
+    if (!parts[1]) return { name: "books" };
+    const bookId = parts[1];
+    if (parts[2] === "studio") {
+      return { name: "studio", bookId, stage: parts[3] };
+    }
+    if (parts[2] === "chapters" && parts[3]) {
+      return { name: "chapter", bookId, chapterId: parts[3] };
+    }
+    return { name: "books", bookId };
+  }
+  return { name: "other" };
+}
+
+function breadcrumb(route: RouteInfo): string[] {
+  switch (route.name) {
+    case "books":
+      return ["Книги"];
+    case "studio":
+      return [
+        "Книги",
+        `#${route.bookId}`,
+        "Studio",
+        route.stage ? (STAGE_LABEL[route.stage] ?? route.stage) : "Концепт",
+      ];
+    case "chapter":
+      return ["Книги", `#${route.bookId}`, `Глава ${route.chapterId}`];
+    case "style-profiles":
+      return ["Профили стиля"];
+    case "style-profile":
+      return ["Профили стиля", "Профиль"];
+    case "usage":
+      return ["Использование"];
+    default:
+      return [];
+  }
+}
+
+/** Library-Warm global shell. Reference: extracted app/shell.jsx + app.jsx. */
 export function AppShell() {
-  const [railMode, setRailMode] = useState<RailMode>("expanded");
+  const { pathname } = useLocation();
+  const route = parseRoute(pathname);
+  const [expanded, setExpanded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
-  // Drive layout via body data attribute (CSS in styles/library-warm.css picks it up).
   useEffect(() => {
-    document.body.dataset.rail = railMode;
-    return () => {
-      delete document.body.dataset.rail;
-    };
-  }, [railMode]);
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "grid",
-        gridTemplateColumns: `${railMode === "expanded" ? 240 : railMode === "hidden" ? 0 : 60}px 1fr`,
-        gridTemplateRows: "56px 1fr 24px",
-        gridTemplateAreas: `
-          "rail topbar"
-          "rail main"
-          "rail status"
-        `,
-        transition: "grid-template-columns 200ms cubic-bezier(0.22, 0.9, 0.32, 1)",
-      }}
-    >
-      <TopBar scrolled={scrolled} />
-      <LeftRail railMode={railMode} setRailMode={setRailMode} />
-      <main
-        style={{ gridArea: "main", overflow: "auto", position: "relative" }}
-        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
-      >
+    <div className="app" data-focus="false">
+      <TopBar route={route} scrolled={scrolled} />
+      <LeftRail
+        route={route}
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+      />
+      <main className="main">
         <Outlet />
       </main>
       <StatusBar />
@@ -77,231 +110,150 @@ export function AppShell() {
 
 /* ─── TopBar ────────────────────────────────────────────── */
 
-function TopBar({ scrolled }: { scrolled: boolean }) {
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const crumbs = useCrumbs();
-
+function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
+  const crumbs = breadcrumb(route);
   return (
-    <header
-      className={`topbar ${scrolled ? "scrolled" : ""}`}
-      style={{ gridArea: "topbar" }}
-    >
-      <div
-        onClick={() => navigate("/books")}
-        className="wordmark"
-        style={{ cursor: "pointer" }}
-      >
-        Bookopis
-      </div>
-      <div className="crumbs">
-        {crumbs.map((c, i) => (
-          <span
-            key={i}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-          >
-            {i > 0 && <span className="crumb-sep">/</span>}
-            {c.to ? (
-              <span
-                style={{ cursor: "pointer" }}
-                onClick={() => navigate(c.to!)}
-              >
-                {c.label}
-              </span>
-            ) : (
-              <span className="crumb-current">{c.label}</span>
-            )}
+    <header className={`topbar ${scrolled ? "topbar-scrolled" : ""}`}>
+      <div className="topbar-left">
+        <Link to="/books" className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            B
           </span>
-        ))}
+          <span className="brand-name">Bookopis</span>
+        </Link>
+        <nav aria-label="Хлебные крошки" className="crumbs">
+          {crumbs.map((c, i) => (
+            <span key={i} className="crumb">
+              {i > 0 && <span className="crumb-sep faint">/</span>}
+              <span
+                className={`crumb-label ${i === crumbs.length - 1 ? "strong" : ""}`}
+              >
+                {c}
+              </span>
+            </span>
+          ))}
+        </nav>
       </div>
-      <div style={{ flex: 1 }} />
-      <button
-        type="button"
-        className="btn btn-ghost btn-sm"
-        style={{ gap: 8 }}
-        aria-label="Палитра команд (Cmd+K)"
-        title="Палитра команд · Cmd+K"
-      >
-        <Search size={14} aria-hidden="true" />
-        <span style={{ color: "var(--color-text-muted)" }}>
-          Найти что-нибудь…
-        </span>
-        <span className="kbd">⌘K</span>
-      </button>
-      <Link to="/style-profiles" className="style-pill" title="Профили стиля">
-        <span className="dot" />
-        <span className="font-mono" style={{ fontSize: 10, opacity: 0.6 }}>
-          стиль
-        </span>
-        Профили
-      </Link>
-      <Link
-        to="/usage"
-        className="btn btn-ghost btn-sm"
-        style={{ textDecoration: "none" }}
-      >
-        Использование
-      </Link>
-      <div className="avatar" aria-label="Профиль" title="Профиль">
-        {avatarLetter(pathname)}
+
+      <div className="topbar-right">
+        <button
+          type="button"
+          className="topbar-kbd"
+          aria-label="Открыть палитру команд"
+          title="Команды · Cmd+K"
+        >
+          <Search size={14} aria-hidden="true" />
+          <span className="kbd">⌘K</span>
+        </button>
+        <Link to="/style-profiles" title="Профили стиля">
+          <span className="pill pill-brass">
+            <Feather size={11} aria-hidden="true" />
+            Стиль
+          </span>
+        </Link>
+        <Link to="/usage" className="topbar-link">
+          Использование
+        </Link>
+        <button type="button" className="avatar" aria-label="Профиль">
+          М
+        </button>
       </div>
     </header>
   );
 }
 
-function avatarLetter(_pathname: string): string {
-  return "М";
-}
-
-interface Crumb {
-  label: string;
-  to?: string;
-}
-
-function useCrumbs(): Crumb[] {
-  const { pathname } = useLocation();
-  const crumbs: Crumb[] = [];
-
-  if (TOP_LEVEL_LABEL[pathname]) {
-    crumbs.push({ label: TOP_LEVEL_LABEL[pathname]! });
-    return crumbs;
-  }
-
-  if (pathname.startsWith("/books")) {
-    crumbs.push({ label: "Книги", to: "/books" });
-    const parts = pathname.split("/").filter(Boolean); // ['books', ':id', ...]
-    const bookId = parts[1];
-    if (bookId && bookId !== "design-preview.html") {
-      crumbs.push({
-        label: `#${bookId}`,
-        to: `/books/${bookId}/studio`,
-      });
-      if (parts[2] === "studio") {
-        const stage = parts[3];
-        if (stage && STAGE_LABEL[stage]) {
-          crumbs.push({ label: STAGE_LABEL[stage]! });
-        } else {
-          crumbs.push({ label: "Studio" });
-        }
-      } else if (parts[2] === "chapters" && parts[3]) {
-        crumbs.push({ label: `Гл. ${parts[3]}` });
-      }
-    }
-  } else if (pathname.startsWith("/style-profiles")) {
-    crumbs.push({ label: "Профили стиля", to: "/style-profiles" });
-    const parts = pathname.split("/").filter(Boolean);
-    if (parts[1]) crumbs.push({ label: `#${parts[1]}` });
-  }
-
-  return crumbs;
-}
-
 /* ─── LeftRail ──────────────────────────────────────────── */
 
-interface RailItem {
-  id: string;
-  label: string;
-  to: string;
-  icon: React.ReactNode;
-  kbd?: string;
-}
-
 function LeftRail({
-  railMode,
-  setRailMode,
+  route,
+  expanded,
+  onToggle,
 }: {
-  railMode: RailMode;
-  setRailMode: (m: RailMode) => void;
+  route: RouteInfo;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
-  const navigate = useNavigate();
-  const expanded = railMode === "expanded";
-
-  const items: RailItem[] = [
+  const bookId = route.bookId;
+  const items = [
     {
       id: "books",
       label: "Книги",
       to: "/books",
       icon: <BookOpen size={18} aria-hidden="true" />,
-      kbd: "⌘B",
+      active: route.name === "books",
+      show: true,
     },
     {
-      id: "styles",
+      id: "studio",
+      label: "Studio",
+      to: bookId ? `/books/${bookId}/studio` : "/books",
+      icon: <Compass size={18} aria-hidden="true" />,
+      active: route.name === "studio" || route.name === "chapter",
+      show: Boolean(bookId),
+    },
+    {
+      id: "style-profiles",
       label: "Профили стиля",
       to: "/style-profiles",
-      icon: <Bookmark size={18} aria-hidden="true" />,
+      icon: <Feather size={18} aria-hidden="true" />,
+      active: route.name === "style-profiles" || route.name === "style-profile",
+      show: true,
     },
     {
       id: "usage",
       label: "Использование",
       to: "/usage",
       icon: <BarChart3 size={18} aria-hidden="true" />,
+      active: route.name === "usage",
+      show: true,
     },
   ];
-
   return (
     <aside
-      className="leftrail"
+      className={`leftrail ${expanded ? "leftrail-exp" : ""}`}
       aria-label="Главная навигация"
-      style={{ gridArea: "rail" }}
     >
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
-        aria-label={expanded ? "Свернуть боковую панель" : "Развернуть боковую панель"}
-        title={expanded ? "Свернуть · Cmd+\\" : "Развернуть · Cmd+\\"}
-        onClick={() => setRailMode(expanded ? "collapsed" : "expanded")}
-        style={{ width: 32, height: 32, padding: 0, marginBottom: 8 }}
+        className="leftrail-toggle"
+        onClick={onToggle}
+        aria-label={expanded ? "Свернуть" : "Развернуть"}
       >
-        <PanelLeft size={16} aria-hidden="true" />
+        <span aria-hidden="true">{expanded ? "‹" : "›"}</span>
       </button>
-
-      <div className="rail-section">
-        <div className="rail-section-label">Навигация</div>
-        {items.map((item) => (
-          <RailItemNode key={item.id} item={item} navigate={navigate} />
-        ))}
-      </div>
-
-      <div style={{ marginTop: "auto" }}>
-        <div className="divider" style={{ margin: "12px 0" }} />
-        <div
-          className="nav-item"
-          title="Подсказки"
-          onClick={() => navigate("/usage")}
-        >
-          <span className="icon">
-            <Sliders size={18} aria-hidden="true" />
-          </span>
-          <span className="label">Система</span>
+      <nav className="leftrail-nav">
+        {items
+          .filter((it) => it.show)
+          .map((it) => (
+            <Link
+              key={it.id}
+              to={it.to}
+              className={`leftrail-item ${it.active ? "leftrail-item-active" : ""}`}
+              aria-current={it.active ? "page" : undefined}
+              title={it.label}
+            >
+              <span className="leftrail-bar" aria-hidden="true" />
+              <span className="leftrail-icon">{it.icon}</span>
+              {expanded && <span className="leftrail-label">{it.label}</span>}
+            </Link>
+          ))}
+      </nav>
+      {bookId && (
+        <div className="leftrail-foot">
+          <Link
+            to={`/books/${bookId}/studio/settings`}
+            className={`leftrail-item ${route.stage === "settings" ? "leftrail-item-active" : ""}`}
+            title="Настройки"
+          >
+            <span className="leftrail-bar" aria-hidden="true" />
+            <span className="leftrail-icon">
+              <Settings size={18} aria-hidden="true" />
+            </span>
+            {expanded && <span className="leftrail-label">Настройки</span>}
+          </Link>
         </div>
-      </div>
+      )}
     </aside>
-  );
-}
-
-function RailItemNode({
-  item,
-  navigate,
-}: {
-  item: RailItem;
-  navigate: (to: string) => void;
-}) {
-  const inBooks = useMatch("/books/*") !== null;
-  const inProfiles = useMatch("/style-profiles/*") !== null;
-  const inUsage = useMatch("/usage") !== null;
-  const active =
-    (item.to === "/books" && inBooks) ||
-    (item.to === "/style-profiles" && inProfiles) ||
-    (item.to === "/usage" && inUsage);
-  return (
-    <div
-      className={`nav-item ${active ? "active" : ""}`}
-      onClick={() => navigate(item.to)}
-      title={item.kbd ? `${item.label} · ${item.kbd}` : item.label}
-    >
-      <span className="icon">{item.icon}</span>
-      <span className="label">{item.label}</span>
-    </div>
   );
 }
 
@@ -309,36 +261,17 @@ function RailItemNode({
 
 function StatusBar() {
   return (
-    <footer
-      className="statusbar"
-      aria-label="Состояние сессии"
-      style={{ gridArea: "status" }}
-    >
-      <span>
-        <span className="dot dot-ok" /> Подключено
+    <footer className="statusbar mono" aria-label="Состояние сессии">
+      <span className="status-group">
+        <span className="dot dot-ok" />
+        <span>сохранено · только что</span>
       </span>
-      <span className="sep">·</span>
-      <span>
-        Бэкенд:{" "}
-        <span style={{ color: "var(--color-text)" }}>subscription</span>
+      <span className="sep faint">·</span>
+      <span className="status-group">
+        backend: <span className="strong">subscription</span>
       </span>
-      <span className="sep">·</span>
-      <span>
-        Агент: <span style={{ color: "var(--color-text)" }}>—</span>
-      </span>
-      <span className="sep">·</span>
-      <span>
-        Токенов: <span style={{ color: "var(--color-text)" }}>0</span>
-      </span>
-      <span className="sep">·</span>
-      <span>
-        $ <span style={{ color: "var(--color-text)" }}>0.00</span>
-      </span>
-      <span style={{ flex: 1 }} />
-      <span>Авто-сохранение · только что</span>
-      <span className="sep">·</span>
-      <span className="kbd">⌘K</span>
-      <span style={{ color: "var(--color-text-faint)" }}>палитра</span>
+      <span className="status-spacer" />
+      <span className="status-group faint">v0.4.0 · Library Warm</span>
     </footer>
   );
 }

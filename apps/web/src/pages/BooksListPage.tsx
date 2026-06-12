@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { api } from "@/api/client";
 import { stageRoute } from "@/lib/studio-routes";
@@ -12,25 +12,12 @@ const STATUS_LABEL: Record<BookStatus, string> = {
   archived: "архив",
 };
 
-type Tone = "amber" | "blue" | "green" | "muted";
+type Tone = "amber" | "blue" | "muted";
 const STATUS_TONE: Record<BookStatus, Tone> = {
   draft: "amber",
   active: "blue",
   archived: "muted",
 };
-
-const STAGE_LABEL: Record<StageId, string> = {
-  concept: "Концепт",
-  world: "Мир",
-  lore: "Лор",
-  characters: "Персонажи",
-  items: "Предметы",
-  plot: "Сюжет",
-  chapters: "Главы",
-};
-
-const SPINE_PALETTE = ["#D49A4E", "#B5803A", "#E8B361", "#C89243", "#8E6126"];
-const spineColor = (id: number) => SPINE_PALETTE[id % SPINE_PALETTE.length]!;
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -47,6 +34,15 @@ function relativeTime(iso: string): string {
     day: "numeric",
     month: "short",
   });
+}
+
+function bookWord(n: number): string {
+  const r = n % 10;
+  const rr = n % 100;
+  if (rr >= 11 && rr <= 14) return "книг";
+  if (r === 1) return "книга";
+  if (r >= 2 && r <= 4) return "книги";
+  return "книг";
 }
 
 export function BooksListPage() {
@@ -94,7 +90,7 @@ export function BooksListPage() {
   if (error) {
     return (
       <div className="route">
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px" }}>
+        <div className="page page-books">
           <p
             role="alert"
             className="card"
@@ -119,50 +115,20 @@ export function BooksListPage() {
 
   return (
     <div className="route" data-screen-label="Books list">
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 32px 96px" }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 24,
-            marginBottom: 32,
-          }}
-        >
+      <div className="page page-books">
+        <div className="page-head">
           <div>
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 36,
-                fontWeight: 500,
-                margin: "0 0 8px",
-                letterSpacing: "-0.015em",
-                color: "var(--color-text-strong)",
-              }}
-            >
-              Ваши книги
-            </h1>
-            <div className="text-muted" style={{ fontSize: 14 }}>
+            <h1>Ваши книги</h1>
+            <p className="muted page-sub">
               {count === 0 ? (
                 "Здесь будет ваша первая книга."
               ) : (
                 <>
-                  {count} {count === 1 ? "книга" : "книг"}
-                  {latest && (
-                    <>
-                      {" · последняя правка "}
-                      <span
-                        className="font-mono"
-                        style={{ color: "var(--color-text)" }}
-                      >
-                        {relativeTime(latest)}
-                      </span>
-                    </>
-                  )}
+                  {count} {bookWord(count)}
+                  {latest && <> · последняя правка {relativeTime(latest)}</>}
                 </>
               )}
-            </div>
+            </p>
           </div>
           {!creating ? (
             <button
@@ -211,15 +177,10 @@ export function BooksListPage() {
           )}
         </div>
 
-        {/* Grid */}
         {count === 0 ? (
           <div
             className="card"
-            style={{
-              padding: 40,
-              textAlign: "center",
-              borderStyle: "dashed",
-            }}
+            style={{ padding: 40, textAlign: "center", borderStyle: "dashed" }}
           >
             <div
               style={{
@@ -238,19 +199,9 @@ export function BooksListPage() {
             >
               <Plus size={28} />
             </div>
-            <h2
-              className="font-display"
-              style={{
-                fontSize: 22,
-                fontWeight: 500,
-                margin: "0 0 8px",
-                color: "var(--color-text-strong)",
-              }}
-            >
-              Создайте первую книгу
-            </h2>
+            <h2 style={{ marginBottom: 8 }}>Создайте первую книгу</h2>
             <p
-              className="text-muted"
+              className="muted"
               style={{ fontSize: 13, maxWidth: 360, margin: "0 auto" }}
             >
               Дайте ей рабочее название — план, главы, канон и стиль будут жить
@@ -258,40 +209,10 @@ export function BooksListPage() {
             </p>
           </div>
         ) : (
-          <ul
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: 20,
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-            }}
-            aria-label="Список книг"
-          >
+          <div className="bookgrid" aria-label="Список книг">
             {books.map((b) => (
-              <li key={b.id}>
-                <BookCard
-                  book={b}
-                  recommended={recommended[b.id]}
-                />
-              </li>
+              <BookCard key={b.id} book={b} recommended={recommended[b.id]} />
             ))}
-          </ul>
-        )}
-
-        {/* Footer hint */}
-        {count > 0 && (
-          <div
-            style={{
-              marginTop: 48,
-              color: "var(--color-text-faint)",
-              fontSize: 12,
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            Нажмите <span className="kbd" style={{ verticalAlign: "middle" }}>N</span>{" "}
-            чтобы создать новую книгу
           </div>
         )}
       </div>
@@ -306,134 +227,63 @@ function BookCard({
   book: Book;
   recommended: StageId | undefined;
 }) {
+  const navigate = useNavigate();
   const tone = STATUS_TONE[b.status];
-  const spine = spineColor(b.id);
+
   return (
     <div
-      className="card hoverable"
-      style={{
-        padding: 0,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        height: 220,
+      className="bookcard"
+      role="link"
+      tabIndex={0}
+      aria-label={b.title}
+      onClick={() => navigate(`/books/${b.id}/studio`)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") navigate(`/books/${b.id}/studio`);
       }}
     >
-      {/* Faux spine */}
-      <div
-        className="spine"
-        style={{
-          height: 12,
-          background: `linear-gradient(180deg, ${spine}99, ${spine} 50%, ${spine}99)`,
-        }}
-      >
-        <div
-          className="font-mono"
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 12px",
-            fontSize: 8,
-            color: "rgba(26,20,16,0.55)",
-            letterSpacing: "0.2em",
-            textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          BKO · {String(b.id).padStart(4, "0")}
-        </div>
+      <div className="spine">
+        <span className="spine-emboss mono" aria-hidden="true">
+          {b.title}
+        </span>
       </div>
-      {/* Paper body */}
-      <div
-        className="paper"
-        style={{
-          flex: 1,
-          padding: "20px 22px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <Link
-          to={`/books/${b.id}/studio`}
-          style={{
-            color: "var(--color-text-strong)",
-            textDecoration: "none",
-          }}
-        >
-          <h3
-            className="font-display"
-            style={{
-              fontSize: 22,
-              fontWeight: 500,
-              margin: 0,
-              lineHeight: 1.15,
-              color: "var(--color-text-strong)",
-              letterSpacing: "-0.01em",
-              textWrap: "pretty",
-            }}
-          >
-            {b.title}
-          </h3>
-        </Link>
-        <div className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>
-          {b.language === "ru" ? "Русский" : b.language} · {STATUS_LABEL[b.status]}
+      <div className="bookcard-body paper-grain">
+        <div className="bookcard-meta cap-upper">
+          {b.language === "ru" ? "Русский" : b.language} ·{" "}
+          {STATUS_LABEL[b.status]}
         </div>
-        <div
-          className="font-mono"
-          style={{
-            fontSize: 11,
-            color: "var(--color-text-faint)",
-            marginTop: 10,
-            display: "flex",
-            gap: 16,
-          }}
-        >
-          <span>
-            <span style={{ color: "var(--color-text-muted)" }}>—</span> глав
-          </span>
-          <span>
-            <span style={{ color: "var(--color-text-muted)" }}>—</span> слов
-          </span>
+        <h2 className="bookcard-title">{b.title}</h2>
+        <div className="bookcard-stats mono">
+          <span>— глав</span>
+          <span className="faint">·</span>
+          <span>— слов</span>
         </div>
         {recommended && (
-          <div
-            className="font-mono"
-            style={{ fontSize: 11, marginTop: 8 }}
+          <Link
+            className="bookcard-continue mono"
+            to={stageRoute(b.id, recommended)}
+            onClick={(e) => e.stopPropagation()}
           >
-            <span style={{ color: "var(--color-text-faint)" }}>далее: </span>
-            <Link
-              to={stageRoute(b.id, recommended)}
-              style={{
-                color: "var(--color-brass)",
-                borderBottom: "1px solid currentColor",
-              }}
-            >
-              Продолжить → {STAGE_LABEL[recommended]}
-            </Link>
-          </div>
+            Продолжить →
+          </Link>
         )}
-        <div style={{ flex: 1 }} />
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: 12,
+      </div>
+      <div className="bookcard-foot">
+        <span className="cap">{relativeTime(b.updatedAt ?? b.createdAt)}</span>
+        <span className="bookcard-foot-spacer" />
+        <span className={`pill pill-${tone === "muted" ? "strong" : tone}`}>
+          {STATUS_LABEL[b.status]}
+        </span>
+        <button
+          type="button"
+          className="bookcard-kebab"
+          aria-label="Действия"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         >
-          <span
-            className="font-mono"
-            style={{ fontSize: 11, color: "var(--color-text-faint)" }}
-          >
-            {relativeTime(b.updatedAt ?? b.createdAt)}
-          </span>
-          <span className={`pill pill-${tone}`}>
-            <span className="dot" style={{ background: "currentColor" }} />
-            {STATUS_LABEL[b.status]}
-          </span>
-        </div>
+          <MoreHorizontal size={14} aria-hidden="true" />
+        </button>
       </div>
     </div>
   );
