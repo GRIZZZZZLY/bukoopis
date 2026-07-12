@@ -11,6 +11,7 @@ import { createCritiqueRoute } from "./routes/critique.js";
 import { createInlineRoute } from "./routes/inline.js";
 import { createStyleRoute } from "./routes/style.js";
 import { createUsageRoute } from "./routes/usage.js";
+import { createWritingProgressRoute } from "./routes/writing-progress.js";
 import { createCanonExtractionRoute } from "./routes/canon-extraction.js";
 import { createStudioRoute } from "./routes/studio.js";
 import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
@@ -50,6 +51,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createInlineRoute(sqlite));
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));
+  app.route("/api", createWritingProgressRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
 
   return {

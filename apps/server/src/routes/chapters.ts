@@ -22,6 +22,7 @@ import {
   chapterMemoryStatus,
 } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
+import { recordWritingDelta } from "../utils/writing-progress.js";
 
 export function createChaptersRoute(
   sqlite: DatabaseType,
@@ -107,6 +108,18 @@ export function createChaptersRoute(
     const contentText = extractText(parsed.data.contentJson);
     const wordCount = countWords(contentText);
     const now = new Date().toISOString();
+    // Свеча-цель: прошлое состояние = предыдущий драфт, иначе текущая версия.
+    // Читаем ДО UPSERT-а, иначе prevDraft уже будет перезаписан новым словом.
+    const prevDraft = sqlite
+      .prepare("SELECT word_count FROM chapter_drafts WHERE chapter_id = ?")
+      .get(id) as { word_count: number } | undefined;
+    let prevCount = prevDraft?.word_count;
+    if (prevCount === undefined && ch.current_version_id) {
+      const v = sqlite
+        .prepare("SELECT word_count FROM chapter_versions WHERE id = ?")
+        .get(ch.current_version_id) as { word_count: number } | undefined;
+      prevCount = v?.word_count;
+    }
     sqlite
       .prepare(
         `INSERT INTO chapter_drafts
@@ -120,6 +133,7 @@ export function createChaptersRoute(
            updated_at = excluded.updated_at`,
       )
       .run(id, contentJson, contentText, wordCount, ch.current_version_id, now);
+    recordWritingDelta(sqlite, wordCount - (prevCount ?? 0));
     return c.json({ chapterId: id, wordCount, updatedAt: now });
   });
 

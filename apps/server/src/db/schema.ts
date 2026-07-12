@@ -490,6 +490,12 @@ export const memoryJobs = sqliteTable(
   ],
 );
 
+/** Леджер дневного набора слов (свеча-цель). Пишется из PUT /chapters/:id/draft. */
+export const writingDays = sqliteTable("writing_days", {
+  date: text("date").primaryKey(),
+  wordsAdded: integer("words_added").notNull().default(0),
+});
+
 export const chapterDrafts = sqliteTable("chapter_drafts", {
   chapterId: integer("chapter_id")
     .primaryKey()
