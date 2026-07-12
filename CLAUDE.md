@@ -28,7 +28,7 @@ pnpm --filter @book-forge/server test -- src/routes/__tests__/studio.test.ts
 pnpm --filter @book-forge/web test -- src/components/studio/concept/__tests__/ConceptForm.test.tsx
 ```
 
-Generate Drizzle migration: `pnpm --filter @book-forge/server drizzle:generate`. **Caveat**: snapshot meta is out of sync since 0008 — recent migrations (0010+) are hand-written SQL, not generated. Continue hand-writing until snapshot is repaired.
+Migrations are **hand-written plain SQL** — this is the official process, not a stopgap. Drizzle-kit snapshots are out of sync since 0008 and `drizzle:generate` emits a wrong diff; do NOT use it. The runtime migrator reads `meta/_journal.json` + `.sql` files (not snapshots). Scaffold a new one with `pnpm --filter @book-forge/server drizzle:new <name>` (creates the `.sql` + appends the journal entry), edit the SQL, update `schema.ts` for docs/types, then `pnpm migrate`. `pnpm migrate` auto-backs-up the DB (`VACUUM INTO` → `data/backups/`, last 10). Full process: [docs/migrations.md](docs/migrations.md).
 
 Env: `apps/server/.env` holds `ANTHROPIC_API_KEY` (gitignored). Server reads `PORT`, `DB_PATH`. Web reads `VITE_API_BASE_URL`.
 
@@ -57,7 +57,7 @@ Memory-only extractor agents (`canon_fact_extractor`, `episodic_note_extractor`,
 
 Stored in `~/.claude/projects/d--PROJECTS-BOOKOPIS/memory/`. Highlights:
 
-- Auth: `ANTHROPIC_API_KEY` only. Pro/Max subscription does NOT bill custom backend calls. Do not propose `claude -p` / OAuth as a "save subscription cost" path — investigated and rejected.
+- Auth/backend: **hybrid per-agent router** (`packages/llm/src/router.ts` → `DEFAULT_AGENT_BACKEND`). Text/aspect/memory agents (writer, editor, inline, summarizer, concept_refiner, aspect_*, canon_fact_extractor, episodic_note_extractor, reranker) default to a **subscription** backend (`claude login` via `claude-agent-sdk`; `ANTHROPIC_API_KEY` stripped from env; marked zero-cost in the usage tracker). Plot/critics/canon_guard/style_extractor/lore/character default to **direct API** (`ANTHROPIC_API_KEY`, billed). Override via `LLM_AGENT_BACKEND_MAP`. **CAVEAT:** the "subscription = free" labeling is an unverified code assumption — the 2026-05-08 research (GitHub issues #559/#43333/#44669) found Max/OAuth calls still bill as API. The key is still required today; verify real billing before trusting subscription to cut cost.
 - Models: `claude-sonnet-4-6` (Plot, critics), `claude-opus-4-7` (Writer). **Opus 4.7 deprecates `temperature`** — pass conditionally (`...(temperature !== undefined ? { temperature } : {})`), Anthropic returns 400 otherwise.
 - Per-book model switcher: `books.{writer_model,plot_model,critic_model}` columns drive dropdowns in BookPage.
 - MVP scope locks: Russian only, levels 1+3+4 (level 2 arcs deferred), 8 agents, manual self-repair (variant B), full critique from MVP.
