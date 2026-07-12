@@ -13,59 +13,59 @@
    library-warm.css (plain JS-imported CSS) is not scanned. */
 @theme static {
   /* surfaces */
-  --color-bg:           #1A1410;
-  --color-surface-1:    #221A14;
-  --color-surface-2:    #2B2118;
-  --color-surface-3:    #342719;
+  --color-bg:           #131722;
+  --color-surface-1:    #1A2030;
+  --color-surface-2:    #212A3D;
+  --color-surface-3:    #2A3550;
 
   /* borders */
-  --color-border:        #3A2D22;
-  --color-border-soft:   #2E241B;
-  --color-border-strong: #54402F;
+  --color-border:        #303B55;
+  --color-border-soft:   #252E45;
+  --color-border-strong: #43507A;
 
   /* text */
-  --color-text:         #EDE4D3;
-  --color-text-strong:  #FBF5E6;
-  --color-text-muted:   #9C8B73;
-  --color-text-faint:   #6E5F4D;
+  --color-text:         #E4E1D4;
+  --color-text-strong:  #F5F2E6;
+  --color-text-muted:   #8B93A8;
+  --color-text-faint:   #5F6880;
 
   /* accents */
-  --color-brass:        #D49A4E;
-  --color-brass-soft:   #B07F33;
-  --color-brass-hi:     #E1A858;
+  --color-brass:        #D9A44A;
+  --color-brass-soft:   #B58734;
+  --color-brass-hi:     #E8B65C;
 
-  --color-ink-red:      #C44536;
-  --color-ink-green:    #6A8E4E;
-  --color-ink-blue:     #5B7A99;
-  --color-ink-amber:    #C9A24A;
+  --color-ink-red:      #C4564A;
+  --color-ink-green:    #6E9463;
+  --color-ink-blue:     #6C8FBF;
+  --color-ink-amber:    #CDA24E;
 
   /* manuscript */
-  --color-paper:        #2B2118;
-  --color-margin-rule:  #54402F;
+  --color-paper:        #212A3D;
+  --color-margin-rule:  #43507A;
 
   /* tone tints (overlay/glow live here too so var() resolves) */
-  --color-overlay:        rgba(10, 7, 5, 0.72);
-  --color-brass-glow:     rgba(212, 154, 78, 0.18);
-  --color-brass-tint:     rgba(212, 154, 78, 0.10);
-  --color-ink-red-tint:   rgba(196, 69, 54, 0.12);
-  --color-ink-green-tint: rgba(106, 142, 78, 0.12);
-  --color-ink-blue-tint:  rgba(91, 122, 153, 0.14);
-  --color-ink-amber-tint: rgba(201, 162, 74, 0.12);
+  --color-overlay:        rgba(7, 9, 15, 0.72);
+  --color-brass-glow:     rgba(217, 164, 74, 0.18);
+  --color-brass-tint:     rgba(217, 164, 74, 0.10);
+  --color-ink-red-tint:   rgba(196, 86, 74, 0.12);
+  --color-ink-green-tint: rgba(110, 148, 99, 0.12);
+  --color-ink-blue-tint:  rgba(108, 143, 191, 0.14);
+  --color-ink-amber-tint: rgba(205, 162, 78, 0.12);
 
-  --color-background:             #1A1410;
-  --color-foreground:             #EDE4D3;
-  --color-primary:                #D49A4E;
-  --color-primary-foreground:     #1A1410;
-  --color-secondary:              #2B2118;
-  --color-secondary-foreground:   #EDE4D3;
-  --color-muted:                  #221A14;
-  --color-muted-foreground:       #9C8B73;
-  --color-accent:                 #342719;
-  --color-accent-foreground:      #FBF5E6;
-  --color-destructive:            #C44536;
-  --color-destructive-foreground: #FBF5E6;
-  --color-input:                  #3A2D22;
-  --color-ring:                   #D49A4E;
+  --color-background:             #131722;
+  --color-foreground:             #E4E1D4;
+  --color-primary:                #D9A44A;
+  --color-primary-foreground:     #131722;
+  --color-secondary:              #212A3D;
+  --color-secondary-foreground:   #E4E1D4;
+  --color-muted:                  #1A2030;
+  --color-muted-foreground:       #8B93A8;
+  --color-accent:                 #2A3550;
+  --color-accent-foreground:      #F5F2E6;
+  --color-destructive:            #C4564A;
+  --color-destructive-foreground: #F5F2E6;
+  --color-input:                  #303B55;
+  --color-ring:                   #D9A44A;
 
   /* radii */
   --radius:          10px;
@@ -110,11 +110,11 @@
 }
 
 html {
-  background-color: #1A1410;
+  background-color: #131722;
 }
 body {
-  background-color: #1A1410 !important;
-  color: #EDE4D3;
+  background-color: #131722 !important;
+  color: #E4E1D4;
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
@@ -125,7 +125,7 @@ body {
 }
 
 ::selection {
-  background: rgba(212, 154, 78, 0.28);
+  background: rgba(217, 164, 74, 0.28);
   color: var(--color-text-strong);
 }
 
@@ -142,7 +142,7 @@ body {
   text-wrap: pretty;
 }
 .ProseMirror p { margin: 0 0 16px 0; }
-.ProseMirror ::selection { background: rgba(212, 154, 78, 0.18); }
+.ProseMirror ::selection { background: rgba(217, 164, 74, 0.18); }
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--color-muted-foreground);
@@ -159,15 +159,15 @@ body {
     rgba(255, 255, 255, 0.04) 2px,
     transparent 2px
   );
-  border-bottom: 1px dashed rgba(212, 154, 78, 0.55);
+  border-bottom: 1px dashed rgba(217, 164, 74, 0.55);
   border-radius: 1px;
   padding: 0 1px;
   cursor: help;
   transition: background-color var(--motion-1) var(--ease-hover);
 }
-.canon-mark:hover { background-color: rgba(212, 154, 78, 0.08); }
-.canon-mark-character    { border-bottom-color: rgba(196, 69, 54, 0.65); }
-.canon-mark-location     { border-bottom-color: rgba(106, 142, 78, 0.65); }
-.canon-mark-item         { border-bottom-color: rgba(212, 154, 78, 0.75); }
-.canon-mark-hook         { border-bottom-color: rgba(91, 122, 153, 0.65); border-bottom-style: dotted; }
-.canon-mark-relationship { border-bottom-color: rgba(201, 162, 74, 0.65); }
+.canon-mark:hover { background-color: rgba(217, 164, 74, 0.08); }
+.canon-mark-character    { border-bottom-color: rgba(196, 86, 74, 0.65); }
+.canon-mark-location     { border-bottom-color: rgba(110, 148, 99, 0.65); }
+.canon-mark-item         { border-bottom-color: rgba(217, 164, 74, 0.75); }
+.canon-mark-hook         { border-bottom-color: rgba(108, 143, 191, 0.65); border-bottom-style: dotted; }
+.canon-mark-relationship { border-bottom-color: rgba(205, 162, 78, 0.65); }
