@@ -1551,6 +1551,51 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   transition: width var(--motion-3) var(--ease-in-out);
 }
 
+/* ─── Atmosphere: свет лампы, виньетка, текстура ─────────── */
+
+:root {
+  --glow-lamp: radial-gradient(
+    ellipse 900px 620px at 38% 0%,
+    rgba(217, 164, 74, 0.10),
+    transparent 70%
+  );
+  --vignette: radial-gradient(
+    ellipse 130% 120% at 50% 45%,
+    transparent 62%,
+    rgba(7, 9, 15, 0.42) 100%
+  );
+  /* едва заметные горизонтальные волокна панелей */
+  --texture-panel: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='%23E8B65C' fill-opacity='0.022'%3E%3Cpath d='M0 71h72v1H0zM0 35h72v1H0z'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Тёплое пятно света + виньетка. pointer-events: none — клики проходят.
+   z-index 5: поверх статичного контента, ниже topbar (30) и модалок. */
+html.atm-full .app::before,
+html.atm-calm .app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--glow-lamp);
+  pointer-events: none;
+  z-index: 5;
+}
+html.atm-full .app::after,
+html.atm-calm .app::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--vignette);
+  pointer-events: none;
+  z-index: 5;
+}
+
+html.atm-full .leftrail,
+html.atm-calm .leftrail,
+html.atm-full .topbar,
+html.atm-calm .topbar {
+  background-image: var(--texture-panel);
+}
+
 /* lw-* aliases still referenced by a handful of components */
 .lw-mono       { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 .lw-cap-upper  { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); font-weight: 500; }
