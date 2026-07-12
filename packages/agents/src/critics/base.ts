@@ -16,6 +16,8 @@ export interface CriticInput {
   chapterTitle: string;
   pov: string;
   emotionalGoal: string;
+  /** Rendered accepted beat-sheet of the chapter (optional; editor critic uses it). */
+  beatSheet?: string | null;
   bookContext: string; // premise + outline
   previousChaptersSummary: string | null;
   characterContext: string | null;

@@ -29,12 +29,14 @@ Severity:
 
 Цитируй фрагменты. Предлагай конкретные правки структуры (вырезать, перенести, добавить переход).`;
 
-const TASK = `Прочитай главу. Оцени hook → setup → rising → climax → resolution / transition. Сверь с beat-sheet'ом (POV + emotional goal). Найди структурные провалы и предложи правки.`;
+const TASK_WITH_BEATS = `Прочитай главу. Оцени hook → setup → rising → climax → resolution / transition. Сверь главу с принятым beat-sheet: ключевые события и их порядок, POV, эмоциональная цель. Найди структурные провалы и предложи правки.`;
+
+const TASK_NO_BEATS = `Прочитай главу. Оцени hook → setup → rising → climax → resolution / transition. Beat-sheet не передан — не утверждай, что глава ему противоречит; оценивай структуру самой главы (POV и эмоциональная цель указаны выше). Найди структурные провалы и предложи правки.`;
 
 const editorOutputSchema = criticReportSchema.omit({ critic: true });
 type EditorCriticOutput = z.infer<typeof editorOutputSchema>;
 
-function buildEditorPrompt(input: CriticInput): string {
+export function buildEditorPrompt(input: CriticInput): string {
   const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
   if (input.previousChaptersSummary) {
     stableParts.push(
@@ -48,8 +50,11 @@ function buildEditorPrompt(input: CriticInput): string {
     `Глава: "${input.chapterTitle}"`,
     `POV: ${input.pov}`,
     `Эмоциональная цель: ${input.emotionalGoal}`,
+    ...(input.beatSheet
+      ? [`Принятый beat-sheet:\n${input.beatSheet}`]
+      : []),
     `Текст главы:\n\n${input.chapterText}`,
-    `\nЗадача:\n${TASK}`,
+    `\nЗадача:\n${input.beatSheet ? TASK_WITH_BEATS : TASK_NO_BEATS}`,
   ];
 
   return [...stableParts, ...volatileParts].join("\n\n---\n\n");

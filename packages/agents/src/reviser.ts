@@ -10,7 +10,7 @@ const SYSTEM_REVISER = `Ты — Reviser. Перерабатываешь гот�
 Правила:
 — Выводишь ТОЛЬКО переписанный текст главы. Никаких служебных заголовков, списков замечаний, комментариев "что я изменил" — только проза.
 — Сохраняешь POV, эмоциональную цель и сюжетные beats оригинала. Не переписываешь сюжет, только устраняешь обозначенные проблемы.
-— Приоритет правок: blocking → suggestion → nit. Если две claims противоречат друг другу, выбери ту что дальше от blocking.
+— Приоритет правок: blocking → suggestion → nit. Если два замечания противоречат друг другу, отдай приоритет замечанию с более высокой severity; при равной severity предпочти то, что подкреплено точной цитатой и конкретной выполнимой правкой.
 — Не «улучшаешь» места которые критики не отмечали. Не вписывай новые сцены/реплики, не добавляй персонажей.
 — Не теряй выразительные находки оригинала, если их не критиковали.
 — Длина итогового текста — близко к оригиналу (±20%).
@@ -23,6 +23,8 @@ export interface ReviseChapterInput {
   chapterTitle: string;
   pov: string;
   emotionalGoal: string;
+  /** Rendered accepted beat-sheet (optional) — beats the revision must preserve. */
+  beatSheet?: string | null;
   characterContext: string | null;
   loreContext: string | null;
   styleContext: string | null;
@@ -101,7 +103,7 @@ export async function* reviseChapter(
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {
     stableParts.push(
-      `Запрещённые слова/обороты:\n- ${input.fatigueWords.join("\n- ")}`,
+      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
     );
   }
   const stableSystem = `${SYSTEM_REVISER}\n\n---\n\n${stableParts.join("\n\n")}`;
@@ -113,6 +115,9 @@ export async function* reviseChapter(
     `Глава: "${input.chapterTitle}"`,
     `POV: ${input.pov}`,
     `Эмоциональная цель: ${input.emotionalGoal}`,
+    ...(input.beatSheet
+      ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
+      : []),
     `Итерация repair: ${input.iteration}`,
     `Замечания критиков (приоритет blocking → suggestion → nit):\n${issuesBlock}`,
     `Оригинальная глава для переработки:\n\n${input.originalText}`,

@@ -43,14 +43,14 @@ const SYSTEM = `Ты — Story Memory, литературный аналитик
 
 Для каждой заметки: title (короткий ярлык), body (1-3 предложения сути), tags (имена/места/мотивы).
 
-Также: если глава ЗАКРЫВАЕТ одну из открытых заметок (ниже) — верни её точный title в resolvedTitles.
+Также: если глава ЗАКРЫВАЕТ одну из открытых заметок (ниже) — верни её идентификатор вида note_<число> (указан в начале строки заметки) в resolvedNoteIds.
 
 Правила:
 - Только то, что реально есть в главе. Не выдумывай.
 - Не дублируй уже открытые заметки, если они не изменились.
 - ≤ 20 новых заметок. Лучше меньше и важнее.
 
-Возвращай: newNotes[] + resolvedTitles[] + notes (1-2 предложения или null).`;
+Возвращай: newNotes[] + resolvedNoteIds[] + notes (1-2 предложения или null).`;
 
 function buildPrompt(input: EpisodicNoteExtractorInput): string {
   const stableParts: string[] = [`Книга: "${input.bookTitle}"`];
@@ -77,7 +77,7 @@ const episodicNoteExtractorContract: AgentStructuredContract<
   mcp: {
     toolName: "submit_episodic_notes",
     toolDescription:
-      "Submit Zettelkasten-style episodic notes (threads/foreshadow/arc/theme/mystery) for a chapter plus titles of open notes it resolves.",
+      "Submit Zettelkasten-style episodic notes (threads/foreshadow/arc/theme/mystery) for a chapter plus ids (note_<id>) of open notes it resolves.",
   },
 };
 

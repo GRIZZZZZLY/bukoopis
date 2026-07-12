@@ -74,7 +74,7 @@ function buildPrompt(input: CanonFactExtractorInput): string {
   const stableParts: string[] = [`Книга: "${input.bookTitle}"`];
   if (known) stableParts.push(`Известный канон:\n${known}`);
   if (input.activeFacts) {
-    stableParts.push(`Активные факts (на начало главы):\n${input.activeFacts}`);
+    stableParts.push(`Активные факты (на начало главы):\n${input.activeFacts}`);
   }
 
   const volatileParts: string[] = [

@@ -94,7 +94,7 @@ export async function* writeChapter(
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {
     stableParts.push(
-      `Запрещённые слова/обороты (избегай):\n- ${input.fatigueWords.join("\n- ")}`,
+      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
     );
   }
   const stableSystem = `${SYSTEM_WRITER}\n\n---\n\n${stableParts.join("\n\n")}`;

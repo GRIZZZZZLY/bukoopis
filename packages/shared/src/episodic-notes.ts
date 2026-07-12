@@ -28,8 +28,13 @@ export type ExtractedNote = z.infer<typeof extractedNoteSchema>;
 
 export const episodicNoteExtractionSchema = z.object({
   newNotes: z.array(extractedNoteSchema).max(20),
-  /** Titles of currently-open notes this chapter resolves/closes. */
-  resolvedTitles: z.array(z.string().min(1).max(160)).max(20).default([]),
+  /** IDs (`note_<id>`) of currently-open notes this chapter resolves/closes.
+   *  Titles were too fragile a key: the model rephrases them and similar
+   *  titles collide, so resolution is by stable id rendered into the prompt. */
+  resolvedNoteIds: z
+    .array(z.string().regex(/^note_\d+$/))
+    .max(20)
+    .default([]),
   notes: z.string().nullable().optional(),
 });
 export type EpisodicNoteExtraction = z.infer<
