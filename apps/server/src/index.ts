@@ -4,6 +4,7 @@ import { registerAllAgentContracts } from "@book-forge/agents/bootstrap";
 import { registerStyleExtractorContract } from "@book-forge/style-engine";
 import { assertAllStructuredAgentsHaveContracts } from "@book-forge/llm";
 import { createApp } from "./app.js";
+import { configureEmbeddingProvider } from "./utils/embedding-setup.js";
 
 // Register every structured-output agent contract before the app boots so
 // `dispatchStructured` can resolve them. The assert verifies that every
@@ -13,6 +14,11 @@ import { createApp } from "./app.js";
 registerAllAgentContracts();
 registerStyleExtractorContract();
 assertAllStructuredAgentsHaveContracts();
+
+// Install the real (local ONNX) embedding provider for retrieval. The model is
+// loaded lazily on first embed; set EMBEDDING_PROVIDER=stub to skip it.
+const embeddingProvider = configureEmbeddingProvider();
+console.log(`🧬 embeddings: ${embeddingProvider}`);
 
 const { app } = createApp();
 const port = Number(process.env.PORT ?? 3001);

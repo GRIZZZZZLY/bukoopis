@@ -37,9 +37,26 @@ export async function indexChapterVersion(
   const chunks = chunkText(input.text, { targetTokens: 600, overlapTokens: 100 });
   if (chunks.length === 0) return { chunkCount: 0 };
 
-  const provider = getEmbeddingProvider();
-  const embeddings = await provider.embedBatch(chunks.map((c) => c.text));
   const now = new Date().toISOString();
+
+  // Embeddings are best-effort. If the model is unavailable (offline, not yet
+  // downloaded, load error) we still insert the chunks so FTS keeps working —
+  // only the vector rows are skipped, degrading semantic search to lexical.
+  // Also skip embedding entirely when vec is disabled (nothing would use it).
+  let embeddings: Float32Array[] | null = null;
+  if (hasVec) {
+    try {
+      embeddings = await getEmbeddingProvider().embedBatch(
+        chunks.map((c) => c.text),
+      );
+    } catch (e) {
+      console.warn(
+        "[index] embedding failed — indexing chunks for FTS only, skipping vectors:",
+        e instanceof Error ? e.message : e,
+      );
+      embeddings = null;
+    }
+  }
 
   const insertChunk = sqlite.prepare(
     `INSERT INTO chunks
@@ -47,11 +64,12 @@ export async function indexChapterVersion(
       text, start_offset, end_offset, token_count, is_reference, created_at)
      VALUES (?, 'chapter_version', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
   );
-  const insertVec = hasVec
-    ? sqlite.prepare(
-        "INSERT OR REPLACE INTO chunk_vec(rowid, embedding) VALUES (?, ?)",
-      )
-    : null;
+  const insertVec =
+    hasVec && embeddings
+      ? sqlite.prepare(
+          "INSERT OR REPLACE INTO chunk_vec(rowid, embedding) VALUES (?, ?)",
+        )
+      : null;
 
   const tx = sqlite.transaction(() => {
     for (let i = 0; i < chunks.length; i++) {
@@ -68,7 +86,7 @@ export async function indexChapterVersion(
         c.tokenCount,
         now,
       );
-      if (insertVec) {
+      if (insertVec && embeddings) {
         const rowid =
           typeof info.lastInsertRowid === "bigint"
             ? info.lastInsertRowid

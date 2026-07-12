@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "migrate": "tsx src/db/migrate.ts",
+    "reindex": "tsx src/scripts/reindex-embeddings.ts",
+    "drizzle:new": "tsx src/scripts/new-migration.ts",
     "drizzle:generate": "drizzle-kit generate"
   },
   "dependencies": {

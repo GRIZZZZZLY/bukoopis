@@ -24,6 +24,9 @@ export function createDb(dbPath: string = resolveDbPath()): DbHandle {
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
+  // Wait up to 5s for a competing writer (e.g. `pnpm migrate` run against a
+  // live dev server) instead of failing instantly with SQLITE_BUSY.
+  sqlite.pragma("busy_timeout = 5000");
 
   let hasVec = false;
   try {

@@ -32,7 +32,13 @@ export function loadStudioContext(
   if (row.concept) {
     try {
       concept = bookConceptSchema.parse(JSON.parse(row.concept));
-    } catch {
+    } catch (e) {
+      // Corrupt concept means the agent will generate without genre/tone/premise
+      // and the author would never know. Surface it instead of swallowing.
+      console.warn(
+        `[studio-context] book ${bookId}: corrupt concept JSON — ignoring. Reason:`,
+        e instanceof Error ? e.message : e,
+      );
       concept = null;
     }
   }
@@ -43,8 +49,13 @@ export function loadStudioContext(
       const state = studioStateSchema.parse(JSON.parse(row.studio_state));
       worldAspects = extractMarkdownAspects(state.stages.world?.aspects ?? []);
       loreAspects = extractMarkdownAspects(state.stages.lore?.aspects ?? []);
-    } catch {
-      // ignore corrupt studio_state
+    } catch (e) {
+      // Corrupt studio_state means chapters generate with no world/lore context.
+      // Log loudly so the degradation is visible rather than silent.
+      console.warn(
+        `[studio-context] book ${bookId}: corrupt studio_state JSON — world/lore context dropped. Reason:`,
+        e instanceof Error ? e.message : e,
+      );
     }
   }
   return { concept, worldAspects, loreAspects };

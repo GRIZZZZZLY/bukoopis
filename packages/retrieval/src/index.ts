@@ -6,6 +6,7 @@ export {
   setEmbeddingProvider,
   type EmbeddingProvider,
 } from "./embeddings.js";
+export { createOnnxEmbeddingProvider } from "./onnx-provider.js";
 export {
   indexChapterVersion,
   type IndexChapterVersionInput,
