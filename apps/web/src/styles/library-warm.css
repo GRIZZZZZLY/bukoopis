@@ -1648,6 +1648,40 @@ html.atm-full .candle-flame {
 }
 .candle-pop-save { align-self: flex-end; }
 
+/* ─── Живые детали ───────────────────────────────────────── */
+
+.dust-layer {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.cat {
+  margin-top: auto;
+  align-self: center;
+  padding: 6px 4px 2px;
+  opacity: 0.75;
+  transition: opacity var(--motion-2) var(--ease-in-out);
+}
+.cat:hover { opacity: 1; }
+.cat-body { fill: var(--color-surface-3); }
+.cat-tail { stroke: var(--color-surface-3); }
+
+@keyframes cat-tail-sway {
+  0%, 88%, 100% { transform: rotate(0deg); }
+  92%           { transform: rotate(9deg); }
+  96%           { transform: rotate(-4deg); }
+}
+html.atm-full .cat-tail {
+  transform-origin: 4px 16px;
+  animation: cat-tail-sway 13s ease-in-out infinite;
+}
+.cat-stretch svg { transform: scaleX(1.08) translateY(-1px); }
+.cat svg { transition: transform 0.5s var(--ease-in-out); }
+@media (prefers-reduced-motion: reduce) {
+  .cat-tail { animation: none; }
+}
+
 /* ─── Перелистывание страниц (View Transitions) ─────────── */
 
 @keyframes page-out {

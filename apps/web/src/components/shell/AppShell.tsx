@@ -17,6 +17,8 @@ import {
 } from "../../lib/useAtmosphere";
 import { setFocus, useFocusMode } from "../../lib/focusMode";
 import { CandleGauge } from "../atmosphere/CandleGauge";
+import { DustLayer, shouldShowDust } from "../atmosphere/DustLayer";
+import { CatCompanion } from "../atmosphere/CatCompanion";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -95,6 +97,7 @@ export function AppShell() {
   const [expanded, setExpanded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const focused = useFocusMode();
+  const atmosphere = useAtmosphere();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -126,6 +129,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <StatusBar />
+      {shouldShowDust(atmosphere, route.name) && <DustLayer />}
     </div>
   );
 }
@@ -263,6 +267,7 @@ function LeftRail({
             </Link>
           ))}
       </nav>
+      <CatCompanion />
       {bookId && (
         <div className="leftrail-foot">
           <Link
