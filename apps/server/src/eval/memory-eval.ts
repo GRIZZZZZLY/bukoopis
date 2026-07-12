@@ -34,10 +34,19 @@ export interface EvalCheck {
   pass: boolean;
   detail: string;
 }
+export interface RecallReport {
+  probes: number;
+  recallAt1: number;
+  recallAt3: number;
+  mrr: number;
+  detail: Array<{ query: string; expected: number; rank: number | null }>;
+}
 export interface EvalReport {
   checks: EvalCheck[];
   passed: number;
   total: number;
+  /** Informational retrieval-ranking numbers (not a pass/fail gate). */
+  recall?: RecallReport;
 }
 
 const NOW = "2026-07-12T00:00:00.000Z";
@@ -353,6 +362,36 @@ export async function runMemoryEval(
     `oldLeaked=${oldProseLeaked} newPresent=${newProsePresent}`,
   );
 
+  // Informational retrieval ranking over the seeded corpus. Small n (the
+  // mini-novel only has a few distinctive chapters) — a smoke number for the
+  // provider, not a benchmark. Meaningful only with real embeddings; the stub
+  // is lexical noise.
+  const probes = [
+    { query: "дракон сжёг деревянный мост через ущелье", expected: 3 },
+    { query: "нашёл кольцо Эйра в старой пещере у ручья", expected: 1 },
+    { query: "плыла на корабле сквозь шторм к дальнему берегу", expected: 2 },
+  ];
+  const recallDetail: RecallReport["detail"] = [];
+  let r1 = 0;
+  let r3 = 0;
+  let mrrSum = 0;
+  for (const p of probes) {
+    const hits = await q(p.query, 9);
+    const idx = hits.findIndex((c) => c.chapterOrder === p.expected);
+    const rank = idx >= 0 ? idx + 1 : null;
+    recallDetail.push({ query: p.query, expected: p.expected, rank });
+    if (rank === 1) r1 += 1;
+    if (rank !== null && rank <= 3) r3 += 1;
+    if (rank !== null) mrrSum += 1 / rank;
+  }
+  const recall: RecallReport = {
+    probes: probes.length,
+    recallAt1: r1 / probes.length,
+    recallAt3: r3 / probes.length,
+    mrr: mrrSum / probes.length,
+    detail: recallDetail,
+  };
+
   const passed = checks.filter((c) => c.pass).length;
-  return { checks, passed, total: checks.length };
+  return { checks, passed, total: checks.length, recall };
 }

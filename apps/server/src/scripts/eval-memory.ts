@@ -45,6 +45,19 @@ async function main(): Promise<void> {
   }
   console.log(`\n${report.passed}/${report.total} checks passed`);
 
+  if (report.recall) {
+    const r = report.recall;
+    const pct = (x: number): string => `${Math.round(x * 100)}%`;
+    console.log(
+      `\nretrieval ranking (n=${r.probes} probes): Recall@1=${pct(r.recallAt1)} Recall@3=${pct(r.recallAt3)} MRR=${r.mrr.toFixed(2)}`,
+    );
+    for (const d of r.detail) {
+      console.log(
+        `  · «${d.query.slice(0, 40)}…» → ch#${d.expected} @rank ${d.rank ?? "—"}`,
+      );
+    }
+  }
+
   sqlite.close();
   rmSync(dbDir, { recursive: true, force: true });
   if (report.passed !== report.total) process.exit(1);
