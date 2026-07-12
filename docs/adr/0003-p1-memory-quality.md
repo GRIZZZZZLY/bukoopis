@@ -45,14 +45,24 @@ P0 сделал память надёжной (durable pipeline), но не то
 таблица `entity_aliases(entity_type, entity_id, alias)`; экстрактору
 передавать known entities с id; фоллбэк на строку при не-резолве.
 
-### Слайс 3 — Context Compiler
+### Слайс 3 — Context Compiler (РЕАЛИЗОВАН; POV-split → 3b)
 
-Единая сборка контекста Writer/Plot/критиков: токен-бюджет (эвристика +
-count-tokens на финальную проверку), приоритеты (инструкция → beat-sheet →
-locked canon → POV-знание → последние главы → активные факты → нити →
-studio → retrieval → summaries → стиль), дедуп (chunks глав из rolling
-window исключаются из retrieval-блока), POV-раздел (ОБЪЕКТИВНО/ИЗВЕСТНО
-POV/СКРЫТО), диагностика включённого (Context Inspector API).
+Единая сборка контекста под токен-бюджет с приоритетами, дедупом и
+диагностикой (Context Inspector).
+
+**Сделано:** `apps/server/src/utils/context-compiler.ts` — `estimateTokens`
+(эвристика ~3 char/token для RU; hook под count-tokens API), `compileContext`
+(required всегда, optional по приоритету пока влезает в бюджет, дропнутые
+записаны), `describeCompiledContext` (одна строка в лог). Дедуп:
+`gatherRetrievedChunks` получил `excludeFromChapterOrder` — не тянет чанки глав,
+которые rolling window уже отдал дословно (`currentOrder - ROLLING_WINDOW`).
+Проводка в Writer-путь (`plot.ts /chapters/:id/write`): бюджет
+`MAX_WRITER_CONTEXT_TOKENS=80k`, приоритеты characters→rolling→lore→studio→
+retrieval→style, дропнутые слои не уходят в промпт, inspector-строка в лог.
+
+**Отложено (слайс 3b):** POV-раздел (ОБЪЕКТИВНО / ИЗВЕСТНО POV / СКРЫТО) —
+нужен фильтр фактов по character_knowledge; применение компилятора к
+plot-plan и reviser (repair) путям.
 
 ### Слайс 4 — KNN-фильтр внутри поиска
 
