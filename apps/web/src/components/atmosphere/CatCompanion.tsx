@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useAtmosphere } from "@/lib/useAtmosphere";
+import { effectiveMode, useAtmosphere } from "@/lib/useAtmosphere";
 
-/** Кот на «подоконнике» LeftRail. Живёт только в полной атмосфере. */
+/** Кот на «подоконнике» LeftRail. Живёт только в полной атмосфере
+    (и не под prefers-reduced-motion — там full деградирует до calm). */
 export function CatCompanion() {
   const mode = useAtmosphere();
   const [stretch, setStretch] = useState(false);
@@ -9,7 +10,7 @@ export function CatCompanion() {
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  if (mode !== "full") return null;
+  if (effectiveMode(mode) !== "full") return null;
 
   const poke = () => {
     setStretch(true);

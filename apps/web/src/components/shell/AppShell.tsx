@@ -12,6 +12,7 @@ import {
 import {
   applyAtmosphereClass,
   cycleAtmosphere,
+  effectiveMode,
   useAtmosphere,
   type AtmosphereMode,
 } from "../../lib/useAtmosphere";
@@ -129,7 +130,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <StatusBar />
-      {shouldShowDust(atmosphere, route.name) && <DustLayer />}
+      {shouldShowDust(effectiveMode(atmosphere), route.name) && <DustLayer />}
     </div>
   );
 }

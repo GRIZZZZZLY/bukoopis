@@ -18,8 +18,20 @@ import {
 import {
   makeTestApp,
   send,
+  sendJson,
   type TestApp,
 } from "../../routes/__tests__/_helpers.js";
+
+function docFor(text: string): unknown {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+function words(n: number): string {
+  return Array.from({ length: n }, (_, i) => `слово${i + 1}`).join(" ");
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = resolve(__dirname, "../../../drizzle");
@@ -109,5 +121,56 @@ describe("GET /api/writing-progress", () => {
     });
     const bad = await send(t.app, "/api/writing-progress?date=nope", "GET");
     expect(bad.status).toBe(400);
+  });
+});
+
+// ADR 0002 (Step 6): PUT /draft is the debounced autosave target — it must
+// feed the writing-days ledger via recordWritingDelta on every save, and a
+// ledger failure must never surface as a 500 (see recordWritingDelta's
+// fail-silent try/catch above).
+describe("PUT /api/chapters/:id/draft -> writing-progress ledger", () => {
+  let t: TestApp;
+  beforeEach(() => {
+    t = makeTestApp();
+  });
+  afterEach(() => {
+    t.cleanup();
+  });
+
+  it("accumulates positive word deltas from successive draft saves into today's ledger", async () => {
+    const book = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
+      title: "Книга для леджера",
+    });
+    const chapter = await sendJson<{ id: number }>(
+      t.app,
+      `/api/books/${book.id}/chapters`,
+      "POST",
+      { title: "Глава 1" },
+    );
+
+    const first = await send(
+      t.app,
+      `/api/chapters/${chapter.id}/draft`,
+      "PUT",
+      { contentJson: docFor(words(10)) },
+    );
+    expect(first.status).toBe(200);
+
+    const second = await send(
+      t.app,
+      `/api/chapters/${chapter.id}/draft`,
+      "PUT",
+      { contentJson: docFor(words(25)) },
+    );
+    expect(second.status).toBe(200);
+
+    // No `date` query param -> route defaults to localDay(), same "today"
+    // recordWritingDelta used for both PUTs above.
+    const progress = await sendJson<{ date: string; wordsAdded: number }>(
+      t.app,
+      "/api/writing-progress",
+      "GET",
+    );
+    expect(progress.wordsAdded).toBe(25);
   });
 });

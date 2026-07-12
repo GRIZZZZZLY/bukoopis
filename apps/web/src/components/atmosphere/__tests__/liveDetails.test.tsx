@@ -27,4 +27,13 @@ describe("CatCompanion", () => {
     expect(cat.className).not.toContain("cat-stretch");
     vi.useRealTimers();
   });
+
+  it("does not render under prefers-reduced-motion even in full atmosphere", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    render(<CatCompanion />);
+    expect(
+      screen.queryByRole("button", { name: "Погладить кота" }),
+    ).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
 });

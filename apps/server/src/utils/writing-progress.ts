@@ -9,19 +9,28 @@ export function localDay(d: Date = new Date()): string {
 }
 
 /** Копит положительные дельты слов в writing_days. Ноль/минус игнорируются
-    (правки-сокращения не «сжигают» свечу). Fire-and-forget семантика. */
+    (правки-сокращения не «сжигают» свечу). Fire-and-forget семантика: ошибки
+    записи в леджер никогда не должны валить вызывающий запрос (например,
+    автосейв драфта — черновик уже сохранён к моменту вызова). */
 export function recordWritingDelta(
   sqlite: DatabaseType,
   delta: number,
   day: string = localDay(),
 ): void {
   if (!Number.isFinite(delta) || delta <= 0) return;
-  sqlite
-    .prepare(
-      `INSERT INTO writing_days (date, words_added) VALUES (?, ?)
-       ON CONFLICT(date) DO UPDATE SET words_added = words_added + excluded.words_added`,
-    )
-    .run(day, Math.round(delta));
+  try {
+    sqlite
+      .prepare(
+        `INSERT INTO writing_days (date, words_added) VALUES (?, ?)
+         ON CONFLICT(date) DO UPDATE SET words_added = words_added + excluded.words_added`,
+      )
+      .run(day, Math.round(delta));
+  } catch (e) {
+    console.warn(
+      "[writing-progress] recordWritingDelta failed:",
+      e instanceof Error ? e.message : e,
+    );
+  }
 }
 
 export function getWritingProgress(
