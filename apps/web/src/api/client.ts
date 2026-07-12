@@ -3,6 +3,7 @@ import type {
   BookConcept,
   BookOutline,
   Chapter,
+  ChapterDraft,
   ChapterPlan,
   ChapterVersion,
   ChapterWithCurrentVersion,
@@ -34,6 +35,17 @@ import type {
 } from "@book-forge/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+
+// ADR 0002 — computed per-chapter memory state returned by GET /api/chapters/:id.
+export interface ChapterMemoryInfo {
+  state: "fresh" | "updating" | "error" | "none";
+  memoryVersionId: number | null;
+  bookStaleFromOrder: number | null;
+}
+export type ChapterWithMemory = ChapterWithCurrentVersion & {
+  memory?: ChapterMemoryInfo;
+  draft?: ChapterDraft | null;
+};
 
 class ApiError extends Error {
   constructor(
@@ -80,8 +92,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getChapter: (id: number) =>
-    req<ChapterWithCurrentVersion>(`/api/chapters/${id}`),
+  getChapter: (id: number) => req<ChapterWithMemory>(`/api/chapters/${id}`),
   updateChapter: (id: number, body: UpdateChapterInput) =>
     req<Chapter>(`/api/chapters/${id}`, {
       method: "PATCH",
@@ -92,15 +103,36 @@ export const api = {
 
   listVersions: (chapterId: number) =>
     req<ChapterVersion[]>(`/api/chapters/${chapterId}/versions`),
+  // ADR 0002 (Step 6): createVersion is ALWAYS a deliberate commit (indexes +
+  // memory extractors via the durable queue); autosaves go to saveDraft.
   createVersion: (chapterId: number, contentJson: unknown) =>
     req<ChapterVersion>(`/api/chapters/${chapterId}/versions`, {
       method: "POST",
       body: JSON.stringify({ contentJson }),
     }),
+  saveDraft: (chapterId: number, contentJson: unknown) =>
+    req<{ chapterId: number; wordCount: number; updatedAt: string }>(
+      `/api/chapters/${chapterId}/draft`,
+      { method: "PUT", body: JSON.stringify({ contentJson }) },
+    ),
   restoreVersion: (chapterId: number, versionId: number) =>
     req<Chapter>(`/api/chapters/${chapterId}/restore/${versionId}`, {
       method: "POST",
     }),
+
+  // ── Memory pipeline (ADR 0002) ──
+  retryChapterMemory: (chapterId: number) =>
+    req<{ retried: number }>(`/api/chapters/${chapterId}/memory/retry`, {
+      method: "POST",
+    }),
+  rebuildBookMemory: (bookId: number, fromOrder?: number) =>
+    req<{ enqueuedChapters: number; fromOrder: number }>(
+      `/api/books/${bookId}/memory/rebuild`,
+      {
+        method: "POST",
+        body: JSON.stringify(fromOrder !== undefined ? { fromOrder } : {}),
+      },
+    ),
 
   // ── Plot / Writer ──
   generateBookOutline: (bookId: number, config?: GenerationConfig) =>

@@ -35,6 +35,11 @@ import { VersionDiff } from "@/components/VersionDiff";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
+import {
+  MemoryStatusBadge,
+  MemoryStaleBanner,
+} from "@/components/memory/MemoryStatus";
+import type { ChapterMemoryInfo } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
 import type {
   Book,
@@ -108,6 +113,9 @@ export function ChapterPage() {
   const [mobilePanelsOpen, setMobilePanelsOpen] = useState(false);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
+  const [memory, setMemory] = useState<ChapterMemoryInfo | null>(null);
+  const [memoryRetrying, setMemoryRetrying] = useState(false);
+  const [memoryRebuilding, setMemoryRebuilding] = useState(false);
 
   const isPreviewRef = useRef(false);
   const writingRef = useRef(false);
@@ -128,7 +136,12 @@ export function ChapterPage() {
   const autoSaveContent = useCallback(
     async (json: unknown) => {
       try {
-        await api.createVersion(id, json);
+        // ADR 0002 (Step 6): autosave UPSERTs the working draft — no
+        // immutable version, no memory jobs. Commit happens on Ctrl+S.
+        await api.saveDraft(id, json);
+        setMemory((m) =>
+          m && m.state === "fresh" ? { ...m, state: "none" } : m,
+        );
         baselineJsonRef.current = JSON.stringify(json);
         setSaveError(null);
         setDirty((d) => {
@@ -148,8 +161,59 @@ export function ChapterPage() {
   );
 
   const debouncedSave = useDebouncedSave<unknown>(autoSaveContent, {
-    delayMs: 1000,
+    // Drafts only (PUT /draft — no versions, no memory jobs); the deliberate
+    // commit with indexing + extractors happens on manual Save / Ctrl+S.
+    delayMs: 10000,
   });
+
+  const refreshMemory = useCallback(async () => {
+    try {
+      const ch = await api.getChapter(id);
+      setMemory(ch.memory ?? null);
+    } catch {
+      /* transient — next poll or load() will catch up */
+    }
+  }, [id]);
+
+  // Poll while the pipeline works so the badge flips to "fresh" on its own.
+  useEffect(() => {
+    if (memory?.state !== "updating") return;
+    const t = setInterval(() => void refreshMemory(), 3000);
+    return () => clearInterval(t);
+  }, [memory?.state, refreshMemory]);
+
+  const onRetryMemory = useCallback(async () => {
+    setMemoryRetrying(true);
+    try {
+      await api.retryChapterMemory(id);
+      toast.info("Задания памяти перезапущены");
+      setMemory((m) => (m ? { ...m, state: "updating" } : m));
+    } catch (err) {
+      toast.error("Не удалось перезапустить память", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setMemoryRetrying(false);
+    }
+  }, [id]);
+
+  const onRebuildMemory = useCallback(async () => {
+    if (!bookId) return;
+    setMemoryRebuilding(true);
+    try {
+      const r = await api.rebuildBookMemory(Number(bookId));
+      toast.info(
+        `Перестроение памяти: ${r.enqueuedChapters} глав, начиная с #${r.fromOrder}`,
+      );
+      setMemory((m) => (m ? { ...m, state: "updating" } : m));
+    } catch (err) {
+      toast.error("Не удалось запустить перестроение", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setMemoryRebuilding(false);
+    }
+  }, [bookId]);
 
   const editor = useEditor({
     extensions: [StarterKit, CanonHighlight],
@@ -176,6 +240,7 @@ export function ChapterPage() {
         ]);
         setChapter(ch);
         setVersions(vs);
+        setMemory(ch.memory ?? null);
         setTitle(ch.title);
         titleBaselineRef.current = ch.title;
         // Book is needed for cost forecast + provider info; load lazily.
@@ -185,7 +250,15 @@ export function ChapterPage() {
             .catch(() => undefined);
         }
         setPreviewVersionId(null);
-        const initialJson = ch.currentVersion?.contentJson;
+        // ADR 0002 (Step 6): a working draft newer than the committed version
+        // wins — that's the text the author last typed.
+        const draftIsNewer =
+          ch.draft != null &&
+          (!ch.currentVersion ||
+            ch.draft.updatedAt > ch.currentVersion.createdAt);
+        const initialJson = draftIsNewer
+          ? ch.draft!.contentJson
+          : ch.currentVersion?.contentJson;
         const doc = parseDoc(initialJson ?? null);
         if (editor) {
           editor.commands.setContent(doc as never, false);
@@ -339,6 +412,7 @@ export function ChapterPage() {
     setError(null);
     try {
       if (contentChanged) {
+        // Manual save is the deliberate commit: index + run memory extractors.
         await api.createVersion(id, json);
       }
       if (titleChanged) {
@@ -555,6 +629,12 @@ export function ChapterPage() {
           </div>
         )}
 
+        <MemoryStaleBanner
+          staleFromOrder={memory?.bookStaleFromOrder ?? null}
+          onRebuild={() => void onRebuildMemory()}
+          rebuilding={memoryRebuilding}
+        />
+
         <PlanPanel
           chapter={chapter}
           onUpdated={load}
@@ -666,14 +746,21 @@ export function ChapterPage() {
           </div>
         </div>
 
-        <AutosaveStatus
-          saving={debouncedSave.saving}
-          lastSavedAt={debouncedSave.lastSavedAt}
-          error={saveError}
-          isPreview={isPreview}
-          wordCount={wordCount}
-          dirty={dirty}
-        />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <AutosaveStatus
+            saving={debouncedSave.saving}
+            lastSavedAt={debouncedSave.lastSavedAt}
+            error={saveError}
+            isPreview={isPreview}
+            wordCount={wordCount}
+            dirty={dirty}
+          />
+          <MemoryStatusBadge
+            memory={memory}
+            onRetry={() => void onRetryMemory()}
+            retrying={memoryRetrying}
+          />
+        </div>
 
         {!isPreview && <InlineCommandPanel editor={editor} chapterId={id} />}
 
