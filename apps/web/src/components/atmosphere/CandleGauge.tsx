@@ -11,7 +11,7 @@ export function CandleGauge() {
   const [words, setWords] = useState<number | null>(null);
   const [goal, setGoal] = useState(readWordGoal);
   const [open, setOpen] = useState(false);
-  const [draftGoal, setDraftGoal] = useState(String(readWordGoal()));
+  const [draftGoal, setDraftGoal] = useState(() => String(readWordGoal()));
 
   useEffect(() => {
     let alive = true;
@@ -39,6 +39,12 @@ export function CandleGauge() {
   const wax = 4 + Math.round((1 - level) * 12); // 16px в начале дня → 4px огарок
   const flameY = 21 - wax - 3.2;
 
+  const toggleOpen = () => {
+    // Ресинк черновика при каждом открытии: брошенный ввод не переживает закрытие.
+    if (!open) setDraftGoal(String(goal));
+    setOpen(!open);
+  };
+
   const submitGoal = () => {
     const n = Number(draftGoal);
     if (Number.isFinite(n) && n > 0) {
@@ -53,7 +59,7 @@ export function CandleGauge() {
       <button
         type="button"
         className="candle"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         aria-expanded={open}
         aria-label={`Слов сегодня: ${words ?? 0} из ${goal}`}
         title={`Слов сегодня: ${words ?? "…"} / ${goal}`}

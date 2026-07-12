@@ -34,4 +34,19 @@ describe("CandleGauge", () => {
     await user.click(screen.getByRole("button", { name: "Сохранить" }));
     expect(localStorage.getItem("bf-word-goal")).toBe("800");
   });
+
+  it("resyncs draft goal from current goal when reopened", async () => {
+    const user = userEvent.setup();
+    render(<CandleGauge />);
+    const candleBtn = await screen.findByRole("button", {
+      name: /слов сегодня/i,
+    });
+    await user.click(candleBtn);
+    const input = screen.getByLabelText("Цель на день");
+    await user.clear(input);
+    await user.type(input, "50");
+    await user.click(candleBtn); // закрыть без сохранения
+    await user.click(candleBtn); // открыть заново
+    expect(screen.getByLabelText("Цель на день")).toHaveValue(500);
+  });
 });
