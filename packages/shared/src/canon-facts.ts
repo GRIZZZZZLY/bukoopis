@@ -17,6 +17,28 @@ export const factEntityTypeSchema = z.enum([
 ]);
 export type FactEntityType = z.infer<typeof factEntityTypeSchema>;
 
+/**
+ * ADR 0003 slice 1 — how the chapter asserts the statement. Only
+ * narrated_as_fact and directly_observed become OBJECTIVE canon;
+ * everything else is stored but never fed to Writer as world truth and
+ * never supersedes canon (a lying character must not rewrite reality).
+ */
+export const factAssertionModeSchema = z.enum([
+  "narrated_as_fact",
+  "directly_observed",
+  "stated_by_character",
+  "believed_by_character",
+  "rumor",
+  "dream_or_vision",
+  "uncertain",
+]);
+export type FactAssertionMode = z.infer<typeof factAssertionModeSchema>;
+
+export const OBJECTIVE_ASSERTION_MODES: ReadonlyArray<FactAssertionMode> = [
+  "narrated_as_fact",
+  "directly_observed",
+];
+
 export const extractedFactSchema = z.object({
   entityType: factEntityTypeSchema,
   /** Canonical-ish name as it appears in the chapter; server matches by it. */
@@ -26,6 +48,14 @@ export const extractedFactSchema = z.object({
   /** The value/Object of the statement. */
   objectText: z.string().min(1).max(600),
   confidence: z.number().min(0).max(1).default(1),
+  assertionMode: factAssertionModeSchema.default("narrated_as_fact"),
+  /** Ids (`fact_<id>`, as rendered in the active-facts list) of the active
+   *  facts this statement replaces. When present, the server closes EXACTLY
+   *  these; the same-predicate auto-supersede is only a fallback. */
+  supersedesFactIds: z
+    .array(z.string().regex(/^fact_\d+$/))
+    .max(10)
+    .default([]),
 });
 export type ExtractedFact = z.infer<typeof extractedFactSchema>;
 

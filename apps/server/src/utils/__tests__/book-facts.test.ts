@@ -52,8 +52,19 @@ function fact(
   predicate: string,
   objectText: string,
   entityType: ExtractedFact["entityType"] = "character",
+  extra?: Partial<
+    Pick<ExtractedFact, "assertionMode" | "supersedesFactIds">
+  >,
 ): ExtractedFact {
-  return { entityType, entityName, predicate, objectText, confidence: 1 };
+  return {
+    entityType,
+    entityName,
+    predicate,
+    objectText,
+    confidence: 1,
+    assertionMode: extra?.assertionMode ?? "narrated_as_fact",
+    supersedesFactIds: extra?.supersedesFactIds ?? [],
+  };
 }
 
 beforeEach(() => {
@@ -112,6 +123,78 @@ describe("persistExtractedFacts + loadActiveFacts", () => {
     const active = loadActiveFacts(sqlite, b, 5);
     expect(active).toHaveLength(1);
     expect(active[0]!.objectText).toBe("v2");
+  });
+
+  it("a character's statement never becomes objective canon (ADR 0003)", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 3, 30, [
+      fact("Мария", "состояние", "жива"),
+    ]);
+    // Иван lies: «Мария умерла» — stated_by_character.
+    persistExtractedFacts(sqlite, b, 5, 50, [
+      fact("Мария", "состояние", "умерла", "character", {
+        assertionMode: "stated_by_character",
+      }),
+    ]);
+    // Objective canon still says «жива»; the claim did NOT supersede it.
+    const active = loadActiveFacts(sqlite, b, 6);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.objectText).toBe("жива");
+    // The claim is stored (for future character-knowledge use)…
+    const all = loadActiveFacts(sqlite, b, 6, { objectiveOnly: false });
+    expect(all).toHaveLength(2);
+    // …and the rendered canon prompt excludes it.
+    const prompt = renderActiveFactsPrompt(sqlite, b, 6)!;
+    expect(prompt).toContain("жива");
+    expect(prompt).not.toContain("умерла");
+  });
+
+  it("explicit supersedesFactIds closes exactly the named fact (multi-valued predicate)", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 2, 20, [
+      fact("Аня", "владеет", "кольцо Эйра"),
+      fact("Аня", "владеет", "меч Заката"),
+    ]);
+    const ring = loadActiveFacts(sqlite, b, 3).find(
+      (f) => f.objectText === "кольцо Эйра",
+    )!;
+    // She loses ONLY the ring; the model names the exact fact id.
+    persistExtractedFacts(sqlite, b, 6, 60, [
+      fact("Аня", "владеет", "потеряла кольцо Эйра", "character", {
+        supersedesFactIds: [`fact_${ring.id}`],
+      }),
+    ]);
+    const at7 = loadActiveFacts(sqlite, b, 7).map((f) => f.objectText);
+    expect(at7).toContain("меч Заката"); // untouched
+    expect(at7).toContain("потеряла кольцо Эйра");
+    expect(at7).not.toContain("кольцо Эйра");
+  });
+
+  it("unknown or foreign supersedesFactIds are skipped, not guessed", () => {
+    const a = insertBook();
+    const b = insertBook();
+    persistExtractedFacts(sqlite, a, 1, 10, [
+      fact("Чужой", "состояние", "жив"),
+    ]);
+    const foreign = loadActiveFacts(sqlite, a, 2)[0]!;
+    persistExtractedFacts(sqlite, b, 4, 40, [
+      fact("Свой", "состояние", "ранен", "character", {
+        supersedesFactIds: ["fact_999999", `fact_${foreign.id}`],
+      }),
+    ]);
+    // Foreign book's fact untouched; new fact inserted anyway.
+    expect(loadActiveFacts(sqlite, a, 5)[0]!.objectText).toBe("жив");
+    expect(loadActiveFacts(sqlite, b, 5)[0]!.objectText).toBe("ранен");
+  });
+
+  it("renders fact ids only when withIds is set (extractor input)", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 1, 10, [fact("Аня", "умеет", "магия")]);
+    const id = loadActiveFacts(sqlite, b, 2)[0]!.id;
+    expect(renderActiveFactsPrompt(sqlite, b, 2)).not.toContain("[fact_");
+    expect(
+      renderActiveFactsPrompt(sqlite, b, 2, { withIds: true }),
+    ).toContain(`[fact_${id}]`);
   });
 
   it("scopes by entityNames", () => {
