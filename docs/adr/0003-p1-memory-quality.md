@@ -71,14 +71,26 @@ plot-plan и reviser (repair) путям.
 0.1.6+). Требует reindex (скрипт есть); миграция координируется с
 bootstrapVirtualTables.
 
-### Слайс 5 — литературный eval-набор
+### Слайс 5 — литературный eval-набор (РЕАЛИЗОВАН)
 
-Постоянный тестовый мини-роман с ловушками (два предмета/потерян один,
-падежи+прозвище, ложь о смерти, сон, флэшбек, переписанная глава 3 после
-главы 8, похожие заметки, POV-секрет). Метрики: precision/recall фактов,
-корректность supersede, реплика≠канон, retrieval Recall@k, отсутствие
-будущего/старых версий, дубли в промпте. Гейт для смены embedding-модели,
-RRF, reranker, числа глав окна.
+Постоянный мини-роман с ловушками + харнес, меряющий машинерию памяти.
+
+**Сделано:** `apps/server/src/eval/memory-eval.ts` — `runMemoryEval(sqlite,
+hasVec)` сидит мини-роман со СКРИПТОВАННЫМИ извлечениями (без LLM →
+детерминизм) и проверяет 10 чеков: multivalued-supersede (потерял кольцо,
+меч цел), statement-not-canon (ложь о смерти не канон), dream-not-canon,
+entity-resolution (падеж→канон id), note-resolution (по id), canon-prompt
+id-free, retrieval-finds, retrieval-no-future, retrieval-dedup,
+retrieval-no-old-version (проверка по ТЕКСТУ чанка, т.к. vec+stub — шум).
+Тест `eval/__tests__/memory-eval.test.ts` гоняет в CI на stub (детерминизм).
+Скрипт `pnpm --filter @book-forge/server eval:memory` — с настроенным
+провайдером (EMBEDDING_PROVIDER=onnx для реального recall), печатает
+scorecard, exit≠0 при провале. Гейт перед сменой embedding-модели/RRF/
+reranker/размера окна.
+
+**Отложено:** реальные precision/recall на LLM-извлечении (харнес скриптует
+извлечение — меряет серверную логику, не качество LLM-экстрактора); Recall@k
+на реальных ONNX-эмбеддингах прогоняется скриптом вручную.
 
 ## Вне scope P1
 
