@@ -28,6 +28,12 @@ import {
   type CharacterKnowledgeRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
+import {
+  addEntityAlias,
+  listEntityAliases,
+  deleteEntityAlias,
+} from "../utils/entity-resolve.js";
+import { z } from "zod";
 
 function bookExists(sqlite: DatabaseType, id: number): boolean {
   const row = sqlite
@@ -530,6 +536,94 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     if (!existing) return notFound(c, "knowledge");
     sqlite.prepare("DELETE FROM character_knowledge WHERE id = ?").run(id);
     bumpBook(sqlite, existing.book_id);
+    return c.body(null, 204);
+  });
+
+  // ─────────────── Entity aliases (ADR 0003 slice 2) ───────────────
+  // Author-managed fallback for names the fact extractor can't normalize
+  // (stubborn case forms, nicknames). Resolved names collapse facts to one
+  // stable entity id.
+
+  const ALIAS_TYPES = new Set(["character", "location", "item"]);
+  const aliasTableFor = (t: string): string =>
+    t === "character" ? "characters" : t === "location" ? "locations" : "items";
+
+  function entityExists(
+    sqlite2: DatabaseType,
+    bookId: number,
+    type: string,
+    entityId: number,
+  ): boolean {
+    const row = sqlite2
+      .prepare(
+        `SELECT id FROM ${aliasTableFor(type)} WHERE id = ? AND book_id = ?`,
+      )
+      .get(entityId, bookId) as { id: number } | undefined;
+    return Boolean(row);
+  }
+
+  r.get("/books/:id/entities/:type/:entityId/aliases", (c) => {
+    const id = Number(c.req.param("id"));
+    const type = c.req.param("type");
+    const entityId = Number(c.req.param("entityId"));
+    if (!ALIAS_TYPES.has(type)) return badRequest(c, "invalid entity type");
+    if (!bookExists(sqlite, id)) return notFound(c, "book");
+    return c.json(
+      listEntityAliases(
+        sqlite,
+        id,
+        type as "character" | "location" | "item",
+        entityId,
+      ),
+    );
+  });
+
+  r.post("/books/:id/entities/:type/:entityId/aliases", async (c) => {
+    const id = Number(c.req.param("id"));
+    const type = c.req.param("type");
+    const entityId = Number(c.req.param("entityId"));
+    if (!ALIAS_TYPES.has(type)) return badRequest(c, "invalid entity type");
+    if (!bookExists(sqlite, id)) return notFound(c, "book");
+    if (!entityExists(sqlite, id, type, entityId))
+      return notFound(c, "entity");
+    const body = await c.req.json().catch(() => null);
+    const parsed = z
+      .object({ alias: z.string().min(1).max(160) })
+      .safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const res = addEntityAlias(
+      sqlite,
+      id,
+      type as "character" | "location" | "item",
+      entityId,
+      parsed.data.alias,
+    );
+    if (!res.ok) {
+      return badRequest(
+        c,
+        res.conflict !== undefined
+          ? `alias already maps to entity ${res.conflict}`
+          : "invalid alias",
+      );
+    }
+    bumpBook(sqlite, id);
+    return c.json(
+      listEntityAliases(
+        sqlite,
+        id,
+        type as "character" | "location" | "item",
+        entityId,
+      ),
+      201,
+    );
+  });
+
+  r.delete("/books/:id/aliases/:aliasId", (c) => {
+    const id = Number(c.req.param("id"));
+    const aliasId = Number(c.req.param("aliasId"));
+    if (!bookExists(sqlite, id)) return notFound(c, "book");
+    if (!deleteEntityAlias(sqlite, id, aliasId)) return notFound(c, "alias");
+    bumpBook(sqlite, id);
     return c.body(null, 204);
   });
 
