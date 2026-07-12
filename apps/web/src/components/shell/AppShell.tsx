@@ -16,6 +16,7 @@ import {
   type AtmosphereMode,
 } from "../../lib/useAtmosphere";
 import { setFocus, useFocusMode } from "../../lib/focusMode";
+import { CandleGauge } from "../atmosphere/CandleGauge";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -175,6 +176,7 @@ function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
         <Link to="/usage" className="topbar-link" viewTransition>
           Использование
         </Link>
+        <CandleGauge />
         <AtmosphereLamp />
         <button type="button" className="avatar" aria-label="Профиль">
           М

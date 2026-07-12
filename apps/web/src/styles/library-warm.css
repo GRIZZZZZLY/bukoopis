@@ -1605,6 +1605,49 @@ html.atm-calm .app[data-focus="true"] .main {
 }
 .focus-toggle span { font-size: 12px; }
 
+/* ─── Свеча-цель ─────────────────────────────────────────── */
+
+.candle-wrap { position: relative; }
+.candle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: var(--radius-control);
+}
+.candle:hover { background: var(--color-surface-1); }
+.candle-flame { fill: var(--color-brass-hi); transform-origin: center; }
+.candle-wax   { fill: var(--color-text-muted); }
+.candle-base  { fill: var(--color-border-strong); }
+.candle-count { font-size: 11px; color: var(--color-text-muted); }
+
+@keyframes candle-flicker {
+  0%, 100% { opacity: 0.95; transform: scaleY(1); }
+  46%      { opacity: 0.75; transform: scaleY(0.92); }
+  52%      { opacity: 1;    transform: scaleY(1.05); }
+}
+html.atm-full .candle-flame {
+  animation: candle-flicker 2.8s ease-in-out infinite;
+}
+
+.candle-pop {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  min-width: 200px; padding: 12px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.candle-pop-row { font-size: 12.5px; }
+.candle-pop-label { display: flex; flex-direction: column; gap: 4px; color: var(--color-text-muted); }
+.candle-pop-label input {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 5px 8px; color: var(--color-text);
+  font-size: 13px;
+}
+.candle-pop-save { align-self: flex-end; }
+
 /* ─── Перелистывание страниц (View Transitions) ─────────── */
 
 @keyframes page-out {

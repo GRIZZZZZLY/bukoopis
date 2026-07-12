@@ -376,6 +376,10 @@ export const api = {
       db: "ok" | "missing";
       vec: boolean;
     }>("/api/health"),
+  getWritingProgress: (date?: string) =>
+    req<{ date: string; wordsAdded: number }>(
+      `/api/writing-progress${date ? `?date=${date}` : ""}`,
+    ),
 
   // ── Studio ──
   getConcept: (bookId: number) =>
