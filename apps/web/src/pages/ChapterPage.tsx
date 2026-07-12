@@ -32,6 +32,7 @@ import { CritiquePanel } from "@/components/CritiquePanel";
 import { InlineCommandPanel } from "@/components/InlineCommandPanel";
 import { CanonPanel } from "@/components/CanonPanel";
 import { VersionDiff } from "@/components/VersionDiff";
+import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
@@ -709,6 +710,8 @@ export function ChapterPage() {
           versionId={chapter.currentVersionId}
           onRepairDone={load}
         />
+
+        <FocusToggle />
 
         <EditorToolbar
           editor={editor}

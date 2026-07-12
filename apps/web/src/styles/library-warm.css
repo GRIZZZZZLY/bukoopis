@@ -1596,6 +1596,15 @@ html.atm-calm .topbar {
   background-image: var(--texture-panel);
 }
 
+/* Фокус: мягкий свет над рукописью */
+html.atm-full .app[data-focus="true"] .main,
+html.atm-calm .app[data-focus="true"] .main {
+  background:
+    radial-gradient(ellipse 760px 540px at 50% 28%, rgba(217, 164, 74, 0.07), transparent 70%),
+    var(--color-bg);
+}
+.focus-toggle span { font-size: 12px; }
+
 /* ─── Перелистывание страниц (View Transitions) ─────────── */
 
 @keyframes page-out {

@@ -15,6 +15,7 @@ import {
   useAtmosphere,
   type AtmosphereMode,
 } from "../../lib/useAtmosphere";
+import { setFocus, useFocusMode } from "../../lib/focusMode";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -92,6 +93,7 @@ export function AppShell() {
   const route = parseRoute(pathname);
   const [expanded, setExpanded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const focused = useFocusMode();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -103,8 +105,16 @@ export function AppShell() {
     applyAtmosphereClass();
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFocus(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
-    <div className="app" data-focus="false">
+    <div className="app" data-focus={focused ? "true" : "false"}>
       <TopBar route={route} scrolled={scrolled} />
       <LeftRail
         route={route}
