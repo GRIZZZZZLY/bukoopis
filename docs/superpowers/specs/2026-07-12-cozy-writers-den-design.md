@@ -59,7 +59,7 @@ shadcn-алиасы (`--color-background`, `--color-primary` и т.д.) обно
 ### 1b. Механики
 
 - **Фокус-режим** (ChapterPage): кнопка + hotkey. Sidebar и critique rail затухают до ~15% opacity, вокруг рукописи — круг света. Esc или потеря фокуса — выход. Реализация: CSS-класс на layout-контейнере.
-- **Свеча-цель дня**: SVG-свеча в TopBar, высота воска = прогресс дневной цели слов. Контракт: `GET /api/writing-progress?date=YYYY-MM-DD` → `{ wordsToday }`. Цель хранится в `localStorage` (дефолт 500), настройка в Settings. Реализация подсчёта `wordsToday` решается в плане: (а) дельта числа слов последних версий глав за день по `chapter_versions.created_at`, или (б) инкрементальная таблица `writing_days(date, words_added)` (миграция). Спека фиксирует только контракт endpoint.
+- **Свеча-цель дня**: SVG-свеча в TopBar, высота воска = прогресс дневной цели слов. Контракт: `GET /api/writing-progress?date=YYYY-MM-DD` → `{ date, wordsAdded }`. Цель хранится в `localStorage` (дефолт 500), настройка в Settings. Реализация подсчёта `wordsToday` решается в плане: (а) дельта числа слов последних версий глав за день по `chapter_versions.created_at`, или (б) инкрементальная таблица `writing_days(date, words_added)` (миграция). Спека фиксирует только контракт endpoint.
 - **Живые детали** (только `atm-full`):
   - пылинки в луче света — один `<canvas>` в AppShell, ~30 частиц, `requestAnimationFrame`, пауза при `document.hidden`, слой отключён на ChapterPage во время активного ввода;
   - мерцание свечи — CSS animation;
