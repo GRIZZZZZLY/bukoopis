@@ -96,18 +96,24 @@ export function loadRollingChapterContext(
   return parts.join("\n\n---\n\n");
 }
 
+export interface MetaSummaryResult {
+  updated: boolean;
+  coversTo?: number;
+  skipped?: "window" | "covered" | "missing" | "empty";
+}
+
 /**
- * Fire-and-forget: collapse all summarized chapters older than the rolling
+ * Throwing core: collapse all summarized chapters older than the rolling
  * window into one meta-summary row. Idempotent — skips when the existing meta
- * already covers the target range. Mirrors `triggerVersionSummary` (never
- * throws into the caller's save flow).
+ * already covers the target range. LLM failures PROPAGATE — the memory worker
+ * classifies and retries them (ADR 0002).
  */
-export async function triggerMetaSummary(
+export async function runMetaSummary(
   sqlite: DatabaseType,
   bookId: number,
   window: number = ROLLING_WINDOW,
-): Promise<void> {
-  try {
+): Promise<MetaSummaryResult> {
+  {
     const summarized = sqlite
       .prepare(
         `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary
@@ -124,7 +130,9 @@ export async function triggerMetaSummary(
       summary: string;
     }>;
 
-    if (summarized.length <= window) return; // nothing older than the window
+    if (summarized.length <= window) {
+      return { updated: false, skipped: "window" }; // nothing older than the window
+    }
 
     const older = summarized.slice(0, summarized.length - window);
     const coversFrom = older[0]!.order_index;
@@ -135,14 +143,16 @@ export async function triggerMetaSummary(
         `SELECT covers_to_order FROM book_meta_summaries WHERE book_id = ?`,
       )
       .get(bookId) as { covers_to_order: number } | undefined;
-    if (existing && existing.covers_to_order >= coversTo) return; // up to date
+    if (existing && existing.covers_to_order >= coversTo) {
+      return { updated: false, coversTo, skipped: "covered" }; // up to date
+    }
 
     const bk = sqlite
       .prepare("SELECT title, critic_model FROM books WHERE id = ?")
       .get(bookId) as
       | { title: string; critic_model: "sonnet" | "opus" }
       | undefined;
-    if (!bk) return;
+    if (!bk) return { updated: false, skipped: "missing" };
 
     const result = await metaSummarize({
       bookTitle: bk.title,
@@ -153,7 +163,7 @@ export async function triggerMetaSummary(
       })),
       model: bk.critic_model ?? "sonnet",
     });
-    if (!result.summary) return;
+    if (!result.summary) return { updated: false, skipped: "empty" };
 
     const now = new Date().toISOString();
     sqlite
@@ -183,6 +193,22 @@ export async function triggerMetaSummary(
         bookId,
       });
     }
+    return { updated: true, coversTo };
+  }
+}
+
+/**
+ * Fire-and-forget wrapper around `runMetaSummary` — never throws into the
+ * caller's save flow. Legacy path; the durable memory worker calls the core
+ * directly (ADR 0002).
+ */
+export async function triggerMetaSummary(
+  sqlite: DatabaseType,
+  bookId: number,
+  window: number = ROLLING_WINDOW,
+): Promise<void> {
+  try {
+    await runMetaSummary(sqlite, bookId, window);
   } catch (e) {
     console.warn(
       "[meta-summary] generation failed:",

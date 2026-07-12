@@ -3,8 +3,8 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   updateChapterInputSchema,
   createChapterVersionInputSchema,
+  saveChapterDraftInputSchema,
 } from "@book-forge/shared";
-import { indexChapterVersion } from "@book-forge/retrieval";
 import {
   toChapter,
   toVersion,
@@ -13,11 +13,19 @@ import {
 } from "../db/rows.js";
 import { notFound, validationFailed } from "../utils/errors.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
-import { triggerVersionSummary } from "../utils/summary-trigger.js";
+import {
+  enqueueMemoryJobs,
+  COMMIT_JOB_KINDS,
+} from "../utils/memory-queue.js";
+import {
+  markMemoryStaleOnCommit,
+  chapterMemoryStatus,
+} from "../utils/memory-activation.js";
+import type { MemoryWorker } from "../utils/memory-worker.js";
 
 export function createChaptersRoute(
   sqlite: DatabaseType,
-  hasVec: boolean,
+  memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
   const r = new Hono();
 
@@ -34,7 +42,105 @@ export function createChaptersRoute(
         .get(row.current_version_id) as ChapterVersionRow | undefined;
       if (v) currentVersion = toVersion(v);
     }
-    return c.json({ ...toChapter(row), currentVersion });
+    // ADR 0002 (Step 6): the working draft, when present, is newer than the
+    // committed version — the client loads it into the editor.
+    const draftRow = sqlite
+      .prepare(
+        `SELECT chapter_id, content_json, content_text, word_count, base_version_id, updated_at
+         FROM chapter_drafts WHERE chapter_id = ?`,
+      )
+      .get(id) as
+      | {
+          chapter_id: number;
+          content_json: string;
+          content_text: string;
+          word_count: number;
+          base_version_id: number | null;
+          updated_at: string;
+        }
+      | undefined;
+    const draft = draftRow
+      ? {
+          chapterId: draftRow.chapter_id,
+          contentJson: draftRow.content_json,
+          contentText: draftRow.content_text,
+          wordCount: draftRow.word_count,
+          baseVersionId: draftRow.base_version_id,
+          updatedAt: draftRow.updated_at,
+        }
+      : null;
+
+    // ADR 0002: computed per-chapter memory state for the UI
+    // (fresh | updating | error | none) + book-level stale marker. An
+    // existing draft means uncommitted changes — memory can't be "fresh".
+    const memory = chapterMemoryStatus(sqlite, row);
+    if (draft && memory.state === "fresh") memory.state = "none";
+    const staleRow = sqlite
+      .prepare(
+        "SELECT memory_stale_from_chapter_order s FROM books WHERE id = ?",
+      )
+      .get(row.book_id) as { s: number | null } | undefined;
+    return c.json({
+      ...toChapter(row),
+      currentVersion,
+      draft,
+      memory: {
+        ...memory,
+        bookStaleFromOrder: staleRow?.s ?? null,
+      },
+    });
+  });
+
+  // ADR 0002 (Step 6): debounced autosave target. UPSERTs the single working
+  // draft row — no immutable version, no memory jobs, no LLM cost.
+  r.put("/:id/draft", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = saveChapterDraftInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const ch = sqlite
+      .prepare("SELECT id, current_version_id FROM chapters WHERE id = ?")
+      .get(id) as { id: number; current_version_id: number | null } | undefined;
+    if (!ch) return notFound(c, "chapter");
+
+    const contentJson = JSON.stringify(parsed.data.contentJson);
+    const contentText = extractText(parsed.data.contentJson);
+    const wordCount = countWords(contentText);
+    const now = new Date().toISOString();
+    sqlite
+      .prepare(
+        `INSERT INTO chapter_drafts
+           (chapter_id, content_json, content_text, word_count, base_version_id, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(chapter_id) DO UPDATE SET
+           content_json = excluded.content_json,
+           content_text = excluded.content_text,
+           word_count = excluded.word_count,
+           base_version_id = excluded.base_version_id,
+           updated_at = excluded.updated_at`,
+      )
+      .run(id, contentJson, contentText, wordCount, ch.current_version_id, now);
+    return c.json({ chapterId: id, wordCount, updatedAt: now });
+  });
+
+  // ADR 0002: re-enqueue failed memory jobs for the chapter's current
+  // version (UI "Повторить" action). attempts reset so backoff starts over.
+  r.post("/:id/memory/retry", (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT id, current_version_id FROM chapters WHERE id = ?")
+      .get(id) as { id: number; current_version_id: number | null } | undefined;
+    if (!ch) return notFound(c, "chapter");
+    if (!ch.current_version_id) return c.json({ retried: 0 });
+    const res = sqlite
+      .prepare(
+        `UPDATE memory_jobs
+         SET status='pending', attempts=0, run_after=NULL, last_error=NULL, updated_at=?
+         WHERE chapter_version_id = ? AND status='error'`,
+      )
+      .run(new Date().toISOString(), ch.current_version_id);
+    if (res.changes > 0) memoryWorker?.kick();
+    return c.json({ retried: res.changes });
   });
 
   r.patch("/:id", async (c) => {
@@ -109,6 +215,9 @@ export function createChaptersRoute(
     const parentVersionId = ch.current_version_id;
     const now = new Date().toISOString();
 
+    // ADR 0002 (Step 6): POST /versions is always a deliberate commit — the
+    // version row, its memory jobs and the draft cleanup happen in ONE
+    // transaction (or none of them). Autosaves never reach this route.
     const tx = sqlite.transaction(() => {
       const info = sqlite
         .prepare(
@@ -126,6 +235,15 @@ export function createChaptersRoute(
       sqlite
         .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
         .run(now, ch.book_id);
+      enqueueMemoryJobs(sqlite, {
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        chapterVersionId: versionId,
+        kinds: COMMIT_JOB_KINDS,
+      });
+      markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
+      // The committed content came from the editor — the draft is stale now.
+      sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(id);
       return versionId;
     });
     const versionId = tx();
@@ -134,22 +252,7 @@ export function createChaptersRoute(
       .prepare("SELECT * FROM chapter_versions WHERE id = ?")
       .get(versionId) as ChapterVersionRow;
 
-    // Index chunks (best-effort; failure must not block save).
-    try {
-      await indexChapterVersion(sqlite, hasVec, {
-        bookId: ch.book_id,
-        chapterId: ch.id,
-        chapterOrder: ch.order_index,
-        versionId,
-        language: "ru",
-        text: contentText,
-      });
-    } catch (e) {
-      console.warn("[chunks] indexing failed:", e);
-    }
-
-    // Generate compact summary in background (used by Writer for prev-chapter context).
-    void triggerVersionSummary(sqlite, versionId);
+    memoryWorker?.kick();
 
     return c.json(toVersion(v), 201);
   });
@@ -169,6 +272,9 @@ export function createChaptersRoute(
         "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
       )
       .run(versionId, now, id);
+    // Restoring an old version is explicit — a lingering draft (based on the
+    // previous current version) would silently override it on next load.
+    sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(id);
     const row = sqlite
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(id) as ChapterRow;

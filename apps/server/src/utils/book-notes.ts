@@ -104,11 +104,15 @@ export function renderOpenNotesPrompt(
   notes: OpenNote[],
   heading: string,
   atChapterOrder: number,
+  opts?: { withIds?: boolean },
 ): string | null {
   if (notes.length === 0) return null;
+  // withIds prefixes each note with its stable id (note_<id>) so the
+  // extractor can resolve notes by id instead of fragile exact-title match.
+  // Contexts for Plot/critics stay id-free to avoid prompt noise.
   const lines = notes.map(
     (n) =>
-      `- [${KIND_LABEL[n.kind]}] ${n.title}: ${n.body} (с гл. #${n.introduced})`,
+      `- ${opts?.withIds ? `[note_${n.id}] ` : ""}[${KIND_LABEL[n.kind]}] ${n.title}: ${n.body} (с гл. #${n.introduced})`,
   );
   return `## ${heading} (актуально на главу #${atChapterOrder})\n${lines.join("\n")}`;
 }
@@ -189,37 +193,47 @@ export async function gatherRelevantNotes(
 }
 
 /**
- * Persist a chapter's extracted notes: resolve named open notes, embed +
- * insert new ones (idempotent by (book_id, title) — re-running a chapter
- * replaces its same-title note).
+ * Synchronous materialization of extracted notes with PRECOMPUTED embeddings
+ * (ADR 0002, I4): safe to call inside the atomic activation transaction —
+ * no async work here. `embeddings[i]` pairs with `extraction.newNotes[i]`;
+ * null means "no embedding" (provider was unavailable — cosine/vec skip it).
  */
-export async function persistEpisodicNotes(
+export function materializeEpisodicNotes(
   sqlite: DatabaseType,
   bookId: number,
   chapterOrder: number,
   sourceVersionId: number | null,
   extraction: EpisodicNoteExtraction,
-): Promise<void> {
+  embeddings: ReadonlyArray<Buffer | null>,
+): void {
   const hasVec = vecAvailable(sqlite);
   const now = new Date().toISOString();
 
-  for (const title of extraction.resolvedTitles) {
-    sqlite
+  // Resolve by stable id. The WHERE clause enforces book scope and open
+  // state; the Set dedupes repeated ids from the model. Unknown/foreign/
+  // already-resolved ids affect 0 rows and are logged, never applied.
+  const resolvedIds = new Set<number>();
+  for (const ref of extraction.resolvedNoteIds) {
+    const id = Number(ref.slice("note_".length));
+    if (Number.isInteger(id) && id > 0) resolvedIds.add(id);
+  }
+  for (const id of resolvedIds) {
+    const res = sqlite
       .prepare(
         `UPDATE book_notes SET chapter_order_resolved = ?
-         WHERE book_id = ? AND title = ? AND chapter_order_resolved IS NULL`,
+         WHERE id = ? AND book_id = ? AND chapter_order_resolved IS NULL`,
       )
-      .run(chapterOrder, bookId, title);
+      .run(chapterOrder, id, bookId);
+    if (res.changes === 0) {
+      console.warn(
+        `[episodic-notes] resolvedNoteId note_${id} skipped (missing, other book, or already resolved)`,
+      );
+    }
   }
 
-  for (const n of extraction.newNotes) {
-    let embBlob: Buffer | null = null;
-    try {
-      const v = await getEmbeddingProvider().embed(`${n.title}\n${n.body}`);
-      embBlob = floatToBlob(v);
-    } catch {
-      embBlob = null;
-    }
+  for (let i = 0; i < extraction.newNotes.length; i++) {
+    const n = extraction.newNotes[i]!;
+    const embBlob = embeddings[i] ?? null;
 
     const tx = sqlite.transaction(() => {
       // Replace a same-title note from this chapter (re-extraction).
@@ -279,91 +293,206 @@ export async function persistEpisodicNotes(
   }
 }
 
+/** Best-effort embeddings for extracted notes (null per note on failure). */
+export async function embedExtractedNotes(
+  extraction: EpisodicNoteExtraction,
+): Promise<Array<Buffer | null>> {
+  const out: Array<Buffer | null> = [];
+  for (const n of extraction.newNotes) {
+    try {
+      const v = await getEmbeddingProvider().embed(`${n.title}\n${n.body}`);
+      out.push(floatToBlob(v));
+    } catch {
+      out.push(null);
+    }
+  }
+  return out;
+}
+
 /**
- * Fire-and-forget: extract episodic notes from a freshly written chapter and
- * persist them. Never throws into the caller's save flow.
+ * Persist a chapter's extracted notes: embed (best-effort) + materialize.
+ * Legacy direct-persist path; the memory worker stages the extraction and
+ * the activation step calls `materializeEpisodicNotes` instead (ADR 0002).
+ */
+export async function persistEpisodicNotes(
+  sqlite: DatabaseType,
+  bookId: number,
+  chapterOrder: number,
+  sourceVersionId: number | null,
+  extraction: EpisodicNoteExtraction,
+): Promise<void> {
+  const embeddings = await embedExtractedNotes(extraction);
+  materializeEpisodicNotes(
+    sqlite,
+    bookId,
+    chapterOrder,
+    sourceVersionId,
+    extraction,
+    embeddings,
+  );
+}
+
+export interface NotesExtractionResult {
+  newCount: number;
+  resolvedCount: number;
+  /** Row missing / too short — nothing to do, treated as success. */
+  skipped?: "missing" | "short";
+  /** shouldPersist() said the version is no longer current — nothing was
+   *  written to the active tables (ADR 0002, I3). */
+  stale?: boolean;
+}
+
+export interface NotesPayload {
+  extraction: EpisodicNoteExtraction;
+  bookId: number;
+  chapterId: number;
+  chapterOrder: number;
+  skipped?: "missing" | "short";
+}
+
+const EMPTY_EXTRACTION: EpisodicNoteExtraction = {
+  newNotes: [],
+  resolvedNoteIds: [],
+  notes: null,
+};
+
+/**
+ * Throwing payload core: run the LLM extraction WITHOUT touching active
+ * tables (ADR 0002, I4 — the worker stages this payload in result_json and
+ * the atomic activation step materializes it via `materializeEpisodicNotes`).
+ */
+export async function extractNotesPayload(
+  sqlite: DatabaseType,
+  versionId: number,
+): Promise<NotesPayload> {
+  const missing: NotesPayload = {
+    extraction: EMPTY_EXTRACTION,
+    bookId: 0,
+    chapterId: 0,
+    chapterOrder: 0,
+    skipped: "missing",
+  };
+  const v = sqlite
+    .prepare(
+      `SELECT id, chapter_id, content_text, word_count
+       FROM chapter_versions WHERE id = ?`,
+    )
+    .get(versionId) as
+    | {
+        id: number;
+        chapter_id: number;
+        content_text: string;
+        word_count: number;
+      }
+    | undefined;
+  if (!v) return missing;
+
+  const ch = sqlite
+    .prepare(
+      "SELECT id, book_id, title, order_index FROM chapters WHERE id = ?",
+    )
+    .get(v.chapter_id) as
+    | { id: number; book_id: number; title: string; order_index: number }
+    | undefined;
+  if (!ch) return missing;
+  const base = {
+    bookId: ch.book_id,
+    chapterId: ch.id,
+    chapterOrder: ch.order_index,
+  };
+  if (v.word_count < 80) {
+    return { ...base, extraction: EMPTY_EXTRACTION, skipped: "short" };
+  }
+
+  const bk = sqlite
+    .prepare("SELECT title, critic_model FROM books WHERE id = ?")
+    .get(ch.book_id) as
+    | { title: string; critic_model: "sonnet" | "opus" }
+    | undefined;
+  if (!bk) return missing;
+
+  const open = loadOpenNotes(
+    sqlite,
+    ch.book_id,
+    Math.max(0, ch.order_index - 1),
+  );
+  const openRendered = renderOpenNotesPrompt(
+    open,
+    "Открытые заметки",
+    Math.max(0, ch.order_index - 1),
+    { withIds: true },
+  );
+
+  const payload: EpisodicNoteExtractorInput = {
+    bookTitle: bk.title,
+    chapterTitle: ch.title,
+    chapterOrder: ch.order_index,
+    chapterText: v.content_text,
+    openNotes: openRendered,
+    model: bk.critic_model ?? "sonnet",
+    onUsage: (u) =>
+      logUsage(sqlite, {
+        route: "episodic.notes",
+        model: u.modelId,
+        usage: {
+          inputTokens: u.inputTokens,
+          outputTokens: u.outputTokens,
+          cacheCreationInputTokens: u.cacheCreationInputTokens,
+          cacheReadInputTokens: u.cacheReadInputTokens,
+        },
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        versionId,
+      }),
+  };
+
+  const result = await extractEpisodicNotes(payload);
+  return { ...base, extraction: result };
+}
+
+/**
+ * Throwing core: payload extraction + direct persist (legacy path used by
+ * the fire-and-forget wrapper and its tests). The worker stages the payload
+ * instead and materializes it at activation. `opts.shouldPersist` is checked
+ * after the LLM call, right before touching active tables.
+ */
+export async function extractNotesForVersion(
+  sqlite: DatabaseType,
+  versionId: number,
+  opts?: { shouldPersist?: () => boolean },
+): Promise<NotesExtractionResult> {
+  const p = await extractNotesPayload(sqlite, versionId);
+  if (p.skipped) return { newCount: 0, resolvedCount: 0, skipped: p.skipped };
+  const counts = {
+    newCount: p.extraction.newNotes.length,
+    resolvedCount: p.extraction.resolvedNoteIds.length,
+  };
+  if (opts?.shouldPersist && !opts.shouldPersist()) {
+    return { ...counts, stale: true };
+  }
+  if (counts.newCount > 0 || counts.resolvedCount > 0) {
+    await persistEpisodicNotes(
+      sqlite,
+      p.bookId,
+      p.chapterOrder,
+      versionId,
+      p.extraction,
+    );
+  }
+  return counts;
+}
+
+/**
+ * Fire-and-forget wrapper around `extractNotesForVersion` — never throws into
+ * the caller's save flow. Legacy path; the durable memory worker calls the
+ * core directly (ADR 0002).
  */
 export async function triggerEpisodicNotes(
   sqlite: DatabaseType,
   versionId: number,
 ): Promise<void> {
   try {
-    const v = sqlite
-      .prepare(
-        `SELECT id, chapter_id, content_text, word_count
-         FROM chapter_versions WHERE id = ?`,
-      )
-      .get(versionId) as
-      | {
-          id: number;
-          chapter_id: number;
-          content_text: string;
-          word_count: number;
-        }
-      | undefined;
-    if (!v) return;
-    if (v.word_count < 80) return;
-
-    const ch = sqlite
-      .prepare(
-        "SELECT id, book_id, title, order_index FROM chapters WHERE id = ?",
-      )
-      .get(v.chapter_id) as
-      | { id: number; book_id: number; title: string; order_index: number }
-      | undefined;
-    if (!ch) return;
-
-    const bk = sqlite
-      .prepare("SELECT title, critic_model FROM books WHERE id = ?")
-      .get(ch.book_id) as
-      | { title: string; critic_model: "sonnet" | "opus" }
-      | undefined;
-    if (!bk) return;
-
-    const open = loadOpenNotes(
-      sqlite,
-      ch.book_id,
-      Math.max(0, ch.order_index - 1),
-    );
-    const openRendered = renderOpenNotesPrompt(
-      open,
-      "Открытые заметки",
-      Math.max(0, ch.order_index - 1),
-    );
-
-    const payload: EpisodicNoteExtractorInput = {
-      bookTitle: bk.title,
-      chapterTitle: ch.title,
-      chapterOrder: ch.order_index,
-      chapterText: v.content_text,
-      openNotes: openRendered,
-      model: bk.critic_model ?? "sonnet",
-      onUsage: (u) =>
-        logUsage(sqlite, {
-          route: "episodic.notes",
-          model: u.modelId,
-          usage: {
-            inputTokens: u.inputTokens,
-            outputTokens: u.outputTokens,
-            cacheCreationInputTokens: u.cacheCreationInputTokens,
-            cacheReadInputTokens: u.cacheReadInputTokens,
-          },
-          bookId: ch.book_id,
-          chapterId: ch.id,
-          versionId,
-        }),
-    };
-
-    const result = await extractEpisodicNotes(payload);
-    if (result.newNotes.length > 0 || result.resolvedTitles.length > 0) {
-      await persistEpisodicNotes(
-        sqlite,
-        ch.book_id,
-        ch.order_index,
-        versionId,
-        result,
-      );
-    }
+    await extractNotesForVersion(sqlite, versionId);
   } catch (e) {
     console.warn(
       "[episodic-notes] extraction failed:",

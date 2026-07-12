@@ -27,19 +27,40 @@ export const chapterVersionSchema = z.object({
 });
 export type ChapterVersion = z.infer<typeof chapterVersionSchema>;
 
+const proseMirrorContentJson = z.unknown().refine(
+  (v) =>
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    typeof (v as { type?: unknown }).type === "string",
+  { message: "contentJson must be ProseMirror doc" },
+);
+
+// ADR 0002 (Step 6): POST /versions is ALWAYS a deliberate commit — the old
+// `finalize` flag is gone (unknown keys from older clients are stripped).
+// Debounced autosaves go to PUT /chapters/:id/draft instead.
 export const createChapterVersionInputSchema = z.object({
-  contentJson: z.unknown().refine(
-    (v) =>
-      typeof v === "object" &&
-      v !== null &&
-      !Array.isArray(v) &&
-      typeof (v as { type?: unknown }).type === "string",
-    { message: "contentJson must be ProseMirror doc" },
-  ),
+  contentJson: proseMirrorContentJson,
 });
 export type CreateChapterVersionInput = z.infer<
   typeof createChapterVersionInputSchema
 >;
+
+export const saveChapterDraftInputSchema = z.object({
+  contentJson: proseMirrorContentJson,
+});
+export type SaveChapterDraftInput = z.infer<typeof saveChapterDraftInputSchema>;
+
+/** Working draft row (chapter_drafts) as returned by GET /api/chapters/:id. */
+export const chapterDraftSchema = z.object({
+  chapterId: z.number().int().positive(),
+  contentJson: z.string().min(1),
+  contentText: z.string(),
+  wordCount: z.number().int().nonnegative(),
+  baseVersionId: z.number().int().positive().nullable(),
+  updatedAt: z.string(),
+});
+export type ChapterDraft = z.infer<typeof chapterDraftSchema>;
 
 export const EMPTY_DOC = {
   type: "doc",

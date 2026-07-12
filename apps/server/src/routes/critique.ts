@@ -26,7 +26,12 @@ import {
   gatherRelevantNotes,
   renderOpenNotesPrompt,
 } from "../utils/book-notes.js";
-import { indexChapterVersion } from "@book-forge/retrieval";
+import {
+  enqueueMemoryJobs,
+  COMMIT_JOB_KINDS,
+} from "../utils/memory-queue.js";
+import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
+import type { MemoryWorker } from "../utils/memory-worker.js";
 import { toVersion } from "../db/rows.js";
 import { loadStyleContext } from "../utils/style-context.js";
 import { logUsage } from "../utils/usageLogger.js";
@@ -40,6 +45,31 @@ import type {
   BookRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
+
+interface PlanVariantLite {
+  pov: string;
+  emotionalGoal: string;
+  beats?: Array<{
+    index?: number;
+    type: string;
+    summary: string;
+    goal: string;
+    conflict: string;
+    outcome: string;
+  }>;
+}
+
+// Render the accepted plan variant's beats in the same shape Writer uses, so
+// Editor/Reviser see the exact beat list the chapter was written against.
+function renderBeatSheetBlock(v: PlanVariantLite): string | null {
+  if (!v.beats || v.beats.length === 0) return null;
+  return v.beats
+    .map(
+      (b, i) =>
+        `${(b.index ?? i) + 1}. [${b.type}] ${b.summary}\n   Цель: ${b.goal}\n   Конфликт: ${b.conflict}\n   Исход: ${b.outcome}`,
+    )
+    .join("\n\n");
+}
 
 interface CritiqueReportRow {
   id: number;
@@ -117,7 +147,7 @@ void extractText; // keep import alive if unused
 
 export function createCritiqueRoute(
   sqlite: DatabaseType,
-  hasVec: boolean,
+  memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
   const r = new Hono();
 
@@ -173,15 +203,18 @@ export function createCritiqueRoute(
     }
     let pov = "—";
     let emotionalGoal = "—";
+    let beatSheet: string | null = null;
     if (ch.plan_json) {
       try {
         const p = JSON.parse(ch.plan_json) as {
-          variants: Array<{ pov: string; emotionalGoal: string }>;
+          variants: Array<PlanVariantLite>;
           selectedIndex: number | null;
         };
         if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
-          pov = p.variants[p.selectedIndex]!.pov;
-          emotionalGoal = p.variants[p.selectedIndex]!.emotionalGoal;
+          const sel = p.variants[p.selectedIndex]!;
+          pov = sel.pov;
+          emotionalGoal = sel.emotionalGoal;
+          beatSheet = renderBeatSheetBlock(sel);
         }
       } catch {
         /* ignore */
@@ -290,6 +323,7 @@ export function createCritiqueRoute(
       chapterTitle: ch.title,
       pov,
       emotionalGoal,
+      beatSheet,
       bookContext,
       previousChaptersSummary: prevSummary,
       characterContext,
@@ -430,15 +464,18 @@ export function createCritiqueRoute(
     }
     let pov = "—";
     let emotionalGoal = "—";
+    let beatSheet: string | null = null;
     if (ch.plan_json) {
       try {
         const p = JSON.parse(ch.plan_json) as {
-          variants: Array<{ pov: string; emotionalGoal: string }>;
+          variants: Array<PlanVariantLite>;
           selectedIndex: number | null;
         };
         if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
-          pov = p.variants[p.selectedIndex]!.pov;
-          emotionalGoal = p.variants[p.selectedIndex]!.emotionalGoal;
+          const sel = p.variants[p.selectedIndex]!;
+          pov = sel.pov;
+          emotionalGoal = sel.emotionalGoal;
+          beatSheet = renderBeatSheetBlock(sel);
         }
       } catch {
         /* ignore */
@@ -562,6 +599,7 @@ export function createCritiqueRoute(
           chapterTitle: ch.title,
           pov,
           emotionalGoal,
+          beatSheet,
           characterContext,
           loreContext,
           styleContext: styleCtx.prompt,
@@ -622,22 +660,23 @@ export function createCritiqueRoute(
           sqlite
             .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
             .run(now, ch.book_id);
+          // ADR 0002: a repaired chapter is a deliberate commit — enqueue the
+          // full memory pipeline atomically with the version row.
+          enqueueMemoryJobs(sqlite, {
+            bookId: ch.book_id,
+            chapterId: ch.id,
+            chapterVersionId: newVersionId,
+            kinds: COMMIT_JOB_KINDS,
+          });
+          markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
+          // The revised text replaces the editor content — drop the stale draft.
+          sqlite
+            .prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?")
+            .run(ch.id);
           return newVersionId;
         });
         const newVersionId = tx();
-
-        try {
-          await indexChapterVersion(sqlite, hasVec, {
-            bookId: ch.book_id,
-            chapterId: ch.id,
-            chapterOrder: ch.order_index,
-            versionId: newVersionId,
-            language: "ru",
-            text: fullText,
-          });
-        } catch (e) {
-          console.warn("[chunks] repair indexing failed:", e);
-        }
+        memoryWorker?.kick();
 
         const newRow = sqlite
           .prepare("SELECT * FROM chapter_versions WHERE id = ?")

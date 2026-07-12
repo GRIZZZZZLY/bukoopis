@@ -61,9 +61,9 @@ function insertBook(): number {
 
 function extraction(
   newNotes: EpisodicNoteExtraction["newNotes"],
-  resolvedTitles: string[] = [],
+  resolvedNoteIds: string[] = [],
 ): EpisodicNoteExtraction {
-  return { newNotes, resolvedTitles, notes: null };
+  return { newNotes, resolvedNoteIds, notes: null };
 }
 
 beforeEach(() => {
@@ -92,7 +92,7 @@ describe("persistEpisodicNotes + loadOpenNotes", () => {
     expect(loadOpenNotes(sqlite, b, 1)).toHaveLength(0);
   });
 
-  it("resolves a named open note", async () => {
+  it("resolves an open note by stable id", async () => {
     const b = insertBook();
     await persistEpisodicNotes(
       sqlite,
@@ -103,9 +103,64 @@ describe("persistEpisodicNotes + loadOpenNotes", () => {
         { kind: "mystery", title: "Кто убийца", body: "Загадка.", tags: [] },
       ]),
     );
-    await persistEpisodicNotes(sqlite, b, 5, 50, extraction([], ["Кто убийца"]));
+    const id = loadOpenNotes(sqlite, b, 4)[0]!.id;
+    await persistEpisodicNotes(sqlite, b, 5, 50, extraction([], [`note_${id}`]));
     expect(loadOpenNotes(sqlite, b, 4)).toHaveLength(1); // open at ch4
     expect(loadOpenNotes(sqlite, b, 6)).toHaveLength(0); // closed by ch5
+  });
+
+  it("skips unknown, foreign-book and duplicate resolvedNoteIds", async () => {
+    const a = insertBook();
+    const b = insertBook();
+    await persistEpisodicNotes(
+      sqlite,
+      a,
+      1,
+      10,
+      extraction([{ kind: "thread", title: "Чужая", body: "В книге A.", tags: [] }]),
+    );
+    const foreignId = loadOpenNotes(sqlite, a, 3)[0]!.id;
+    await persistEpisodicNotes(
+      sqlite,
+      b,
+      1,
+      11,
+      extraction([{ kind: "thread", title: "Своя", body: "В книге B.", tags: [] }]),
+    );
+    const ownId = loadOpenNotes(sqlite, b, 3)[0]!.id;
+    // Unknown + foreign + duplicated own id: only the own note resolves, once.
+    await persistEpisodicNotes(
+      sqlite,
+      b,
+      4,
+      12,
+      extraction([], [
+        "note_999999",
+        `note_${foreignId}`,
+        `note_${ownId}`,
+        `note_${ownId}`,
+      ]),
+    );
+    expect(loadOpenNotes(sqlite, a, 5)).toHaveLength(1); // foreign untouched
+    expect(loadOpenNotes(sqlite, b, 5)).toHaveLength(0); // own resolved
+  });
+
+  it("does not re-resolve an already-resolved note", async () => {
+    const b = insertBook();
+    await persistEpisodicNotes(
+      sqlite,
+      b,
+      1,
+      10,
+      extraction([{ kind: "mystery", title: "Тайна", body: "Вопрос.", tags: [] }]),
+    );
+    const id = loadOpenNotes(sqlite, b, 2)[0]!.id;
+    await persistEpisodicNotes(sqlite, b, 5, 20, extraction([], [`note_${id}`]));
+    await persistEpisodicNotes(sqlite, b, 7, 30, extraction([], [`note_${id}`]));
+    const row = sqlite
+      .prepare("SELECT chapter_order_resolved FROM book_notes WHERE id = ?")
+      .get(id) as { chapter_order_resolved: number };
+    expect(row.chapter_order_resolved).toBe(5); // first resolution wins
   });
 
   it("same-chapter re-extraction replaces the same-title note", async () => {
@@ -148,6 +203,22 @@ describe("renderOpenNotesPrompt", () => {
     const out = renderOpenNotesPrompt(loadOpenNotes(sqlite, b, 4), "Открытые линии", 4)!;
     expect(out).toContain("Открытые линии (актуально на главу #4)");
     expect(out).toContain("[предзнаменование] Ружьё: На стене. (с гл. #1)");
+    expect(out).not.toContain("[note_"); // id-free by default (Plot/critics)
+  });
+  it("prefixes stable ids when withIds is set (extractor input)", async () => {
+    const b = insertBook();
+    await persistEpisodicNotes(
+      sqlite,
+      b,
+      1,
+      10,
+      extraction([{ kind: "thread", title: "Нить", body: "Тянется.", tags: [] }]),
+    );
+    const open = loadOpenNotes(sqlite, b, 4);
+    const out = renderOpenNotesPrompt(open, "Открытые заметки", 4, {
+      withIds: true,
+    })!;
+    expect(out).toContain(`[note_${open[0]!.id}] [линия] Нить`);
   });
 });
 

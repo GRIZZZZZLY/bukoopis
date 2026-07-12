@@ -34,6 +34,9 @@ export const books = sqliteTable(
     writerLocalModel: text("writer_local_model"),
     concept: text("concept"),
     studioState: text("studio_state"),
+    // ADR 0002: first chapter order whose derived memory (facts/notes/chunks)
+    // is stale after an earlier-chapter edit; NULL = memory fresh.
+    memoryStaleFromChapterOrder: integer("memory_stale_from_chapter_order"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -73,6 +76,12 @@ export const chapters = sqliteTable(
     intent: text("intent"),
     planJson: text("plan_json"),
     currentVersionId: integer("current_version_id").references(
+      (): AnySQLiteColumn => chapterVersions.id,
+      { onDelete: "set null" },
+    ),
+    // ADR 0002: last version whose memory (chunks/summary/facts/notes) was
+    // fully activated. Retrieval reads by this, not current_version_id.
+    memoryVersionId: integer("memory_version_id").references(
       (): AnySQLiteColumn => chapterVersions.id,
       { onDelete: "set null" },
     ),
@@ -437,6 +446,63 @@ export const chapterVersions = sqliteTable(
 );
 
 // ─────────────── Studio audit (Phase A) ───────────────
+
+// ─────────────── Durable memory pipeline (ADR 0002) ───────────────
+
+export const memoryJobs = sqliteTable(
+  "memory_jobs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterId: integer("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    chapterVersionId: integer("chapter_version_id")
+      .notNull()
+      .references(() => chapterVersions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    pipelineVersion: integer("pipeline_version").notNull().default(1),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    runAfter: text("run_after"),
+    startedAt: text("started_at"),
+    finishedAt: text("finished_at"),
+    lastError: text("last_error"),
+    // Staged output (facts/notes extraction payload) — applied to the active
+    // tables only by the atomic activation step, never by the job handler.
+    resultJson: text("result_json"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_memory_jobs_claim").on(t.status, t.runAfter, t.bookId),
+    index("idx_memory_jobs_version").on(t.chapterVersionId, t.kind),
+    check(
+      "memory_jobs_kind_check",
+      sql`${t.kind} IN ('index','summary','facts','notes','rollup')`,
+    ),
+    check(
+      "memory_jobs_status_check",
+      sql`${t.status} IN ('pending','running','retry','done','error','obsolete')`,
+    ),
+  ],
+);
+
+export const chapterDrafts = sqliteTable("chapter_drafts", {
+  chapterId: integer("chapter_id")
+    .primaryKey()
+    .references(() => chapters.id, { onDelete: "cascade" }),
+  contentJson: text("content_json").notNull(),
+  contentText: text("content_text").notNull(),
+  wordCount: integer("word_count").notNull(),
+  baseVersionId: integer("base_version_id").references(
+    (): AnySQLiteColumn => chapterVersions.id,
+    { onDelete: "set null" },
+  ),
+  updatedAt: text("updated_at").notNull(),
+});
 
 export const studioEvents = sqliteTable(
   "studio_events",

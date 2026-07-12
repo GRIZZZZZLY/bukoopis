@@ -13,14 +13,18 @@ import { createStyleRoute } from "./routes/style.js";
 import { createUsageRoute } from "./routes/usage.js";
 import { createCanonExtractionRoute } from "./routes/canon-extraction.js";
 import { createStudioRoute } from "./routes/studio.js";
+import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
 
 export interface AppHandle {
   app: Hono;
   close: () => void;
+  /** ADR 0002 — durable memory pipeline worker (tests use drain()). */
+  memoryWorker: MemoryWorker;
 }
 
 export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   const { sqlite, hasVec } = createDb(dbPath);
+  const memoryWorker = startMemoryWorker(sqlite, hasVec);
   const app = new Hono();
 
   app.use("*", async (c, next) => {
@@ -36,13 +40,13 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api/health", createHealthRoute({ sqlite, hasVec }));
   // Mounted before /api/books: GET /api/books/recommended must not be shadowed by books' GET /:id.
   app.route("/api", createStudioRoute(sqlite));
-  app.route("/api/books", createBooksRoute(sqlite));
-  app.route("/api/chapters", createChaptersRoute(sqlite, hasVec));
-  app.route("/api", createPlotRoute(sqlite, hasVec));
+  app.route("/api/books", createBooksRoute(sqlite, memoryWorker));
+  app.route("/api/chapters", createChaptersRoute(sqlite, memoryWorker));
+  app.route("/api", createPlotRoute(sqlite, hasVec, memoryWorker));
   app.route("/api", createRetrievalRoute(sqlite, hasVec));
   app.route("/api", createImportExportRoute(sqlite, hasVec));
   app.route("/api", createEntitiesRoute(sqlite));
-  app.route("/api", createCritiqueRoute(sqlite, hasVec));
+  app.route("/api", createCritiqueRoute(sqlite, memoryWorker));
   app.route("/api", createInlineRoute(sqlite));
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));
@@ -50,6 +54,10 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
 
   return {
     app,
-    close: () => sqlite.close(),
+    memoryWorker,
+    close: () => {
+      memoryWorker.stop();
+      sqlite.close();
+    },
   };
 }

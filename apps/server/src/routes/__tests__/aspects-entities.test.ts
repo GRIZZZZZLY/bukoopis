@@ -274,4 +274,77 @@ describe("/aspects/:aspectId/materialize", () => {
     );
     expect(r.status).toBe(400);
   });
+
+  it("replays an identical retry instead of duplicating entities (ADR 0002, Step 7)", async () => {
+    const id = await createBook();
+    const body = {
+      stageId: "characters",
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId: "t1",
+          decision: "accept",
+          profile: {
+            name: "Айрис",
+            role: "protagonist",
+            description: "Молодая страж границы.",
+          },
+        },
+      ],
+    };
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${id}/aspects/asp1/materialize`,
+      "POST",
+      body,
+    );
+    // Network retry: byte-identical request → same response, no new rows.
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${id}/aspects/asp1/materialize`,
+      "POST",
+      body,
+    );
+    expect(second.createdEntityIds).toEqual(first.createdEntityIds);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${id}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(1);
+  });
+
+  it("a different candidate set for the same aspect materializes fresh entities", async () => {
+    const id = await createBook();
+    const mk = (tempId: string, name: string) => ({
+      stageId: "characters",
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId,
+          decision: "accept",
+          profile: { name, role: "protagonist", description: "Описание героя." },
+        },
+      ],
+    });
+    await sendJson(
+      t.app,
+      `/api/books/${id}/aspects/asp1/materialize`,
+      "POST",
+      mk("t1", "Айрис"),
+    );
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${id}/aspects/asp1/materialize`,
+      "POST",
+      mk("t2", "Кеан"),
+    );
+    expect(second.createdEntityIds).toHaveLength(1);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${id}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(2);
+  });
 });

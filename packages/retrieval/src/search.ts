@@ -62,11 +62,16 @@ export async function hybridSearch(
   // ── Vector branch ──
   let vecRanking = new Map<number, number>();
   if (opts.hasVec) {
+    try {
     const provider = getEmbeddingProvider();
     const qVec = await provider.embed(opts.query);
     const qBlob = floatToBlob(qVec);
 
     // sqlite-vec: query first against chunk_vec, then filter via JOIN on chunks.
+    // ADR 0002 (I2): chapter chunks are filtered by memory_version_id — the
+    // last FULLY activated version — not current_version_id. While a newer
+    // commit is still being processed, retrieval keeps seeing the previous
+    // activated version instead of the chapter vanishing.
     const rows = sqlite
       .prepare(
         `SELECT v.rowid AS id, v.distance AS distance
@@ -78,7 +83,7 @@ export async function hybridSearch(
            AND c.book_id = ?
            AND (
              c.source_type != 'chapter_version'
-             OR ch.current_version_id = c.source_id
+             OR ch.memory_version_id = c.source_id
            )
            ${
              opts.beforeChapterOrder !== undefined
@@ -96,6 +101,15 @@ export async function hybridSearch(
           : []),
       ) as VecRow[];
     vecRanking = new Map(rows.map((r, i) => [r.id, i + 1]));
+    } catch (e) {
+      // Embedding unavailable (model not loaded / offline) or vec backend
+      // error: fall back to FTS-only rather than failing the whole search.
+      console.warn(
+        "[search] vector branch skipped, using FTS only:",
+        e instanceof Error ? e.message : e,
+      );
+      vecRanking = new Map();
+    }
   }
 
   // ── FTS5 branch ──
@@ -117,7 +131,7 @@ export async function hybridSearch(
            AND c.book_id = ?
            AND (
              c.source_type != 'chapter_version'
-             OR ch.current_version_id = c.source_id
+             OR ch.memory_version_id = c.source_id
            )
            ${
              opts.beforeChapterOrder !== undefined

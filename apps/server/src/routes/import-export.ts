@@ -218,7 +218,11 @@ export function createImportExportRoute(
     });
     tx();
 
-    // Index chunks outside transaction (async + best-effort)
+    // Index chunks outside transaction (async + best-effort). Import keeps
+    // the cheap synchronous path (no LLM extractors for bulk import); once a
+    // chapter's chunks land we point memory_version_id at the imported
+    // version so retrieval (which reads by memory_version_id, ADR 0002 I2)
+    // sees it immediately.
     for (const item of created) {
       try {
         await indexChapterVersion(sqlite, hasVec, {
@@ -229,6 +233,9 @@ export function createImportExportRoute(
           language: "ru",
           text: item.body,
         });
+        sqlite
+          .prepare("UPDATE chapters SET memory_version_id = ? WHERE id = ?")
+          .run(item.versionId, item.chapterId);
       } catch (e) {
         console.warn("[import] indexing failed for chapter", item.chapterId, e);
       }

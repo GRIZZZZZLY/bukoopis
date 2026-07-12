@@ -504,18 +504,40 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     if (!parsed.success) return validationFailed(c, parsed.error);
 
     const bookRow = sqlite
-      .prepare("SELECT id FROM books WHERE id = ?")
-      .get(id) as { id: number } | undefined;
+      .prepare("SELECT id, studio_state FROM books WHERE id = ?")
+      .get(id) as { id: number; studio_state: string | null } | undefined;
     if (!bookRow) return notFound(c, "book");
 
+    // ADR 0002 (Step 7) — idempotency: a network retry replays the SAME
+    // request (same aspect, same tempId set) instead of inserting duplicate
+    // entities. The materialize event journaled in the same transaction
+    // below is the dedup key.
+    const requestKey = parsed.data.candidates
+      .map((cand) => cand.tempId)
+      .sort()
+      .join("|");
+    const prior = sqlite
+      .prepare(
+        `SELECT payload FROM studio_events
+         WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(id, aspectId) as { payload: string } | undefined;
+    if (prior) {
+      try {
+        const p = JSON.parse(prior.payload) as {
+          requestKey?: string;
+          response?: unknown;
+        };
+        if (p.requestKey === requestKey && p.response) {
+          return c.json(p.response);
+        }
+      } catch {
+        /* malformed legacy event — fall through to a fresh materialization */
+      }
+    }
+
     const now = new Date().toISOString();
-    const createdEntityIds: number[] = [];
-    const candidatesAfter: Array<{
-      tempId: string;
-      decision: "accept" | "reject";
-      materializedEntityId?: number;
-      mergedIntoId?: number;
-    }> = [];
 
     const insertChar = sqlite.prepare(
       `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
@@ -526,43 +548,84 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
        VALUES (?, ?, ?, ?, ?)`,
     );
 
-    for (const cand of parsed.data.candidates) {
-      if (cand.decision === "reject") {
-        candidatesAfter.push({ tempId: cand.tempId, decision: "reject" });
-        continue;
-      }
-      if (cand.mergedIntoId !== undefined) {
+    let revision = 0;
+    try {
+      revision = bookRow.studio_state
+        ? ((JSON.parse(bookRow.studio_state) as { revision?: number })
+            .revision ?? 0)
+        : 0;
+    } catch {
+      revision = 0;
+    }
+
+    // ADR 0002 (Step 7) — atomicity: all entity inserts + the audit event
+    // land in ONE immediate transaction; a mid-loop failure leaves nothing.
+    const tx = sqlite.transaction(() => {
+      const createdEntityIds: number[] = [];
+      const candidatesAfter: Array<{
+        tempId: string;
+        decision: "accept" | "reject";
+        materializedEntityId?: number;
+        mergedIntoId?: number;
+      }> = [];
+
+      for (const cand of parsed.data.candidates) {
+        if (cand.decision === "reject") {
+          candidatesAfter.push({ tempId: cand.tempId, decision: "reject" });
+          continue;
+        }
+        if (cand.mergedIntoId !== undefined) {
+          candidatesAfter.push({
+            tempId: cand.tempId,
+            decision: "accept",
+            mergedIntoId: cand.mergedIntoId,
+          });
+          continue;
+        }
+        const profileJson = JSON.stringify(cand.profile);
+        const profile = cand.profile as { name?: unknown };
+        const name =
+          typeof profile.name === "string" ? profile.name : "Без имени";
+        let entityId: number;
+        if (parsed.data.stageId === "characters") {
+          const info = insertChar.run(id, name, profileJson, now, now);
+          entityId = Number(info.lastInsertRowid);
+        } else {
+          const info = insertItem.run(id, name, profileJson, now, now);
+          entityId = Number(info.lastInsertRowid);
+        }
+        createdEntityIds.push(entityId);
         candidatesAfter.push({
           tempId: cand.tempId,
           decision: "accept",
-          mergedIntoId: cand.mergedIntoId,
+          materializedEntityId: entityId,
         });
-        continue;
       }
-      const profileJson = JSON.stringify(cand.profile);
-      const profile = cand.profile as { name?: unknown };
-      const name = typeof profile.name === "string" ? profile.name : "Без имени";
-      let entityId: number;
-      if (parsed.data.stageId === "characters") {
-        const info = insertChar.run(id, name, profileJson, now, now);
-        entityId = Number(info.lastInsertRowid);
-      } else {
-        const info = insertItem.run(id, name, profileJson, now, now);
-        entityId = Number(info.lastInsertRowid);
-      }
-      createdEntityIds.push(entityId);
-      candidatesAfter.push({
-        tempId: cand.tempId,
-        decision: "accept",
-        materializedEntityId: entityId,
-      });
-    }
 
-    return c.json({
-      aspectId,
-      createdEntityIds,
-      candidates: candidatesAfter,
+      const response = {
+        aspectId,
+        createdEntityIds,
+        candidates: candidatesAfter,
+      };
+      sqlite
+        .prepare(
+          `INSERT INTO studio_events
+             (book_id, event_type, stage_id, aspect_id, payload, revision_before, revision_after, created_at)
+           VALUES (?, 'materialize_entity_set', ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          parsed.data.stageId,
+          aspectId,
+          JSON.stringify({ requestKey, response }),
+          revision,
+          revision,
+          now,
+        );
+      return response;
     });
+
+    return c.json(tx.immediate());
   });
 
   return r;

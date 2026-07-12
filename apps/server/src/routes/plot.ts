@@ -19,7 +19,6 @@ import {
   gatherLoreContext,
   loreContextToPrompt,
 } from "@book-forge/agents";
-import { indexChapterVersion } from "@book-forge/retrieval";
 import { loadStyleContext } from "../utils/style-context.js";
 import {
   loadStudioContext,
@@ -34,7 +33,12 @@ import {
 } from "../utils/book-notes.js";
 import { logUsage } from "../utils/usageLogger.js";
 import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
-import { triggerVersionSummary } from "../utils/summary-trigger.js";
+import {
+  enqueueMemoryJobs,
+  COMMIT_JOB_KINDS,
+} from "../utils/memory-queue.js";
+import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
+import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   toBook,
   toChapter,
@@ -102,6 +106,7 @@ function loadBookContext(
 export function createPlotRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
+  memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
   const r = new Hono();
 
@@ -450,25 +455,27 @@ export function createPlotRoute(
           sqlite
             .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
             .run(now, ch.book_id);
+          // ADR 0002: writer output is a deliberate commit — version row and
+          // memory jobs are created atomically; the durable worker handles
+          // index/summary/facts/notes asynchronously.
+          enqueueMemoryJobs(sqlite, {
+            bookId: ch.book_id,
+            chapterId: ch.id,
+            chapterVersionId: versionId,
+            kinds: COMMIT_JOB_KINDS,
+          });
+          markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
+          // Writer output replaces the editor content — drop the stale draft.
+          sqlite
+            .prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?")
+            .run(ch.id);
           return versionId;
         });
         const versionId = tx();
         const v = sqlite
           .prepare("SELECT * FROM chapter_versions WHERE id = ?")
           .get(versionId) as ChapterVersionRow;
-
-        try {
-          await indexChapterVersion(sqlite, hasVec, {
-            bookId: ch.book_id,
-            chapterId: ch.id,
-            chapterOrder: ch.order_index,
-            versionId,
-            language: "ru",
-            text: fullText,
-          });
-        } catch (e) {
-          console.warn("[chunks] indexing failed:", e);
-        }
+        memoryWorker?.kick();
 
         logUsage(sqlite, {
           route: "writer.chapter",
@@ -498,9 +505,9 @@ export function createPlotRoute(
         });
 
         // Fire-and-forget canon extraction. Frontend polls for the snapshot.
+        // (Separate UI feature — memory summary/facts/notes now flow through
+        // the durable memory_jobs queue enqueued in the commit tx above.)
         void triggerCanonExtractionAfterWriter(sqlite, ch.id);
-        // Fire-and-forget compact summary for next-chapter context.
-        void triggerVersionSummary(sqlite, versionId);
       } catch (e) {
         await stream.writeSSE({
           event: "error",

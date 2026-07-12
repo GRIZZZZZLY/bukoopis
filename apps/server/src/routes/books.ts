@@ -7,8 +7,16 @@ import {
 } from "@book-forge/shared";
 import { toBook, toChapter, type BookRow, type ChapterRow } from "../db/rows.js";
 import { notFound, validationFailed } from "../utils/errors.js";
+import {
+  enqueueMemoryJobs,
+  COMMIT_JOB_KINDS,
+} from "../utils/memory-queue.js";
+import type { MemoryWorker } from "../utils/memory-worker.js";
 
-export function createBooksRoute(sqlite: DatabaseType): Hono {
+export function createBooksRoute(
+  sqlite: DatabaseType,
+  memoryWorker?: Pick<MemoryWorker, "kick">,
+): Hono {
   const r = new Hono();
 
   r.get("/", (c) => {
@@ -157,6 +165,59 @@ export function createBooksRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(info.lastInsertRowid) as ChapterRow;
     return c.json(toChapter(row), 201);
+  });
+
+  // ADR 0002 (I6): rebuild derived memory from a chapter onward. Deletes the
+  // commit-kind jobs of each affected chapter's CURRENT version and re-inserts
+  // fresh pending ones in a single transaction, so the stale marker cannot
+  // clear until every re-enqueued chapter re-activates. Facts/notes
+  // materialization is idempotent per chapter, so re-running is safe.
+  r.post("/:id/memory/rebuild", async (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare(
+        "SELECT id, memory_stale_from_chapter_order s FROM books WHERE id = ?",
+      )
+      .get(id) as { id: number; s: number | null } | undefined;
+    if (!book) return notFound(c, "book");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      fromOrder?: unknown;
+    };
+    const fromOrder =
+      typeof body.fromOrder === "number" && Number.isInteger(body.fromOrder)
+        ? body.fromOrder
+        : (book.s ?? 1);
+
+    const chapters = sqlite
+      .prepare(
+        `SELECT id, current_version_id FROM chapters
+         WHERE book_id = ? AND order_index >= ? AND current_version_id IS NOT NULL
+         ORDER BY order_index ASC`,
+      )
+      .all(id, fromOrder) as Array<{
+      id: number;
+      current_version_id: number;
+    }>;
+
+    const tx = sqlite.transaction(() => {
+      for (const ch of chapters) {
+        sqlite
+          .prepare(
+            `DELETE FROM memory_jobs
+             WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
+          )
+          .run(ch.current_version_id);
+        enqueueMemoryJobs(sqlite, {
+          bookId: id,
+          chapterId: ch.id,
+          chapterVersionId: ch.current_version_id,
+          kinds: COMMIT_JOB_KINDS,
+        });
+      }
+    });
+    tx();
+    if (chapters.length > 0) memoryWorker?.kick();
+    return c.json({ enqueuedChapters: chapters.length, fromOrder });
   });
 
   return r;
