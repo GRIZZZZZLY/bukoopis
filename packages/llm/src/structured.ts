@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z, type ZodType } from "zod";
 import { getAnthropicClient } from "./client.js";
 import { resolveModelId } from "./models.js";
-import { withRetry } from "./retry.js";
+import { withRetry, llmTimeoutMs } from "./retry.js";
 import { buildSystemParam, type SystemBlock } from "./stream.js";
 import { LLMValidationError } from "./errors.js";
 import type { AgentName, AgentStructuredContract } from "./types.js";
@@ -73,16 +73,22 @@ export async function callViaAnthropicApi<I, O>(
   );
   const userPrompt = contract.buildPrompt(input.payload);
 
+  const timeoutMs = llmTimeoutMs();
   const res = await withRetry(() =>
-    client.messages.create({
-      model: modelId,
-      max_tokens: input.maxTokens ?? 8192,
-      system: systemParam as Anthropic.MessageCreateParams["system"],
-      tools: [tool],
-      tool_choice: { type: "tool", name: toolName },
-      messages: [{ role: "user", content: userPrompt }],
-      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-    }),
+    client.messages.create(
+      {
+        model: modelId,
+        max_tokens: input.maxTokens ?? 8192,
+        system: systemParam as Anthropic.MessageCreateParams["system"],
+        tools: [tool],
+        tool_choice: { type: "tool", name: toolName },
+        messages: [{ role: "user", content: userPrompt }],
+        ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      },
+      // withRetry is the single retry layer — disable the SDK's own retries to
+      // avoid multiplicative attempts; apply a per-request timeout.
+      { maxRetries: 0, ...(timeoutMs > 0 ? { timeout: timeoutMs } : {}) },
+    ),
   );
 
   if (input.onUsage) {
