@@ -33,6 +33,10 @@ import {
   compileContext,
   describeCompiledContext,
 } from "../utils/context-compiler.js";
+import {
+  loadPovKnowledge,
+  renderPovKnowledgePrompt,
+} from "../utils/pov-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import {
   gatherRelevantNotes,
@@ -221,6 +225,9 @@ export function createPlotRoute(
       queryText: `${ch.title}\n${parsed.data.intent}`,
       currentChapterOrder: ch.order_index,
       hasVec,
+      // ADR 0003 slice 3: don't re-surface chapters the rolling window already
+      // gives the plotter verbatim.
+      excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
     });
     const planNotes = await gatherRelevantNotes(
       sqlite,
@@ -405,12 +412,18 @@ export function createPlotRoute(
       excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
     });
 
+    // ADR 0003 slice 3b: what the POV character knows so far (POV guard).
+    const povKnowledge = renderPovKnowledgePrompt(
+      loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.order_index),
+    );
+
     // ADR 0003 slice 3: bound the assembled context under a token budget and
     // log what was included/dropped (Context Inspector). The beat-sheet is
     // always sent (passed separately); these are the trimmable layers.
     const compiled = compileContext(
       [
         { id: "characters", text: characterContextFinal, priority: 1 },
+        { id: "pov", text: povKnowledge, priority: 1 },
         { id: "rolling", text: prevSummary, priority: 2 },
         { id: "lore", text: loreContext, priority: 3 },
         { id: "studio", text: studioCtx, priority: 4 },
@@ -438,6 +451,7 @@ export function createPlotRoute(
           beatSheet,
           previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
           characterContext: inc.has("characters") ? characterContextFinal : null,
+          povKnowledge: inc.has("pov") ? povKnowledge : null,
           loreContext: inc.has("lore") ? loreContext : null,
           styleContext: inc.has("style") ? styleCtx.prompt : null,
           studioContext: inc.has("studio") ? studioCtx : null,

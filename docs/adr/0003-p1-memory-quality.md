@@ -60,9 +60,14 @@ P0 сделал память надёжной (durable pipeline), но не то
 `MAX_WRITER_CONTEXT_TOKENS=80k`, приоритеты characters→rolling→lore→studio→
 retrieval→style, дропнутые слои не уходят в промпт, inspector-строка в лог.
 
-**Отложено (слайс 3b):** POV-раздел (ОБЪЕКТИВНО / ИЗВЕСТНО POV / СКРЫТО) —
-нужен фильтр фактов по character_knowledge; применение компилятора к
-plot-plan и reviser (repair) путям.
+**Слайс 3b (РЕАЛИЗОВАН):** POV-знание. `pov-context.ts` — `loadPovKnowledge`
+резолвит POV-имя → персонаж (resolveEntity) и отдаёт `character_knowledge`,
+усвоенные до текущей главы (learned_in order ≤ N; NULL = с начала);
+`renderPovKnowledgePrompt` — блок «Известно POV-персонажу». Прокинут в Writer
+через компилятор (секция `pov`, приоритет 1). Writer SYSTEM: объективный канон
+для непротиворечивости, но в мысли/речь POV — только из блока POV-знания.
+Дедуп применён и к plot-plan. **Остаётся:** полный «СКРЫТО ОТ POV» и компилятор
+в reviser (repair) — минорно, вне текущего объёма.
 
 ### Слайс 4 — KNN-фильтр внутри поиска
 

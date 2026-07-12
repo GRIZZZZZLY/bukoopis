@@ -14,7 +14,7 @@ const SYSTEM_WRITER = `Ты — Writer Agent. Пишешь художестве�
 
 Требования:
 — Не пересказывай beats — превращай их в живую сцену с диалогами, действием, описаниями.
-— Соблюдай POV из beat-sheet.
+— Соблюдай POV из beat-sheet. Объективный канон мира используй для непротиворечивости, но НЕ вкладывай в мысли/речь POV-персонажа то, чего он ещё не знает. В его сознании допустимо лишь то, что перечислено в блоке «Известно POV-персонажу» (если он есть).
 — Стиль: ясный, без избыточных метафор, без LLM-клише ("казалось", "по сути", "не X, а Y", избытка списков из трёх).
 — Целевой объём — близко к estimatedWords ± 30%.
 — Не выводи никаких служебных пометок, заголовков, списков beats. Только сама проза, разделённая на абзацы.
@@ -33,6 +33,8 @@ export interface WriteChapterInput {
   beatSheet: ChapterBeatSheetVariant;
   previousChaptersSummary: string | null;
   characterContext: string | null;
+  /** ADR 0003 slice 3b — what the POV character knows so far (POV guard). */
+  povKnowledge?: string | null;
   loreContext: string | null;
   styleContext: string | null; // fingerprint + few-shot from reference corpus
   fatigueWords: string[]; // additional avoid-list
@@ -90,6 +92,7 @@ export async function* writeChapter(
     );
   }
   if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.povKnowledge) stableParts.push(input.povKnowledge);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {
