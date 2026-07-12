@@ -126,7 +126,7 @@ function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
   return (
     <header className={`topbar ${scrolled ? "topbar-scrolled" : ""}`}>
       <div className="topbar-left">
-        <Link to="/books" className="brand">
+        <Link to="/books" className="brand" viewTransition>
           <span className="brand-mark" aria-hidden="true">
             B
           </span>
@@ -156,13 +156,13 @@ function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
           <Search size={14} aria-hidden="true" />
           <span className="kbd">⌘K</span>
         </button>
-        <Link to="/style-profiles" title="Профили стиля">
+        <Link to="/style-profiles" title="Профили стиля" viewTransition>
           <span className="pill pill-brass">
             <Feather size={11} aria-hidden="true" />
             Стиль
           </span>
         </Link>
-        <Link to="/usage" className="topbar-link">
+        <Link to="/usage" className="topbar-link" viewTransition>
           Использование
         </Link>
         <AtmosphereLamp />
@@ -243,6 +243,7 @@ function LeftRail({
               className={`leftrail-item ${it.active ? "leftrail-item-active" : ""}`}
               aria-current={it.active ? "page" : undefined}
               title={it.label}
+              viewTransition
             >
               <span className="leftrail-bar" aria-hidden="true" />
               <span className="leftrail-icon">{it.icon}</span>
@@ -256,6 +257,7 @@ function LeftRail({
             to={`/books/${bookId}/studio/settings`}
             className={`leftrail-item ${route.stage === "settings" ? "leftrail-item-active" : ""}`}
             title="Настройки"
+            viewTransition
           >
             <span className="leftrail-bar" aria-hidden="true" />
             <span className="leftrail-icon">

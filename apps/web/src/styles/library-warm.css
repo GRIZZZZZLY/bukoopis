@@ -1596,6 +1596,33 @@ html.atm-calm .topbar {
   background-image: var(--texture-panel);
 }
 
+/* ─── Перелистывание страниц (View Transitions) ─────────── */
+
+@keyframes page-out {
+  to { opacity: 0; transform: translateY(-10px); }
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(14px); }
+}
+
+::view-transition-old(root) {
+  animation: page-out 0.22s var(--ease-in-out) both;
+}
+::view-transition-new(root) {
+  animation: page-in 0.26s var(--ease-in-out) both;
+}
+
+html.atm-off::view-transition-old(root),
+html.atm-off::view-transition-new(root) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
 /* lw-* aliases still referenced by a handful of components */
 .lw-mono       { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 .lw-cap-upper  { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); font-weight: 500; }
