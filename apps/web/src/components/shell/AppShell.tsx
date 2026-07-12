@@ -5,9 +5,16 @@ import {
   BookOpen,
   Compass,
   Feather,
+  Lamp,
   Search,
   Settings,
 } from "lucide-react";
+import {
+  applyAtmosphereClass,
+  cycleAtmosphere,
+  useAtmosphere,
+  type AtmosphereMode,
+} from "../../lib/useAtmosphere";
 
 const STAGE_LABEL: Record<string, string> = {
   world: "Мир",
@@ -92,6 +99,10 @@ export function AppShell() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    applyAtmosphereClass();
+  }, []);
+
   return (
     <div className="app" data-focus="false">
       <TopBar route={route} scrolled={scrolled} />
@@ -154,6 +165,7 @@ function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
         <Link to="/usage" className="topbar-link">
           Использование
         </Link>
+        <AtmosphereLamp />
         <button type="button" className="avatar" aria-label="Профиль">
           М
         </button>
@@ -254,6 +266,29 @@ function LeftRail({
         </div>
       )}
     </aside>
+  );
+}
+
+/* ─── AtmosphereLamp ────────────────────────────────────── */
+
+const ATM_TITLE: Record<AtmosphereMode, string> = {
+  full: "Атмосфера: полная",
+  calm: "Атмосфера: спокойная",
+  off: "Атмосфера: выкл",
+};
+
+function AtmosphereLamp() {
+  const mode = useAtmosphere();
+  return (
+    <button
+      type="button"
+      className={`topbar-lamp ${mode !== "off" ? "topbar-lamp-on" : ""}`}
+      onClick={cycleAtmosphere}
+      aria-label={ATM_TITLE[mode]}
+      title={`${ATM_TITLE[mode]} · клик переключает`}
+    >
+      <Lamp size={15} aria-hidden="true" />
+    </button>
   );
 }
 

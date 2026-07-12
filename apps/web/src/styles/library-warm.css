@@ -661,6 +661,16 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .topbar-kbd:hover { background: var(--color-surface-2); color: var(--color-text); }
 .topbar-link { font-size: 13px; color: var(--color-text-muted); }
 .topbar-link:hover { color: var(--color-text); }
+.topbar-lamp {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-control);
+  color: var(--color-text-faint);
+  transition: color var(--motion-2) var(--ease-in-out);
+}
+.topbar-lamp:hover { color: var(--color-text-muted); }
+.topbar-lamp-on { color: var(--color-brass); }
+.topbar-lamp-on:hover { color: var(--color-brass-hi); }
 .avatar {
   width: 28px; height: 28px; border-radius: 999px;
   background: var(--color-surface-3); color: var(--color-text-strong);
