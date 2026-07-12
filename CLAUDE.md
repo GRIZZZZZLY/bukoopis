@@ -67,3 +67,5 @@ Stored in `~/.claude/projects/d--PROJECTS-BOOKOPIS/memory/`. Highlights:
 ## Frontend
 
 React 18 + Vite 6 + Tailwind v4 (CSS-first via `@tailwindcss/vite`, no `tailwind.config.js` — design tokens in `apps/web/src/index.css` `@theme` block). shadcn/ui as source-in-repo (only `Button` scaffolded; copy more in as needed). TipTap for editor surface. Routing via `react-router-dom@7`. Studio routes dispatch on `stageId`: `characters|items` → `EntityStagePage`, otherwise `MarkdownStagePage`.
+
+Атмосфера «кабинета» (phase 1): классы `atm-full|atm-calm|atm-off` на `<html>` из [useAtmosphere](apps/web/src/lib/useAtmosphere.ts) (localStorage `bf-atmosphere`, лампа в TopBar); декор-слои в конце `library-warm.css`, гейтятся этими классами. Свеча-цель: `GET /api/writing-progress` + леджер `writing_days` (дельты пишет draft-хендлер chapters). Палитра — «Чернильная ночь» (сине-чернильный + золото), токены синхронно в `index.css @theme static` и `library-warm.css :root`.
