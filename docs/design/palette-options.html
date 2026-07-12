@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOOKOPIS — варианты палитры</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Lora:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #101010;
+    color: #ccc;
+    font-family: "Inter", system-ui, sans-serif;
+    padding: 40px 24px 80px;
+  }
+  .intro { max-width: 1100px; margin: 0 auto 36px; }
+  .intro h1 { font-family: "Fraunces", Georgia, serif; font-size: 28px; color: #eee; margin-bottom: 8px; }
+  .intro p { font-size: 14px; color: #999; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: 28px; max-width: 1100px; margin: 0 auto; }
+
+  .option {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #2a2a2a;
+    background: var(--bg);
+  }
+  .option-head { padding: 18px 22px 6px; }
+  .option-head h2 { font-family: "Fraunces", Georgia, serif; font-size: 20px; color: var(--text-strong); }
+  .option-head p { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+
+  .swatches { display: flex; gap: 6px; padding: 14px 22px 4px; flex-wrap: wrap; }
+  .sw { width: 54px; }
+  .sw i { display: block; height: 34px; border-radius: 6px; border: 1px solid rgba(128,128,128,.25); }
+  .sw span { display: block; font-size: 9px; color: var(--text-muted); margin-top: 3px; text-align: center; font-family: monospace; }
+
+  /* мини-мокап приложения */
+  .mock {
+    margin: 16px 22px 22px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    overflow: hidden;
+    box-shadow: 0 0 60px 10px var(--glow) inset;
+  }
+  .mock-top {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+  }
+  .mock-top b { font-family: "Fraunces", Georgia, serif; font-size: 13px; color: var(--text-strong); font-weight: 600; }
+  .candle { margin-left: auto; font-size: 12px; color: var(--accent); }
+  .mock-body { display: flex; min-height: 300px; }
+  .mock-side {
+    width: 130px; flex: none;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border);
+    padding: 12px 10px;
+  }
+  .nav-item { font-size: 11px; color: var(--text-muted); padding: 6px 8px; border-radius: 6px; }
+  .nav-item.active { background: var(--accent-tint); color: var(--accent-hi); }
+  .mock-main { flex: 1; padding: 16px 18px; }
+
+  .shelf-label { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 8px; }
+  .shelf {
+    display: flex; align-items: flex-end; gap: 5px;
+    padding: 0 10px 0;
+    border-bottom: 6px solid var(--border-strong);
+    border-radius: 0 0 3px 3px;
+    height: 92px; margin-bottom: 18px;
+  }
+  .spine {
+    border-radius: 3px 3px 0 0;
+    display: flex; align-items: center; justify-content: center;
+    writing-mode: vertical-rl;
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 9.5px; letter-spacing: .04em;
+    color: var(--bg);
+    transition: transform .18s;
+  }
+  .spine:hover { transform: translateY(-8px); }
+
+  .paper {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: "Lora", Georgia, serif;
+    font-size: 12.5px; line-height: 1.65;
+    color: var(--text);
+    box-shadow: 0 6px 18px rgba(0,0,0,.25);
+    margin-bottom: 14px;
+  }
+  .paper h3 { font-family: "Fraunces", Georgia, serif; font-size: 14px; color: var(--text-strong); margin-bottom: 6px; }
+  .paper .dim { color: var(--text-muted); font-style: italic; }
+
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    font-size: 11.5px; font-weight: 600;
+    padding: 7px 14px; border-radius: 7px;
+    background: var(--accent); color: var(--bg);
+    border: none;
+  }
+  .btn.ghost { background: transparent; color: var(--accent-hi); border: 1px solid var(--border-strong); }
+  .chip { font-size: 10.5px; padding: 3px 9px; border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <h1>BOOKOPIS — варианты палитры «кабинета»</h1>
+  <p>Каждый блок — мини-мокап: топбар со свечой, сайдбар, полка с корешками, лист рукописи, кнопки, чипы статусов. Наведи на корешок — книга выдвинется.</p>
+</div>
+
+<div class="grid">
+
+  <!-- ВАРИАНТ 1: Зелёная лампа -->
+  <section class="option" style="
+    --bg:#12211B; --surface-1:#182B22; --surface-2:#1F362B;
+    --border:#2F4A3A; --border-strong:#3E5D49;
+    --text:#E7E2CF; --text-strong:#F6F2E2; --text-muted:#93A08B; --text-faint:#66755F;
+    --accent:#D4A34E; --accent-hi:#E3B45E; --accent-tint:rgba(212,163,78,.12);
+    --paper:#1F362B; --glow:rgba(212,163,78,.05);
+    --ink-red:#C05041; --ink-green:#7FA05B; --ink-blue:#5E86A3; --ink-amber:#CBA24A;">
+    <div class="option-head">
+      <h2>1 · Зелёная лампа</h2>
+      <p>Оксфордская читальня: бутылочно-зелёные стены, латунь, свет банковской лампы. Тёмная, но холоднее и «глубже» текущей.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#12211B"></i><span>#12211B</span></div>
+      <div class="sw"><i style="background:#1F362B"></i><span>#1F362B</span></div>
+      <div class="sw"><i style="background:#D4A34E"></i><span>#D4A34E</span></div>
+      <div class="sw"><i style="background:#E7E2CF"></i><span>#E7E2CF</span></div>
+      <div class="sw"><i style="background:#C05041"></i><span>#C05041</span></div>
+      <div class="sw"><i style="background:#5E86A3"></i><span>#5E86A3</span></div>
+    </div>
+    <div class="mock">
+      <div class="mock-top"><b>BOOKOPIS</b><span class="candle">🕯 340 / 500 слов</span></div>
+      <div class="mock-body">
+        <div class="mock-side">
+          <div class="nav-item active">Библиотека</div>
+          <div class="nav-item">Кабинет</div>
+          <div class="nav-item">Мастерская</div>
+          <div class="nav-item">Доска</div>
+          <div class="nav-item">Архив</div>
+        </div>
+        <div class="mock-main">
+          <div class="shelf-label">Полка · мои книги</div>
+          <div class="shelf">
+            <div class="spine" style="width:26px;height:86px;background:#D4A34E">Хроники</div>
+            <div class="spine" style="width:18px;height:74px;background:#C05041">Туман</div>
+            <div class="spine" style="width:32px;height:90px;background:#7FA05B">Сад камней</div>
+            <div class="spine" style="width:15px;height:64px;background:#5E86A3">Эхо</div>
+            <div class="spine" style="width:22px;height:80px;background:#CBA24A">Зима</div>
+          </div>
+          <div class="paper">
+            <h3>Глава 12 · Разговор при свечах</h3>
+            Ветер стучал в ставни, и пламя свечи дрожало, отбрасывая на стены длинные тени. <span class="dim">— курсор мигает здесь…</span>
+          </div>
+          <div class="row">
+            <button class="btn">Продолжить главу</button>
+            <button class="btn ghost">Критика</button>
+            <span class="chip" style="background:rgba(127,160,91,.15);color:#7FA05B">готово</span>
+            <span class="chip" style="background:rgba(192,80,65,.15);color:#C05041">конфликт</span>
+            <span class="chip" style="background:rgba(94,134,163,.15);color:#5E86A3">черновик</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ВАРИАНТ 2: Чернильная ночь -->
+  <section class="option" style="
+    --bg:#131722; --surface-1:#1A2030; --surface-2:#212A3D;
+    --border:#303B55; --border-strong:#43507A;
+    --text:#E4E1D4; --text-strong:#F5F2E6; --text-muted:#8B93A8; --text-faint:#5F6880;
+    --accent:#D9A44A; --accent-hi:#E8B65C; --accent-tint:rgba(217,164,74,.12);
+    --paper:#212A3D; --glow:rgba(217,164,74,.05);
+    --ink-red:#C4564A; --ink-green:#6E9463; --ink-blue:#6C8FBF; --ink-amber:#CDA24E;">
+    <div class="option-head">
+      <h2>2 · Чернильная ночь</h2>
+      <p>Ночной кабинет: сине-чернильный фон, тёплое золото свечи. Контраст холодного и тёплого — самый «магический» вариант.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#131722"></i><span>#131722</span></div>
+      <div class="sw"><i style="background:#212A3D"></i><span>#212A3D</span></div>
+      <div class="sw"><i style="background:#D9A44A"></i><span>#D9A44A</span></div>
+      <div class="sw"><i style="background:#E4E1D4"></i><span>#E4E1D4</span></div>
+      <div class="sw"><i style="background:#C4564A"></i><span>#C4564A</span></div>
+      <div class="sw"><i style="background:#6C8FBF"></i><span>#6C8FBF</span></div>
+    </div>
+    <div class="mock">
+      <div class="mock-top"><b>BOOKOPIS</b><span class="candle">🕯 340 / 500 слов</span></div>
+      <div class="mock-body">
+        <div class="mock-side">
+          <div class="nav-item active">Библиотека</div>
+          <div class="nav-item">Кабинет</div>
+          <div class="nav-item">Мастерская</div>
+          <div class="nav-item">Доска</div>
+          <div class="nav-item">Архив</div>
+        </div>
+        <div class="mock-main">
+          <div class="shelf-label">Полка · мои книги</div>
+          <div class="shelf">
+            <div class="spine" style="width:26px;height:86px;background:#D9A44A">Хроники</div>
+            <div class="spine" style="width:18px;height:74px;background:#C4564A">Туман</div>
+            <div class="spine" style="width:32px;height:90px;background:#6E9463">Сад камней</div>
+            <div class="spine" style="width:15px;height:64px;background:#6C8FBF">Эхо</div>
+            <div class="spine" style="width:22px;height:80px;background:#CDA24E">Зима</div>
+          </div>
+          <div class="paper">
+            <h3>Глава 12 · Разговор при свечах</h3>
+            Ветер стучал в ставни, и пламя свечи дрожало, отбрасывая на стены длинные тени. <span class="dim">— курсор мигает здесь…</span>
+          </div>
+          <div class="row">
+            <button class="btn">Продолжить главу</button>
+            <button class="btn ghost">Критика</button>
+            <span class="chip" style="background:rgba(110,148,99,.15);color:#6E9463">готово</span>
+            <span class="chip" style="background:rgba(196,86,74,.15);color:#C4564A">конфликт</span>
+            <span class="chip" style="background:rgba(108,143,191,.15);color:#6C8FBF">черновик</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ВАРИАНТ 3: Пергамент и сургуч (СВЕТЛАЯ) -->
+  <section class="option" style="
+    --bg:#F2EAD9; --surface-1:#EDE2CC; --surface-2:#E6D9BF;
+    --border:#D3C29C; --border-strong:#A98F63;
+    --text:#3B2F23; --text-strong:#241B12; --text-muted:#7A684F; --text-faint:#A5936F;
+    --accent:#B0452F; --accent-hi:#93361F; --accent-tint:rgba(176,69,47,.10);
+    --paper:#FAF4E4; --glow:rgba(176,120,47,.06);
+    --ink-red:#B0452F; --ink-green:#56714F; --ink-blue:#4C6B8A; --ink-amber:#B58A3C;">
+    <div class="option-head">
+      <h2>3 · Пергамент и сургуч (светлая)</h2>
+      <p>Дневной кабинет у окна: кремовый пергамент, сепия-чернила, сургучная печать. Единственная светлая — совсем другое настроение, глаза меньше устают днём.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#F2EAD9"></i><span>#F2EAD9</span></div>
+      <div class="sw"><i style="background:#FAF4E4"></i><span>#FAF4E4</span></div>
+      <div class="sw"><i style="background:#B0452F"></i><span>#B0452F</span></div>
+      <div class="sw"><i style="background:#3B2F23"></i><span>#3B2F23</span></div>
+      <div class="sw"><i style="background:#56714F"></i><span>#56714F</span></div>
+      <div class="sw"><i style="background:#4C6B8A"></i><span>#4C6B8A</span></div>
+    </div>
+    <div class="mock">
+      <div class="mock-top"><b>BOOKOPIS</b><span class="candle">🕯 340 / 500 слов</span></div>
+      <div class="mock-body">
+        <div class="mock-side">
+          <div class="nav-item active">Библиотека</div>
+          <div class="nav-item">Кабинет</div>
+          <div class="nav-item">Мастерская</div>
+          <div class="nav-item">Доска</div>
+          <div class="nav-item">Архив</div>
+        </div>
+        <div class="mock-main">
+          <div class="shelf-label">Полка · мои книги</div>
+          <div class="shelf">
+            <div class="spine" style="width:26px;height:86px;background:#B0452F;color:#FAF4E4">Хроники</div>
+            <div class="spine" style="width:18px;height:74px;background:#56714F;color:#FAF4E4">Туман</div>
+            <div class="spine" style="width:32px;height:90px;background:#B58A3C;color:#FAF4E4">Сад камней</div>
+            <div class="spine" style="width:15px;height:64px;background:#4C6B8A;color:#FAF4E4">Эхо</div>
+            <div class="spine" style="width:22px;height:80px;background:#7A684F;color:#FAF4E4">Зима</div>
+          </div>
+          <div class="paper">
+            <h3>Глава 12 · Разговор при свечах</h3>
+            Ветер стучал в ставни, и пламя свечи дрожало, отбрасывая на стены длинные тени. <span class="dim">— курсор мигает здесь…</span>
+          </div>
+          <div class="row">
+            <button class="btn" style="color:#FAF4E4">Продолжить главу</button>
+            <button class="btn ghost">Критика</button>
+            <span class="chip" style="background:rgba(86,113,79,.14);color:#56714F">готово</span>
+            <span class="chip" style="background:rgba(176,69,47,.12);color:#B0452F">конфликт</span>
+            <span class="chip" style="background:rgba(76,107,138,.14);color:#4C6B8A">черновик</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ВАРИАНТ 4: Махагон и бордо -->
+  <section class="option" style="
+    --bg:#1F1210; --surface-1:#2A1815; --surface-2:#35201B;
+    --border:#4A2E26; --border-strong:#5E3B30;
+    --text:#EFE0D2; --text-strong:#FBF1E7; --text-muted:#A88D7C; --text-faint:#77604F;
+    --accent:#C99850; --accent-hi:#DBAA5E; --accent-tint:rgba(201,152,80,.12);
+    --paper:#35201B; --glow:rgba(201,152,80,.05);
+    --ink-red:#B44A3E; --ink-green:#77925A; --ink-blue:#6B7FA1; --ink-amber:#C89B4C;">
+    <div class="option-head">
+      <h2>4 · Махагон и бордо</h2>
+      <p>Викторианский кабинет: красное дерево, кожа, старое золото, кресло у камина. Самая «тёплая» и насыщенная, ближе всех к текущей — но краснее и богаче.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#1F1210"></i><span>#1F1210</span></div>
+      <div class="sw"><i style="background:#35201B"></i><span>#35201B</span></div>
+      <div class="sw"><i style="background:#C99850"></i><span>#C99850</span></div>
+      <div class="sw"><i style="background:#EFE0D2"></i><span>#EFE0D2</span></div>
+      <div class="sw"><i style="background:#B44A3E"></i><span>#B44A3E</span></div>
+      <div class="sw"><i style="background:#6B7FA1"></i><span>#6B7FA1</span></div>
+    </div>
+    <div class="mock">
+      <div class="mock-top"><b>BOOKOPIS</b><span class="candle">🕯 340 / 500 слов</span></div>
+      <div class="mock-body">
+        <div class="mock-side">
+          <div class="nav-item active">Библиотека</div>
+          <div class="nav-item">Кабинет</div>
+          <div class="nav-item">Мастерская</div>
+          <div class="nav-item">Доска</div>
+          <div class="nav-item">Архив</div>
+        </div>
+        <div class="mock-main">
+          <div class="shelf-label">Полка · мои книги</div>
+          <div class="shelf">
+            <div class="spine" style="width:26px;height:86px;background:#C99850">Хроники</div>
+            <div class="spine" style="width:18px;height:74px;background:#B44A3E">Туман</div>
+            <div class="spine" style="width:32px;height:90px;background:#77925A">Сад камней</div>
+            <div class="spine" style="width:15px;height:64px;background:#6B7FA1">Эхо</div>
+            <div class="spine" style="width:22px;height:80px;background:#C89B4C">Зима</div>
+          </div>
+          <div class="paper">
+            <h3>Глава 12 · Разговор при свечах</h3>
+            Ветер стучал в ставни, и пламя свечи дрожало, отбрасывая на стены длинные тени. <span class="dim">— курсор мигает здесь…</span>
+          </div>
+          <div class="row">
+            <button class="btn">Продолжить главу</button>
+            <button class="btn ghost">Критика</button>
+            <span class="chip" style="background:rgba(119,146,90,.15);color:#77925A">готово</span>
+            <span class="chip" style="background:rgba(180,74,62,.15);color:#B44A3E">конфликт</span>
+            <span class="chip" style="background:rgba(107,127,161,.15);color:#6B7FA1">черновик</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
