@@ -69,12 +69,21 @@ retrieval→style, дропнутые слои не уходят в промпт
 Дедуп применён и к plot-plan. **Остаётся:** полный «СКРЫТО ОТ POV» и компилятор
 в reviser (repair) — минорно, вне текущего объёма.
 
-### Слайс 4 — KNN-фильтр внутри поиска
+### Слайс 4 — KNN-фильтр внутри поиска (РЕАЛИЗОВАН)
 
-`chunk_vec`/`book_notes_vec` пересоздаются с metadata-колонками
-(book_id, chapter_order) — фильтр внутри MATCH вместо JOIN-после (sqlite-vec
-0.1.6+). Требует reindex (скрипт есть); миграция координируется с
-bootstrapVirtualTables.
+`chunk_vec`/`book_notes_vec` пересозданы с metadata-колонкой `book_id` —
+фильтр книги теперь ВНУТРИ MATCH (`v.book_id = ?`), а не JOIN-после глобального
+top-k (раньше слоты k могли выесться векторами других книг). `bootstrapVirtualTables`
+детектит старую схему (нет `book_id` в PRAGMA) и пересоздаёт таблицу; векторы
+теряются → нужен `reindex` (скрипт обновлён), до этого — деградация в FTS.
+**Ключевой нюанс:** sqlite-vec 0.1.7-alpha отвергает обычное JS-число как FLOAT
+для INTEGER-metadata — `book_id` биндится как **BigInt** во всех insert/query
+(index-pipeline, search, book-notes, reindex). Попутно закрыт баг: notes-KNN
+раньше был без book-скоупа (полагался на post-filter openIds).
+
+**Взято только book_id** (не chapter_order): equality-фильтр надёжен, а range
+(`chapter_order <=`) на metadata оставлен как JOIN post-filter — в пределах
+одной книги candidate-loss мал для single-user.
 
 ### Слайс 5 — литературный eval-набор (РЕАЛИЗОВАН)
 

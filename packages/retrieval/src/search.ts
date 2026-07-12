@@ -80,7 +80,7 @@ export async function hybridSearch(
          LEFT JOIN chapters ch ON ch.id = c.chapter_id
          WHERE v.embedding MATCH ?
            AND v.k = ?
-           AND c.book_id = ?
+           AND v.book_id = ?
            AND (
              c.source_type != 'chapter_version'
              OR ch.memory_version_id = c.source_id
@@ -95,7 +95,8 @@ export async function hybridSearch(
       .all(
         qBlob,
         candidateK,
-        opts.bookId,
+        // BigInt: sqlite-vec metadata INTEGER filter rejects a plain JS number.
+        BigInt(opts.bookId),
         ...(opts.beforeChapterOrder !== undefined
           ? [opts.beforeChapterOrder]
           : []),

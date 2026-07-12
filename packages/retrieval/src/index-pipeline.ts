@@ -67,7 +67,9 @@ export async function indexChapterVersion(
   const insertVec =
     hasVec && embeddings
       ? sqlite.prepare(
-          "INSERT OR REPLACE INTO chunk_vec(rowid, embedding) VALUES (?, ?)",
+          // book_id metadata column (ADR 0003 slice 4) → book filter runs
+          // inside the KNN MATCH instead of a post-JOIN.
+          "INSERT OR REPLACE INTO chunk_vec(rowid, embedding, book_id) VALUES (?, ?, ?)",
         )
       : null;
 
@@ -91,7 +93,9 @@ export async function indexChapterVersion(
           typeof info.lastInsertRowid === "bigint"
             ? info.lastInsertRowid
             : BigInt(info.lastInsertRowid);
-        insertVec.run(rowid, floatToBlob(embeddings[i]!));
+        // book_id bound as BigInt — sqlite-vec rejects a plain JS number as
+        // FLOAT for an INTEGER metadata column.
+        insertVec.run(rowid, floatToBlob(embeddings[i]!), BigInt(input.bookId));
       }
     }
   });

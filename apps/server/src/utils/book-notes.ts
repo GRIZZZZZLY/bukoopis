@@ -150,12 +150,15 @@ export async function gatherRelevantNotes(
       const openIds = new Set(open.map((n) => n.id));
       const rows = sqlite
         .prepare(
+          // ADR 0003 slice 4: book_id filter inside the KNN MATCH — previously
+          // notes KNN was unscoped across books and relied on the openIds set
+          // to discard cross-book hits after the fact (candidate loss).
           `SELECT v.rowid AS id, v.distance AS distance
            FROM book_notes_vec v
-           WHERE v.embedding MATCH ? AND v.k = ?
+           WHERE v.embedding MATCH ? AND v.k = ? AND v.book_id = ?
            ORDER BY v.distance ASC`,
         )
-        .all(floatToBlob(qVec), poolK * 4) as Array<{
+        .all(floatToBlob(qVec), poolK * 4, BigInt(bookId)) as Array<{
         id: number;
         distance: number;
       }>;
@@ -281,9 +284,9 @@ export function materializeEpisodicNotes(
         try {
           sqlite
             .prepare(
-              "INSERT OR REPLACE INTO book_notes_vec(rowid, embedding) VALUES (?, ?)",
+              "INSERT OR REPLACE INTO book_notes_vec(rowid, embedding, book_id) VALUES (?, ?, ?)",
             )
-            .run(id, embBlob);
+            .run(id, embBlob, BigInt(bookId));
         } catch {
           /* vec optional */
         }
