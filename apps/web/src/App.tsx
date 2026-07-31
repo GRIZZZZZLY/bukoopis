@@ -19,6 +19,7 @@ import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
 import { EntityStagePage } from "@/pages/EntityStagePage";
 import { ChaptersStagePage } from "@/pages/ChaptersStagePage";
 import { SettingsStagePage } from "@/pages/SettingsStagePage";
+import { PlotBoardPage } from "@/pages/PlotBoardPage";
 
 function NotFound() {
   return (
@@ -74,6 +75,7 @@ const router = createBrowserRouter([
       { path: "/books/:bookId/studio/chapters", element: <ChaptersStagePage /> },
       { path: "/books/:bookId/studio/settings", element: <SettingsStagePage /> },
       { path: "/books/:bookId/studio/:stageId", element: <StagePageDispatch /> },
+      { path: "/books/:bookId/board", element: <PlotBoardPage /> },
       {
         path: "/books/:bookId/chapters/:chapterId",
         element: <ChapterPageRoute />,

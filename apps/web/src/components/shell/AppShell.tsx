@@ -6,6 +6,7 @@ import {
   Compass,
   Feather,
   Lamp,
+  Pin,
   Search,
   Settings,
 } from "lucide-react";
@@ -36,6 +37,7 @@ interface RouteInfo {
   name:
     | "books"
     | "studio"
+    | "board"
     | "chapter"
     | "style-profiles"
     | "style-profile"
@@ -60,6 +62,9 @@ function parseRoute(pathname: string): RouteInfo {
     if (parts[2] === "studio") {
       return { name: "studio", bookId, stage: parts[3] };
     }
+    if (parts[2] === "board") {
+      return { name: "board", bookId };
+    }
     if (parts[2] === "chapters" && parts[3]) {
       return { name: "chapter", bookId, chapterId: parts[3] };
     }
@@ -79,6 +84,8 @@ function breadcrumb(route: RouteInfo): string[] {
         "Studio",
         route.stage ? (STAGE_LABEL[route.stage] ?? route.stage) : "Концепт",
       ];
+    case "board":
+      return ["Книги", `#${route.bookId}`, "Доска"];
     case "chapter":
       return ["Книги", `#${route.bookId}`, `Глава ${route.chapterId}`];
     case "style-profiles":
@@ -219,6 +226,14 @@ function LeftRail({
       to: bookId ? `/books/${bookId}/studio` : "/books",
       icon: <Compass size={18} aria-hidden="true" />,
       active: route.name === "studio" || route.name === "chapter",
+      show: Boolean(bookId),
+    },
+    {
+      id: "board",
+      label: "Доска",
+      to: bookId ? `/books/${bookId}/board` : "/books",
+      icon: <Pin size={18} aria-hidden="true" />,
+      active: route.name === "board",
       show: Boolean(bookId),
     },
     {
