@@ -14,3 +14,4 @@ export * from "./studio-invariants.js";
 export * from "./studio-warnings.js";
 export * from "./canon-facts.js";
 export * from "./episodic-notes.js";
+export * from "./book-note.js";

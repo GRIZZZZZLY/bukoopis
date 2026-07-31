@@ -142,6 +142,46 @@ export function createBooksRoute(
     return c.body(null, 204);
   });
 
+  // Доска сюжета: все заметки книги. Нить = отрезок introduced→resolved.
+  r.get("/:id/notes", (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT id FROM books WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!book) return notFound(c, "book");
+    const rows = sqlite
+      .prepare(
+        `SELECT id, book_id, kind, chapter_order_introduced, chapter_order_resolved,
+                title, body, tags, created_at
+         FROM book_notes WHERE book_id = ?
+         ORDER BY chapter_order_introduced ASC, id ASC`,
+      )
+      .all(id) as Array<{
+      id: number;
+      book_id: number;
+      kind: string;
+      chapter_order_introduced: number;
+      chapter_order_resolved: number | null;
+      title: string;
+      body: string;
+      tags: string | null;
+      created_at: string;
+    }>;
+    return c.json(
+      rows.map((row) => ({
+        id: row.id,
+        bookId: row.book_id,
+        kind: row.kind,
+        introduced: row.chapter_order_introduced,
+        resolved: row.chapter_order_resolved,
+        title: row.title,
+        body: row.body,
+        tags: parseTags(row.tags),
+        createdAt: row.created_at,
+      })),
+    );
+  });
+
   r.get("/:id/chapters", (c) => {
     const id = Number(c.req.param("id"));
     const book = sqlite
@@ -239,4 +279,16 @@ export function createBooksRoute(
   });
 
   return r;
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((t): t is string => typeof t === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
