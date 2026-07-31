@@ -5,7 +5,6 @@ import type { BookNote } from "@book-forge/shared";
 
 export const COLUMN_W = 200;
 export const ROW_H = 172;
-export const PIN_X = 26;
 /** Внутренний отступ канвы. Абсолютно спозиционированные дети координируются
     от него явно: CSS padding на .board-canvas сдвигает только контент в
     потоке, а не absolute-детей (те всё равно считаются от padding-box), так

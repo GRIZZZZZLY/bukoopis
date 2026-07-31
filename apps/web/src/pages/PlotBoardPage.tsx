@@ -121,15 +121,15 @@ export function PlotBoardPage() {
             <div
               className="board-canvas"
               style={{
-                width: boardWidth(columns) + COLUMN_W / 2,
-                height: boardHeight(placed) + 40,
+                width: boardWidth(columns),
+                height: boardHeight(placed),
               }}
             >
               <svg
                 className="board-threads"
                 aria-hidden="true"
-                width={boardWidth(columns) + COLUMN_W / 2}
-                height={boardHeight(placed) + 40}
+                width={boardWidth(columns)}
+                height={boardHeight(placed)}
               >
                 {placed.map((p) => {
                   const span = threadSpan(p.note, columns);
@@ -148,7 +148,11 @@ export function PlotBoardPage() {
                 <div
                   key={c}
                   className="board-col-label mono faint"
-                  style={{ left: BOARD_PAD + i * COLUMN_W, top: 0, width: COLUMN_W - 12 }}
+                  style={{
+                    left: BOARD_PAD + i * COLUMN_W,
+                    top: BOARD_PAD / 2,
+                    width: COLUMN_W - 12,
+                  }}
                 >
                   гл. {c}
                 </div>
