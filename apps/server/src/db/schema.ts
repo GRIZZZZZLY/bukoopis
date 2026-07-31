@@ -490,6 +490,29 @@ export const memoryJobs = sqliteTable(
   ],
 );
 
+// ADR 0003 slice 2: author-managed aliases so canon-fact entity names resolve
+// to a stable characters/locations/items id (Russian case forms, nicknames).
+export const entityAliases = sqliteTable(
+  "entity_aliases",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id").notNull(),
+    alias: text("alias").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_entity_aliases_entity").on(t.entityType, t.entityId),
+    check(
+      "entity_aliases_type_check",
+      sql`${t.entityType} IN ('character','location','item')`,
+    ),
+  ],
+);
+
 /** Леджер дневного набора слов (свеча-цель). Пишется из PUT /chapters/:id/draft. */
 export const writingDays = sqliteTable("writing_days", {
   date: text("date").primaryKey(),

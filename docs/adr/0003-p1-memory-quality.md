@@ -45,30 +45,66 @@ P0 сделал память надёжной (durable pipeline), но не то
 таблица `entity_aliases(entity_type, entity_id, alias)`; экстрактору
 передавать known entities с id; фоллбэк на строку при не-резолве.
 
-### Слайс 3 — Context Compiler
+### Слайс 3 — Context Compiler (РЕАЛИЗОВАН; POV-split → 3b)
 
-Единая сборка контекста Writer/Plot/критиков: токен-бюджет (эвристика +
-count-tokens на финальную проверку), приоритеты (инструкция → beat-sheet →
-locked canon → POV-знание → последние главы → активные факты → нити →
-studio → retrieval → summaries → стиль), дедуп (chunks глав из rolling
-window исключаются из retrieval-блока), POV-раздел (ОБЪЕКТИВНО/ИЗВЕСТНО
-POV/СКРЫТО), диагностика включённого (Context Inspector API).
+Единая сборка контекста под токен-бюджет с приоритетами, дедупом и
+диагностикой (Context Inspector).
 
-### Слайс 4 — KNN-фильтр внутри поиска
+**Сделано:** `apps/server/src/utils/context-compiler.ts` — `estimateTokens`
+(эвристика ~3 char/token для RU; hook под count-tokens API), `compileContext`
+(required всегда, optional по приоритету пока влезает в бюджет, дропнутые
+записаны), `describeCompiledContext` (одна строка в лог). Дедуп:
+`gatherRetrievedChunks` получил `excludeFromChapterOrder` — не тянет чанки глав,
+которые rolling window уже отдал дословно (`currentOrder - ROLLING_WINDOW`).
+Проводка в Writer-путь (`plot.ts /chapters/:id/write`): бюджет
+`MAX_WRITER_CONTEXT_TOKENS=80k`, приоритеты characters→rolling→lore→studio→
+retrieval→style, дропнутые слои не уходят в промпт, inspector-строка в лог.
 
-`chunk_vec`/`book_notes_vec` пересоздаются с metadata-колонками
-(book_id, chapter_order) — фильтр внутри MATCH вместо JOIN-после (sqlite-vec
-0.1.6+). Требует reindex (скрипт есть); миграция координируется с
-bootstrapVirtualTables.
+**Слайс 3b (РЕАЛИЗОВАН):** POV-знание. `pov-context.ts` — `loadPovKnowledge`
+резолвит POV-имя → персонаж (resolveEntity) и отдаёт `character_knowledge`,
+усвоенные до текущей главы (learned_in order ≤ N; NULL = с начала);
+`renderPovKnowledgePrompt` — блок «Известно POV-персонажу». Прокинут в Writer
+через компилятор (секция `pov`, приоритет 1). Writer SYSTEM: объективный канон
+для непротиворечивости, но в мысли/речь POV — только из блока POV-знания.
+Дедуп применён и к plot-plan. **Остаётся:** полный «СКРЫТО ОТ POV» и компилятор
+в reviser (repair) — минорно, вне текущего объёма.
 
-### Слайс 5 — литературный eval-набор
+### Слайс 4 — KNN-фильтр внутри поиска (РЕАЛИЗОВАН)
 
-Постоянный тестовый мини-роман с ловушками (два предмета/потерян один,
-падежи+прозвище, ложь о смерти, сон, флэшбек, переписанная глава 3 после
-главы 8, похожие заметки, POV-секрет). Метрики: precision/recall фактов,
-корректность supersede, реплика≠канон, retrieval Recall@k, отсутствие
-будущего/старых версий, дубли в промпте. Гейт для смены embedding-модели,
-RRF, reranker, числа глав окна.
+`chunk_vec`/`book_notes_vec` пересозданы с metadata-колонкой `book_id` —
+фильтр книги теперь ВНУТРИ MATCH (`v.book_id = ?`), а не JOIN-после глобального
+top-k (раньше слоты k могли выесться векторами других книг). `bootstrapVirtualTables`
+детектит старую схему (нет `book_id` в PRAGMA) и пересоздаёт таблицу; векторы
+теряются → нужен `reindex` (скрипт обновлён), до этого — деградация в FTS.
+**Ключевой нюанс:** sqlite-vec 0.1.7-alpha отвергает обычное JS-число как FLOAT
+для INTEGER-metadata — `book_id` биндится как **BigInt** во всех insert/query
+(index-pipeline, search, book-notes, reindex). Попутно закрыт баг: notes-KNN
+раньше был без book-скоупа (полагался на post-filter openIds).
+
+**Взято только book_id** (не chapter_order): equality-фильтр надёжен, а range
+(`chapter_order <=`) на metadata оставлен как JOIN post-filter — в пределах
+одной книги candidate-loss мал для single-user.
+
+### Слайс 5 — литературный eval-набор (РЕАЛИЗОВАН)
+
+Постоянный мини-роман с ловушками + харнес, меряющий машинерию памяти.
+
+**Сделано:** `apps/server/src/eval/memory-eval.ts` — `runMemoryEval(sqlite,
+hasVec)` сидит мини-роман со СКРИПТОВАННЫМИ извлечениями (без LLM →
+детерминизм) и проверяет 10 чеков: multivalued-supersede (потерял кольцо,
+меч цел), statement-not-canon (ложь о смерти не канон), dream-not-canon,
+entity-resolution (падеж→канон id), note-resolution (по id), canon-prompt
+id-free, retrieval-finds, retrieval-no-future, retrieval-dedup,
+retrieval-no-old-version (проверка по ТЕКСТУ чанка, т.к. vec+stub — шум).
+Тест `eval/__tests__/memory-eval.test.ts` гоняет в CI на stub (детерминизм).
+Скрипт `pnpm --filter @book-forge/server eval:memory` — с настроенным
+провайдером (EMBEDDING_PROVIDER=onnx для реального recall), печатает
+scorecard, exit≠0 при провале. Гейт перед сменой embedding-модели/RRF/
+reranker/размера окна.
+
+**Отложено:** реальные precision/recall на LLM-извлечении (харнес скриптует
+извлечение — меряет серверную логику, не качество LLM-экстрактора); Recall@k
+на реальных ONNX-эмбеддингах прогоняется скриптом вручную.
 
 ## Вне scope P1
 

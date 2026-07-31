@@ -92,15 +92,19 @@ export async function* streamText(
   // that we don't have yet.
   const stream = await withRetry(() =>
     Promise.resolve(
-      client.messages.stream({
-        model: modelId,
-        max_tokens: opts.maxTokens ?? 16384,
-        system: systemParam as Anthropic.MessageCreateParams["system"],
-        messages: [{ role: "user", content: opts.prompt }],
-        ...(opts.temperature !== undefined
-          ? { temperature: opts.temperature }
-          : {}),
-      }),
+      client.messages.stream(
+        {
+          model: modelId,
+          max_tokens: opts.maxTokens ?? 16384,
+          system: systemParam as Anthropic.MessageCreateParams["system"],
+          messages: [{ role: "user", content: opts.prompt }],
+          ...(opts.temperature !== undefined
+            ? { temperature: opts.temperature }
+            : {}),
+        },
+        // withRetry owns retries — disable the SDK's internal ones.
+        { maxRetries: 0 },
+      ),
     ),
   );
 

@@ -14,6 +14,7 @@ import {
   LLMValidationError,
 } from "../errors.js";
 import { resolveModelId } from "../models.js";
+import { withRetry, isTransientLlmError, llmTimeoutMs } from "../retry.js";
 import type { AgentStructuredContract } from "../types.js";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -83,6 +84,8 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   const mcp = contract.mcp;
   const modelId = `subscription:${resolveModelId(input.model)}`;
 
+  // One attempt. Per-attempt state lives inside so retries start clean.
+  const runOnce = async (): Promise<McpSubmitToolResult<O>> => {
   let capturedPayload: O | undefined;
   let capturedValidationError: ZodError | undefined;
   let toolCallCount = 0;
@@ -139,16 +142,34 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     env: subscriptionEnv,
   };
 
+  // Per-call timeout: abort the query if it stalls past LLM_TIMEOUT_MS.
+  const timeoutMs = llmTimeoutMs();
+  const controller = new AbortController();
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          controller.abort(
+            new LLMError(`[subscription/${modelId}] timed out after ${timeoutMs}ms`),
+          );
+        }, timeoutMs)
+      : null;
+  timer?.unref?.();
+  options.abortController = controller;
+
   const q = query({
     prompt: forceToolPrompt(userPrompt, mcp.toolName),
     options,
   });
 
   let resultMsg: SDKMessage | undefined;
-  for await (const msg of q) {
-    const authErr = summariseAssistantError(msg, modelId);
-    if (authErr) throw authErr;
-    if (msg.type === "result") resultMsg = msg;
+  try {
+    for await (const msg of q) {
+      const authErr = summariseAssistantError(msg, modelId);
+      if (authErr) throw authErr;
+      if (msg.type === "result") resultMsg = msg;
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   if (capturedValidationError) {
@@ -200,4 +221,10 @@ export async function callViaSdkMcpSubmitTool<I, O>(
       cacheReadInputTokens: r?.usage?.cache_read_input_tokens ?? 0,
     },
   };
+  };
+
+  // Retry transient failures (rate_limit, 5xx, network, timeout); auth and
+  // schema/tool-call contract violations are terminal (isTransientLlmError).
+  // This closes the gap where the subscription backend had no retry at all.
+  return withRetry(runOnce, { isRetryable: isTransientLlmError });
 }

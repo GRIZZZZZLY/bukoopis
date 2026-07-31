@@ -25,7 +25,18 @@ import {
   studioContextToPrompt,
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
-import { loadRollingChapterContext } from "../utils/rolling-context.js";
+import {
+  loadRollingChapterContext,
+  ROLLING_WINDOW,
+} from "../utils/rolling-context.js";
+import {
+  compileContext,
+  describeCompiledContext,
+} from "../utils/context-compiler.js";
+import {
+  loadPovKnowledge,
+  renderPovKnowledgePrompt,
+} from "../utils/pov-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import {
   gatherRelevantNotes,
@@ -102,6 +113,12 @@ function loadBookContext(
 
 // Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
+
+// ADR 0003 slice 3: hard cap on assembled Writer context (trimmable layers,
+// excludes the always-sent beat-sheet + book premise/outline). Generous — the
+// point is a safety ceiling on very long books + Context Inspector visibility,
+// not aggressive trimming of normal chapters.
+const MAX_WRITER_CONTEXT_TOKENS = 80_000;
 
 export function createPlotRoute(
   sqlite: DatabaseType,
@@ -208,6 +225,9 @@ export function createPlotRoute(
       queryText: `${ch.title}\n${parsed.data.intent}`,
       currentChapterOrder: ch.order_index,
       hasVec,
+      // ADR 0003 slice 3: don't re-surface chapters the rolling window already
+      // gives the plotter verbatim.
+      excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
     });
     const planNotes = await gatherRelevantNotes(
       sqlite,
@@ -387,7 +407,33 @@ export function createPlotRoute(
       queryText: beatBlob,
       currentChapterOrder: ch.order_index,
       hasVec,
+      // ADR 0003 slice 3: don't retrieve chunks from chapters the rolling
+      // window already injects verbatim (dedup).
+      excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
     });
+
+    // ADR 0003 slice 3b: what the POV character knows so far (POV guard).
+    const povKnowledge = renderPovKnowledgePrompt(
+      loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.order_index),
+    );
+
+    // ADR 0003 slice 3: bound the assembled context under a token budget and
+    // log what was included/dropped (Context Inspector). The beat-sheet is
+    // always sent (passed separately); these are the trimmable layers.
+    const compiled = compileContext(
+      [
+        { id: "characters", text: characterContextFinal, priority: 1 },
+        { id: "pov", text: povKnowledge, priority: 1 },
+        { id: "rolling", text: prevSummary, priority: 2 },
+        { id: "lore", text: loreContext, priority: 3 },
+        { id: "studio", text: studioCtx, priority: 4 },
+        { id: "retrieval", text: writerRetrieved.promptBlock, priority: 5 },
+        { id: "style", text: styleCtx.prompt, priority: 6 },
+      ],
+      { maxTokens: MAX_WRITER_CONTEXT_TOKENS },
+    );
+    console.warn(describeCompiledContext(compiled, `writer ch#${ch.order_index}`));
+    const inc = new Set(compiled.includedIds);
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -403,12 +449,15 @@ export function createPlotRoute(
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
           beatSheet,
-          previousChaptersSummary: prevSummary,
-          characterContext: characterContextFinal,
-          loreContext,
-          styleContext: styleCtx.prompt,
-          studioContext: studioCtx,
-          retrievedContext: writerRetrieved.promptBlock,
+          previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
+          characterContext: inc.has("characters") ? characterContextFinal : null,
+          povKnowledge: inc.has("pov") ? povKnowledge : null,
+          loreContext: inc.has("lore") ? loreContext : null,
+          styleContext: inc.has("style") ? styleCtx.prompt : null,
+          studioContext: inc.has("studio") ? studioCtx : null,
+          retrievedContext: inc.has("retrieval")
+            ? writerRetrieved.promptBlock
+            : null,
           fatigueWords: styleCtx.fatigueBlacklist,
           config: { variants: 1, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.writerModel },
           provider: ctx.writerProvider,

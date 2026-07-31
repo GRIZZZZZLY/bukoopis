@@ -38,6 +38,20 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
     await next();
   });
 
+  // Global safety net: any error thrown out of a route becomes a structured
+  // 500 instead of a bare crash. Validation/404 helpers already return their
+  // own envelopes; this catches the unexpected (e.g. a synchronous DB throw).
+  app.onError((err, c) => {
+    console.error("[app] unhandled route error:", err);
+    return c.json(
+      {
+        error: "internal_error",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      500,
+    );
+  });
+
   app.route("/api/health", createHealthRoute({ sqlite, hasVec }));
   // Mounted before /api/books: GET /api/books/recommended must not be shadowed by books' GET /:id.
   app.route("/api", createStudioRoute(sqlite));

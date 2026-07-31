@@ -32,10 +32,12 @@ async function reindexChunks(
     return 0;
   }
   const rows = sqlite
-    .prepare("SELECT id, text FROM chunks ORDER BY id")
-    .all() as Array<{ id: number; text: string }>;
+    .prepare("SELECT id, text, book_id FROM chunks ORDER BY id")
+    .all() as Array<{ id: number; text: string; book_id: number }>;
+  // book_id metadata column (ADR 0003 slice 4) — required for the in-MATCH
+  // book filter; a NULL here would make the row invisible to search.
   const insertVec = sqlite.prepare(
-    "INSERT OR REPLACE INTO chunk_vec(rowid, embedding) VALUES (?, ?)",
+    "INSERT OR REPLACE INTO chunk_vec(rowid, embedding, book_id) VALUES (?, ?, ?)",
   );
   const provider = getEmbeddingProvider();
   let done = 0;
@@ -44,7 +46,11 @@ async function reindexChunks(
     const vecs = await provider.embedBatch(batch.map((r) => r.text));
     const tx = sqlite.transaction(() => {
       for (let j = 0; j < batch.length; j++) {
-        insertVec.run(batch[j]!.id, floatToBlob(vecs[j]!));
+        insertVec.run(
+          batch[j]!.id,
+          floatToBlob(vecs[j]!),
+          BigInt(batch[j]!.book_id),
+        );
       }
     });
     tx();
@@ -59,14 +65,14 @@ async function reindexNotes(
   hasVec: boolean,
 ): Promise<number> {
   const rows = sqlite
-    .prepare("SELECT id, title, body FROM book_notes ORDER BY id")
-    .all() as Array<{ id: number; title: string; body: string }>;
+    .prepare("SELECT id, title, body, book_id FROM book_notes ORDER BY id")
+    .all() as Array<{ id: number; title: string; body: string; book_id: number }>;
   const updateNote = sqlite.prepare(
     "UPDATE book_notes SET embedding = ? WHERE id = ?",
   );
   const insertVec = hasVec
     ? sqlite.prepare(
-        "INSERT OR REPLACE INTO book_notes_vec(rowid, embedding) VALUES (?, ?)",
+        "INSERT OR REPLACE INTO book_notes_vec(rowid, embedding, book_id) VALUES (?, ?, ?)",
       )
     : null;
   const provider = getEmbeddingProvider();
@@ -81,7 +87,7 @@ async function reindexNotes(
       for (let j = 0; j < batch.length; j++) {
         const blob = floatToBlob(vecs[j]!);
         updateNote.run(blob, batch[j]!.id);
-        insertVec?.run(batch[j]!.id, blob);
+        insertVec?.run(batch[j]!.id, blob, BigInt(batch[j]!.book_id));
       }
     });
     tx();

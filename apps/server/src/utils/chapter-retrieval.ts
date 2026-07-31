@@ -37,6 +37,13 @@ export interface GatherRetrievedChunksOptions {
    * = better dedupe + headroom for the Phase 5 reranker. Default topK * 4.
    */
   candidateK?: number;
+  /**
+   * ADR 0003 slice 3 — drop chunks from chapters at/after this order. The
+   * rolling window already injects the last N chapters VERBATIM, so retrieving
+   * their chunks is pure duplication; older summarized chapters still benefit
+   * from concrete-prose retrieval. Pass `currentOrder - ROLLING_WINDOW`.
+   */
+  excludeFromChapterOrder?: number;
 }
 
 export async function gatherRetrievedChunks(
@@ -73,6 +80,14 @@ export async function gatherRetrievedChunks(
   const seen = new Set<number>();
   const pool: RetrievedChunk[] = [];
   for (const h of hits) {
+    // Skip chapters already served verbatim by the rolling window (dedup).
+    if (
+      opts.excludeFromChapterOrder !== undefined &&
+      h.chapterOrder !== null &&
+      h.chapterOrder >= opts.excludeFromChapterOrder
+    ) {
+      continue;
+    }
     const key = h.chapterId ?? -1;
     if (seen.has(key)) continue;
     seen.add(key);
