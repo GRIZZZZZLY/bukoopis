@@ -1817,12 +1817,13 @@ html.atm-calm .page-studio {
     radial-gradient(circle at 70% 60%, rgba(217, 164, 74, 0.04) 1px, transparent 1px),
     radial-gradient(circle at 45% 85%, rgba(232, 182, 92, 0.03) 1px, transparent 1px);
   background-size: 26px 26px, 34px 34px, 41px 41px;
-  padding: 20px;
 }
 
-/* Канва — containing block с padding: у абсолютных детей начало координат
-   уже в padding-box, поэтому НИКАКИХ дополнительных 20px-сдвигов ни здесь,
-   ни у .board-note (иначе двойное смещение). */
+/* Канва без CSS padding: у absolute-детей начало координат всё равно было
+   бы в padding-box (никакого визуального инсета), так что отступ (BOARD_PAD)
+   и полоса заголовков (HEADER_H) считаются прямо в координатах board.ts —
+   layoutNotes/threadSpan/boardWidth/boardHeight. Не добавлять padding здесь
+   без переноса компенсации назад в геометрию. */
 .board-threads { position: absolute; top: 0; left: 0; pointer-events: none; }
 .thread {
   fill: none;
@@ -1875,6 +1876,26 @@ html.atm-calm .page-studio {
 .note-arc_delta { border-left: 3px solid var(--color-ink-green); }
 .note-theme     { border-left: 3px solid var(--color-brass); }
 .note-mystery   { border-left: 3px solid var(--color-ink-red); }
+
+/* Заголовки колонок — номера глав над первым рядом заметок (HEADER_H). */
+.board-col-label {
+  position: absolute;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Легенда видов заметок под доской. Цвет левой границы берётся из тех же
+   .note-* правил выше — отдельных цветов здесь не заводим. */
+.board-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+  font-size: 10px;
+}
+.board-legend-item { padding-left: 8px; }
 
 .board-empty { padding: 32px; text-align: center; color: var(--color-text-muted); }
 

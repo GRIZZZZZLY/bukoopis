@@ -9,6 +9,7 @@ import {
   layoutNotes,
   threadSpan,
   COLUMN_W,
+  BOARD_PAD,
 } from "@/lib/board";
 import type { Book, BookNote, NoteKind } from "@book-forge/shared";
 
@@ -143,6 +144,16 @@ export function PlotBoardPage() {
                 })}
               </svg>
 
+              {columns.map((c, i) => (
+                <div
+                  key={c}
+                  className="board-col-label mono faint"
+                  style={{ left: BOARD_PAD + i * COLUMN_W, top: 0, width: COLUMN_W - 12 }}
+                >
+                  гл. {c}
+                </div>
+              ))}
+
               {placed.map((p) => (
                 <article
                   key={p.note.id}
@@ -169,6 +180,16 @@ export function PlotBoardPage() {
                 </article>
               ))}
             </div>
+          </div>
+        )}
+
+        {notes.length > 0 && (
+          <div className="board-legend mono faint">
+            {(Object.keys(KIND_LABEL) as NoteKind[]).map((kind) => (
+              <span key={kind} className={`board-legend-item note-${kind}`}>
+                {KIND_LABEL[kind]}
+              </span>
+            ))}
           </div>
         )}
       </div>

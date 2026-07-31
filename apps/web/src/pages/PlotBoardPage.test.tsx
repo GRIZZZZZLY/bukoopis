@@ -41,6 +41,18 @@ describe("PlotBoardPage", () => {
     expect(screen.getByText("Кто в башне")).toBeInTheDocument();
   });
 
+  it("labels each column with its chapter number", async () => {
+    m.getBook.mockResolvedValue({ id: 7, title: "Маяк" } as never);
+    m.listBookNotes.mockResolvedValue([
+      { id: 1, bookId: 7, kind: "thread", introduced: 1, resolved: 3,
+        title: "Письмо без подписи", body: "…", tags: [], createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, bookId: 7, kind: "mystery", introduced: 2, resolved: null,
+        title: "Кто в башне", body: "…", tags: [], createdAt: "2026-01-01T00:00:00.000Z" },
+    ] as never);
+    renderAt();
+    expect(await screen.findByText("гл. 1")).toBeInTheDocument();
+  });
+
   it("marks open threads", async () => {
     m.getBook.mockResolvedValue({ id: 7, title: "Маяк" } as never);
     m.listBookNotes.mockResolvedValue([
