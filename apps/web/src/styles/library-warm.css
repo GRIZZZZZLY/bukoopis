@@ -1101,7 +1101,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 .cri-rail-collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .chapter-grid { grid-template-columns: 0 1fr 0; }
   .outline-rail, .cri-rail { display: none; }
 }
