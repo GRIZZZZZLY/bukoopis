@@ -18,10 +18,10 @@ interface Props {
 
 const ALL_CRITICS: CriticType[] = ["canon", "style", "editor", "reader"];
 
-const SEVERITY_COLOR: Record<IssueSeverity, string> = {
-  blocking: "bg-red-100 text-red-900 border-red-300",
-  suggestion: "bg-yellow-50 text-yellow-900 border-yellow-300",
-  nit: "bg-gray-50 text-gray-700 border-gray-200",
+const SEVERITY_DOT: Record<IssueSeverity, string> = {
+  blocking: "sev-red",
+  suggestion: "sev-amber",
+  nit: "sev-blue",
 };
 
 export function CritiquePanel({ versionId, onRepairDone }: Props) {
@@ -129,14 +129,14 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
 
   if (versionId === null) {
     return (
-      <section className="border border-[var(--color-border)] rounded-md p-4 text-sm text-[var(--color-muted-foreground)]">
+      <section className="cri-card-stack text-sm text-[var(--color-muted-foreground)]">
         Сохраните версию, чтобы запустить критику.
       </section>
     );
   }
 
   return (
-    <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
+    <section className="cri-card-stack">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-semibold">Критика версии</h2>
         <div className="flex items-center gap-2 flex-wrap">
@@ -156,7 +156,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">Ошибка: {error}</p>}
+      {error && <p className="text-sm text-[var(--color-ink-red)]">Ошибка: {error}</p>}
       {loading && <p className="text-sm">Загрузка…</p>}
 
       {!loading && !report && (
@@ -166,7 +166,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
       )}
 
       {report && report.status === "error" && !report.report && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-[var(--color-ink-red)]">
           Все критики упали: {report.errorMessage}
         </p>
       )}
@@ -214,7 +214,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
               </p>
             )}
             {repairError && (
-              <p className="text-sm text-red-600">Ошибка: {repairError}</p>
+              <p className="text-sm text-[var(--color-ink-red)]">Ошибка: {repairError}</p>
             )}
             {repairing && repairBuffer && (
               <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] max-h-[300px] overflow-auto">
@@ -238,13 +238,13 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3 text-sm flex-wrap">
-        <span className="px-2 py-1 rounded bg-red-100 text-red-900">
+        <span className="pill pill-red">
           blocking: {r.blockingCount}
         </span>
-        <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-900">
+        <span className="pill pill-amber">
           suggestion: {r.suggestionCount}
         </span>
-        <span className="px-2 py-1 rounded bg-gray-100 text-gray-800">
+        <span className="pill">
           nit: {r.nitCount}
         </span>
         <span className="text-[var(--color-muted-foreground)] self-center">
@@ -252,7 +252,7 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
         </span>
       </div>
       {report.errorMessage && (
-        <p className="text-xs text-orange-700">
+        <p className="text-xs text-[var(--color-ink-amber)]">
           Частичные ошибки: {report.errorMessage}
         </p>
       )}
@@ -289,26 +289,29 @@ function CriticBlock({ report }: { report: CriticReport }) {
               Замечаний нет.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="cri-list">
               {report.issues.map((issue, i) => (
-                <li
-                  key={i}
-                  className={`rounded-md border p-2 text-sm ${SEVERITY_COLOR[issue.severity]}`}
-                >
-                  <div className="flex justify-between items-baseline mb-1">
-                    <strong>{issue.summary}</strong>
-                    <span className="text-xs uppercase">
+                <li key={i} className="cri-card">
+                  <div className="cri-card-top">
+                    <span
+                      aria-hidden="true"
+                      className={SEVERITY_DOT[issue.severity]}
+                      style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0 }}
+                    />
+                    <span className="cri-card-title">{issue.summary}</span>
+                    <span className="cap-upper">
                       {SEVERITY_LABELS[issue.severity]}
                     </span>
                   </div>
                   {issue.excerpt && (
-                    <blockquote className="border-l-2 border-current pl-2 text-xs my-1 opacity-80">
+                    <blockquote className="cri-card-excerpt">
                       {issue.excerpt}
                     </blockquote>
                   )}
                   {issue.suggestion && (
-                    <div className="text-xs">
-                      <strong>Предлагается:</strong> {issue.suggestion}
+                    <div className="cri-card-sugg">
+                      <span className="cap-upper">Предлагается:</span>
+                      <code>{issue.suggestion}</code>
                     </div>
                   )}
                 </li>

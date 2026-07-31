@@ -1053,6 +1053,11 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   display: flex; flex-direction: column; gap: 1px;
   padding-bottom: 12px;
 }
+/* Standalone stack for CritiquePanel outside the .cri-rail shell (no
+   scroll-flex, just a column of blocks with breathing room). */
+.cri-card-stack {
+  display: flex; flex-direction: column; gap: 10px;
+}
 .cri-card {
   position: relative;
   padding: 14px 16px 12px;
@@ -1613,6 +1618,24 @@ html.atm-full .cat-tail {
 .cat svg { transition: transform 0.5s var(--ease-in-out); }
 @media (prefers-reduced-motion: reduce) {
   .cat-tail { animation: none; }
+}
+
+/* ─── Чернильница-автосейв ───────────────────────────────── */
+.inkwell { display: inline-flex; opacity: 0.7; }
+.inkwell-body, .inkwell-neck { fill: var(--color-text-faint); }
+.inkwell-drop { fill: var(--color-ink-blue); opacity: 0; }
+
+@keyframes inkwell-drip {
+  0%   { opacity: 0; transform: translateY(-3px); }
+  40%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(3px); }
+}
+html.atm-full .inkwell-drip .inkwell-drop,
+html.atm-calm .inkwell-drip .inkwell-drop {
+  animation: inkwell-drip 0.9s ease-in infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .inkwell-drop { animation: none !important; }
 }
 
 /* ─── Bookshelf (Library room, phase 2) ───────────────────── */

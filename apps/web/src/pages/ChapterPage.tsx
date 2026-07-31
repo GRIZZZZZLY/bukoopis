@@ -33,6 +33,7 @@ import { InlineCommandPanel } from "@/components/InlineCommandPanel";
 import { CanonPanel } from "@/components/CanonPanel";
 import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
+import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
@@ -793,6 +794,7 @@ export function ChapterPage() {
                   wordCount={wordCount}
                   dirty={dirty}
                 />
+                <InkwellStatus />
                 <MemoryStatusBadge
                   memory={memory}
                   onRetry={() => void onRetryMemory()}
