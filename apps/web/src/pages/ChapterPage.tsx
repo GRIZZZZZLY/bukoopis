@@ -33,6 +33,7 @@ import { InlineCommandPanel } from "@/components/InlineCommandPanel";
 import { CanonPanel } from "@/components/CanonPanel";
 import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
+import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
@@ -113,6 +114,8 @@ export function ChapterPage() {
   const [dirty, setDirty] = useState(false);
   const [editorTick, setEditorTick] = useState(0);
   const [mobilePanelsOpen, setMobilePanelsOpen] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
   const [memory, setMemory] = useState<ChapterMemoryInfo | null>(null);
@@ -577,6 +580,8 @@ export function ChapterPage() {
 
   const currentVersion =
     versions.find((v) => v.id === chapter.currentVersionId) ?? null;
+  const orderLabel =
+    chapter.orderIndex != null ? String(chapter.orderIndex + 1) : null;
 
   const sidebar = (
     <SidebarPanels
@@ -592,67 +597,27 @@ export function ChapterPage() {
   );
 
   return (
-    <div className="route">
-      <main
-        className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6 md:gap-8"
-        style={{ maxWidth: 1280, margin: "0 auto", padding: "32px 32px 96px" }}
-      >
-      <section className="flex flex-col gap-4 min-w-0">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Link
-            to={`/books/${bookId}/studio/chapters`}
-            className="btn btn-ghost btn-sm"
-            style={{ textDecoration: "none" }}
-          >
-            ← К главам
-          </Link>
-          <Button
-            variant="outline"
-            size="sm"
-            className="md:hidden"
-            onClick={() => setMobilePanelsOpen(true)}
-            aria-label="Открыть панели и версии"
-          >
-            <PanelRightOpen className="size-4" aria-hidden="true" />
-            Панели
-          </Button>
-        </div>
+    <div className="route page-chapter" data-screen-label="Chapter">
+      <div className="chapter-toolbar">
+        <Link
+          to={`/books/${bookId}/studio/chapters`}
+          className="btn btn-ghost btn-sm"
+          style={{ textDecoration: "none" }}
+        >
+          ← К главам
+        </Link>
+        <Button
+          variant="outline"
+          size="sm"
+          className="md:hidden"
+          onClick={() => setMobilePanelsOpen(true)}
+          aria-label="Открыть панели и версии"
+        >
+          <PanelRightOpen className="size-4" aria-hidden="true" />
+          Панели
+        </Button>
 
-        <input
-          className="text-[28px] leading-tight border-b border-[var(--color-border)] py-1 outline-none focus:border-[var(--color-brass)] bg-transparent transition-colors"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={isPreview}
-          aria-label="Название главы"
-        />
-
-        {isPreview && (
-          <div
-            role="status"
-            className="card"
-            style={{
-              borderLeft: "3px solid var(--color-ink-amber)",
-              fontSize: 13,
-              padding: "10px 14px",
-            }}
-          >
-            Просмотр старой версии (#{previewVersion?.id}). Сохранение создаст
-            новую версию-ветку.
-          </div>
-        )}
-
-        <MemoryStaleBanner
-          staleFromOrder={memory?.bookStaleFromOrder ?? null}
-          onRebuild={() => void onRebuildMemory()}
-          rebuilding={memoryRebuilding}
-        />
-
-        <PlanPanel
-          chapter={chapter}
-          onUpdated={load}
-          onPlanReady={setSelectedPlan}
-        />
+        <span className="ch-toolbar-spacer" />
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button
@@ -691,120 +656,191 @@ export function ChapterPage() {
           )}
         </div>
 
-        {writing && writerBuffer && (
-          <div
-            className="panel streaming-edge"
-            style={{
-              padding: 16,
-              maxHeight: 400,
-              overflow: "auto",
-            }}
-            aria-live="polite"
-          >
-            <div className="caption" style={{ marginBottom: 8 }}>
-              Live stream · агент пишет · Esc — отмена
-            </div>
-            <pre
-              className="whitespace-pre-wrap"
-              style={{
-                fontFamily: "var(--font-ui)",
-                fontSize: 13,
-                color: "var(--color-text)",
-                margin: 0,
-              }}
-            >
-              {writerBuffer}
-            </pre>
-          </div>
-        )}
-
-        <CritiquePanel
-          versionId={chapter.currentVersionId}
-          onRepairDone={load}
-        />
-
         <FocusToggle />
 
-        <EditorToolbar
-          editor={editor}
-          editorTick={editorTick}
-          onSave={onSave}
-          saving={saving}
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setLeftCollapsed((v) => !v)}
+          aria-pressed={leftCollapsed}
+          title="Оглавление"
+        >
+          ⌸
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setRightCollapsed((v) => !v)}
+          aria-pressed={rightCollapsed}
+          title="Панели разбора"
+        >
+          ⌹
+        </button>
+      </div>
+
+      <div
+        className={`chapter-grid ${leftCollapsed ? "chapter-grid-noleft" : ""} ${
+          rightCollapsed ? "chapter-grid-noright" : ""
+        }`}
+      >
+        <OutlineRail
+          bookId={Number(bookId)}
+          activeChapterId={id}
+          collapsed={leftCollapsed}
         />
 
-        <div
-          className="paper relative"
-          style={{
-            borderRadius: 14,
-            border: "1px solid var(--color-border-soft)",
-            padding: "32px 40px",
-            minHeight: 320,
-            cursor: "text",
-          }}
-          onClick={() => editor.chain().focus().run()}
-        >
-          <div
-            style={{
-              position: "relative",
-              zIndex: 1,
-              maxWidth: 680,
-              margin: "0 auto",
-            }}
-          >
-            <EditorContent editor={editor} />
-            {editor.isEmpty && !writing && !isPreview && (
-              <EmptyEditorHint
-                hasPlan={selectedPlan !== null}
-                onRunWriter={() => void onRunWriter()}
-              />
+        <main className="chapter-main">
+          <div className="flex flex-col gap-4 px-6 pt-6">
+            {isPreview && (
+              <div
+                role="status"
+                className="card"
+                style={{
+                  borderLeft: "3px solid var(--color-ink-amber)",
+                  fontSize: 13,
+                  padding: "10px 14px",
+                }}
+              >
+                Просмотр старой версии (#{previewVersion?.id}). Сохранение
+                создаст новую версию-ветку.
+              </div>
+            )}
+
+            <MemoryStaleBanner
+              staleFromOrder={memory?.bookStaleFromOrder ?? null}
+              onRebuild={() => void onRebuildMemory()}
+              rebuilding={memoryRebuilding}
+            />
+
+            <PlanPanel
+              chapter={chapter}
+              onUpdated={load}
+              onPlanReady={setSelectedPlan}
+            />
+
+            {writing && writerBuffer && (
+              <div
+                className="panel streaming-edge"
+                style={{
+                  padding: 16,
+                  maxHeight: 400,
+                  overflow: "auto",
+                }}
+                aria-live="polite"
+              >
+                <div className="caption" style={{ marginBottom: 8 }}>
+                  Live stream · агент пишет · Esc — отмена
+                </div>
+                <pre
+                  className="whitespace-pre-wrap"
+                  style={{
+                    fontFamily: "var(--font-ui)",
+                    fontSize: 13,
+                    color: "var(--color-text)",
+                    margin: 0,
+                  }}
+                >
+                  {writerBuffer}
+                </pre>
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <AutosaveStatus
-            saving={debouncedSave.saving}
-            lastSavedAt={debouncedSave.lastSavedAt}
-            error={saveError}
-            isPreview={isPreview}
-            wordCount={wordCount}
-            dirty={dirty}
-          />
-          <MemoryStatusBadge
-            memory={memory}
-            onRetry={() => void onRetryMemory()}
-            retrying={memoryRetrying}
-          />
-        </div>
+          <div className="ms-wrap">
+            <div className="ms-paper paper-grain">
+              <span className="ms-margin" aria-hidden="true" />
 
-        {!isPreview && <InlineCommandPanel editor={editor} chapterId={id} />}
+              <div className="ms-head">
+                <div className="ms-chapter-label cap-upper">
+                  Глава{orderLabel ? ` ${orderLabel}` : ""}
+                </div>
+                <input
+                  className="ms-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  disabled={isPreview}
+                  aria-label="Название главы"
+                />
+              </div>
 
-        <div className="flex gap-2">
-          <Button onClick={onSave} disabled={saving} aria-busy={saving || undefined}>
-            {saving ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Сохранение…
-              </>
-            ) : (
-              "Сохранить"
-            )}
-          </Button>
-          {isPreview && (
-            <Button
-              variant="secondary"
-              onClick={onRestore}
-              disabled={restoring}
-              aria-busy={restoring || undefined}
-            >
-              {restoring ? "Восстановление…" : "Восстановить"}
+              <div className="ms-body">
+                <EditorToolbar
+                  editor={editor}
+                  editorTick={editorTick}
+                  onSave={onSave}
+                  saving={saving}
+                />
+                <div
+                  style={{ position: "relative", cursor: "text" }}
+                  onClick={() => editor.chain().focus().run()}
+                >
+                  <EditorContent editor={editor} />
+                  {editor.isEmpty && !writing && !isPreview && (
+                    <EmptyEditorHint
+                      hasPlan={selectedPlan !== null}
+                      onRunWriter={() => void onRunWriter()}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="ms-footer mono faint">
+                <AutosaveStatus
+                  saving={debouncedSave.saving}
+                  lastSavedAt={debouncedSave.lastSavedAt}
+                  error={saveError}
+                  isPreview={isPreview}
+                  wordCount={wordCount}
+                  dirty={dirty}
+                />
+                <MemoryStatusBadge
+                  memory={memory}
+                  onRetry={() => void onRetryMemory()}
+                  retrying={memoryRetrying}
+                />
+              </div>
+            </div>
+          </div>
+
+          {!isPreview && <InlineCommandPanel editor={editor} chapterId={id} />}
+
+          <div className="flex gap-2 px-6 pb-6">
+            <Button onClick={onSave} disabled={saving} aria-busy={saving || undefined}>
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  Сохранение…
+                </>
+              ) : (
+                "Сохранить"
+              )}
             </Button>
-          )}
-        </div>
-      </section>
+            {isPreview && (
+              <Button
+                variant="secondary"
+                onClick={onRestore}
+                disabled={restoring}
+                aria-busy={restoring || undefined}
+              >
+                {restoring ? "Восстановление…" : "Восстановить"}
+              </Button>
+            )}
+          </div>
+        </main>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col gap-3">{sidebar}</aside>
+        <aside
+          className={`cri-rail ${rightCollapsed ? "cri-rail-collapsed" : ""}`}
+          aria-label="Разбор и материалы"
+        >
+          <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
+            <CritiquePanel
+              versionId={chapter.currentVersionId}
+              onRepairDone={load}
+            />
+            {sidebar}
+          </div>
+        </aside>
+      </div>
 
       {/* Mobile drawer */}
       <Sheet
@@ -839,7 +875,6 @@ export function ChapterPage() {
       {blocker.state === "blocked" && (
         <DiscardOption onDiscard={handleBlockedDiscard} />
       )}
-      </main>
     </div>
   );
 }

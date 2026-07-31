@@ -1099,6 +1099,13 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .cri-foot .btn { flex: 1; }
 .cri-foot-sel { width: 140px; font-size: 11px; height: 28px; padding: 0 8px; }
 
+.cri-rail-collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
+
+@media (max-width: 900px) {
+  .chapter-grid { grid-template-columns: 0 1fr 0; }
+  .outline-rail, .cri-rail { display: none; }
+}
+
 /* ─── Stage workspaces ──────────────────────────────────── */
 
 .page-stage { gap: 18px; }
