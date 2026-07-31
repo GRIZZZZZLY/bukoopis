@@ -36,6 +36,7 @@ import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
+import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
 import {
   MemoryStatusBadge,
   MemoryStaleBanner,
@@ -166,6 +167,17 @@ export function ChapterPage() {
     // commit with indexing + extractors happens on manual Save / Ctrl+S.
     delayMs: 10000,
   });
+
+  // Publish live save status to the shell StatusBar; reset on unmount so it
+  // falls back to idle once we navigate away from this chapter.
+  useEffect(() => {
+    if (saveError) reportSave({ kind: "error", at: Date.now() });
+    else if (debouncedSave.saving) reportSave({ kind: "saving", at: Date.now() });
+    else if (debouncedSave.lastSavedAt)
+      reportSave({ kind: "saved", at: debouncedSave.lastSavedAt.getTime() });
+  }, [debouncedSave.saving, debouncedSave.lastSavedAt, saveError]);
+
+  useEffect(() => () => resetSaveStatus(), []);
 
   const refreshMemory = useCallback(async () => {
     try {

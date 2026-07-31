@@ -17,6 +17,7 @@ import {
   type AtmosphereMode,
 } from "../../lib/useAtmosphere";
 import { setFocus, useFocusMode } from "../../lib/focusMode";
+import { useSaveStatus } from "../../lib/saveStatus";
 import { CandleGauge } from "../atmosphere/CandleGauge";
 import { DustLayer, shouldShowDust } from "../atmosphere/DustLayer";
 import { CatCompanion } from "../atmosphere/CatCompanion";
@@ -314,12 +315,34 @@ function AtmosphereLamp() {
 
 /* ─── StatusBar ─────────────────────────────────────────── */
 
+function relativeTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function StatusBar() {
+  const save = useSaveStatus();
+  const label =
+    save.kind === "saving"
+      ? "автосохранение…"
+      : save.kind === "error"
+        ? "ошибка сохранения"
+        : save.kind === "saved" && save.at
+          ? `сохранено · ${relativeTime(save.at)}`
+          : "готов к работе";
+  const dot =
+    save.kind === "error"
+      ? "dot-err"
+      : save.kind === "saving"
+        ? "dot-warn"
+        : "dot-ok";
   return (
     <footer className="statusbar mono" aria-label="Состояние сессии">
       <span className="status-group">
-        <span className="dot dot-ok" />
-        <span>сохранено · только что</span>
+        <span className={`dot ${dot}`} />
+        <span>{label}</span>
       </span>
       <span className="sep faint">·</span>
       <span className="status-group">

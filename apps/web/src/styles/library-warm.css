@@ -775,6 +775,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .statusbar .dot { width: 6px; height: 6px; }
 .dot-ok, .dot-green { background: var(--color-ink-green); }
 .dot-busy, .dot-brass { background: var(--color-brass); }
+.dot-warn { background: var(--color-ink-amber); }
+.dot-err  { background: var(--color-ink-red); }
 .dot-off  { background: var(--color-text-faint); }
 
 /* ─── shared page chrome ─────────────────────────────────── */
