@@ -16,9 +16,10 @@
 - Монорепо pnpm workspaces, Node 22 LTS, ESM only, TypeScript strict (`noUncheckedIndexedAccess`).
 - Backend: **Hono** (порт 3001), **better-sqlite3** (один файл, WAL), опционально `sqlite-vec` для векторного поиска + FTS5. Drizzle — только как описание схемы; runtime — прямой SQL. Миграции — рукописный plain SQL + journal.
 - Frontend: React 18, Vite 6, Tailwind v4 (CSS-first, дизайн-токены в `:root`), TipTap (редактор рукописи), react-router-dom 7. shadcn/ui как source-in-repo.
-- LLM: Anthropic API (`claude-sonnet-4-6` для сюжета/критики, `claude-opus-4-7` для писателя) + альтернативный бэкенд через `claude-agent-sdk` (OAuth-подписка Claude Code). Эмбеддинги — локальный ONNX.
+- LLM: Anthropic API (`claude-sonnet-4-6` для сюжета/критики, `claude-opus-5` для писателя) + альтернативный бэкенд через `claude-agent-sdk` (OAuth-подписка Claude Code). Эмбеддинги — локальный ONNX. Маппинг алиас→ID один на весь монорепо: `MODEL_IDS` в `packages/shared/src/pricing.ts`, рядом с таблицей цен и drift-guard тестом.
   - Актуальные цены за 1M токенов (вход/выход, справочник на 2026-06-24): Opus 5 и Opus 4.7 — $5/$25; Sonnet 5 — $3/$15 (вводная $2/$10 до 2026-08-31); Sonnet 4.6 — $3/$15; Haiku 4.5 — $1/$5; Fable 5 — $10/$50. Чтение из prompt-кеша ≈0.1× входа, запись 1.25× (TTL 5 мин) или 2× (1 ч). Batch API — −50%.
-  - **Opus 5 стоит столько же, сколько используемый сейчас Opus 4.7** — апгрейд Writer'а не увеличивает цену. Ломающие изменения при переходе: мышление включено по умолчанию (нужен запас `max_tokens`), `thinking: disabled` допустим только при effort ≤ `high`, минимальный кешируемый префикс падает до 512 токенов.
+  - Writer переведён на Opus 5 (2026-08-01) — та же цена, что у Opus 4.7. При этом `max_tokens` для Writer поднят 16384 → 32000: код нигде не передаёт `thinking`, поэтому на 4.7 писатель шёл без мышления и весь бюджет уходил в прозу, а на Opus 5 мышление включено по умолчанию и делит тот же бюджет.
+  - Оставшийся вопрос по Sonnet 5: у него новый токенизатор (тот же текст ≈ +30% токенов) и строгая проверка sampling-параметров, поэтому сюжет/критики пока на Sonnet 4.6.
 - Тесты: vitest, ~300+ по workspace (LLM-вызовы замоканы). Всё зелёное.
 
 ## 3. Структура workspace
