@@ -74,6 +74,8 @@ React 18 + Vite 6 + Tailwind v4 (CSS-first via `@tailwindcss/vite`, no `tailwind
 
 Комната «Кабинет» (phase 2): ChapterPage — 3-колоночный `.chapter-grid` (OutlineRail · `.ms-paper` рукопись · cri-rail с критикой и материалами); живой статус сохранения в StatusBar через [saveStatus.ts](apps/web/src/lib/saveStatus.ts), чернильница-автосейв в подвале рукописи.
 
+Комната «Мастерская» (phase 2): Studio — карточки-чертежи (blueprint-сетка на `.stagecard`), иконки этапов — инструменты (колба/глобус/свиток/портреты/сундук/карта/стопка), верстак-фон `.page-studio` под atm-гейтом.
+
 ## Project memory
 
 This repository has a persistent memory that survives across machines and sessions.
