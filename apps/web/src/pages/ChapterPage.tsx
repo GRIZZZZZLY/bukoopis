@@ -612,7 +612,7 @@ export function ChapterPage() {
         <Button
           variant="outline"
           size="sm"
-          className="md:hidden"
+          className="lg:hidden"
           onClick={() => setMobilePanelsOpen(true)}
           aria-label="Открыть панели и версии"
         >
@@ -848,7 +848,7 @@ export function ChapterPage() {
       </div>
 
       {/* Mobile drawer — CritiquePanel lives only in .cri-rail on desktop
-          (display:none below 768px), so mirror it here for mobile access.
+          (display:none below 1024px), so mirror it here for mobile access.
           Sheet renders its children into the DOM at all times (visibility is
           CSS transform/opacity only, not conditional mount), so this instance
           is gated on mobilePanelsOpen to avoid fetching critique data before

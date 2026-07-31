@@ -3,7 +3,11 @@
 /* ───────────────────────────────────────────────────────────────
    Library Warm — design tokens (dark-only).
    Source of truth: book_redisign/app/tokens.css.
-   Tailwind v4 @theme: --color-*/--font-*/--radius-* generate utilities.
+   Tailwind v4 @theme: префиксы --color-, --font-, --radius- дают утилиты.
+   ВНИМАНИЕ: не писать глобы токенов с косой чертой в комментариях —
+   последовательность "звёздочка + слэш" закрывает комментарий досрочно,
+   и парсер Tailwind тихо выбрасывает весь остаток файла (было: пропали
+   body{color}, ::selection, .ProseMirror, .canon-mark).
    shadcn-compat aliases (--color-primary, etc.) keep existing
    primitives working while pointing at Library-Warm values.
    ─────────────────────────────────────────────────────────────── */
@@ -27,7 +31,9 @@
   --color-text:         #E4E1D4;
   --color-text-strong:  #F5F2E6;
   --color-text-muted:   #8B93A8;
-  --color-text-faint:   #5F6880;
+  /* было #5F6880 — 2.9:1 на surface-1, ниже минимума для текста.
+     #828CA3 даёт 4.8:1 на surface-1 и 5.3:1 на фоне. */
+  --color-text-faint:   #828CA3;
 
   /* accents */
   --color-brass:        #D9A44A;
@@ -111,9 +117,12 @@
 
 html {
   background-color: #131722;
+  /* Тёмная схема для нативных контролов: date-инпуты, селекты, скроллбары,
+     иначе их внутренности рисуются светлыми поверх чернильного фона. */
+  color-scheme: dark;
 }
 body {
-  background-color: #131722 !important;
+  background-color: #131722;
   color: #E4E1D4;
   font-family: var(--font-sans);
   font-size: 14px;

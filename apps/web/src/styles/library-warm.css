@@ -27,7 +27,8 @@
   --color-text:         #E4E1D4;
   --color-text-strong:  #F5F2E6;
   --color-text-muted:   #8B93A8;
-  --color-text-faint:   #5F6880;
+  /* было #5F6880 — 2.9:1 на surface-1 (ниже минимума для текста) */
+  --color-text-faint:   #828CA3;
 
   /* accents */
   --color-brass:        #D9A44A;
@@ -447,13 +448,15 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   box-shadow: var(--shadow-glow);
 }
 .textarea { font-family: var(--font-prose); font-size: 15px; line-height: 1.6; min-height: 80px; resize: vertical; padding: 12px 14px; }
-.input::placeholder, .textarea::placeholder { color: var(--color-text-faint); }
+/* Поля на surface-2, поэтому placeholder/подсказка берут muted: faint даже
+   после подъёма даёт там 4.3:1. */
+.input::placeholder, .textarea::placeholder { color: var(--color-text-muted); }
 .input-lg { padding: 12px 14px; font-size: 15px; }
 .input-display { font-family: var(--font-display); font-size: 22px; font-weight: 500; }
 
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field-label { font-size: 12px; letter-spacing: 0.02em; color: var(--color-text-muted); font-weight: 500; }
-.field-hint  { font-size: 11px; color: var(--color-text-faint); font-family: var(--font-mono); }
+.field-hint  { font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono); }
 
 /* ─── Stepper ─────────────────────────────────────────────── */
 
@@ -639,10 +642,16 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 }
 .brand-name { color: var(--color-brass); }
 
+/* overflow:hidden обязателен: .topbar-left — flex:1 c min-width:0, а внутри
+   nowrap-содержимое, поэтому без обрезки крошки и бренд выезжали за свою
+   ячейку и накладывались на поиск (было видно на 780px). */
+.topbar-left, .crumbs { overflow: hidden; }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.crumb  { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
+.crumb  { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); min-width: 0; }
 .crumb-sep { font-family: var(--font-mono); }
+.crumb-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crumb-label.strong { color: var(--color-text); }
+.brand { flex: none; }
 
 .topbar-chapter {
   font-family: var(--font-display);
@@ -1121,25 +1130,34 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 .cri-rail-collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
 
-@media (max-width: 767px) {
+/* Планшетная полоса 768–1023px: три колонки главы (240 + 1fr + 400) требуют
+   ≥1024px, иначе рукописи остаётся ~150px. Рейлы уходят в мобильный Sheet,
+   поэтому граница режимов — 1024, а не 768. */
+@media (max-width: 1023px) {
   /* Рейлы скрыты через display:none и выпадают из грида, поэтому колонок
      должно остаться ровно одна: при `0 1fr 0` рукопись попадала в нулевую
      первую колонку и схлопывалась в вертикальную полосу шириной 42px. */
-  .chapter-grid { grid-template-columns: 1fr; }
+  .chapter-grid,
+  .chapter-grid-noleft,
+  .chapter-grid-noright { grid-template-columns: 1fr; }
   .outline-rail, .cri-rail { display: none; }
   /* грид-элемент по умолчанию min-width:auto и не сжимается уже своего
      содержимого — без этого рукопись уезжала за правый край экрана */
   .chapter-main { min-width: 0; }
+  .chapter-toolbar { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 8px; }
+
+  /* топбар не вмещает всё в один ряд — снимаем необязательное */
+  .topbar { gap: 12px; padding: 0 14px; }
+  .topbar-link,
+  .topbar-kbd { display: none; }
+}
+
+@media (max-width: 767px) {
   .ms-wrap { padding: 20px 12px 60px; }
   .ms-paper { padding: 32px 20px 40px; }
   .ms-title { font-size: 24px; }
-  .chapter-toolbar { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 8px; }
-
-  /* топбар на 390px не вмещал всё в один ряд — элементы наезжали друг на друга */
   .topbar { gap: 10px; padding: 0 12px; }
-  .crumbs,
-  .topbar-link,
-  .topbar-kbd { display: none; }
+  .crumbs { display: none; }
 }
 
 /* ─── Stage workspaces ──────────────────────────────────── */
@@ -1677,6 +1695,15 @@ html.atm-calm .inkwell-drip .inkwell-drop {
   --shelf-plank-edge: rgba(7, 9, 15, 0.55);
 }
 
+/* Комната «Библиотека»: полка занимает вертикальный центр свободного места.
+   Раньше книги стояли под заголовком, а ниже оставалось ~70% пустой стены. */
+.page-books {
+  min-height: calc(100vh - var(--topbar-h) - var(--statusbar-h) - 92px);
+}
+.page-books .bookshelf {
+  margin-block: auto;
+}
+
 /* Доски рисуются фоном с шагом ряда: каждый ряд слотов ровно
    --shelf-row высотой, книги прижаты к низу ряда. */
 .bookshelf {
@@ -1698,6 +1725,17 @@ html.atm-calm .inkwell-drip .inkwell-drop {
   display: flex;
   align-items: flex-end;
   padding-bottom: 14px;
+}
+
+/* Мобильная полка: ряд 252px оставлял пустой «этаж» под перенесённым слотом.
+   Медиазапрос стоит здесь, а не в общем мобильном блоке выше — токены полки
+   объявлены ниже него и перебивали бы переопределение. */
+@media (max-width: 767px) {
+  :root { --shelf-row: 196px; }
+  .bookshelf { padding: 0 4px; column-gap: 8px; }
+  /* высота корешка приходит инлайном (170–234px) — ограничиваем рядом,
+     max-height перебивает инлайновый height */
+  .shelf-book { max-height: calc(var(--shelf-row) - 28px); }
 }
 
 .shelf-book {
@@ -1827,7 +1865,29 @@ html.atm-calm .page-studio {
 
 /* ─── Plot board (Доска сюжета, phase 2) ─────────────────── */
 
-.board-scroll { overflow: auto; padding: 8px 0 24px; }
+/* Обёртка нужна для градиентов у краёв: внутри .board-scroll они бы уехали
+   вместе с содержимым. data-edge-* ставит страница по фактической прокрутке. */
+.board-viewport { position: relative; }
+.board-viewport::before,
+.board-viewport::after {
+  content: "";
+  position: absolute; top: 8px; bottom: 24px; width: 40px;
+  pointer-events: none; opacity: 0; z-index: 3;
+  transition: opacity var(--motion-2) var(--ease-in-out);
+}
+.board-viewport::before {
+  left: 0;
+  background: linear-gradient(to right, var(--color-bg), transparent);
+}
+.board-viewport::after {
+  right: 0;
+  background: linear-gradient(to left, var(--color-bg), transparent);
+}
+.board-viewport[data-edge-left]::before,
+.board-viewport[data-edge-right]::after { opacity: 0.9; }
+
+.board-scroll { overflow: auto; padding: 8px 0 24px; scroll-behavior: smooth; }
+.board-scroll:focus-visible { outline: 2px solid var(--color-brass); outline-offset: 2px; }
 
 .board-canvas {
   position: relative;
@@ -1979,3 +2039,65 @@ html.atm-off::view-transition-new(root) {
 .lw-dot[data-tone="red"]   { background: var(--color-ink-red); }
 .lw-dot[data-tone="blue"]  { background: var(--color-ink-blue); }
 .lw-dot[data-tone="brass"] { background: var(--color-brass); }
+
+/* .lw-btn / .lw-pill — атрибутный API (data-variant / data-size / data-tone),
+   которым размечены App.tsx, PlaybookRunner и EntityStageRunner. Правил не
+   было вовсе: кнопки рендерились без фона, рамки и паддинга, а статус-пилюля
+   — голым текстом. */
+.lw-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 32px; padding: 0 14px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  background: var(--color-surface-2); color: var(--color-text);
+  font-family: var(--font-ui); font-size: 13px; font-weight: 500; line-height: 1;
+  white-space: nowrap; cursor: pointer; user-select: none;
+  transition: background var(--motion-1) var(--ease-hover),
+              color var(--motion-1) var(--ease-hover),
+              border-color var(--motion-1) var(--ease-hover);
+}
+.lw-btn:hover { background: var(--color-surface-3); border-color: var(--color-border-strong); }
+.lw-btn[data-size="sm"] { height: 28px; padding: 0 10px; font-size: 12px; }
+.lw-btn[data-size="lg"] { height: 40px; padding: 0 18px; font-size: 14px; }
+.lw-btn[data-variant="primary"] {
+  background: var(--color-brass); border-color: var(--color-brass);
+  color: #131722; font-weight: 600;
+}
+.lw-btn[data-variant="primary"]:hover { background: var(--color-brass-hi); border-color: var(--color-brass-hi); }
+.lw-btn[data-variant="ghost"] { background: transparent; border-color: transparent; }
+.lw-btn[data-variant="ghost"]:hover { background: var(--color-surface-2); }
+.lw-btn[data-variant="destructive"] {
+  background: transparent; border-color: var(--color-ink-red); color: var(--color-ink-red);
+}
+.lw-btn[data-variant="destructive"]:hover { background: var(--color-ink-red-tint); }
+
+.lw-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 10px;
+  border: 1px solid var(--color-border); border-radius: 999px;
+  background: transparent; color: var(--color-text-muted);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.lw-pill[data-tone="green"] { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
+.lw-pill[data-tone="amber"] { color: var(--color-ink-amber); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
+.lw-pill[data-tone="red"]   { color: var(--color-ink-red); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
+.lw-pill[data-tone="blue"]  { color: var(--color-ink-blue); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
+.lw-pill[data-tone="brass"] { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
+
+.stagecard-status { margin-left: auto; }
+.leftrail-label { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Единое disabled-состояние: не прозрачность (она гасит и фон, и текст —
+   brass 50% давал 2.3:1 чёрным по графиту), а собственная пара токенов. */
+.btn:disabled, .btn[aria-disabled="true"],
+.lw-btn:disabled, .lw-btn[aria-disabled="true"] {
+  background: var(--color-surface-2);
+  border-color: var(--color-border-soft);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  opacity: 1;
+}
+.btn:disabled:hover, .lw-btn:disabled:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border-soft);
+}

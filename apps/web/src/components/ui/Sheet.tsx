@@ -58,19 +58,23 @@ export function Sheet({
         )}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-            <h2 className="text-base font-semibold">{title}</h2>
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
+            <h2 className="min-w-0 truncate text-base font-semibold">{title}</h2>
             <button
               type="button"
               onClick={onClose}
               aria-label="Закрыть"
-              className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-[var(--color-accent)] text-xl leading-none"
+              className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md hover:bg-[var(--color-accent)] text-xl leading-none"
             >
               ×
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        {/* Содержимое рисовалось для 400px-рейла: без min-w-0/переноса длинные
+            строки и nowrap-панели вылезали за край экрана и обрезались. */}
+        <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 [&_*]:min-w-0 break-words">
+          {children}
+        </div>
       </div>
     </div>
   );

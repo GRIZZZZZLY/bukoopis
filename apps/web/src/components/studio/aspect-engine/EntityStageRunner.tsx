@@ -1,7 +1,17 @@
 import { useState } from "react";
 import type { StageAspect, StageState } from "@book-forge/shared";
 import type { VariantGenerator } from "./types.js";
-import { createEntityAdapter } from "./entityAdapter.js";
+import { candidateLabel, createEntityAdapter } from "./entityAdapter.js";
+
+/** Те же подписи, что в AspectRunner: пилюля показывала внутренний код
+ *  («accepted») латиницей в русском интерфейсе. */
+const ASPECT_STATUS_LABEL: Record<StageAspect["status"], string> = {
+  pending: "ожидает",
+  generating: "генерация…",
+  reviewing: "выбор",
+  accepted: "принято",
+  skipped: "пропущено",
+};
 
 interface EntitySetPayload {
   candidates: Array<{
@@ -308,7 +318,7 @@ export function EntityStageRunner({
                         : undefined
                 }
               >
-                {aspect.status}
+                {ASPECT_STATUS_LABEL[aspect.status] ?? aspect.status}
               </span>
             </div>
             {aspect.description && (
@@ -323,7 +333,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleGenerate(aspect)}
                   disabled={busy}
-                  className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50"
+                  className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
                 >
                   {busy ? "Генерируем…" : "Сгенерировать варианты"}
                 </button>
@@ -400,7 +410,7 @@ export function EntityStageRunner({
                             />
                             <div className="flex flex-col">
                               <span className="font-medium">
-                                {profile.name ?? "Без имени"}
+                                {candidateLabel(profile).text}
                               </span>
                               {profile.description && (
                                 <span className="text-xs text-[var(--color-muted-foreground)]">
@@ -418,7 +428,7 @@ export function EntityStageRunner({
                       type="button"
                       onClick={() => handleMaterialize(aspect)}
                       disabled={busy}
-                      className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:opacity-50"
+                      className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:bg-[var(--color-surface-2)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
                     >
                       {busy ? "Материализуем…" : "Материализовать"}
                     </button>

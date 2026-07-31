@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import type {
@@ -17,6 +18,30 @@ interface Props {
 }
 
 type Tab = "characters" | "locations" | "items" | "hooks" | "relationships";
+
+/** Удаление в каноне было залитой красной кнопкой «×» на каждой карточке —
+ *  самый заметный элемент страницы и без доступного имени («×» скринридеру
+ *  ничего не говорит). Теперь ghost с красным hover и подписью. */
+function DeleteButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="size-8 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-ink-red)] hover:bg-[var(--color-ink-red-tint)]"
+    >
+      <Trash2 className="size-4" aria-hidden="true" />
+    </Button>
+  );
+}
 
 export function KnowledgePanel({ bookId }: Props) {
   const [tab, setTab] = useState<Tab>("characters");
@@ -127,7 +152,10 @@ function CharactersTab({ bookId }: { bookId: number }) {
             <li key={c.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
               <div className="flex justify-between items-center">
                 <strong>{c.canonicalName}</strong>
-                <Button size="sm" variant="destructive" onClick={() => onDelete(c.id)}>×</Button>
+                <DeleteButton
+                  label={`Удалить персонажа «${c.canonicalName}»`}
+                  onClick={() => onDelete(c.id)}
+                />
               </div>
               <div className="text-[var(--color-muted-foreground)]">{c.profile.description}</div>
               {c.profile.want && <div>Хочет: {c.profile.want}</div>}
@@ -184,7 +212,10 @@ function LocationsTab({ bookId }: { bookId: number }) {
             <li key={l.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
               <div className="flex justify-between">
                 <strong>{l.name}</strong>
-                <Button size="sm" variant="destructive" onClick={async () => { await api.deleteLocation(l.id); await load(); }}>×</Button>
+                <DeleteButton
+                  label={`Удалить локацию «${l.name}»`}
+                  onClick={async () => { await api.deleteLocation(l.id); await load(); }}
+                />
               </div>
               <div className="text-[var(--color-muted-foreground)]">{l.profile.description}</div>
             </li>
@@ -238,7 +269,10 @@ function ItemsTab({ bookId }: { bookId: number }) {
             <li key={i.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
               <div className="flex justify-between">
                 <strong>{i.name}</strong>
-                <Button size="sm" variant="destructive" onClick={async () => { await api.deleteItem(i.id); await load(); }}>×</Button>
+                <DeleteButton
+                  label={`Удалить предмет «${i.name}»`}
+                  onClick={async () => { await api.deleteItem(i.id); await load(); }}
+                />
               </div>
               <div className="text-[var(--color-muted-foreground)]">{i.profile.description}</div>
             </li>
@@ -307,7 +341,10 @@ function HooksTab({ bookId }: { bookId: number }) {
                   <option value="resolved">resolved</option>
                   <option value="deferred">deferred</option>
                 </select>
-                <Button size="sm" variant="destructive" onClick={async () => { await api.deleteHook(h.id); await load(); }}>×</Button>
+                <DeleteButton
+                  label="Удалить крючок"
+                  onClick={async () => { await api.deleteHook(h.id); await load(); }}
+                />
               </div>
             </li>
           ))}
@@ -391,7 +428,10 @@ function RelationshipsTab({ bookId }: { bookId: number }) {
                 <strong>{nameById.get(r.toCharacterId) ?? `#${r.toCharacterId}`}</strong>
                 : {r.type} (tension: {r.tension.toFixed(2)})
               </div>
-              <Button size="sm" variant="destructive" onClick={async () => { await api.deleteRelationship(r.id); await load(); }}>×</Button>
+              <DeleteButton
+                label="Удалить связь"
+                onClick={async () => { await api.deleteRelationship(r.id); await load(); }}
+              />
             </li>
           ))}
         </ul>

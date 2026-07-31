@@ -32,6 +32,14 @@ import type {
   StudioState,
 } from "@book-forge/shared";
 
+/** Русские подписи статусов главы: в UI утекали внутренние коды (draft,
+ *  in_review, final) — латиница в русском интерфейсе. */
+const CHAPTER_STATUS_LABEL: Record<string, string> = {
+  draft: "черновик",
+  in_review: "на разборе",
+  final: "готова",
+};
+
 export function ChaptersStagePage() {
   const { bookId } = useParams<{ bookId: string }>();
   const id = Number(bookId);
@@ -308,8 +316,13 @@ function SortableChapterList({
           }}
           aria-label="Главы (можно перетаскивать)"
         >
-          {chapters.map((c) => (
-            <SortableChapterItem key={c.id} chapter={c} bookId={bookId} />
+          {chapters.map((c, i) => (
+            <SortableChapterItem
+              key={c.id}
+              chapter={c}
+              bookId={bookId}
+              number={i + 1}
+            />
           ))}
         </ul>
       </SortableContext>
@@ -320,9 +333,13 @@ function SortableChapterList({
 function SortableChapterItem({
   chapter,
   bookId,
+  number,
 }: {
   chapter: Chapter;
   bookId: number;
+  /** Порядковый номер в списке. orderIndex — внутренний шаг сортировки
+   *  (10, 20, 30…), в UI он читался как «глава №10». */
+  number: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(chapter.id) });
@@ -331,6 +348,7 @@ function SortableChapterItem({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+  const statusLabel = CHAPTER_STATUS_LABEL[chapter.status] ?? chapter.status;
   const tone: "amber" | "blue" | "green" | "default" =
     chapter.status === "draft"
       ? "amber"
@@ -381,7 +399,7 @@ function SortableChapterItem({
             }}
           >
             <span className="chrack-num mono" style={{ flexShrink: 0 }}>
-              #{String(chapter.orderIndex).padStart(2, "0")}
+              {String(number).padStart(2, "0")}
             </span>
             <span
               className="chrack-title"
@@ -394,7 +412,7 @@ function SortableChapterItem({
               {chapter.title}
             </span>
           </div>
-          <Pill tone={tone}>{chapter.status}</Pill>
+          <Pill tone={tone}>{statusLabel}</Pill>
         </Link>
       </div>
     </li>

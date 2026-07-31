@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { api } from "@/api/client";
@@ -28,6 +28,33 @@ export function PlotBoardPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [notes, setNotes] = useState<BookNote[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /** Доска шире экрана начиная с ~6 глав, но обрезалась вплотную к краю —
+   *  ни намёка, что справа ещё стикеры. Считаем состояние прокрутки и
+   *  подсвечиваем края. */
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState<{ left: boolean; right: boolean }>({
+    left: false,
+    right: false,
+  });
+  const syncEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setEdges({ left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 });
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    syncEdges();
+    // jsdom и старые движки без ResizeObserver: краевые градиенты просто
+    // не пересчитываются при ресайзе, скролл работает.
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(syncEdges);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncEdges, notes]);
 
   async function load() {
     setError(null);
@@ -117,7 +144,21 @@ export function PlotBoardPage() {
             </p>
           </div>
         ) : (
-          <div className="board-scroll">
+          <div
+            className="board-viewport"
+            data-edge-left={edges.left || undefined}
+            data-edge-right={edges.right || undefined}
+          >
+            <div
+              className="board-scroll"
+              ref={scrollRef}
+              onScroll={syncEdges}
+              // прокрутка доски с клавиатуры: без tabIndex фокус в регион не
+              // попадает и стрелками её не сдвинуть
+              tabIndex={0}
+              role="region"
+              aria-label="Доска сюжета, прокручивается по горизонтали"
+            >
             <div
               className="board-canvas"
               style={{
@@ -183,6 +224,7 @@ export function PlotBoardPage() {
                   </div>
                 </article>
               ))}
+            </div>
             </div>
           </div>
         )}

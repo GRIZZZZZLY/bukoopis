@@ -45,7 +45,7 @@ export function Tabs<T extends string>({
             disabled={item.disabled}
             onClick={() => onChange(item.value)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-50",
+              "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:text-[var(--color-text-faint)] disabled:cursor-not-allowed",
               size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm",
               active
                 ? "bg-[var(--color-background)] text-[var(--color-foreground)] shadow-sm"
