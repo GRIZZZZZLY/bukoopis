@@ -1,13 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryStatusBadge, MemoryStaleBanner } from "./MemoryStatus";
+import {
+  MemoryStatusBadge,
+  MemoryStaleBanner,
+  MemoryLagWarning,
+} from "./MemoryStatus";
 import type { ChapterMemoryInfo } from "@/api/client";
 
 function mem(
   state: ChapterMemoryInfo["state"],
-  bookStaleFromOrder: number | null = null,
+  bookStaleFromPosition: number | null = null,
 ): ChapterMemoryInfo {
-  return { state, memoryVersionId: null, bookStaleFromOrder };
+  return {
+    state,
+    memoryVersionId: null,
+    bookStaleFromPosition,
+    pendingEarlierChapters: [],
+  };
 }
 
 describe("MemoryStatusBadge", () => {
@@ -68,11 +77,37 @@ describe("MemoryStatusBadge", () => {
   });
 });
 
+describe("MemoryLagWarning", () => {
+  it("renders nothing when every earlier chapter is indexed", () => {
+    const { container } = render(<MemoryLagWarning chapters={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names the single chapter still being indexed", () => {
+    render(<MemoryLagWarning chapters={[2]} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /Память главы #2 ещё обновляется/,
+    );
+  });
+
+  it("lists every lagging chapter when there are several", () => {
+    render(<MemoryLagWarning chapters={[2, 5]} />);
+    const warning = screen.getByRole("status");
+    expect(warning).toHaveTextContent(/#2/);
+    expect(warning).toHaveTextContent(/#5/);
+  });
+
+  it("warns that generating now would miss that context", () => {
+    render(<MemoryLagWarning chapters={[3]} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/не попад/i);
+  });
+});
+
 describe("MemoryStaleBanner", () => {
   it("renders nothing when the book is not stale", () => {
     const { container } = render(
       <MemoryStaleBanner
-        staleFromOrder={null}
+        staleFromPosition={null}
         onRebuild={() => {}}
         rebuilding={false}
       />,
@@ -84,7 +119,7 @@ describe("MemoryStaleBanner", () => {
     const onRebuild = vi.fn();
     render(
       <MemoryStaleBanner
-        staleFromOrder={4}
+        staleFromPosition={4}
         onRebuild={onRebuild}
         rebuilding={false}
       />,

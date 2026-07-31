@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { join } from "node:path";
+import Database from "better-sqlite3";
 
 // POST /versions is always a commit now (ADR 0002 Step 6) and enqueues memory
 // jobs; mock the LLM agents so the background worker never hits the network.
@@ -35,7 +37,7 @@ interface ChapterJson {
   id: number;
   currentVersionId: number | null;
   draft: ChapterDraftJson | null;
-  memory: { state: string };
+  memory: { state: string; pendingEarlierChapters: number[] };
 }
 interface VersionJson {
   id: number;
@@ -132,6 +134,48 @@ describe("chapter drafts (ADR 0002, Step 6)", () => {
     expect(ch.currentVersionId).not.toBeNull();
     // Memory pipeline is queued/ran for the commit — state is not "none".
     expect(["updating", "fresh"]).toContain(ch.memory.state);
+  });
+
+  it("reports earlier chapters whose memory never landed", async () => {
+    // Chapter 1 is committed but its facts extraction failed for good; the
+    // worker never retries a terminal 'error', so this stays deterministic.
+    await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+      contentJson: docFor("Глава 1."),
+    });
+    const sqlite = new Database(join(t.dbDir, "test.sqlite"));
+    const bookId = (
+      sqlite
+        .prepare("SELECT book_id FROM chapters WHERE id = ?")
+        .get(chapterId) as { book_id: number }
+    ).book_id;
+    sqlite
+      .prepare(
+        "UPDATE memory_jobs SET status='error' WHERE chapter_id = ? AND kind='facts'",
+      )
+      .run(chapterId);
+    sqlite.close();
+
+    const c2 = await sendJson<{ id: number }>(
+      t.app,
+      `/api/books/${bookId}/chapters`,
+      "POST",
+      { title: "Глава 2" },
+    );
+
+    const ch2 = await sendJson<ChapterJson>(
+      t.app,
+      `/api/chapters/${c2.id}`,
+      "GET",
+    );
+    expect(ch2.memory.pendingEarlierChapters).toEqual([1]);
+
+    // The lagging chapter itself is not "earlier than" itself.
+    const ch1 = await sendJson<ChapterJson>(
+      t.app,
+      `/api/chapters/${chapterId}`,
+      "GET",
+    );
+    expect(ch1.memory.pendingEarlierChapters).toEqual([]);
   });
 
   it("a draft on top of a committed version downgrades memory state to 'none'", async () => {

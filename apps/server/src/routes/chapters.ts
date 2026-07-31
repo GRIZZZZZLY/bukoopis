@@ -15,6 +15,7 @@ import { notFound, validationFailed } from "../utils/errors.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import {
   enqueueMemoryJobs,
+  pendingEarlierMemoryChapters,
   COMMIT_JOB_KINDS,
 } from "../utils/memory-queue.js";
 import {
@@ -23,6 +24,24 @@ import {
 } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
+
+/**
+ * Maps a chapter's `order_index` to its 1-based position in the book — the
+ * number the author actually sees. Falls back to the raw value for an index
+ * that no longer resolves to a chapter.
+ */
+function chapterPositionLookup(
+  sqlite: DatabaseType,
+  bookId: number,
+): (orderIndex: number) => number {
+  const rows = sqlite
+    .prepare(
+      "SELECT order_index FROM chapters WHERE book_id = ? ORDER BY order_index ASC",
+    )
+    .all(bookId) as Array<{ order_index: number }>;
+  const positions = new Map(rows.map((r, i) => [r.order_index, i + 1]));
+  return (orderIndex) => positions.get(orderIndex) ?? orderIndex;
+}
 
 export function createChaptersRoute(
   sqlite: DatabaseType,
@@ -81,13 +100,27 @@ export function createChaptersRoute(
         "SELECT memory_stale_from_chapter_order s FROM books WHERE id = ?",
       )
       .get(row.book_id) as { s: number | null } | undefined;
+    // order_index is sparse (10, 20, 30 … so chapters can be reordered), while
+    // the UI numbers chapters by their position in the book. Both memory fields
+    // below exist only to be shown to the author, so convert here — reporting a
+    // raw order_index would tell them "chapter #10" about the first chapter.
+    const positionOf = chapterPositionLookup(sqlite, row.book_id);
     return c.json({
       ...toChapter(row),
       currentVersion,
       draft,
       memory: {
         ...memory,
-        bookStaleFromOrder: staleRow?.s ?? null,
+        bookStaleFromPosition:
+          staleRow?.s == null ? null : positionOf(staleRow.s),
+        // Earlier chapters whose derived memory hasn't landed. Generating this
+        // chapter now still works, but its prompt would miss their facts,
+        // notes, summary and retrievable chunks.
+        pendingEarlierChapters: pendingEarlierMemoryChapters(
+          sqlite,
+          row.book_id,
+          row.order_index,
+        ).map(positionOf),
       },
     });
   });

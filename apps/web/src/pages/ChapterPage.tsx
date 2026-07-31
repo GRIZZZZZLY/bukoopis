@@ -42,6 +42,7 @@ import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
 import {
   MemoryStatusBadge,
   MemoryStaleBanner,
+  MemoryLagWarning,
 } from "@/components/memory/MemoryStatus";
 import type { ChapterMemoryInfo } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
@@ -710,8 +711,12 @@ export function ChapterPage() {
               </div>
             )}
 
+            <MemoryLagWarning
+              chapters={memory?.pendingEarlierChapters ?? []}
+            />
+
             <MemoryStaleBanner
-              staleFromOrder={memory?.bookStaleFromOrder ?? null}
+              staleFromPosition={memory?.bookStaleFromPosition ?? null}
               onRebuild={() => void onRebuildMemory()}
               rebuilding={memoryRebuilding}
             />

@@ -41,7 +41,10 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 export interface ChapterMemoryInfo {
   state: "fresh" | "updating" | "error" | "none";
   memoryVersionId: number | null;
-  bookStaleFromOrder: number | null;
+  /** 1-based position in the book, not order_index — safe to display as-is. */
+  bookStaleFromPosition: number | null;
+  /** Positions of earlier chapters whose derived memory hasn't landed yet. */
+  pendingEarlierChapters: number[];
 }
 export type ChapterWithMemory = ChapterWithCurrentVersion & {
   memory?: ChapterMemoryInfo;

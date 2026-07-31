@@ -91,6 +91,32 @@ export function enqueueMemoryJobs(
   }
 }
 
+/**
+ * Order indexes of earlier chapters whose committed memory work hasn't landed
+ * yet — queued, running, or permanently errored. Writing chapter N while these
+ * are outstanding still produces valid prose, but the prompt silently misses
+ * those chapters' facts, notes, summary and retrievable chunks. `obsolete` jobs
+ * are excluded: a newer version of that chapter has its own jobs.
+ */
+export function pendingEarlierMemoryChapters(
+  sqlite: DatabaseType,
+  bookId: number,
+  beforeOrderIndex: number,
+): number[] {
+  const rows = sqlite
+    .prepare(
+      `SELECT DISTINCT c.order_index AS order_index
+       FROM memory_jobs j
+       JOIN chapters c ON c.id = j.chapter_id
+       WHERE j.book_id = ?
+         AND c.order_index < ?
+         AND j.status IN ('pending','running','retry','error')
+       ORDER BY c.order_index ASC`,
+    )
+    .all(bookId, beforeOrderIndex) as Array<{ order_index: number }>;
+  return rows.map((r) => r.order_index);
+}
+
 export interface ClaimOptions {
   /** Injectable clock for tests (ISO). Defaults to now. */
   now?: string;
