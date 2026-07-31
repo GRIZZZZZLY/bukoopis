@@ -74,6 +74,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listBooks: () => req<Book[]>("/api/books"),
+  getBooksStats: () =>
+    req<Record<string, { chapters: number; done: number; words: number }>>(
+      "/api/books/stats",
+    ),
   createBook: (body: CreateBookInput) =>
     req<Book>("/api/books", { method: "POST", body: JSON.stringify(body) }),
   getBook: (id: number) => req<Book>(`/api/books/${id}`),
