@@ -76,6 +76,8 @@ React 18 + Vite 6 + Tailwind v4 (CSS-first via `@tailwindcss/vite`, no `tailwind
 
 Комната «Мастерская» (phase 2): Studio — карточки-чертежи (blueprint-сетка на `.stagecard`), иконки этапов — инструменты (колба/глобус/свиток/портреты/сундук/карта/стопка), верстак-фон `.page-studio` под atm-гейтом.
 
+Комната «Доска сюжета» (phase 2): `/books/:bookId/board` — заметки `book_notes` как стикеры на пробке, колонка = глава появления, красная нить тянется до главы закрытия (открытые — пунктиром за край). Геометрия в [board.ts](apps/web/src/lib/board.ts), данные — `GET /api/books/:id/notes`. Read-only: заметки пишут агенты памяти.
+
 ## Project memory
 
 This repository has a persistent memory that survives across machines and sessions.
