@@ -72,6 +72,8 @@ React 18 + Vite 6 + Tailwind v4 (CSS-first via `@tailwindcss/vite`, no `tailwind
 
 Комната «Библиотека» (phase 2): BooksListPage — книжная полка (`.bookshelf`), геометрия корешков в [shelf.ts](apps/web/src/lib/shelf.ts) от `GET /api/books/stats` (агрегат глав/слов/готовых).
 
+Комната «Кабинет» (phase 2): ChapterPage — 3-колоночный `.chapter-grid` (OutlineRail · `.ms-paper` рукопись · cri-rail с критикой и материалами); живой статус сохранения в StatusBar через [saveStatus.ts](apps/web/src/lib/saveStatus.ts), чернильница-автосейв в подвале рукописи.
+
 ## Project memory
 
 This repository has a persistent memory that survives across machines and sessions.
