@@ -96,6 +96,44 @@ export function loadRollingChapterContext(
   return parts.join("\n\n---\n\n");
 }
 
+/** Default tail budget: ~1000 words of Russian prose. */
+export const PREV_TAIL_MAX_CHARS = 6000;
+
+/**
+ * Verbatim tail of the immediately preceding chapter. Summaries carry plot but
+ * drop intonation, rhythm and unfinished physical action, so a chapter opening
+ * generated from a summary alone reads as a hard cut. Trimmed to start right
+ * after a paragraph break so the Writer never sees half a sentence.
+ * Returns null when there is no prior chapter or it has no text yet.
+ */
+export function loadPreviousChapterTail(
+  sqlite: DatabaseType,
+  bookId: number,
+  beforeOrderIndex: number,
+  maxChars: number = PREV_TAIL_MAX_CHARS,
+): string | null {
+  const row = sqlite
+    .prepare(
+      `SELECT v.content_text AS content_text
+       FROM chapters c
+       JOIN chapter_versions v ON v.id = c.current_version_id
+       WHERE c.book_id = ? AND c.order_index < ?
+       ORDER BY c.order_index DESC
+       LIMIT 1`,
+    )
+    .get(bookId, beforeOrderIndex) as { content_text: string | null } | undefined;
+
+  const text = row?.content_text?.trim();
+  if (!text) return null;
+  if (text.length <= maxChars) return text;
+
+  const slice = text.slice(-maxChars);
+  const para = slice.indexOf("\n\n");
+  if (para !== -1) return slice.slice(para + 2).trim();
+  const space = slice.indexOf(" ");
+  return space !== -1 ? slice.slice(space + 1).trim() : slice.trim();
+}
+
 export interface MetaSummaryResult {
   updated: boolean;
   coversTo?: number;

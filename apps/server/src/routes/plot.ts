@@ -26,6 +26,7 @@ import {
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import {
+  loadPreviousChapterTail,
   loadRollingChapterContext,
   ROLLING_WINDOW,
 } from "../utils/rolling-context.js";
@@ -417,6 +418,14 @@ export function createPlotRoute(
       loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.order_index),
     );
 
+    // Verbatim close of the preceding chapter — carries intonation and
+    // unfinished action across the seam, which summaries drop.
+    const prevTail = loadPreviousChapterTail(
+      sqlite,
+      ch.book_id,
+      ch.order_index,
+    );
+
     // ADR 0003 slice 3: bound the assembled context under a token budget and
     // log what was included/dropped (Context Inspector). The beat-sheet is
     // always sent (passed separately); these are the trimmable layers.
@@ -424,6 +433,7 @@ export function createPlotRoute(
       [
         { id: "characters", text: characterContextFinal, priority: 1 },
         { id: "pov", text: povKnowledge, priority: 1 },
+        { id: "prevTail", text: prevTail, priority: 2 },
         { id: "rolling", text: prevSummary, priority: 2 },
         { id: "lore", text: loreContext, priority: 3 },
         { id: "studio", text: studioCtx, priority: 4 },
@@ -450,6 +460,7 @@ export function createPlotRoute(
           chapterTitle: ch.title,
           beatSheet,
           previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
+          previousChapterTail: inc.has("prevTail") ? prevTail : null,
           characterContext: inc.has("characters") ? characterContextFinal : null,
           povKnowledge: inc.has("pov") ? povKnowledge : null,
           loreContext: inc.has("lore") ? loreContext : null,

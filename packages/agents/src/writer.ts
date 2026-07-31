@@ -32,6 +32,12 @@ export interface WriteChapterInput {
   chapterTitle: string;
   beatSheet: ChapterBeatSheetVariant;
   previousChaptersSummary: string | null;
+  /**
+   * Verbatim closing passage of the preceding chapter. Summaries carry plot but
+   * lose intonation, rhythm and unfinished physical action, so an opening
+   * written from a summary alone reads as a hard cut.
+   */
+  previousChapterTail?: string | null;
   characterContext: string | null;
   /** ADR 0003 slice 3b — what the POV character knows so far (POV guard). */
   povKnowledge?: string | null;
@@ -45,6 +51,47 @@ export interface WriteChapterInput {
   localModelTag?: string;
   /** Optional override for OLLAMA_BASE_URL. */
   localBaseUrl?: string;
+}
+
+/**
+ * Stable half of the Writer system prompt — book context, memory layers, style.
+ * Identical across many calls for the same chapter, so it carries the single
+ * `cache_control` block. Extracted so prompt composition is directly testable.
+ */
+export function buildWriterStableSystem(input: WriteChapterInput): string {
+  const stableParts = [
+    `Книга: "${input.bookTitle}"`,
+    `Премиса: ${input.bookPremise}`,
+  ];
+  if (input.bookOutline) {
+    stableParts.push(`Outline книги:\n${input.bookOutline}`);
+  }
+  if (input.studioContext) {
+    stableParts.push(`Контекст studio:\n${input.studioContext}`);
+  }
+  if (input.retrievedContext) {
+    stableParts.push(input.retrievedContext);
+  }
+  if (input.previousChaptersSummary) {
+    stableParts.push(
+      `Краткое содержание предыдущих глав:\n${input.previousChaptersSummary}`,
+    );
+  }
+  if (input.previousChapterTail) {
+    stableParts.push(
+      `Финал предыдущей главы (дословно, последние абзацы). Продолжай от него: держи интонацию, ритм и место действия, доигрывай незавершённое действие. Не пересказывай этот фрагмент и не начинай главу его повтором:\n${input.previousChapterTail}`,
+    );
+  }
+  if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.povKnowledge) stableParts.push(input.povKnowledge);
+  if (input.loreContext) stableParts.push(input.loreContext);
+  if (input.styleContext) stableParts.push(input.styleContext);
+  if (input.fatigueWords.length > 0) {
+    stableParts.push(
+      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
+    );
+  }
+  return `${SYSTEM_WRITER}\n\n---\n\n${stableParts.join("\n\n")}`;
 }
 
 export async function* writeChapter(
@@ -70,37 +117,7 @@ export async function* writeChapter(
     )
     .join("\n\n");
 
-  // Stable system: SYSTEM_WRITER + book context + outline + character/lore +
-  // style + previous summary + fatigue list. These remain identical across
-  // many calls for the same book, so they get a single cache_control block.
-  const stableParts = [
-    `Книга: "${input.bookTitle}"`,
-    `Премиса: ${input.bookPremise}`,
-  ];
-  if (input.bookOutline) {
-    stableParts.push(`Outline книги:\n${input.bookOutline}`);
-  }
-  if (input.studioContext) {
-    stableParts.push(`Контекст studio:\n${input.studioContext}`);
-  }
-  if (input.retrievedContext) {
-    stableParts.push(input.retrievedContext);
-  }
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Краткое содержание предыдущих глав:\n${input.previousChaptersSummary}`,
-    );
-  }
-  if (input.characterContext) stableParts.push(input.characterContext);
-  if (input.povKnowledge) stableParts.push(input.povKnowledge);
-  if (input.loreContext) stableParts.push(input.loreContext);
-  if (input.styleContext) stableParts.push(input.styleContext);
-  if (input.fatigueWords.length > 0) {
-    stableParts.push(
-      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
-    );
-  }
-  const stableSystem = `${SYSTEM_WRITER}\n\n---\n\n${stableParts.join("\n\n")}`;
+  const stableSystem = buildWriterStableSystem(input);
   const system: SystemBlock[] = [
     { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
   ];
