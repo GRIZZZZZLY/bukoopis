@@ -97,7 +97,7 @@ describe("BooksListPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    // Title renders twice by design (spine emboss + card heading) — query the heading.
+    // The book title is the h2 .shelf-title on the spine — query the heading.
     expect(
       await screen.findByRole("heading", { name: "Маяк" }),
     ).toBeInTheDocument();

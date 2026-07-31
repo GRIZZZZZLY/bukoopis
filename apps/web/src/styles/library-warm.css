@@ -1396,7 +1396,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   border-radius: var(--radius-panel);
 }
 
-/* Old paper surface (new idiom: .bookcard-body / .ms-paper + .paper-grain) */
+/* Old paper surface (new idiom: .ms-paper + .paper-grain) */
 .paper {
   background-color: var(--color-paper);
   position: relative;
