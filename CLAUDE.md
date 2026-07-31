@@ -61,7 +61,8 @@ Stored in `~/.claude/projects/d--PROJECTS-BOOKOPIS/memory/`. Highlights:
 - Models: `claude-sonnet-4-6` (Plot, critics), `claude-opus-4-7` (Writer). **Opus 4.7 deprecates `temperature`** — pass conditionally (`...(temperature !== undefined ? { temperature } : {})`), Anthropic returns 400 otherwise.
 - Per-book model switcher: `books.{writer_model,plot_model,critic_model}` columns drive dropdowns in BookPage.
 - MVP scope locks: Russian only, levels 1+3+4 (level 2 arcs deferred), 8 agents, manual self-repair (variant B), full critique from MVP.
-- Out of MVP (do not propose): Obsidian/MCP file-watcher, branching UI, ESLint/Prettier/Husky/Docker/CI, multi-user auth, second language.
+- **Desktop-only — мобильная вёрстка не важна вообще** (locked 2026-07-31). Не тестировать, не полировать, не заводить задачи; поломки ниже 768px багами не считаются и работу не блокируют. Существующие мобильные правила (`@media (max-width: 767px)` в `library-warm.css`, Sheet с панелями) оставлены как есть — не развивать.
+- Out of MVP (do not propose): Obsidian/MCP file-watcher, branching UI, ESLint/Prettier/Husky/Docker/CI, multi-user auth, second language, мобильная/адаптивная вёрстка.
 - Tests mock LLM calls (`vi.mock("@book-forge/agents/...")`) — agent contracts covered indirectly via route tests.
 
 ## Frontend
