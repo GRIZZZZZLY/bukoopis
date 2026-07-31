@@ -311,7 +311,9 @@ function CriticBlock({ report }: { report: CriticReport }) {
                   {issue.suggestion && (
                     <div className="cri-card-sugg">
                       <span className="cap-upper">Предлагается:</span>
-                      <code>{issue.suggestion}</code>
+                      <span className="cri-card-sugg-text">
+                        {issue.suggestion}
+                      </span>
                     </div>
                   )}
                 </li>

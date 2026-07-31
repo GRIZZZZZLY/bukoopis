@@ -844,13 +844,26 @@ export function ChapterPage() {
         </aside>
       </div>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — CritiquePanel lives only in .cri-rail on desktop
+          (display:none below 768px), so mirror it here for mobile access.
+          Sheet renders its children into the DOM at all times (visibility is
+          CSS transform/opacity only, not conditional mount), so this instance
+          is gated on mobilePanelsOpen to avoid fetching critique data before
+          the drawer is ever opened. */}
       <Sheet
         open={mobilePanelsOpen}
         onClose={() => setMobilePanelsOpen(false)}
         title="Панели и версии"
       >
-        <div className="flex flex-col gap-3">{sidebar}</div>
+        <div className="flex flex-col gap-3">
+          {mobilePanelsOpen && (
+            <CritiquePanel
+              versionId={chapter.currentVersionId}
+              onRepairDone={load}
+            />
+          )}
+          {sidebar}
+        </div>
       </Sheet>
 
       {/* Version diff modal */}

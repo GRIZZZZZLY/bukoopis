@@ -954,8 +954,11 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   color: var(--color-text-strong); font-weight: 500;
   margin-top: 4px;
   outline: none;
+  display: block; width: 100%;
+  /* Reserve the focus border's box so focusing doesn't shift layout by 1px. */
+  border-bottom: 1px dashed transparent;
 }
-.ms-title:focus { color: var(--color-text-strong); border-bottom: 1px dashed var(--color-brass-soft); }
+.ms-title:focus { color: var(--color-text-strong); border-bottom-color: var(--color-brass-soft); }
 
 .ms-body {
   font-family: var(--font-prose);
@@ -1081,7 +1084,12 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   background: var(--color-ink-green-tint);
   border-radius: 6px;
 }
-.cri-card-sugg code { color: var(--color-ink-green); font-size: 12px; }
+.cri-card-sugg-text {
+  font-family: var(--font-prose);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .cri-card-actions {
   display: flex; align-items: center; gap: 12px; margin-top: 10px;
 }

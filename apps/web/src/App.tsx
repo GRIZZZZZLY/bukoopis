@@ -51,6 +51,16 @@ function StagePageDispatch() {
   return <MarkdownStagePage />;
 }
 
+// OutlineRail lets the user jump chapter -> chapter without leaving this
+// route (same path pattern, only :chapterId changes), so React Router does
+// not unmount/remount ChapterPage on its own. That leaves the old chapter's
+// debounce timer, Writer stream, and save-status state alive under the new
+// URL. Keying on chapterId forces a real remount per chapter.
+export function ChapterPageRoute() {
+  const { chapterId } = useParams<{ chapterId: string }>();
+  return <ChapterPage key={chapterId} />;
+}
+
 const router = createBrowserRouter([
   {
     element: <AppShell />,
@@ -64,7 +74,10 @@ const router = createBrowserRouter([
       { path: "/books/:bookId/studio/chapters", element: <ChaptersStagePage /> },
       { path: "/books/:bookId/studio/settings", element: <SettingsStagePage /> },
       { path: "/books/:bookId/studio/:stageId", element: <StagePageDispatch /> },
-      { path: "/books/:bookId/chapters/:chapterId", element: <ChapterPage /> },
+      {
+        path: "/books/:bookId/chapters/:chapterId",
+        element: <ChapterPageRoute />,
+      },
       { path: "/style-profiles", element: <StyleProfilesListPage /> },
       { path: "/style-profiles/:profileId", element: <StyleProfilePage /> },
       { path: "/usage", element: <UsagePage /> },
