@@ -1,13 +1,13 @@
 import type { StageId } from "@book-forge/shared";
 import { Link } from "react-router-dom";
 import {
-  Feather,
-  Map as MapIcon,
-  Layers,
+  FlaskConical,
+  Globe,
+  Scroll,
   Users,
-  Box,
-  ListChecks,
-  BookOpen,
+  Package,
+  Map,
+  BookCopy,
   Check,
   Circle,
   Play,
@@ -26,13 +26,13 @@ interface StageCardProps {
 }
 
 const STAGE_ICON: Record<StageId, LucideIcon> = {
-  concept: Feather,
-  world: MapIcon,
-  lore: Layers,
+  concept: FlaskConical,
+  world: Globe,
+  lore: Scroll,
   characters: Users,
-  items: Box,
-  plot: ListChecks,
-  chapters: BookOpen,
+  items: Package,
+  plot: Map,
+  chapters: BookCopy,
 };
 
 const STATUS_INFO: Record<

@@ -1777,6 +1777,25 @@ html.atm-calm .inkwell-drip .inkwell-drop {
   box-shadow: none;
 }
 
+/* ─── Workshop (Мастерская, phase 2) ─────────────────────── */
+
+/* Карточки-чертежи: тонкая blueprint-сетка поверх поверхности */
+.stagecard {
+  background-image:
+    linear-gradient(var(--color-ink-blue-tint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-ink-blue-tint) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+.stagecard-icon {
+  border-style: dashed;
+}
+.stagecard-complete {
+  background-image:
+    linear-gradient(rgba(110, 148, 99, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110, 148, 99, 0.06) 1px, transparent 1px);
+}
+
 /* ─── Перелистывание страниц (View Transitions) ─────────── */
 
 @keyframes page-out {
