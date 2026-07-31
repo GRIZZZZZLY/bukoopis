@@ -1682,6 +1682,137 @@ html.atm-full .cat-tail {
   .cat-tail { animation: none; }
 }
 
+/* ─── Bookshelf (Library room, phase 2) ───────────────────── */
+
+:root {
+  --shelf-row: 252px;
+  --shelf-plank: #2E3A57;
+  --shelf-plank-edge: rgba(7, 9, 15, 0.55);
+}
+
+/* Доски рисуются фоном с шагом ряда: каждый ряд слотов ровно
+   --shelf-row высотой, книги прижаты к низу ряда. */
+.bookshelf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  column-gap: 10px;
+  padding: 0 18px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--shelf-row) - 14px),
+    var(--shelf-plank) calc(var(--shelf-row) - 14px) calc(var(--shelf-row) - 3px),
+    var(--shelf-plank-edge) calc(var(--shelf-row) - 3px) var(--shelf-row)
+  );
+}
+
+.shelf-slot {
+  height: var(--shelf-row);
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 14px;
+}
+
+.shelf-book {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px 4px 2px 2px;
+  cursor: pointer;
+  box-shadow:
+    inset -7px 0 12px rgba(0, 0, 0, 0.38),
+    inset 2px 0 3px rgba(255, 255, 255, 0.06),
+    0 5px 12px rgba(0, 0, 0, 0.45);
+  transition:
+    transform var(--motion-2) var(--ease-in-out),
+    box-shadow var(--motion-2) var(--ease-in-out);
+}
+.shelf-book:hover,
+.shelf-book:focus-visible {
+  transform: translateY(-10px);
+  box-shadow:
+    inset -7px 0 12px rgba(0, 0, 0, 0.38),
+    inset 2px 0 3px rgba(255, 255, 255, 0.06),
+    0 14px 22px rgba(0, 0, 0, 0.5);
+}
+.shelf-book:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shelf-book,
+  .shelf-book:hover,
+  .shelf-book:focus-visible {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Тона переплётов: приглушённые чернильные, латунное тиснение заголовка */
+.spine-tone-0 { background: linear-gradient(90deg, #2C3046, #232A3E 55%, #1D2334); }
+.spine-tone-1 { background: linear-gradient(90deg, #3D2B33, #33242C 55%, #281D24); }
+.spine-tone-2 { background: linear-gradient(90deg, #29382F, #223027 55%, #1B2620); }
+.spine-tone-3 { background: linear-gradient(90deg, #253347, #1F2C3E 55%, #192433); }
+
+.shelf-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-brass-hi);
+  max-height: 82%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.shelf-ribbon {
+  position: absolute;
+  top: 0;
+  right: 7px;
+  width: 4px;
+  background: var(--color-ink-red);
+  border-radius: 0 0 2px 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.shelf-continue {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-brass-tint);
+  color: var(--color-brass-hi);
+  font-size: 12px;
+  line-height: 1;
+}
+.shelf-continue:hover { background: var(--color-brass-glow); }
+
+.shelf-book-ghost {
+  width: 46px;
+  height: 178px;
+  background: transparent;
+  border: 1.5px dashed var(--color-border-strong);
+  color: var(--color-text-faint);
+  font-size: 22px;
+  box-shadow: none;
+}
+.shelf-book-ghost:hover {
+  color: var(--color-brass);
+  border-color: var(--color-brass-soft);
+  box-shadow: none;
+}
+
 /* ─── Перелистывание страниц (View Transitions) ─────────── */
 
 @keyframes page-out {
