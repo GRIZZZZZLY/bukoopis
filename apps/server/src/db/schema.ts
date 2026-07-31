@@ -490,6 +490,66 @@ export const memoryJobs = sqliteTable(
   ],
 );
 
+// Time-scoped canon facts (migrations 0012, 0015, 0018). Three orthogonal
+// qualifiers ride on every row: `assertion_mode` is epistemic status inside the
+// fiction (narrated as fact vs. rumor), `source_kind` is who produced the row,
+// and `review_status` is whether the author vetted it. Rejected rows are never
+// served to agents.
+export const bookFacts = sqliteTable(
+  "book_facts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id"),
+    // Matched by name, not id — the extractor never juggles entity ids.
+    entityName: text("entity_name").notNull(),
+    predicate: text("predicate").notNull(),
+    objectText: text("object_text").notNull(),
+    validFromChapter: integer("valid_from_chapter").notNull(),
+    validToChapter: integer("valid_to_chapter"),
+    sourceVersionId: integer("source_version_id"),
+    confidence: real("confidence").notNull().default(1.0),
+    supersededBy: integer("superseded_by"),
+    assertionMode: text("assertion_mode").notNull().default("narrated_as_fact"),
+    sourceKind: text("source_kind").notNull().default("llm_extraction"),
+    reviewStatus: text("review_status").notNull().default("unreviewed"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_book_facts_lookup").on(
+      t.bookId,
+      t.entityType,
+      t.entityName,
+      t.validFromChapter,
+    ),
+    index("idx_book_facts_active").on(
+      t.bookId,
+      t.validFromChapter,
+      t.validToChapter,
+    ),
+    index("idx_book_facts_review").on(t.bookId, t.reviewStatus),
+    check(
+      "book_facts_entity_type_check",
+      sql`${t.entityType} IN ('character','location','item','world')`,
+    ),
+    check(
+      "book_facts_assertion_mode_check",
+      sql`${t.assertionMode} IN ('narrated_as_fact','directly_observed','stated_by_character','believed_by_character','rumor','dream_or_vision','uncertain')`,
+    ),
+    check(
+      "book_facts_source_kind_check",
+      sql`${t.sourceKind} IN ('llm_extraction','manual','accepted_studio','imported_document')`,
+    ),
+    check(
+      "book_facts_review_status_check",
+      sql`${t.reviewStatus} IN ('unreviewed','confirmed','disputed','rejected')`,
+    ),
+  ],
+);
+
 // ADR 0003 slice 2: author-managed aliases so canon-fact entity names resolve
 // to a stable characters/locations/items id (Russian case forms, nicknames).
 export const entityAliases = sqliteTable(

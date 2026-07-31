@@ -271,3 +271,52 @@ describe("triggerCanonFactExtraction", () => {
     expect(extractMock).not.toHaveBeenCalled();
   });
 });
+
+describe("fact provenance", () => {
+  it("marks extracted rows as machine-produced and unreviewed", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 5, 50, [
+      fact("Аня", "умеет", "магия огня"),
+    ]);
+
+    const row = sqlite
+      .prepare("SELECT source_kind, review_status FROM book_facts")
+      .get() as { source_kind: string; review_status: string };
+    expect(row.source_kind).toBe("llm_extraction");
+    expect(row.review_status).toBe("unreviewed");
+  });
+
+  it("keeps serving an unreviewed fact — extraction is the normal path", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 5, 50, [
+      fact("Аня", "умеет", "магия огня"),
+    ]);
+
+    expect(loadActiveFacts(sqlite, b, 6)).toHaveLength(1);
+  });
+
+  it("never serves a fact the author rejected", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 5, 50, [
+      fact("Аня", "умеет", "магия огня"),
+    ]);
+    sqlite
+      .prepare("UPDATE book_facts SET review_status = 'rejected'")
+      .run();
+
+    expect(loadActiveFacts(sqlite, b, 6)).toEqual([]);
+    expect(renderActiveFactsPrompt(sqlite, b, 6)).toBeNull();
+  });
+
+  it("serves a confirmed fact", () => {
+    const b = insertBook();
+    persistExtractedFacts(sqlite, b, 5, 50, [
+      fact("Аня", "умеет", "магия огня"),
+    ]);
+    sqlite
+      .prepare("UPDATE book_facts SET review_status = 'confirmed'")
+      .run();
+
+    expect(loadActiveFacts(sqlite, b, 6)).toHaveLength(1);
+  });
+});

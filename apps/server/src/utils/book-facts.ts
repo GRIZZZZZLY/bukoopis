@@ -61,6 +61,7 @@ export function loadActiveFacts(
        WHERE book_id = ?
          AND valid_from_chapter <= ?
          AND (valid_to_chapter IS NULL OR valid_to_chapter >= ?)
+         AND review_status <> 'rejected'
          ${nameClause}${modeClause}
        ORDER BY entity_type ASC, entity_name ASC, valid_from_chapter ASC`,
     )
