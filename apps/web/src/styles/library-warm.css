@@ -1122,8 +1122,24 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .cri-rail-collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
 
 @media (max-width: 767px) {
-  .chapter-grid { grid-template-columns: 0 1fr 0; }
+  /* Рейлы скрыты через display:none и выпадают из грида, поэтому колонок
+     должно остаться ровно одна: при `0 1fr 0` рукопись попадала в нулевую
+     первую колонку и схлопывалась в вертикальную полосу шириной 42px. */
+  .chapter-grid { grid-template-columns: 1fr; }
   .outline-rail, .cri-rail { display: none; }
+  /* грид-элемент по умолчанию min-width:auto и не сжимается уже своего
+     содержимого — без этого рукопись уезжала за правый край экрана */
+  .chapter-main { min-width: 0; }
+  .ms-wrap { padding: 20px 12px 60px; }
+  .ms-paper { padding: 32px 20px 40px; }
+  .ms-title { font-size: 24px; }
+  .chapter-toolbar { flex-wrap: wrap; height: auto; padding: 8px 12px; row-gap: 8px; }
+
+  /* топбар на 390px не вмещал всё в один ряд — элементы наезжали друг на друга */
+  .topbar { gap: 10px; padding: 0 12px; }
+  .crumbs,
+  .topbar-link,
+  .topbar-kbd { display: none; }
 }
 
 /* ─── Stage workspaces ──────────────────────────────────── */
