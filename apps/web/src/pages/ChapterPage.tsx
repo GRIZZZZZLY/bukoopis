@@ -52,7 +52,7 @@ import type {
   ChapterVersion,
   ChapterWithCurrentVersion,
 } from "@book-forge/shared";
-import { EMPTY_DOC, calculateCost } from "@book-forge/shared";
+import { EMPTY_DOC, calculateCost, MODEL_IDS } from "@book-forge/shared";
 
 interface WriterDonePayload {
   version: ChapterVersion;
@@ -1172,8 +1172,7 @@ function WriterCostBadge({
   const scale = targetWords / refWords;
   const inputTokens = Math.round(4500 * scale);
   const outputTokens = Math.round(11000 * scale);
-  const modelApi =
-    book.writerModel === "opus" ? "claude-opus-4-7" : "claude-sonnet-4-6";
+  const modelApi = MODEL_IDS[book.writerModel === "opus" ? "opus" : "sonnet"];
   const cost = isOllama
     ? 0
     : calculateCost({

@@ -156,7 +156,12 @@ export async function* writeChapter(
           ...(input.config?.temperature !== undefined
             ? { temperature: input.config.temperature }
             : {}),
-          maxTokens: 16384,
+          // Opus 5 thinks by default and thinking shares this budget with the
+          // prose, so 16384 (fine when Opus 4.7 ran without thinking) would cut
+          // a long chapter off mid-sentence. A 4k-word RU chapter is ~11k output
+          // tokens; the rest is headroom for planning. Safe because this call
+          // streams.
+          maxTokens: 32000,
         });
 
   if (provider === "ollama" && !input.localModelTag) {

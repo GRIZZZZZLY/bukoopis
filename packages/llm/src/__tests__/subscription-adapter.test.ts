@@ -13,6 +13,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { SubscriptionBackendClient } from "../clients/subscription.js";
+import { MODEL_IDS } from "../models.js";
 import { LLMAuthError, LLMError, LLMValidationError } from "../errors.js";
 
 function asyncGen<T>(items: T[]): AsyncIterable<T> {
@@ -218,7 +219,9 @@ describe("SubscriptionBackendClient.createMessage", () => {
       prompt: "P",
     });
     expect(out.text).toBe("answer");
-    expect(out.modelId).toBe("subscription:claude-opus-4-7");
+    // Read the alias mapping rather than hard-coding an id, so a model upgrade
+    // doesn't fail a test that is really about the `subscription:` prefix.
+    expect(out.modelId).toBe(`subscription:${MODEL_IDS.opus}`);
     expect(out.inputTokens).toBe(5);
     expect(out.outputTokens).toBe(3);
   });

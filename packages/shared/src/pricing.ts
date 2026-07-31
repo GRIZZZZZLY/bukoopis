@@ -1,6 +1,19 @@
-// Anthropic pricing as of May 2026. Source: https://www.anthropic.com/pricing
+// Anthropic pricing as of August 2026. Source: https://www.anthropic.com/pricing
 // All values in USD per million tokens. Cache write = 1.25x base, cache read =
 // 0.1x base (90% discount). Update when Anthropic changes pricing.
+
+import type { ModelChoice } from "./plot.js";
+
+/**
+ * The API model id behind each alias the app exposes. Single source of truth —
+ * the LLM dispatcher and the web cost estimator both read this, so the two
+ * cannot drift apart. Every id here MUST have a MODEL_RATES entry below; a
+ * missing one silently bills at the Sonnet fallback rate (see pricing.test.ts).
+ */
+export const MODEL_IDS: Record<ModelChoice, string> = {
+  sonnet: "claude-sonnet-4-6",
+  opus: "claude-opus-5",
+};
 
 export interface ModelRates {
   inputPerMtok: number;
@@ -8,9 +21,16 @@ export interface ModelRates {
 }
 
 export const MODEL_RATES: Record<string, ModelRates> = {
-  // Latest Claude 4.x family
-  "claude-opus-4-7": { inputPerMtok: 15, outputPerMtok: 75 },
-  "claude-opus-4-6": { inputPerMtok: 15, outputPerMtok: 75 },
+  // Claude 5 family
+  "claude-fable-5": { inputPerMtok: 10, outputPerMtok: 50 },
+  "claude-opus-5": { inputPerMtok: 5, outputPerMtok: 25 },
+  "claude-sonnet-5": { inputPerMtok: 3, outputPerMtok: 15 },
+  // Claude 4.x family. Opus 4.6/4.7/4.8 dropped to $5/$25 — the $15/$75 this
+  // table used to carry overstated every Opus call by 3x.
+  "claude-opus-4-8": { inputPerMtok: 5, outputPerMtok: 25 },
+  "claude-opus-4-7": { inputPerMtok: 5, outputPerMtok: 25 },
+  "claude-opus-4-6": { inputPerMtok: 5, outputPerMtok: 25 },
+  // Legacy Opus, still on the old Opus pricing.
   "claude-opus-4-5-20251101": { inputPerMtok: 15, outputPerMtok: 75 },
   "claude-opus-4-1-20250805": { inputPerMtok: 15, outputPerMtok: 75 },
   "claude-opus-4-20250514": { inputPerMtok: 15, outputPerMtok: 75 },
@@ -18,6 +38,7 @@ export const MODEL_RATES: Record<string, ModelRates> = {
   "claude-sonnet-4-5-20250929": { inputPerMtok: 3, outputPerMtok: 15 },
   "claude-sonnet-4-20250514": { inputPerMtok: 3, outputPerMtok: 15 },
   "claude-haiku-4-5-20251001": { inputPerMtok: 1, outputPerMtok: 5 },
+  "claude-haiku-4-5": { inputPerMtok: 1, outputPerMtok: 5 },
 };
 
 const FALLBACK_RATES: ModelRates = { inputPerMtok: 3, outputPerMtok: 15 };

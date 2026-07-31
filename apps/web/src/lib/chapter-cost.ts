@@ -1,9 +1,11 @@
-import { calculateCost, type ModelChoice } from "@book-forge/shared";
+import {
+  calculateCost,
+  MODEL_IDS,
+  type ModelChoice,
+} from "@book-forge/shared";
 
-export const MODEL_API_ID: Record<ModelChoice, string> = {
-  sonnet: "claude-sonnet-4-6",
-  opus: "claude-opus-4-7",
-};
+/** Re-exported under the old name; the mapping itself lives in shared now. */
+export const MODEL_API_ID: Record<ModelChoice, string> = MODEL_IDS;
 
 // Empirical per-chapter token averages (4k-word RU chapter).
 // Writer = ~4500 in / 11000 out; Plot = ~2500 in / 1500 out;

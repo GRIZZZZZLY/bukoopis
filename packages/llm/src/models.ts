@@ -1,9 +1,6 @@
-import type { ModelChoice } from "@book-forge/shared";
+import { MODEL_IDS, type ModelChoice } from "@book-forge/shared";
 
-export const MODEL_IDS = {
-  sonnet: "claude-sonnet-4-6",
-  opus: "claude-opus-4-7",
-} as const;
+export { MODEL_IDS };
 
 export function resolveModelId(choice: ModelChoice): string {
   return MODEL_IDS[choice];
