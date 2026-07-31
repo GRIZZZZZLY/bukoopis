@@ -496,7 +496,10 @@ git commit -m "feat(web): plot board page — sticky notes on chapter timeline"
   padding: 20px;
 }
 
-.board-threads { position: absolute; inset: 20px auto auto 20px; pointer-events: none; }
+/* Канва — containing block с padding: у абсолютных детей начало координат
+   уже в padding-box, поэтому НИКАКИХ дополнительных 20px-сдвигов ни здесь,
+   ни у .board-note (иначе двойное смещение). */
+.board-threads { position: absolute; top: 0; left: 0; pointer-events: none; }
 .thread {
   fill: none;
   stroke: var(--color-ink-red);
@@ -508,7 +511,6 @@ git commit -m "feat(web): plot board page — sticky notes on chapter timeline"
 .board-note {
   position: absolute;
   width: 176px;
-  margin: 20px 0 0 20px;   /* компенсирует padding канвы */
   padding: 14px 12px 10px;
   border-radius: 3px;
   background: var(--color-surface-2);
