@@ -893,6 +893,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   overflow: hidden;
   background: var(--color-bg);
 }
+.outline-rail-collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
 .outline-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px 10px;
