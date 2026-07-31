@@ -591,9 +591,16 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   min-height: 100vh;
   background: var(--color-bg);
 }
+/* Фокус: комната гаснет. Схлопывания грида мало — ячейки нулевого размера
+   не обрезают содержимое, поэтому хром убираем явно. */
 .app[data-focus="true"] {
   grid-template-rows: 0 1fr 0;
   grid-template-columns: 0 1fr;
+}
+.app[data-focus="true"] > .topbar,
+.app[data-focus="true"] > .leftrail,
+.app[data-focus="true"] > .statusbar {
+  display: none;
 }
 
 /* TopBar */

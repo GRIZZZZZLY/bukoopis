@@ -21,6 +21,40 @@ function renderRail(active = 2) {
 }
 
 describe("OutlineRail", () => {
+  /** Регрессия: шапка рукописи показывала order_index + 1 («Глава 21» для
+      второй главы), номер должен браться из позиции в оглавлении. */
+  it("reports the active chapter position", async () => {
+    const seen: (number | null)[] = [];
+    render(
+      <MemoryRouter>
+        <OutlineRail
+          bookId={7}
+          activeChapterId={2}
+          collapsed={false}
+          onActivePosition={(p) => seen.push(p)}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("link", { name: /Туман/ });
+    expect(seen.at(-1)).toBe(2);
+  });
+
+  it("reports null when the active chapter is not in the outline", async () => {
+    const seen: (number | null)[] = [];
+    render(
+      <MemoryRouter>
+        <OutlineRail
+          bookId={7}
+          activeChapterId={999}
+          collapsed={false}
+          onActivePosition={(p) => seen.push(p)}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("link", { name: /Туман/ });
+    expect(seen.at(-1)).toBeNull();
+  });
+
   it("lists chapters as links with numbering", async () => {
     renderRail();
     const link = await screen.findByRole("link", { name: /Туман/ });

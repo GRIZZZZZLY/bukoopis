@@ -34,19 +34,15 @@ export function Sheet({
     };
   }, [open, onClose]);
 
+  // Закрытую панель не рендерим вовсе. Полагаться на translate-утилиты для
+  // увода за край нельзя: в этой сборке Tailwind не генерирует transform-класс
+  // (translate/rotate/scale отсутствуют), и панель оставалась поверх контента.
+  if (!open) return null;
+
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-40",
-        open ? "pointer-events-auto" : "pointer-events-none",
-      )}
-      aria-hidden={!open}
-    >
+    <div className="fixed inset-0 z-40 pointer-events-auto">
       <div
-        className={cn(
-          "absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-md transition-opacity",
-          open ? "opacity-100" : "opacity-0",
-        )}
+        className="absolute inset-0 bg-[var(--color-overlay)] backdrop-blur-md"
         onClick={onClose}
       />
       <div
@@ -56,15 +52,8 @@ export function Sheet({
         aria-label={title}
         tabIndex={-1}
         className={cn(
-          "absolute top-0 bottom-0 w-[min(380px,90vw)] bg-[var(--color-background)] border-[var(--color-border)] shadow-xl transition-transform duration-200 ease-out flex flex-col",
-          side === "right"
-            ? "right-0 border-l"
-            : "left-0 border-r",
-          open
-            ? "translate-x-0"
-            : side === "right"
-              ? "translate-x-full"
-              : "-translate-x-full",
+          "absolute top-0 bottom-0 w-[min(380px,90vw)] bg-[var(--color-background)] border-[var(--color-border)] shadow-xl flex flex-col",
+          side === "right" ? "right-0 border-l" : "left-0 border-r",
           className,
         )}
       >

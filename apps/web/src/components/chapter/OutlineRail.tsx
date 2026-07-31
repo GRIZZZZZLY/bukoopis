@@ -7,10 +7,14 @@ export function OutlineRail({
   bookId,
   activeChapterId,
   collapsed,
+  onActivePosition,
 }: {
   bookId: number;
   activeChapterId: number;
   collapsed: boolean;
+  /** Позиция активной главы в оглавлении (1-based) — шапка рукописи
+      показывает её вместо order_index, который к номеру не равен. */
+  onActivePosition?: (position: number | null) => void;
 }) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
 
@@ -26,6 +30,12 @@ export function OutlineRail({
       alive = false;
     };
   }, [bookId]);
+
+  useEffect(() => {
+    if (!onActivePosition) return;
+    const idx = chapters.findIndex((ch) => ch.id === activeChapterId);
+    onActivePosition(idx >= 0 ? idx + 1 : null);
+  }, [chapters, activeChapterId, onActivePosition]);
 
   if (collapsed) return <aside className="outline-rail outline-rail-collapsed" aria-hidden="true" />;
 

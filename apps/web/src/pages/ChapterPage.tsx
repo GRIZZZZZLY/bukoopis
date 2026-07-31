@@ -117,6 +117,7 @@ export function ChapterPage() {
   const [mobilePanelsOpen, setMobilePanelsOpen] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [outlinePosition, setOutlinePosition] = useState<number | null>(null);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
   const [memory, setMemory] = useState<ChapterMemoryInfo | null>(null);
@@ -581,8 +582,9 @@ export function ChapterPage() {
 
   const currentVersion =
     versions.find((v) => v.id === chapter.currentVersionId) ?? null;
-  const orderLabel =
-    chapter.orderIndex != null ? String(chapter.orderIndex + 1) : null;
+  // Номер в шапке рукописи — позиция главы в оглавлении, а не order_index
+  // (тот идёт с шагом 10 и в номер главы не превращается).
+  const orderLabel = outlinePosition != null ? String(outlinePosition) : null;
 
   const sidebar = (
     <SidebarPanels
@@ -688,6 +690,7 @@ export function ChapterPage() {
           bookId={Number(bookId)}
           activeChapterId={id}
           collapsed={leftCollapsed}
+          onActivePosition={setOutlinePosition}
         />
 
         <main className="chapter-main">
