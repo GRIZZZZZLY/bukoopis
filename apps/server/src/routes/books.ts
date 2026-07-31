@@ -49,6 +49,24 @@ export function createBooksRoute(
     return c.json(toBook(row), 201);
   });
 
+  // Полка (Library room): агрегат для геометрии корешков. Книги без глав опущены.
+  r.get("/stats", (c) => {
+    const rows = sqlite
+      .prepare(
+        `SELECT c.book_id AS bookId,
+                COUNT(*) AS chapters,
+                SUM(CASE WHEN c.status = 'final' THEN 1 ELSE 0 END) AS done,
+                SUM(COALESCE(v.word_count, 0)) AS words
+         FROM chapters c
+         LEFT JOIN chapter_versions v ON v.id = c.current_version_id
+         GROUP BY c.book_id`,
+      )
+      .all() as Array<{ bookId: number; chapters: number; done: number; words: number }>;
+    const out: Record<string, { chapters: number; done: number; words: number }> = {};
+    for (const row of rows) out[String(row.bookId)] = { chapters: row.chapters, done: row.done, words: row.words };
+    return c.json(out);
+  });
+
   r.get("/:id", (c) => {
     const id = Number(c.req.param("id"));
     const row = sqlite
