@@ -1,6 +1,7 @@
 import type {
   Book,
   BookConcept,
+  BookNote,
   BookOutline,
   Chapter,
   ChapterDraft,
@@ -91,6 +92,7 @@ export const api = {
 
   listChapters: (bookId: number) =>
     req<Chapter[]>(`/api/books/${bookId}/chapters`),
+  listBookNotes: (bookId: number) => req<BookNote[]>(`/api/books/${bookId}/notes`),
   createChapter: (bookId: number, body: CreateChapterInput) =>
     req<Chapter>(`/api/books/${bookId}/chapters`, {
       method: "POST",
