@@ -1,23 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { api } from "@/api/client";
 import { stageRoute } from "@/lib/studio-routes";
-import type { Book, BookStatus, StageId } from "@book-forge/shared";
-
-const STATUS_LABEL: Record<BookStatus, string> = {
-  draft: "черновик",
-  active: "активна",
-  archived: "архив",
-};
-
-type Tone = "amber" | "blue" | "muted";
-const STATUS_TONE: Record<BookStatus, Tone> = {
-  draft: "amber",
-  active: "blue",
-  archived: "muted",
-};
+import {
+  shelfProgress,
+  spineHeight,
+  spineTone,
+  spineWidth,
+  titleSeed,
+  type BookStats,
+} from "@/lib/shelf";
+import type { Book, StageId } from "@book-forge/shared";
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -49,6 +44,7 @@ export function BooksListPage() {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<Record<number, StageId>>({});
+  const [stats, setStats] = useState<Record<string, BookStats>>({});
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,6 +60,7 @@ export function BooksListPage() {
       } catch {
         setRecommended({});
       }
+      api.getBooksStats().then(setStats).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -209,81 +206,69 @@ export function BooksListPage() {
             </p>
           </div>
         ) : (
-          <div className="bookgrid" aria-label="Список книг">
-            {books.map((b) => (
-              <BookCard key={b.id} book={b} recommended={recommended[b.id]} />
-            ))}
+          <div className="bookshelf" aria-label="Список книг">
+            {books.map((b) => {
+              const s = stats[String(b.id)];
+              const seed = titleSeed(b.title);
+              const progress = shelfProgress(s?.done ?? 0, s?.chapters ?? 0);
+              const rec = recommended[b.id];
+              return (
+                <div className="shelf-slot" key={b.id}>
+                  <div
+                    className={`shelf-book spine-tone-${spineTone(seed)}`}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={b.title}
+                    title={
+                      s
+                        ? `${b.title} · ${s.chapters} гл. · ${s.words.toLocaleString("ru-RU")} слов`
+                        : b.title
+                    }
+                    style={{
+                      width: spineWidth(s?.chapters ?? 0),
+                      height: spineHeight(s?.chapters ?? 0, seed),
+                    }}
+                    onClick={() => navigate(`/books/${b.id}/studio`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") navigate(`/books/${b.id}/studio`);
+                    }}
+                  >
+                    {progress > 0 && (
+                      <span
+                        className="shelf-ribbon"
+                        style={{ height: `${Math.round(progress * 100)}%` }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <h2 className="shelf-title">{b.title}</h2>
+                    {rec && (
+                      <Link
+                        to={stageRoute(b.id, rec)}
+                        className="shelf-continue"
+                        aria-label="Продолжить"
+                        title="Продолжить работу"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="shelf-slot">
+              <button
+                type="button"
+                className="shelf-book shelf-book-ghost"
+                aria-label="Добавить книгу"
+                title="Добавить книгу"
+                onClick={() => setCreating(true)}
+              >
+                +
+              </button>
+            </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function BookCard({
-  book: b,
-  recommended,
-}: {
-  book: Book;
-  recommended: StageId | undefined;
-}) {
-  const navigate = useNavigate();
-  const tone = STATUS_TONE[b.status];
-
-  return (
-    <div
-      className="bookcard"
-      role="link"
-      tabIndex={0}
-      aria-label={b.title}
-      onClick={() => navigate(`/books/${b.id}/studio`)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") navigate(`/books/${b.id}/studio`);
-      }}
-    >
-      <div className="spine">
-        <span className="spine-emboss mono" aria-hidden="true">
-          {b.title}
-        </span>
-      </div>
-      <div className="bookcard-body paper-grain">
-        <div className="bookcard-meta cap-upper">
-          {b.language === "ru" ? "Русский" : b.language} ·{" "}
-          {STATUS_LABEL[b.status]}
-        </div>
-        <h2 className="bookcard-title">{b.title}</h2>
-        <div className="bookcard-stats mono">
-          <span>— глав</span>
-          <span className="faint">·</span>
-          <span>— слов</span>
-        </div>
-        {recommended && (
-          <Link
-            className="bookcard-continue mono"
-            to={stageRoute(b.id, recommended)}
-            onClick={(e) => e.stopPropagation()}
-          >
-            Продолжить →
-          </Link>
-        )}
-      </div>
-      <div className="bookcard-foot">
-        <span className="cap">{relativeTime(b.updatedAt ?? b.createdAt)}</span>
-        <span className="bookcard-foot-spacer" />
-        <span className={`pill pill-${tone === "muted" ? "strong" : tone}`}>
-          {STATUS_LABEL[b.status]}
-        </span>
-        <button
-          type="button"
-          className="bookcard-kebab"
-          aria-label="Действия"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          <MoreHorizontal size={14} aria-hidden="true" />
-        </button>
       </div>
     </div>
   );

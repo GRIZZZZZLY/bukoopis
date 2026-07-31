@@ -1,18 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { BooksListPage } from "./BooksListPage";
 import { api } from "@/api/client";
 
 vi.mock("@/api/client", () => ({
-  api: { listBooks: vi.fn(), createBook: vi.fn(), listRecommended: vi.fn() },
+  api: {
+    listBooks: vi.fn(),
+    createBook: vi.fn(),
+    listRecommended: vi.fn(),
+    getBooksStats: vi.fn().mockResolvedValue({
+      "7": { chapters: 12, done: 6, words: 34000 },
+    }),
+  },
 }));
 
 const m = vi.mocked(api);
 
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={["/books"]}>
+      <Routes>
+        <Route path="/books" element={<BooksListPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("BooksListPage", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    m.getBooksStats.mockResolvedValue({
+      "7": { chapters: 12, done: 6, words: 34000 },
+    } as never);
+  });
 
   it("navigates to Studio after creating a book", async () => {
     m.listBooks.mockResolvedValue([] as never);
@@ -82,5 +104,36 @@ describe("BooksListPage", () => {
     expect(
       screen.queryByRole("link", { name: /Продолжить/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders books as spines on the shelf", async () => {
+    m.listBooks.mockResolvedValue([
+      {
+        id: 7,
+        title: "Маяк",
+        status: "draft",
+        createdAt: new Date().toISOString(),
+      },
+    ] as never);
+    m.listRecommended.mockResolvedValue({} as never);
+    renderPage();
+    const spine = await screen.findByRole("link", { name: "Маяк" });
+    expect(spine.className).toContain("shelf-book");
+  });
+
+  it("shows the ghost slot that opens the create form", async () => {
+    m.listBooks.mockResolvedValue([
+      {
+        id: 7,
+        title: "Маяк",
+        status: "draft",
+        createdAt: new Date().toISOString(),
+      },
+    ] as never);
+    m.listRecommended.mockResolvedValue({} as never);
+    renderPage();
+    const ghost = await screen.findByRole("button", { name: "Добавить книгу" });
+    fireEvent.click(ghost);
+    expect(screen.getByLabelText("Название книги")).toBeInTheDocument();
   });
 });
