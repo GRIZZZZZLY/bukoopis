@@ -60,6 +60,70 @@ interface Props {
   ) => Promise<MaterializeResult>;
 }
 
+/** Every generated variant proposes a whole cast. The one the author picked is
+ *  rarely the one with all the right people in it, so the rest stay reachable
+ *  person by person instead of being thrown away. */
+function OtherVariantPicker({
+  aspect,
+  selectedVariantId,
+  onAdd,
+}: {
+  aspect: StageAspect;
+  selectedVariantId: string;
+  onAdd: (candidate: EntitySetPayload["candidates"][number]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const others = aspect.variants.filter((v) => v.id !== selectedVariantId);
+  if (others.length === 0) return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+      >
+        + Взять из другого варианта
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-2">
+      {others.map((v) => {
+        const payload = v.payload as EntitySetPayload | undefined;
+        return (
+          <div key={v.id} className="flex flex-col gap-1">
+            <span className="text-xs uppercase text-[var(--color-muted-foreground)]">
+              {v.label}
+            </span>
+            {(payload?.candidates ?? []).map((c) => {
+              const profile = c.profile as { name?: string };
+              return (
+                <button
+                  key={`${v.id}-${c.tempId}`}
+                  type="button"
+                  onClick={() => onAdd(c)}
+                  className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                >
+                  + {candidateLabel(profile).text}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+      >
+        Свернуть
+      </button>
+    </div>
+  );
+}
+
 export function EntityStageRunner({
   stage,
   revision,
@@ -78,6 +142,12 @@ export function EntityStageRunner({
   >({});
   const [progressByAspect, setProgressByAspect] = useState<
     Record<string, AspectGenerationProgress>
+  >({});
+  /** The cast being assembled for one section. Seeded from the picked variant,
+   *  but the author can edit a profile or pull someone in from another variant,
+   *  so it stops being "the variant" the moment they touch it. */
+  const [castByAspect, setCastByAspect] = useState<
+    Record<string, EntitySetPayload["candidates"]>
   >({});
 
   if (stage.aspects.length === 0) {
@@ -184,6 +254,7 @@ export function EntityStageRunner({
         const init: Record<string, "accept" | "reject"> = {};
         for (const c of payload.candidates) init[c.tempId] = "accept";
         setPendingDecisions((p) => ({ ...p, [aspect.id]: init }));
+        setCastByAspect((p) => ({ ...p, [aspect.id]: payload.candidates }));
       }
     } catch (e) {
       setErrorByAspect((p) => ({
@@ -193,6 +264,86 @@ export function EntityStageRunner({
     } finally {
       setBusyAspectId(null);
     }
+  }
+
+  /** Back to the variant list without losing the generated variants. */
+  async function handleUnpickVariant(aspect: StageAspect): Promise<void> {
+    setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
+    setBusyAspectId(aspect.id);
+    try {
+      const next = buildNextStage(
+        (a) => ({ ...a, selectedVariantId: undefined }),
+        aspect.id,
+      );
+      await onPatch(revision, next);
+      setCastByAspect((p) => {
+        const copy = { ...p };
+        delete copy[aspect.id];
+        return copy;
+      });
+    } catch (e) {
+      setErrorByAspect((p) => ({
+        ...p,
+        [aspect.id]: e instanceof Error ? e.message : String(e),
+      }));
+    } finally {
+      setBusyAspectId(null);
+    }
+  }
+
+  function castFor(aspect: StageAspect): EntitySetPayload["candidates"] {
+    const stored = castByAspect[aspect.id];
+    if (stored) return stored;
+    const variant = aspect.variants.find(
+      (v) => v.id === aspect.selectedVariantId,
+    );
+    return (variant?.payload as EntitySetPayload | undefined)?.candidates ?? [];
+  }
+
+  /** Name and description are what the author actually reads later in the
+   *  canon; letting them fix a clumsy generated name here beats fixing it in
+   *  the entity editor after materialization. */
+  function editCandidate(
+    aspect: StageAspect,
+    tempId: string,
+    field: "name" | "description",
+    value: string,
+  ): void {
+    const current = castFor(aspect);
+    setCastByAspect((p) => ({
+      ...p,
+      [aspect.id]: current.map((c) =>
+        c.tempId === tempId
+          ? {
+              ...c,
+              profile: {
+                ...(c.profile as Record<string, unknown>),
+                [field]: value,
+              },
+            }
+          : c,
+      ),
+    }));
+  }
+
+  /** Pulls one person out of a variant the author did not pick. Without this a
+   *  variant is all-or-nothing, which is not how casting works. */
+  function addFromVariant(
+    aspect: StageAspect,
+    candidate: EntitySetPayload["candidates"][number],
+  ): void {
+    const current = castFor(aspect);
+    const taken = new Set(current.map((c) => c.tempId));
+    let tempId = candidate.tempId;
+    while (taken.has(tempId)) tempId = `${tempId}+`;
+    setCastByAspect((p) => ({
+      ...p,
+      [aspect.id]: [...current, { ...candidate, tempId }],
+    }));
+    setPendingDecisions((p) => ({
+      ...p,
+      [aspect.id]: { ...(p[aspect.id] ?? {}), [tempId]: "accept" },
+    }));
   }
 
   function toggleCandidate(aspectId: string, tempId: string): void {
@@ -217,9 +368,9 @@ export function EntityStageRunner({
         (v) => v.id === aspect.selectedVariantId,
       );
       if (!variant) throw new Error("Вариант не выбран");
-      const payload = variant.payload as EntitySetPayload;
+      const cast = castFor(aspect);
       const decisions = pendingDecisions[aspect.id] ?? {};
-      const candidatesForApi = payload.candidates.map((c) => ({
+      const candidatesForApi = cast.map((c) => ({
         tempId: c.tempId,
         decision: decisions[c.tempId] ?? ("accept" as const),
         profile: c.profile,
@@ -232,7 +383,7 @@ export function EntityStageRunner({
       const tempIdToResult = new Map(
         result.candidates.map((c) => [c.tempId, c]),
       );
-      const updatedCandidates = payload.candidates.map((c) => {
+      const updatedCandidates = cast.map((c) => {
         const r = tempIdToResult.get(c.tempId);
         if (!r) return c;
         if (r.decision === "reject") {
@@ -426,43 +577,68 @@ export function EntityStageRunner({
                   <p className="text-xs text-[var(--color-muted-foreground)]">
                     Просмотрите кандидатов и решите, какие из них сохранить:
                   </p>
-                  <ul className="flex flex-col gap-1">
-                    {(selectedVariant.payload as EntitySetPayload).candidates.map(
-                      (c) => {
-                        const profile = c.profile as {
-                          name?: string;
-                          description?: string;
-                        };
-                        const decision = decisions[c.tempId] ?? "accept";
-                        return (
-                          <li
-                            key={c.tempId}
-                            className="flex items-start gap-2 text-sm"
-                          >
+                  <ul className="flex flex-col gap-2">
+                    {castFor(aspect).map((c) => {
+                      const profile = c.profile as {
+                        name?: string;
+                        description?: string;
+                      };
+                      const decision = decisions[c.tempId] ?? "accept";
+                      return (
+                        <li
+                          key={c.tempId}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`accept-${c.tempId}`}
+                            checked={decision === "accept"}
+                            onChange={() =>
+                              toggleCandidate(aspect.id, c.tempId)
+                            }
+                            className="mt-1"
+                          />
+                          <div className="flex flex-col gap-1 flex-1">
                             <input
-                              type="checkbox"
-                              aria-label={`accept-${c.tempId}`}
-                              checked={decision === "accept"}
-                              onChange={() =>
-                                toggleCandidate(aspect.id, c.tempId)
+                              value={profile.name ?? ""}
+                              onChange={(e) =>
+                                editCandidate(
+                                  aspect,
+                                  c.tempId,
+                                  "name",
+                                  e.target.value,
+                                )
                               }
-                              className="mt-1"
+                              aria-label={`Имя ${candidateLabel(profile).text}`}
+                              placeholder="Имя"
+                              className="font-medium border border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-border)] rounded px-1 py-0.5 bg-transparent"
                             />
-                            <div className="flex flex-col">
-                              <span className="font-medium">
-                                {candidateLabel(profile).text}
-                              </span>
-                              {profile.description && (
-                                <span className="text-xs text-[var(--color-muted-foreground)]">
-                                  {profile.description}
-                                </span>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      },
-                    )}
+                            <textarea
+                              value={profile.description ?? ""}
+                              onChange={(e) =>
+                                editCandidate(
+                                  aspect,
+                                  c.tempId,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
+                              rows={2}
+                              aria-label={`Описание ${candidateLabel(profile).text}`}
+                              placeholder="Описание"
+                              className="text-xs text-[var(--color-muted-foreground)] border border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-border)] rounded px-1 py-0.5 bg-transparent"
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
+
+                  <OtherVariantPicker
+                    aspect={aspect}
+                    selectedVariantId={aspect.selectedVariantId}
+                    onAdd={(candidate) => addFromVariant(aspect, candidate)}
+                  />
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -471,6 +647,14 @@ export function EntityStageRunner({
                       className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:bg-[var(--color-surface-2)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
                     >
                       {busy ? "Добавляем…" : "Добавить в канон книги"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUnpickVariant(aspect)}
+                      disabled={busy}
+                      className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+                    >
+                      Назад к вариантам
                     </button>
                     <button
                       type="button"
