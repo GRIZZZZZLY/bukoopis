@@ -1,8 +1,9 @@
 import { useState } from "react";
-import type { StageAspect, StageState } from "@book-forge/shared";
+import type { PayloadKind, StageAspect, StageState } from "@book-forge/shared";
 import type { AspectGenerationProgress } from "@/api/client";
 import type { PlaybookGenerator } from "./llmGenerators";
 import { GenerationProgress } from "./GenerationProgress.js";
+import { ManualAspectForm } from "./ManualAspectForm.js";
 
 interface ProposedAspect {
   name: string;
@@ -18,6 +19,9 @@ interface ReviewItem extends ProposedAspect {
 interface Props {
   stage: StageState;
   revision: number;
+  /** What this stage's sections hold — needed when the author adds one by hand
+   *  instead of taking the model's plan. */
+  payloadKind: PayloadKind;
   generator: PlaybookGenerator;
   onPatch: (
     expectedRevision: number,
@@ -28,6 +32,7 @@ interface Props {
 export function PlaybookRunner({
   stage,
   revision,
+  payloadKind,
   generator,
   onPatch,
 }: Props) {
@@ -135,6 +140,12 @@ export function PlaybookRunner({
             {busy ? "Составляем…" : "Составить план разделов"}
           </button>
         </div>
+        <ManualAspectForm
+          stage={stage}
+          revision={revision}
+          payloadKind={payloadKind}
+          onPatch={onPatch}
+        />
         {error && (
           <p
             role="alert"

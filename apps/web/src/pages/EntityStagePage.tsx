@@ -190,6 +190,7 @@ export function EntityStagePage() {
             <PlaybookRunner
               stage={stage}
               revision={studio.revision}
+              payloadKind="entity_set"
               generator={playbookGenerator}
               onPatch={handlePatch}
             />

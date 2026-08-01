@@ -183,6 +183,7 @@ export function MarkdownStagePage() {
             <PlaybookRunner
               stage={stage}
               revision={studio.revision}
+              payloadKind="markdown"
               generator={playbookGenerator}
               onPatch={handlePatch}
             />

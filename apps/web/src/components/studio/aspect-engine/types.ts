@@ -22,6 +22,12 @@ export interface StageAdapter<TPayload> {
   /** Отрендеривать принятую окончательную полезную нагрузку. Может отличаться от рендера варианта
    *  (например, принятый markdown получит стиль прозы). */
   renderFinal(payload: TPayload): ReactNode;
+  /** Есть только у сцен, где автор может набрать полезную нагрузку руками
+   *  (markdown). Без него runner не показывает ручное редактирование. */
+  editable?: {
+    toText(payload: TPayload): string;
+    fromText(text: string): TPayload;
+  };
 }
 
 /** Интерфейс генератора вариантов. C1 поставляет mock-реализацию; C2 подключает

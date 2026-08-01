@@ -11,6 +11,7 @@ import type {
   VariantGenerator,
 } from "./types.js";
 import { GenerationProgress } from "./GenerationProgress.js";
+import { ManualAspectForm } from "./ManualAspectForm.js";
 
 interface Props<TPayload> {
   stage: StageState;
@@ -50,6 +51,10 @@ export function AspectRunner<TPayload>({
   const [progressByAspect, setProgressByAspect] = useState<
     Record<string, AspectGenerationProgress>
   >({});
+  /** Author's own starting text, handed to the model as a seed. */
+  const [seedByAspect, setSeedByAspect] = useState<Record<string, string>>({});
+  const [editingAspectId, setEditingAspectId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
   if (stage.aspects.length === 0) {
     return (
@@ -125,10 +130,12 @@ export function AspectRunner<TPayload>({
     setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
     setBusyAspectId(aspect.id);
     try {
+      const seed = (seedByAspect[aspect.id] ?? "").trim();
       const variants = await generator.generate(
         {
           aspect,
           accumulated: buildAccumulatedContext(aspect.id),
+          ...(seed.length > 0 ? { draft: seed } : {}),
         },
         trackProgress(aspect.id),
       );
@@ -203,6 +210,57 @@ export function AspectRunner<TPayload>({
       aspect.id,
     );
     await applyPatch(aspect.id, next);
+  }
+
+  /** Saves the author's own wording as a new accepted variant. The model's
+   *  version becomes its superseded parent, so the edit is a step in the
+   *  aspect's history rather than an overwrite. */
+  async function handleSaveEdit(aspect: StageAspect): Promise<void> {
+    const editable = adapter.editable;
+    if (!editable) return;
+    const parsed = adapter.payloadSchema.safeParse(editable.fromText(editText));
+    if (!parsed.success) {
+      setErrorByAspect((p) => ({
+        ...p,
+        [aspect.id]: `Текст не подходит: ${parsed.error.issues[0]?.message ?? "неизвестная причина"}`,
+      }));
+      return;
+    }
+    const payload = parsed.data;
+    const variant: AspectVariant = {
+      id: crypto.randomUUID(),
+      label: "моя правка",
+      payloadKind: adapter.payloadKind,
+      payload,
+      status: "accepted",
+      editSource: "manual",
+      generatedAt: new Date().toISOString(),
+      ...(aspect.selectedVariantId !== undefined
+        ? { parentVariantId: aspect.selectedVariantId }
+        : {}),
+    };
+    const next = buildNextStage(
+      (a) => ({
+        ...a,
+        status: "accepted" as const,
+        selectedVariantId: variant.id,
+        finalPayload: payload,
+        variants: [
+          ...a.variants.map((v) =>
+            v.id === a.selectedVariantId
+              ? { ...v, status: "superseded" as const }
+              : v.status === "accepted"
+                ? { ...v, status: "rejected" as const }
+                : v,
+          ),
+          variant,
+        ],
+      }),
+      aspect.id,
+    );
+    await applyPatch(aspect.id, next);
+    setEditingAspectId(null);
+    setEditText("");
   }
 
   async function handleRefineSubmit(
@@ -351,7 +409,21 @@ export function AspectRunner<TPayload>({
             )}
 
             {aspect.status === "pending" && (
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={seedByAspect[aspect.id] ?? ""}
+                  onChange={(e) =>
+                    setSeedByAspect((p) => ({
+                      ...p,
+                      [aspect.id]: e.target.value,
+                    }))
+                  }
+                  rows={2}
+                  aria-label={`Свой черновик для «${aspect.name}»`}
+                  placeholder="Если уже знаете, что здесь должно быть, — напишите. ИИ оттолкнётся от вашего текста."
+                  className="w-full border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+                />
+                <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => handleGenerate(aspect)}
@@ -373,6 +445,7 @@ export function AspectRunner<TPayload>({
                 >
                   Пропустить
                 </button>
+                </div>
               </div>
             )}
 
@@ -484,10 +557,64 @@ export function AspectRunner<TPayload>({
             )}
 
             {aspect.status === "accepted" &&
-              aspect.finalPayload !== undefined && (
+              aspect.finalPayload !== undefined &&
+              editingAspectId === aspect.id &&
+              adapter.editable && (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={10}
+                    aria-label={`Текст раздела «${aspect.name}»`}
+                    className="w-full border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent font-[var(--font-body)]"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(aspect)}
+                      disabled={busy || editText.trim().length === 0}
+                      className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {busy ? "Сохраняем…" : "Сохранить правку"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingAspectId(null);
+                        setEditText("");
+                      }}
+                      disabled={busy}
+                      className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            {aspect.status === "accepted" &&
+              aspect.finalPayload !== undefined &&
+              editingAspectId !== aspect.id && (
                 <div className="flex flex-col gap-2">
                   {renderFinalPayload(aspect.finalPayload)}
                   <div className="flex gap-2">
+                    {adapter.editable && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingAspectId(aspect.id);
+                          setEditText(
+                            adapter.editable!.toText(
+                              aspect.finalPayload as TPayload,
+                            ),
+                          );
+                        }}
+                        disabled={busy}
+                        className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                      >
+                        Редактировать текст
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleReopen(aspect)}
@@ -530,6 +657,14 @@ export function AspectRunner<TPayload>({
           </li>
         );
       })}
+      <li>
+        <ManualAspectForm
+          stage={stage}
+          revision={revision}
+          payloadKind={adapter.payloadKind}
+          onPatch={onPatch}
+        />
+      </li>
     </ul>
   );
 }

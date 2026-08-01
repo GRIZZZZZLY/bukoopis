@@ -45,6 +45,7 @@ describe("PlaybookRunner", () => {
       <PlaybookRunner
         stage={makeEmptyStage()}
         revision={0}
+        payloadKind="markdown"
         generator={generator}
         onPatch={vi.fn()}
       />,
@@ -67,6 +68,7 @@ describe("PlaybookRunner", () => {
       <PlaybookRunner
         stage={makeEmptyStage()}
         revision={0}
+        payloadKind="markdown"
         generator={makeGenerator({ aspects: [] })}
         onPatch={vi.fn()}
       />,
@@ -88,6 +90,7 @@ describe("PlaybookRunner", () => {
       <PlaybookRunner
         stage={makeEmptyStage()}
         revision={0}
+        payloadKind="markdown"
         generator={generator}
         onPatch={vi.fn()}
       />,
@@ -120,6 +123,7 @@ describe("PlaybookRunner", () => {
       <PlaybookRunner
         stage={makeEmptyStage()}
         revision={2}
+        payloadKind="markdown"
         generator={generator}
         onPatch={onPatch}
       />,
@@ -162,6 +166,7 @@ describe("PlaybookRunner", () => {
       <PlaybookRunner
         stage={makeEmptyStage()}
         revision={0}
+        payloadKind="markdown"
         generator={generator}
         onPatch={onPatch}
       />,

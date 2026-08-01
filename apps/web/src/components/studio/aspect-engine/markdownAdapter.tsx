@@ -20,5 +20,9 @@ export function createMarkdownAdapter(stageId: StageId): StageAdapter<MarkdownPa
         {payload}
       </div>
     ),
+    editable: {
+      toText: (payload) => payload,
+      fromText: (text) => text,
+    },
   };
 }
