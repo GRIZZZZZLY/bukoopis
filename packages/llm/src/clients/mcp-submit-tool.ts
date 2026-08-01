@@ -226,6 +226,16 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     );
   }
   if (toolCallCount === 0) {
+    // A timed-out run also arrives here with zero tool calls: aborting the
+    // controller ends the SDK stream without throwing. Reporting that as "the
+    // model refused to call the tool" sends the reader hunting for a prompt or
+    // schema bug when the backend simply never answered, so name it for what
+    // it is.
+    if (controller.signal.aborted) {
+      throw new LLMError(
+        `[subscription/${modelId}] no response within ${timeoutMs}ms — ${mcp.toolName} was never called (backend stalled or unreachable)`,
+      );
+    }
     throw new LLMNoToolCallError(
       `[subscription/${modelId}] model did not call ${mcp.toolName}`,
     );

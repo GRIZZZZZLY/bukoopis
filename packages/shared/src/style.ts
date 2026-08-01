@@ -182,7 +182,8 @@ export type UploadReferenceCorpusInput = z.infer<
 export const runExtractInputSchema = z.object({
   // optional override of model
   model: z.enum(["sonnet", "opus"]).optional(),
-  // sample size: how many scenes to feed into Style Extractor
-  sampleSize: z.number().int().min(5).max(100).default(30),
+  // How many scenes the model reads. Statistics are measured over the whole
+  // corpus regardless, so this only needs to be representative of the voice.
+  sampleSize: z.number().int().min(5).max(100).default(12),
 });
 export type RunExtractInput = z.infer<typeof runExtractInputSchema>;

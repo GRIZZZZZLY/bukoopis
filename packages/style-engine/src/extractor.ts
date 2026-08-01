@@ -22,7 +22,18 @@ import {
 export interface StyleExtractInput {
   language: string;
   authorName: string;
-  scenes: string[]; // sample of scenes (already truncated to ~30-50)
+  /**
+   * Scenes shown to the model. Keep this small — the model only has to
+   * characterise the voice, and every extra scene is prompt cost that buys
+   * nothing now that the statistics are measured rather than estimated.
+   */
+  scenes: string[];
+  /**
+   * Scenes the statistics are measured over. Defaults to `scenes`. Measuring
+   * is free, so the caller should pass the WHOLE corpus here even though the
+   * model sees only a sample of it.
+   */
+  metricsScenes?: string[];
   model?: "sonnet" | "opus";
   onUsage?: (usage: StructuredUsage) => void;
 }
@@ -47,6 +58,10 @@ const SYSTEM = `Ты — Style Extractor. Анализируешь корпус 
 
 Возвращай structured output по схеме.`;
 
+function metricsSource(input: StyleExtractInput): string[] {
+  return input.metricsScenes ?? input.scenes;
+}
+
 function buildStyleExtractorPrompt(input: StyleExtractInput): string {
   const sceneBlock = input.scenes
     .map((s, i) => `### Scene ${i + 1}\n${s}`)
@@ -56,7 +71,7 @@ function buildStyleExtractorPrompt(input: StyleExtractInput): string {
     `Язык: ${input.language}`,
     `Количество сцен в выборке: ${input.scenes.length}`,
     "",
-    renderCorpusMetrics(computeCorpusMetrics(input.scenes)),
+    renderCorpusMetrics(computeCorpusMetrics(metricsSource(input))),
     "",
     "Проанализируй корпус и верни style fingerprint в structured формате.",
     "",
@@ -88,7 +103,7 @@ export function registerStyleExtractorContract(): void {
 export async function runStyleExtractor(
   input: StyleExtractInput,
 ): Promise<StyleFingerprint> {
-  const metrics = computeCorpusMetrics(input.scenes);
+  const metrics = computeCorpusMetrics(metricsSource(input));
   const { raw, diagnostics } = await dispatchStructured<
     StyleExtractInput,
     StyleFingerprintLlm

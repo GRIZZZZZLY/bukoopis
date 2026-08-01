@@ -116,6 +116,15 @@ function toCorpus(r: CorpusRow): ReferenceCorpus {
   };
 }
 
+/**
+ * How much corpus the extractor model actually reads. Small on purpose: the
+ * numbers it used to be asked for are now measured from the full corpus, so the
+ * sample only has to be representative of the voice, not exhaustive. 12 x 1500
+ * chars is roughly 5k tokens against ~30k for the 30 x 4000 it used to get.
+ */
+const DEFAULT_SAMPLE_SIZE = 12;
+const SAMPLE_SCENE_CHARS = 1500;
+
 export function createStyleRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
 
@@ -314,20 +323,33 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
       .get(id) as StyleProfileRow | undefined;
     if (!profile) return notFound(c, "style_profile");
 
-    // Sample scenes across all corpora. The order is a hash of the scene id
-    // rather than random(): re-running an extract on an unchanged corpus should
-    // reproduce the same fingerprint, and the measured statistics should
-    // describe the same sample the model was shown.
-    const sampleSize = parsed.data.sampleSize ?? 30;
-    const scenes = sqlite
-      .prepare(
-        `SELECT s.text FROM reference_scenes s
-         JOIN reference_corpora c ON c.id = s.corpus_id
-         WHERE c.profile_id = ?
-         ORDER BY ((s.id * 2654435761) % 4294967291), s.id
-         LIMIT ?`,
-      )
-      .all(id, sampleSize) as Array<{ text: string }>;
+    // Two different populations, deliberately.
+    //
+    // Statistics are measured over the WHOLE corpus — that costs nothing and is
+    // strictly more accurate than any sample. The model sees only a small
+    // sample, because all it has to do is characterise the voice; feeding it
+    // the whole corpus buys no accuracy now that the numbers come from code.
+    //
+    // Sample order is a hash of the scene id rather than random(), so
+    // re-extracting an unchanged corpus reproduces the same fingerprint.
+    const sampleSize = parsed.data.sampleSize ?? DEFAULT_SAMPLE_SIZE;
+    const pickScenes = sqlite.prepare(
+      `SELECT s.text FROM reference_scenes s
+       JOIN reference_corpora c ON c.id = s.corpus_id
+       WHERE c.profile_id = ?
+       ORDER BY ((s.id * 2654435761) % 4294967291), s.id
+       LIMIT ?`,
+    );
+    const scenes = pickScenes.all(id, sampleSize) as Array<{ text: string }>;
+    const metricsScenes = (
+      sqlite
+        .prepare(
+          `SELECT s.text FROM reference_scenes s
+           JOIN reference_corpora c ON c.id = s.corpus_id
+           WHERE c.profile_id = ?`,
+        )
+        .all(id) as Array<{ text: string }>
+    ).map((s) => s.text);
     if (scenes.length < 5) {
       return badRequest(
         c,
@@ -337,15 +359,16 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
 
     const sceneTexts = scenes.map((s) => s.text);
 
-    // Always compute fatigue (deterministic, no LLM)
-    const fatigue = detectFatigueWords(sceneTexts, profile.language);
+    // Fatigue is deterministic, so it also runs over the whole corpus.
+    const fatigue = detectFatigueWords(metricsScenes, profile.language);
 
     let fingerprint;
     try {
       fingerprint = await runStyleExtractor({
         language: profile.language,
         authorName: profile.name,
-        scenes: sceneTexts.map((t) => t.slice(0, 4000)),
+        scenes: sceneTexts.map((t) => t.slice(0, SAMPLE_SCENE_CHARS)),
+        metricsScenes,
         model: parsed.data.model,
         onUsage: (usage) =>
           logUsage(sqlite, {
