@@ -50,7 +50,7 @@ describe("PlaybookRunner", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+      screen.getByRole("button", { name: /Составить план разделов/ }),
     );
     const bar = await screen.findByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "22");
@@ -72,7 +72,7 @@ describe("PlaybookRunner", () => {
       />,
     );
     expect(
-      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+      screen.getByRole("button", { name: /Составить план разделов/ }),
     ).toBeInTheDocument();
   });
 
@@ -93,7 +93,7 @@ describe("PlaybookRunner", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+      screen.getByRole("button", { name: /Составить план разделов/ }),
     );
     await waitFor(() =>
       expect(screen.getByText("география")).toBeInTheDocument(),
@@ -125,7 +125,7 @@ describe("PlaybookRunner", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+      screen.getByRole("button", { name: /Составить план разделов/ }),
     );
     await waitFor(() =>
       screen.getByRole("button", { name: /Принять список/ }),
@@ -167,7 +167,7 @@ describe("PlaybookRunner", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+      screen.getByRole("button", { name: /Составить план разделов/ }),
     );
     await waitFor(() =>
       screen.getByRole("button", { name: /Принять список/ }),

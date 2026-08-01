@@ -96,7 +96,7 @@ describe("AspectRunner", () => {
         onPatch={vi.fn()}
       />,
     );
-    expect(screen.getByText(/нет аспектов/i)).toBeInTheDocument();
+    expect(screen.getByText(/пока нет разделов/i)).toBeInTheDocument();
   });
 
   it("pending aspect shows Generate + Skip buttons", () => {

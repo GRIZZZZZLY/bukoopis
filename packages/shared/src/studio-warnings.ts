@@ -38,6 +38,22 @@ export interface StudioWarningsInput {
 
 const STAGE_ORDER: readonly StageId[] = STAGE_IDS;
 
+/** Stage names as the author sees them; the ids are internal. */
+const STAGE_LABELS: Record<StageId, string> = {
+  concept: "Концепт",
+  world: "Мир",
+  lore: "Лор",
+  characters: "Персонажи",
+  items: "Предметы",
+  plot: "Сюжет",
+  chapters: "Главы",
+};
+
+function genreLabel(id: string | undefined): string {
+  if (id === undefined) return "";
+  return GENRES.find((g) => g.id === id)?.label ?? id;
+}
+
 function stageStatus(state: StudioState, id: StageId): StageState["status"] | undefined {
   return state.stages[id]?.status;
 }
@@ -62,7 +78,7 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
       id: `concept_genres_empty_for_${advancedNonConcept}`,
       severity: "warning",
       stageId: "concept",
-      message: `Жанр не выбран, а стадия "${advancedNonConcept}" уже запущена. Сначала зафиксируйте жанры.`,
+      message: `Этап «${STAGE_LABELS[advancedNonConcept]}» уже идёт, а жанр не выбран — генерация опирается на него. Выберите жанр в «Концепте».`,
     });
   }
 
@@ -72,7 +88,8 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
       id: "chapters_without_characters",
       severity: "danger",
       stageId: "chapters",
-      message: "Главы пишутся без персонажей в каноне. Critic_canon выдаст пустой результат.",
+      message:
+        "Главы пишутся, а в каноне книги нет ни одного персонажа. Проверка глав на противоречия канону работать не будет.",
     });
   }
 
@@ -95,7 +112,8 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
       id: "plot_without_logline",
       severity: "warning",
       stageId: "plot",
-      message: "Сюжет генерируется без зафиксированной логлайн-премисы.",
+      message:
+        "Логлайн не задан — сюжет будет строиться вслепую. Впишите его на этапе «Концепт».",
     });
   }
 
@@ -116,7 +134,8 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
         id: `incompatible_genres__${a}__${b}`,
         severity: "warning",
         stageId: "concept",
-        message: `Жанры "${a}" и "${b}" помечены как несовместимые в реестре.`,
+        // Ids are internal — the author picked these by their Russian labels.
+        message: `Жанры «${genreLabel(a)}» и «${genreLabel(b)}» плохо уживаются в одной книге.`,
       });
     }
   }

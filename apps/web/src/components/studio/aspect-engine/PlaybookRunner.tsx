@@ -117,8 +117,8 @@ export function PlaybookRunner({
     return (
       <div className="lw-card flex flex-col gap-3">
         <p className="text-sm text-[var(--color-text-muted)]">
-          В стадии пока нет аспектов. Запустите генерацию плейбука: LLM
-          предложит 5–9 ключевых полей, которые потом раскроем по одному.
+          Здесь пока пусто. Начните с плана: ИИ предложит 5–9 разделов, из
+          которых складывается этот этап, — потом раскроем их по одному.
         </p>
         {progress && (
           <GenerationProgress progress={progress} label="progress-playbook" />
@@ -132,7 +132,7 @@ export function PlaybookRunner({
             data-variant="primary"
             data-size="sm"
           >
-            {busy ? "Генерируем…" : "Сгенерировать список аспектов"}
+            {busy ? "Составляем…" : "Составить план разделов"}
           </button>
         </div>
         {error && (
@@ -153,7 +153,7 @@ export function PlaybookRunner({
         className="text-base"
         style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
       >
-        Предложенные аспекты
+        Предложенные разделы
       </p>
       <ul className="flex flex-col gap-2">
         {proposed.map((p, i) => (
@@ -219,7 +219,7 @@ export function PlaybookRunner({
           data-variant="ghost"
           data-size="sm"
         >
-          Перегенерировать
+          Предложить заново
         </button>
       </div>
       {error && (

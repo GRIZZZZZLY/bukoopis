@@ -41,7 +41,7 @@ function UnnamedFlag() {
   return (
     <span
       className="text-xs text-[var(--color-ink-amber)] ml-2"
-      title="У кандидата нет имени — задайте его перед материализацией"
+      title="Нет имени — задайте его перед добавлением в канон"
     >
       имя не задано
     </span>

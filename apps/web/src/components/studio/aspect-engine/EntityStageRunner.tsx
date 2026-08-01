@@ -83,7 +83,7 @@ export function EntityStageRunner({
   if (stage.aspects.length === 0) {
     return (
       <p className="text-sm text-[var(--color-muted-foreground)]">
-        В стадии нет аспектов. Запустите генерацию плейбука.
+        На этом этапе пока нет разделов — начните с плана.
       </p>
     );
   }
@@ -461,7 +461,7 @@ export function EntityStageRunner({
                       disabled={busy}
                       className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:bg-[var(--color-surface-2)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
                     >
-                      {busy ? "Материализуем…" : "Материализовать"}
+                      {busy ? "Добавляем…" : "Добавить в канон книги"}
                     </button>
                     <button
                       type="button"

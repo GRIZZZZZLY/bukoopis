@@ -273,7 +273,7 @@ describe("EntityStageRunner", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Материализовать/ }),
+      screen.getByRole("button", { name: /Добавить в канон/ }),
     );
     await waitFor(() => expect(materialize).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));

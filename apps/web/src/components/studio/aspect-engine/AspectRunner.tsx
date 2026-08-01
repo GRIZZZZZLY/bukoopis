@@ -54,7 +54,7 @@ export function AspectRunner<TPayload>({
   if (stage.aspects.length === 0) {
     return (
       <p className="text-sm text-[var(--color-muted-foreground)]">
-        В стадии нет аспектов. Запустите генерацию плейбука (Phase C2).
+        На этом этапе пока нет разделов — начните с плана.
       </p>
     );
   }
