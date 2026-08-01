@@ -55,6 +55,7 @@ export function AspectRunner<TPayload>({
   const [seedByAspect, setSeedByAspect] = useState<Record<string, string>>({});
   const [editingAspectId, setEditingAspectId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [batchIds, setBatchIds] = useState<ReadonlySet<string>>(new Set());
 
   if (stage.aspects.length === 0) {
     return (
@@ -212,6 +213,85 @@ export function AspectRunner<TPayload>({
     await applyPatch(aspect.id, next);
   }
 
+  /** One request per section at ~2 minutes each turns a nine-section stage into
+   *  a twenty-minute queue of single clicks. This runs the untouched ones a few
+   *  at a time and lands them in ONE patch: concurrent patches would each carry
+   *  the same stale revision and lose all but one to a 409.
+   *
+   *  The trade-off is real and stated in the UI — batched sections are written
+   *  against the context accepted so far, so they do not see each other. */
+  async function handleGenerateAll(): Promise<void> {
+    const queue = stage.aspects.filter((a) => a.status === "pending");
+    if (queue.length === 0) return;
+    setBatchIds(new Set(queue.map((a) => a.id)));
+    setErrorByAspect({});
+
+    const accumulated = buildAccumulatedContext();
+    const results = new Map<string, AspectVariant[]>();
+    const failures: Record<string, string> = {};
+    const CONCURRENCY = 3;
+    let cursor = 0;
+
+    async function worker(): Promise<void> {
+      for (;;) {
+        const aspect = queue[cursor++];
+        if (!aspect) return;
+        const seed = (seedByAspect[aspect.id] ?? "").trim();
+        try {
+          const variants = await generator.generate(
+            {
+              aspect,
+              accumulated,
+              ...(seed.length > 0 ? { draft: seed } : {}),
+            },
+            trackProgress(aspect.id),
+          );
+          results.set(aspect.id, variants);
+        } catch (e) {
+          failures[aspect.id] = e instanceof Error ? e.message : String(e);
+        } finally {
+          clearProgress(aspect.id);
+          setBatchIds((prev) => {
+            const copy = new Set(prev);
+            copy.delete(aspect.id);
+            return copy;
+          });
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker),
+    );
+
+    if (results.size > 0) {
+      const next: StageState = {
+        ...stage,
+        status: stage.status === "not_started" ? "in_progress" : stage.status,
+        aspects: stage.aspects.map((a) => {
+          const variants = results.get(a.id);
+          if (!variants) return a;
+          return {
+            ...a,
+            status: "reviewing" as const,
+            variants,
+            ...(a.selectedVariantId !== undefined
+              ? { selectedVariantId: undefined }
+              : {}),
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        await onPatch(revision, next);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        for (const id of results.keys()) failures[id] = msg;
+      }
+    }
+    if (Object.keys(failures).length > 0) setErrorByAspect(failures);
+  }
+
   /** Saves the author's own wording as a new accepted variant. The model's
    *  version becomes its superseded parent, so the edit is a step in the
    *  aspect's history rather than an overwrite. */
@@ -341,13 +421,36 @@ export function AspectRunner<TPayload>({
     return adapter.renderFinal(parsed.data);
   }
 
+  const pendingCount = stage.aspects.filter(
+    (a) => a.status === "pending",
+  ).length;
+  const batchRunning = batchIds.size > 0;
+
   return (
     <ul
       aria-label="aspects"
       className="lw-card flex flex-col gap-4"
     >
+      {pendingCount > 1 && (
+        <li className="flex flex-col gap-1 border-b border-[var(--color-border)] pb-3">
+          <button
+            type="button"
+            onClick={handleGenerateAll}
+            disabled={batchRunning || busyAspectId !== null}
+            className="text-sm self-start border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+          >
+            {batchRunning
+              ? `Генерируем… осталось ${batchIds.size}`
+              : `Сгенерировать все оставшиеся (${pendingCount})`}
+          </button>
+          <span className="text-xs text-[var(--color-muted-foreground)]">
+            Разделы пишутся сразу и не видят друг друга — только то, что вы уже
+            приняли. По одному выйдет связнее, зато дольше.
+          </span>
+        </li>
+      )}
       {stage.aspects.map((aspect) => {
-        const busy = busyAspectId === aspect.id;
+        const busy = busyAspectId === aspect.id || batchIds.has(aspect.id);
         const err = errorByAspect[aspect.id];
         const progress = progressByAspect[aspect.id];
         return (
