@@ -22,6 +22,13 @@ export interface CriticInput {
   previousChaptersSummary: string | null;
   characterContext: string | null;
   loreContext: string | null;
+  /**
+   * Rendered style fingerprint of the book's target style profile. Only the
+   * style critic uses it — without it the critic judges prose against a
+   * generic "clean LLM prose" bar and flags a deliberately dense author voice
+   * as a defect.
+   */
+  styleContext?: string | null;
   config?: GenerationConfig;
   onUsage?: (usage: StructuredUsage & { critic: CriticType }) => void;
 }

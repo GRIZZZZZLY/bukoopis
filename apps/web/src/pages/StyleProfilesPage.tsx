@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Blend } from "lucide-react";
 import { api } from "@/api/client";
+import { StyleBlendForm } from "@/components/style/StyleBlendForm";
 import type { ReferenceCorpus, StyleProfile } from "@book-forge/shared";
 
 function profileWord(n: number): string {
@@ -13,6 +14,15 @@ function profileWord(n: number): string {
   return "профилей";
 }
 
+function sourceWord(n: number): string {
+  const r = n % 10;
+  const rr = n % 100;
+  if (rr >= 11 && rr <= 14) return "источников";
+  if (r === 1) return "источника";
+  if (r >= 2 && r <= 4) return "источников";
+  return "источников";
+}
+
 export function StyleProfilesListPage() {
   const [list, setList] = useState<StyleProfile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +30,7 @@ export function StyleProfilesListPage() {
   const [language, setLanguage] = useState("ru");
   const [creating, setCreating] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showBlend, setShowBlend] = useState(false);
 
   async function load() {
     setError(null);
@@ -97,14 +108,24 @@ export function StyleProfilesListPage() {
             </p>
           </div>
           {!showForm ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setShowForm(true)}
-            >
-              <Plus size={16} aria-hidden="true" />
-              Новый профиль
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setShowBlend((v) => !v)}
+              >
+                <Blend size={16} aria-hidden="true" />
+                Смешать стили
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowForm(true)}
+              >
+                <Plus size={16} aria-hidden="true" />
+                Новый профиль
+              </button>
+            </div>
           ) : (
             <form
               onSubmit={onCreate}
@@ -145,6 +166,17 @@ export function StyleProfilesListPage() {
           )}
         </div>
 
+        {showBlend && (
+          <StyleBlendForm
+            profiles={list}
+            onCreated={() => {
+              setShowBlend(false);
+              load();
+            }}
+            onCancel={() => setShowBlend(false)}
+          />
+        )}
+
         {list.length === 0 ? (
           <div
             className="card muted"
@@ -169,8 +201,18 @@ export function StyleProfilesListPage() {
               >
                 <h2>{p.name}</h2>
                 <div className="cap muted">
-                  {p.language} · корпусов: {p.corporaCount} ·{" "}
-                  {p.totalChars.toLocaleString("ru-RU")} симв.
+                  {p.kind === "blend" ? (
+                    <>
+                      {p.language} · смесь из{" "}
+                      {p.blendConfig?.sources.length ?? 0}{" "}
+                      {sourceWord(p.blendConfig?.sources.length ?? 0)}
+                    </>
+                  ) : (
+                    <>
+                      {p.language} · корпусов: {p.corporaCount} ·{" "}
+                      {p.totalChars.toLocaleString("ru-RU")} симв.
+                    </>
+                  )}
                 </div>
                 <div className="style-foot">
                   <span className={`pill pill-${p.fingerprint ? "green" : "amber"}`}>
@@ -179,6 +221,12 @@ export function StyleProfilesListPage() {
                       ? "fingerprint готов"
                       : "fingerprint не извлечён"}
                   </span>
+                  {p.kind === "blend" && (
+                    <span className="pill">
+                      <Blend size={12} aria-hidden="true" />
+                      смесь
+                    </span>
+                  )}
                 </div>
               </Link>
             ))}

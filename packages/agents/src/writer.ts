@@ -1,7 +1,10 @@
 import { streamText, streamTextOllama, type SystemBlock } from "@book-forge/llm";
-import type {
-  ChapterBeatSheetVariant,
-  GenerationConfig,
+import {
+  renderClicheRule,
+  RU_DIALOGUE_RULE,
+  STYLE_PRECEDENCE_RULE,
+  type ChapterBeatSheetVariant,
+  type GenerationConfig,
 } from "@book-forge/shared";
 
 export type WriterProvider = "anthropic" | "ollama";
@@ -15,10 +18,14 @@ const SYSTEM_WRITER = `Ты — Writer Agent. Пишешь художестве�
 Требования:
 — Не пересказывай beats — превращай их в живую сцену с диалогами, действием, описаниями.
 — Соблюдай POV из beat-sheet. Объективный канон мира используй для непротиворечивости, но НЕ вкладывай в мысли/речь POV-персонажа то, чего он ещё не знает. В его сознании допустимо лишь то, что перечислено в блоке «Известно POV-персонажу» (если он есть).
-— Стиль: ясный, без избыточных метафор, без LLM-клише ("казалось", "по сути", "не X, а Y", избытка списков из трёх).
+— Стиль по умолчанию: ясный, без избыточных метафор.
+${renderClicheRule()}
+${RU_DIALOGUE_RULE}
 — Целевой объём — близко к estimatedWords ± 30%.
 — Не выводи никаких служебных пометок, заголовков, списков beats. Только сама проза, разделённая на абзацы.
 — В начале не повторяй название главы.
+
+${STYLE_PRECEDENCE_RULE}
 
 Пиши прозу сразу. Без вступлений типа "Вот глава:".`;
 

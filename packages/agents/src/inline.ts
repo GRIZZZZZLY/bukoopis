@@ -1,7 +1,9 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
-import type {
-  GenerationConfig,
-  InlineCommand,
+import {
+  renderClicheRule,
+  RU_DIALOGUE_RULE,
+  type GenerationConfig,
+  type InlineCommand,
 } from "@book-forge/shared";
 
 const SYSTEM_BASE = `Ты — Inline Writer. Помогаешь автору переписывать или продолжать художественную прозу на русском, фрагмент за фрагментом.
@@ -9,7 +11,8 @@ const SYSTEM_BASE = `Ты — Inline Writer. Помогаешь автору п�
 Правила:
 — Выводишь ТОЛЬКО прозу. Никаких пояснений, заголовков "Вот результат:", служебных пометок.
 — Сохраняешь стиль, голос, тон и POV из контекста. Не меняешь персонажей и факты.
-— Не используешь LLM-клише («казалось», «по сути», «не X, а Y», избытка списков из трёх, шаблонных метафор).
+${renderClicheRule()}
+${RU_DIALOGUE_RULE}
 — Не цитируешь окружающий контекст; пишешь только новый/переписанный фрагмент.
 — Не добавляешь лишних абзацев, пустых строк до/после ответа.`;
 

@@ -206,6 +206,11 @@ export const styleProfiles = sqliteTable(
     name: text("name").notNull(),
     language: text("language").notNull().default("ru"),
     description: text("description"),
+    // 'extracted' — fingerprint came from this profile's own corpus.
+    // 'blend' — synthesized from the parents listed in blendConfigJson, which
+    // is also where read-time few-shot samples are drawn from.
+    kind: text("kind").notNull().default("extracted"),
+    blendConfigJson: text("blend_config_json"),
     fingerprintJson: text("fingerprint_json"),
     fatigueWordsJson: text("fatigue_words_json"),
     lastExtractedAt: text("last_extracted_at"),

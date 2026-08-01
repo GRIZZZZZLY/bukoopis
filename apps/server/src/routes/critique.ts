@@ -318,6 +318,15 @@ export function createCritiqueRoute(
       notesPrompt ? `\n\n${notesPrompt}` : ""
     }`;
 
+    // Style critic judges the chapter against the book's target style, not a
+    // generic prose bar. Few-shot samples are excluded (0) — the critic needs
+    // the fingerprint, and verbatim samples would invite copy-matching.
+    const criticStyleContext = loadStyleContext(
+      sqlite,
+      book.style_profile_id,
+      0,
+    ).prompt;
+
     const criticInput: CriticInput = {
       chapterText: version.content_text,
       chapterTitle: ch.title,
@@ -328,6 +337,7 @@ export function createCritiqueRoute(
       previousChaptersSummary: prevSummary,
       characterContext,
       loreContext,
+      styleContext: criticStyleContext,
       config: { variants: 1, model: book.critic_model as "sonnet" | "opus" },
       onUsage: (usage) =>
         logUsage(sqlite, {

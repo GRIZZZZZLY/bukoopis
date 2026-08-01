@@ -1,8 +1,11 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
-import type {
-  CriticReport,
-  GenerationConfig,
-  IssueSeverity,
+import {
+  renderClicheRule,
+  RU_DIALOGUE_RULE,
+  STYLE_PRECEDENCE_RULE,
+  type CriticReport,
+  type GenerationConfig,
+  type IssueSeverity,
 } from "@book-forge/shared";
 
 const SYSTEM_REVISER = `Ты — Reviser. Перерабатываешь готовую главу художественной прозы на русском, опираясь на замечания критиков.
@@ -14,7 +17,10 @@ const SYSTEM_REVISER = `Ты — Reviser. Перерабатываешь гот�
 — Не «улучшаешь» места которые критики не отмечали. Не вписывай новые сцены/реплики, не добавляй персонажей.
 — Не теряй выразительные находки оригинала, если их не критиковали.
 — Длина итогового текста — близко к оригиналу (±20%).
-— Никаких LLM-клише: «казалось», «по сути», «не X, а Y», избытка списков из трёх.
+${renderClicheRule()}
+${RU_DIALOGUE_RULE}
+
+${STYLE_PRECEDENCE_RULE}
 
 Пиши прозу сразу. Без вступлений типа "Вот переработанная глава:".`;
 

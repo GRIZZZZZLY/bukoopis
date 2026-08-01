@@ -5,9 +5,13 @@ import {
   updateStyleProfileInputSchema,
   uploadReferenceCorpusInputSchema,
   runExtractInputSchema,
+  createStyleBlendInputSchema,
   styleFingerprintSchema,
   fatigueWordsSchema,
+  blendConfigSchema,
   type StyleProfile,
+  type StyleProfileKind,
+  type BlendConfig,
   type ReferenceCorpus,
   type ReferenceFormat,
 } from "@book-forge/shared";
@@ -16,6 +20,8 @@ import {
   detectFormat,
   detectFatigueWords,
   runStyleExtractor,
+  runStyleBlender,
+  type BlendParent,
 } from "@book-forge/style-engine";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
@@ -25,6 +31,8 @@ interface StyleProfileRow {
   name: string;
   language: string;
   description: string | null;
+  kind: string;
+  blend_config_json: string | null;
   fingerprint_json: string | null;
   fatigue_words_json: string | null;
   last_extracted_at: string | null;
@@ -70,11 +78,21 @@ function toProfile(
       fatigueWords = null;
     }
   }
+  let blendConfig: BlendConfig | null = null;
+  if (r.blend_config_json) {
+    try {
+      blendConfig = blendConfigSchema.parse(JSON.parse(r.blend_config_json));
+    } catch {
+      blendConfig = null;
+    }
+  }
   return {
     id: r.id,
     name: r.name,
     language: r.language,
     description: r.description,
+    kind: (r.kind === "blend" ? "blend" : "extracted") as StyleProfileKind,
+    blendConfig,
     fingerprint,
     fatigueWords,
     corporaCount: stats.count,
@@ -296,14 +314,18 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
       .get(id) as StyleProfileRow | undefined;
     if (!profile) return notFound(c, "style_profile");
 
-    // Sample scenes across all corpora — random selection.
+    // Sample scenes across all corpora. The order is a hash of the scene id
+    // rather than random(): re-running an extract on an unchanged corpus should
+    // reproduce the same fingerprint, and the measured statistics should
+    // describe the same sample the model was shown.
     const sampleSize = parsed.data.sampleSize ?? 30;
     const scenes = sqlite
       .prepare(
         `SELECT s.text FROM reference_scenes s
          JOIN reference_corpora c ON c.id = s.corpus_id
          WHERE c.profile_id = ?
-         ORDER BY random() LIMIT ?`,
+         ORDER BY ((s.id * 2654435761) % 4294967291), s.id
+         LIMIT ?`,
       )
       .all(id, sampleSize) as Array<{ text: string }>;
     if (scenes.length < 5) {
@@ -368,5 +390,147 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
     return c.json(toProfile(sqlite, row));
   });
 
+  // ─────────── Style Blender ───────────
+
+  // Creates a NEW profile whose fingerprint is synthesized from several
+  // extracted ones. The result is an ordinary profile: a book points at it the
+  // same way it points at an extracted style, and writer/critics never learn
+  // that a blend happened.
+  r.post("/style-profiles/blend", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = createStyleBlendInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    const sourceIds = parsed.data.sources.map((s) => s.profileId);
+    if (new Set(sourceIds).size !== sourceIds.length) {
+      return badRequest(c, "duplicate source profile in blend");
+    }
+
+    const parents: BlendParent[] = [];
+    for (const source of parsed.data.sources) {
+      const row = sqlite
+        .prepare("SELECT * FROM style_profiles WHERE id = ?")
+        .get(source.profileId) as StyleProfileRow | undefined;
+      if (!row) return notFound(c, `style_profile:${source.profileId}`);
+      if (!row.fingerprint_json) {
+        return badRequest(
+          c,
+          `source profile ${source.profileId} ("${row.name}") has no fingerprint — run extract first`,
+        );
+      }
+      let fingerprint;
+      try {
+        fingerprint = styleFingerprintSchema.parse(
+          JSON.parse(row.fingerprint_json),
+        );
+      } catch {
+        return badRequest(
+          c,
+          `source profile ${source.profileId} ("${row.name}") has a corrupt fingerprint`,
+        );
+      }
+      parents.push({
+        name: row.name,
+        weight: source.weight,
+        emphasis: source.emphasis ?? null,
+        fingerprint,
+      });
+    }
+
+    // Language is taken from the heaviest source; blending across languages is
+    // not something the writer could act on anyway.
+    const language =
+      [...parsed.data.sources]
+        .map((s, i) => ({ weight: s.weight, lang: parents[i]!.fingerprint.language }))
+        .sort((a, b) => b.weight - a.weight)[0]?.lang ?? "ru";
+
+    let fingerprint;
+    try {
+      fingerprint = await runStyleBlender({
+        language,
+        blendName: parsed.data.name,
+        parents,
+        instructions: parsed.data.instructions ?? null,
+        ...(parsed.data.model !== undefined ? { model: parsed.data.model } : {}),
+        onUsage: (usage) =>
+          logUsage(sqlite, {
+            route: "style.blend",
+            model: usage.modelId,
+            usage: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheCreationInputTokens: usage.cacheCreationInputTokens,
+              cacheReadInputTokens: usage.cacheReadInputTokens,
+            },
+          }),
+      });
+    } catch (e) {
+      return c.json(
+        {
+          error: "blender_failed",
+          details: { message: e instanceof Error ? e.message : String(e) },
+        },
+        500,
+      );
+    }
+
+    // Fatigue lists are unioned, not blended: a word that tires the reader in
+    // one source still tires them in the mix.
+    const fatigue = mergeParentFatigue(sqlite, sourceIds);
+
+    const blendConfig: BlendConfig = {
+      sources: parsed.data.sources,
+      instructions: parsed.data.instructions ?? null,
+    };
+    const now = new Date().toISOString();
+    const info = sqlite
+      .prepare(
+        `INSERT INTO style_profiles
+         (name, language, description, kind, blend_config_json,
+          fingerprint_json, fatigue_words_json, last_extracted_at,
+          created_at, updated_at)
+         VALUES (?, ?, ?, 'blend', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        parsed.data.name,
+        language,
+        parsed.data.description ?? null,
+        JSON.stringify(blendConfig),
+        JSON.stringify(fingerprint),
+        JSON.stringify(fatigue),
+        now,
+        now,
+        now,
+      );
+    const row = sqlite
+      .prepare("SELECT * FROM style_profiles WHERE id = ?")
+      .get(info.lastInsertRowid) as StyleProfileRow;
+    return c.json(toProfile(sqlite, row), 201);
+  });
+
   return r;
+}
+
+/** Union of the parents' fatigue lists, de-duplicated, blacklist winning. */
+function mergeParentFatigue(
+  sqlite: DatabaseType,
+  sourceIds: number[],
+): { blacklist: string[]; softWarn: string[] } {
+  const blacklist = new Set<string>();
+  const softWarn = new Set<string>();
+  for (const sid of sourceIds) {
+    const row = sqlite
+      .prepare("SELECT fatigue_words_json FROM style_profiles WHERE id = ?")
+      .get(sid) as { fatigue_words_json: string | null } | undefined;
+    if (!row?.fatigue_words_json) continue;
+    try {
+      const fw = fatigueWordsSchema.parse(JSON.parse(row.fatigue_words_json));
+      for (const w of fw.blacklist) blacklist.add(w);
+      for (const w of fw.softWarn) softWarn.add(w);
+    } catch {
+      /* corrupt list — skip this parent */
+    }
+  }
+  for (const w of blacklist) softWarn.delete(w);
+  return { blacklist: [...blacklist], softWarn: [...softWarn] };
 }

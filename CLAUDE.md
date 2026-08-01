@@ -51,6 +51,11 @@ Workspace layout: `apps/{server,web}` + `packages/{shared,agents,llm,retrieval,s
 
 Memory-only extractor agents (`canon_fact_extractor`, `episodic_note_extractor`, `reranker`, `metaSummarize`) follow the standard contract+bootstrap path; the `STRUCTURED_AGENT_NAMES` drift-guard test enforces parity.
 
+**Style engine** ([packages/style-engine](packages/style-engine/src/)): a `style_profiles` row is either `kind='extracted'` (fingerprint from its own corpus) or `kind='blend'` (synthesized from parent profiles listed in `blend_config_json`, migration 0019). Both are ordinary profiles — a book points at either one and writer/critics never learn which. `style_extractor` and `style_blender` live here, not in `packages/agents`, so their contracts are registered separately in [apps/server/src/index.ts](apps/server/src/index.ts).
+- **Numbers are measured, not guessed** ([metrics.ts](packages/style-engine/src/metrics.ts)): `sentenceLengths` and the dialogue share are computed from the corpus; the LLM schema (`styleFingerprintLlmSchema`) omits them and returns `narrativeMix` instead, which `composeDensity` rescales into the four densities. A blend averages the parents' measured stats by weight.
+- **Few-shot picks must stay stable** ([style-context.ts](apps/server/src/utils/style-context.ts)): the samples block sits inside Writer's `cache_control` prefix, so selection is ordered by a hash of the scene id — `ORDER BY random()` silently cost a full cache miss per generation. A blend draws samples from its parents in proportion to their weights, labelled by source.
+- Shared prose rules (LLM-cliché list, RU dialogue punctuation, style-precedence) live in [prose-rules.ts](packages/shared/src/prose-rules.ts) and feed writer/reviser/inline/critic_style plus the fatigue baseline — previously four drifting copies.
+
 **DB**: SQLite single file. Direct `sqlite.prepare().run/get/all` at runtime — Drizzle is schema-only. JSON columns stored as TEXT (concept, studio_state, payloads).
 
 ## Locked decisions

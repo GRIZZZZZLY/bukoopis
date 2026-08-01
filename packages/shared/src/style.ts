@@ -42,12 +42,73 @@ export const styleFingerprintSchema = z.object({
 });
 export type StyleFingerprint = z.infer<typeof styleFingerprintSchema>;
 
+/**
+ * How non-dialogue prose divides. Proportions relative to each other, not to
+ * the whole text — the dialogue share is measured from the corpus and the four
+ * densities are composed from both.
+ */
+export const narrativeMixSchema = z.object({
+  description: z.number().min(0).max(1),
+  action: z.number().min(0).max(1),
+  introspection: z.number().min(0).max(1),
+});
+export type NarrativeMix = z.infer<typeof narrativeMixSchema>;
+
+/**
+ * What the Style Extractor is actually asked to produce. Sentence-length
+ * statistics and the dialogue share are measured from the corpus in
+ * style-engine, not estimated by the model; `language` is known from the
+ * profile. The stored fingerprint is assembled from both halves.
+ */
+export const styleFingerprintLlmSchema = styleFingerprintSchema
+  .omit({ language: true, sentenceLengths: true, density: true })
+  .extend({ narrativeMix: narrativeMixSchema });
+export type StyleFingerprintLlm = z.infer<typeof styleFingerprintLlmSchema>;
+
 export const fatigueWordsSchema = z.object({
   // Words/phrases the writer should avoid for this style. Weighted by harm.
   blacklist: z.array(z.string()).default([]),
   softWarn: z.array(z.string()).default([]),
 });
 export type FatigueWords = z.infer<typeof fatigueWordsSchema>;
+
+// ─────────── Style blend ───────────
+//
+// A blend profile is synthesized from two or more extracted profiles instead
+// of from a corpus. It is stored as an ordinary style profile, so everything
+// downstream (writer, critics, the per-book selector) treats it like any other
+// style — the blend only differs in where its fingerprint came from.
+
+export const styleProfileKindSchema = z.enum(["extracted", "blend"]);
+export type StyleProfileKind = z.infer<typeof styleProfileKindSchema>;
+
+export const blendSourceSchema = z.object({
+  profileId: z.number().int().positive(),
+  /** Relative pull of this parent. Normalised server-side; need not sum to 1. */
+  weight: z.number().min(0).max(1),
+  /**
+   * Which traits to take from this parent in particular ("ритм", "метафоры").
+   * Free text: the blender reads it, nothing parses it.
+   */
+  emphasis: z.string().max(200).nullable().optional(),
+});
+export type BlendSource = z.infer<typeof blendSourceSchema>;
+
+export const blendConfigSchema = z.object({
+  sources: z.array(blendSourceSchema).min(2).max(4),
+  /** Author's own direction for the synthesis. */
+  instructions: z.string().max(2000).nullable().optional(),
+});
+export type BlendConfig = z.infer<typeof blendConfigSchema>;
+
+export const createStyleBlendInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(2000).nullable().optional(),
+  sources: z.array(blendSourceSchema).min(2).max(4),
+  instructions: z.string().max(2000).nullable().optional(),
+  model: z.enum(["sonnet", "opus"]).optional(),
+});
+export type CreateStyleBlendInput = z.infer<typeof createStyleBlendInputSchema>;
 
 // ─────────── Style profile ───────────
 
@@ -56,6 +117,8 @@ export const styleProfileSchema = z.object({
   name: z.string().min(1),
   language: z.string().min(1),
   description: z.string().nullable(),
+  kind: styleProfileKindSchema,
+  blendConfig: blendConfigSchema.nullable(),
   fingerprint: styleFingerprintSchema.nullable(),
   fatigueWords: fatigueWordsSchema.nullable(),
   corporaCount: z.number().int().nonnegative(),

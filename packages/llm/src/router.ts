@@ -21,6 +21,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   critic_editor: "api",
   critic_reader: "api",
   style_extractor: "api",
+  style_blender: "api",
   concept_refiner: "subscription",
   concept_from_idea: "subscription",
   aspect_playbook: "subscription",

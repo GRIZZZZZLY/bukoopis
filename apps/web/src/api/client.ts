@@ -382,6 +382,13 @@ export const api = {
       `/api/style-profiles/${profileId}/extract`,
       { method: "POST", body: JSON.stringify(body ?? {}) },
     ),
+  createStyleBlend: (
+    body: import("@book-forge/shared").CreateStyleBlendInput,
+  ) =>
+    req<import("@book-forge/shared").StyleProfile>(
+      `/api/style-profiles/blend`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 
   // ── Usage / Health ──
   getUsage: (params?: { bookId?: number; from?: string; to?: string }) => {

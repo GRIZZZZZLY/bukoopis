@@ -1,19 +1,10 @@
-import type { FatigueWords } from "@book-forge/shared";
+import { LLM_CLICHE_TOKENS_RU, type FatigueWords } from "@book-forge/shared";
 
 // Russian-leaning baseline of LLM-tells / overused literary fillers. These are
 // always-on suspect tokens; the Style Extractor adds genre/author-specific
-// items on top.
-const BASELINE_RU_BLACKLIST = [
-  "казалось",
-  "по сути",
-  "в действительности",
-  "определённый",
-  "весьма",
-  "в каком-то смысле",
-  "буквально",
-  "невероятно",
-  "поистине",
-];
+// items on top. Shared with the prose agents' cliché rule so the writer is
+// never told to avoid a word the fatigue detector ignores, or vice versa.
+const BASELINE_RU_BLACKLIST: string[] = [...LLM_CLICHE_TOKENS_RU];
 
 const BASELINE_RU_SOFT = [
   "несомненно",
