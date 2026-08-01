@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeStudioWarnings,
   computeRecommendedNextStage,
+  effectiveStageStatus,
 } from "./studio-warnings.js";
 import { emptyBookConcept } from "./concept.js";
 import { emptyStudioState } from "./studio-state.js";
@@ -9,6 +10,26 @@ import { emptyStudioState } from "./studio-state.js";
 const emptyCanon = { characterCount: 0, locationCount: 0, itemCount: 0 };
 
 describe("computeStudioWarnings", () => {
+  it("warns about an empty canon once real chapters exist, not just a stage flag", () => {
+    const out = computeStudioWarnings({
+      concept: emptyBookConcept(),
+      studioState: emptyStudioState(),
+      canon: emptyCanon,
+      chapters: { total: 2, finalized: 0 },
+    });
+    expect(out.map((w) => w.id)).toContain("chapters_without_characters");
+  });
+
+  it("stays quiet about the canon while no chapter has been created", () => {
+    const out = computeStudioWarnings({
+      concept: emptyBookConcept(),
+      studioState: emptyStudioState(),
+      canon: emptyCanon,
+      chapters: { total: 0, finalized: 0 },
+    });
+    expect(out.map((w) => w.id)).not.toContain("chapters_without_characters");
+  });
+
   it("warns when concept.genres is empty and any non-concept stage in_progress", () => {
     const concept = emptyBookConcept();
     const state = emptyStudioState();
@@ -145,6 +166,54 @@ describe("computeRecommendedNextStage", () => {
     ).toBe("concept");
   });
 
+  it("stays on chapters while the book is unwritten or unfinished", () => {
+    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const state = emptyStudioState();
+    for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
+      state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
+    }
+    expect(
+      computeRecommendedNextStage({ concept, studioState: state }),
+    ).toBe("chapters");
+    expect(
+      computeRecommendedNextStage({
+        concept,
+        studioState: state,
+        chapters: { total: 12, finalized: 11 },
+      }),
+    ).toBe("chapters");
+  });
+
+  it("has nothing left to recommend once every chapter is final", () => {
+    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const state = emptyStudioState();
+    for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
+      state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
+    }
+    expect(
+      computeRecommendedNextStage({
+        concept,
+        studioState: state,
+        chapters: { total: 12, finalized: 12 },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("an empty book is not a finished book", () => {
+    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const state = emptyStudioState();
+    for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
+      state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
+    }
+    expect(
+      computeRecommendedNextStage({
+        concept,
+        studioState: state,
+        chapters: { total: 0, finalized: 0 },
+      }),
+    ).toBe("chapters");
+  });
+
   it("moves past concept as soon as the logline is filled in", () => {
     const concept = { ...emptyBookConcept(), premise: { logline: "Картограф ищет остров." } };
     expect(
@@ -169,5 +238,65 @@ describe("computeRecommendedNextStage", () => {
     expect(
       computeRecommendedNextStage({ concept: emptyBookConcept(), studioState: state }),
     ).toBeUndefined();
+  });
+});
+
+describe("effectiveStageStatus", () => {
+  const withLogline = { ...emptyBookConcept(), premise: { logline: "Л" } };
+
+  it("shows concept as complete on the logline alone", () => {
+    expect(
+      effectiveStageStatus(withLogline, emptyStudioState(), "concept"),
+    ).toBe("complete");
+  });
+
+  it("shows a half-filled concept as in progress", () => {
+    const partial = { ...emptyBookConcept(), genres: ["fantasy"] };
+    expect(effectiveStageStatus(partial, emptyStudioState(), "concept")).toBe(
+      "in_progress",
+    );
+  });
+
+  it("leaves an untouched concept alone", () => {
+    expect(
+      effectiveStageStatus(emptyBookConcept(), emptyStudioState(), "concept"),
+    ).toBe("not_started");
+  });
+
+  it("reads chapters off the chapter list, not studio_state", () => {
+    const state = emptyStudioState();
+    expect(
+      effectiveStageStatus(withLogline, state, "chapters", {
+        total: 0,
+        finalized: 0,
+      }),
+    ).toBe("not_started");
+    expect(
+      effectiveStageStatus(withLogline, state, "chapters", {
+        total: 3,
+        finalized: 1,
+      }),
+    ).toBe("in_progress");
+    expect(
+      effectiveStageStatus(withLogline, state, "chapters", {
+        total: 3,
+        finalized: 3,
+      }),
+    ).toBe("complete");
+  });
+
+  it("respects an explicit skip over anything derived", () => {
+    const state = emptyStudioState();
+    state.stages.chapters = {
+      status: "skipped",
+      playbookGenerated: false,
+      aspects: [],
+    };
+    expect(
+      effectiveStageStatus(withLogline, state, "chapters", {
+        total: 3,
+        finalized: 3,
+      }),
+    ).toBe("skipped");
   });
 });

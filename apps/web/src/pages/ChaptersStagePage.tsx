@@ -143,6 +143,10 @@ export function ChaptersStagePage() {
           concept={concept}
           studioState={studio}
           activeStageId="chapters"
+          chapters={{
+            total: chapters.length,
+            finalized: chapters.filter((c) => c.status === "final").length,
+          }}
         />
 
         <div className="page-head">

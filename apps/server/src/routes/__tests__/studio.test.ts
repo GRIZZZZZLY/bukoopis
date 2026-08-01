@@ -190,6 +190,64 @@ describe("studio routes", () => {
     expect(r.status).toBe(400);
   });
 
+  it("GET /api/books/:id/studio-warnings sees chapters that exist in the table", async () => {
+    const id = await createBook();
+    const before = await sendJson<Array<{ id: string }>>(
+      t.app,
+      `/api/books/${id}/studio-warnings`,
+      "GET",
+    );
+    expect(before.map((w) => w.id)).not.toContain("chapters_without_characters");
+
+    await send(t.app, `/api/books/${id}/chapters`, "POST", { title: "Гл1" });
+
+    const after = await sendJson<Array<{ id: string }>>(
+      t.app,
+      `/api/books/${id}/studio-warnings`,
+      "GET",
+    );
+    expect(after.map((w) => w.id)).toContain("chapters_without_characters");
+  });
+
+  it("GET /api/books/recommended walks the whole pipeline to chapters", async () => {
+    const id = await createBook();
+    const fresh = await sendJson<Record<number, string>>(
+      t.app,
+      "/api/books/recommended",
+      "GET",
+    );
+    expect(fresh[id]).toBe("concept");
+
+    await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      genres: [],
+      tones: [],
+      audience: "adult",
+      premise: { logline: "Картограф ищет остров, которого нет." },
+    });
+    const afterConcept = await sendJson<Record<number, string>>(
+      t.app,
+      "/api/books/recommended",
+      "GET",
+    );
+    expect(afterConcept[id]).toBe("world");
+
+    const next = emptyStudioState();
+    for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
+      next.stages[s] = { status: "skipped", playbookGenerated: false, aspects: [] };
+    }
+    await send(t.app, `/api/books/${id}/studio-state`, "PATCH", {
+      expectedRevision: 0,
+      next,
+    });
+    const afterSkips = await sendJson<Record<number, string>>(
+      t.app,
+      "/api/books/recommended",
+      "GET",
+    );
+    expect(afterSkips[id]).toBe("chapters");
+  });
+
   it("GET /api/books/:id/studio-warnings returns array", async () => {
     const id = await createBook();
     const r = await send(t.app, `/api/books/${id}/studio-warnings`, "GET");

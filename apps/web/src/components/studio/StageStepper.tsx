@@ -4,6 +4,7 @@ import {
   STAGE_IDS,
   computeStudioProgress,
   type BookConcept,
+  type ChapterProgress,
   type StageId,
   type StudioState,
 } from "@book-forge/shared";
@@ -46,6 +47,9 @@ interface StageStepperProps {
   studioState: StudioState;
   /** Highlight "you are here"; undefined for non-stage pages (e.g. settings). */
   activeStageId?: StageId;
+  /** Omit on pages that have not loaded the chapter list; the chapters step
+   *  then simply never reads as done. */
+  chapters?: ChapterProgress;
 }
 
 /** Reference: extracted app/stepper.jsx (.stepper / .step idiom). */
@@ -54,8 +58,9 @@ export function StageStepper({
   concept,
   studioState,
   activeStageId,
+  chapters,
 }: StageStepperProps) {
-  const progress = computeStudioProgress(concept, studioState);
+  const progress = computeStudioProgress(concept, studioState, chapters);
   const byId = new Map(progress.stages.map((s) => [s.id, s]));
 
   return (

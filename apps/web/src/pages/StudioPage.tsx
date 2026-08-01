@@ -6,10 +6,12 @@ import {
   STAGE_IDS,
   computeRecommendedNextStage,
   computeStudioProgress,
+  effectiveStageStatus,
 } from "@book-forge/shared";
 import type {
   Book,
   BookConcept,
+  ChapterProgress,
   StageId,
   StudioState,
   StudioWarning,
@@ -88,6 +90,7 @@ export function StudioPage() {
   const [concept, setConcept] = useState<BookConcept | null>(null);
   const [studio, setStudio] = useState<StudioState | null>(null);
   const [warnings, setWarnings] = useState<StudioWarning[] | null>(null);
+  const [chapters, setChapters] = useState<ChapterProgress | undefined>();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +105,19 @@ export function StudioPage() {
         } catch {
           b = null;
         }
+        // The chapters stage is the one whose progress lives outside studio_state.
+        let ch: ChapterProgress | undefined;
+        try {
+          const list = api.listChapters ? await api.listChapters(bookId) : null;
+          if (list) {
+            ch = {
+              total: list.length,
+              finalized: list.filter((x) => x.status === "final").length,
+            };
+          }
+        } catch {
+          ch = undefined;
+        }
         const [c, s, w] = await Promise.all([
           api.getConcept(bookId),
           api.getStudioState(bookId),
@@ -112,6 +128,7 @@ export function StudioPage() {
         setConcept(c);
         setStudio(s);
         setWarnings(w);
+        setChapters(ch);
       } catch (e) {
         if (!alive) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -153,8 +170,9 @@ export function StudioPage() {
   const recommended = computeRecommendedNextStage({
     concept,
     studioState: studio,
+    ...(chapters !== undefined ? { chapters } : {}),
   });
-  const progress = computeStudioProgress(concept, studio);
+  const progress = computeStudioProgress(concept, studio, chapters);
   const continueStage = progress.recommended ?? "chapters";
 
   async function handleSaveConcept(next: BookConcept): Promise<BookConcept> {
@@ -206,6 +224,7 @@ export function StudioPage() {
           concept={concept}
           studioState={studio}
           activeStageId="concept"
+          {...(chapters !== undefined ? { chapters } : {})}
         />
 
         <div className="card prog-block" aria-label="Прогресс книги">
@@ -268,7 +287,6 @@ export function StudioPage() {
 
         <div className="stagecard-grid">
           {STAGE_IDS.map((id) => {
-            const stage = studio.stages[id];
             const href =
               id === "world" ||
               id === "lore" ||
@@ -284,7 +302,7 @@ export function StudioPage() {
                 key={id}
                 stageId={id}
                 label={STAGE_LABELS[id]}
-                status={stage?.status ?? "not_started"}
+                status={effectiveStageStatus(concept, studio, id, chapters)}
                 recommended={recommended === id}
                 {...(href !== undefined ? { href } : {})}
               />

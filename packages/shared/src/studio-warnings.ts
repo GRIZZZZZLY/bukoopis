@@ -20,10 +20,20 @@ export interface CanonSummary {
   itemCount: number;
 }
 
+/** The chapters stage keeps no aspects and no `studio_state` record — the
+ *  chapters table is its only truth. Everything that needs to know whether
+ *  writing has started takes this alongside the studio state. */
+export interface ChapterProgress {
+  total: number;
+  /** Chapters at status "final". */
+  finalized: number;
+}
+
 export interface StudioWarningsInput {
   concept: BookConcept;
   studioState: StudioState;
   canon: CanonSummary;
+  chapters?: ChapterProgress;
 }
 
 const STAGE_ORDER: readonly StageId[] = STAGE_IDS;
@@ -39,7 +49,9 @@ function isAdvanced(state: StudioState, id: StageId): boolean {
 
 export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning[] {
   const out: StudioWarning[] = [];
-  const { concept, studioState, canon } = input;
+  const { concept, studioState, canon, chapters } = input;
+  const writingStarted =
+    isAdvanced(studioState, "chapters") || (chapters?.total ?? 0) > 0;
 
   // 1. Genres empty but a non-concept stage already in motion.
   const advancedNonConcept = (["world", "lore", "characters", "items", "plot", "chapters"] as const).find(
@@ -55,7 +67,7 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
   }
 
   // 2. Chapters started with zero canon characters.
-  if (isAdvanced(studioState, "chapters") && canon.characterCount === 0) {
+  if (writingStarted && canon.characterCount === 0) {
     out.push({
       id: "chapters_without_characters",
       severity: "danger",
@@ -115,6 +127,7 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
 export interface RecommendedNextInput {
   concept: BookConcept;
   studioState: StudioState;
+  chapters?: ChapterProgress;
 }
 
 /** The concept stage has no `studio_state` record — it is a form — so its
@@ -124,17 +137,52 @@ function isStageDone(
   concept: BookConcept,
   state: StudioState,
   id: StageId,
+  chapters?: ChapterProgress,
 ): boolean {
   const s = stageStatus(state, id) ?? "not_started";
   if (s === "complete" || s === "skipped") return true;
-  return id === "concept" && isConceptComplete(concept);
+  if (id === "concept") return isConceptComplete(concept);
+  if (id === "chapters") {
+    // Every chapter finalized — the book is written. An empty book is not done.
+    return (
+      chapters !== undefined &&
+      chapters.total > 0 &&
+      chapters.finalized >= chapters.total
+    );
+  }
+  return false;
+}
+
+/** What a stage tile should say. concept and chapters have no aspects to derive
+ *  from, so their stored status is always "not_started" — reading it raw makes a
+ *  finished book look untouched. */
+export function effectiveStageStatus(
+  concept: BookConcept,
+  studioState: StudioState,
+  id: StageId,
+  chapters?: ChapterProgress,
+): StageState["status"] {
+  const stored = stageStatus(studioState, id) ?? "not_started";
+  if (stored === "skipped" || stored === "complete") return stored;
+  if (isStageDone(concept, studioState, id, chapters)) return "complete";
+  if (id === "chapters" && (chapters?.total ?? 0) > 0) return "in_progress";
+  if (id === "concept" && !isConceptComplete(concept)) {
+    const touched =
+      concept.genres.length > 0 ||
+      (concept.customGenres ?? []).length > 0 ||
+      Object.values(concept.premise).some((v) => (v ?? "").trim().length > 0);
+    return touched ? "in_progress" : stored;
+  }
+  return stored;
 }
 
 export function computeRecommendedNextStage(
   input: RecommendedNextInput,
 ): StageId | undefined {
   for (const id of STAGE_ORDER) {
-    if (isStageDone(input.concept, input.studioState, id)) continue;
+    if (isStageDone(input.concept, input.studioState, id, input.chapters)) {
+      continue;
+    }
     return id;
   }
   return undefined;
@@ -156,10 +204,15 @@ export interface StudioProgress {
 export function computeStudioProgress(
   concept: BookConcept,
   studioState: StudioState,
+  chapters?: ChapterProgress,
 ): StudioProgress {
-  const recommended = computeRecommendedNextStage({ concept, studioState });
+  const recommended = computeRecommendedNextStage({
+    concept,
+    studioState,
+    ...(chapters !== undefined ? { chapters } : {}),
+  });
   const stages: StudioStageProgress[] = STAGE_IDS.map((id) => {
-    const done = isStageDone(concept, studioState, id);
+    const done = isStageDone(concept, studioState, id, chapters);
     const status: StudioStageProgress["status"] = done
       ? "done"
       : id === recommended

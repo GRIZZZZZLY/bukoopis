@@ -6,6 +6,7 @@ import {
   computeStudioWarnings,
   computeStudioProgress,
   type CanonSummary,
+  type ChapterProgress,
   type StageId,
 } from "@book-forge/shared";
 import { z } from "zod";
@@ -160,6 +161,22 @@ function loadCanonSummary(sqlite: DatabaseType, bookId: number): CanonSummary {
   };
 }
 
+/** The chapters stage has no aspects — the chapters table is what says whether
+ *  the book is being written and whether it is finished. */
+function loadChapterProgress(
+  sqlite: DatabaseType,
+  bookId: number,
+): ChapterProgress {
+  const row = sqlite
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'final' THEN 1 ELSE 0 END) AS finalized
+         FROM chapters WHERE book_id = ?`,
+    )
+    .get(bookId) as { total: number; finalized: number | null };
+  return { total: row.total, finalized: row.finalized ?? 0 };
+}
+
 export function createStudioRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
@@ -172,7 +189,11 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     for (const { id } of rows) {
       const concept = repo.loadConcept(id);
       const studioState = repo.loadStudioState(id);
-      const progress = computeStudioProgress(concept, studioState);
+      const progress = computeStudioProgress(
+        concept,
+        studioState,
+        loadChapterProgress(sqlite, id),
+      );
       out[id] = progress.recommended ?? "chapters";
     }
     return c.json(out);
@@ -246,7 +267,10 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
       const concept = repo.loadConcept(id);
       const studioState = repo.loadStudioState(id);
       const canon = loadCanonSummary(sqlite, id);
-      return c.json(computeStudioWarnings({ concept, studioState, canon }));
+      const chapters = loadChapterProgress(sqlite, id);
+      return c.json(
+        computeStudioWarnings({ concept, studioState, canon, chapters }),
+      );
     } catch (e) {
       if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
       throw e;
