@@ -239,8 +239,50 @@ describe("AspectRunner", () => {
     expect(
       screen.getByText(/Окончательный текст об острове/),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Изменить/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Удалить/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Выбрать другой вариант/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Пропустить раздел/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("reopening an accepted aspect keeps its text instead of dropping it", async () => {
+    const onPatch = vi.fn().mockResolvedValue({ stage: makeStage([]), revision: 2 });
+    const acceptedAspect = makeAspect({
+      status: "accepted",
+      selectedVariantId: "v1",
+      finalPayload: "Окончательный текст об острове",
+      variants: [
+        {
+          id: "v1",
+          label: "первый",
+          payloadKind: "markdown",
+          payload: "Окончательный текст об острове",
+          status: "accepted",
+          editSource: "llm",
+          generatedAt: "2026-05-09T20:00:00.000Z",
+        },
+      ],
+    });
+    render(
+      <AspectRunner
+        stage={makeStage([acceptedAspect])}
+        revision={1}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Выбрать другой вариант/ }),
+    );
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    const patched = onPatch.mock.calls[0]![1] as StageState;
+    const aspect = patched.aspects[0]!;
+    expect(aspect.status).toBe("reviewing");
+    expect(aspect.finalPayload).toBe("Окончательный текст об острове");
+    expect(aspect.selectedVariantId).toBe("v1");
   });
 
   it("Перегенерировать calls generator a second time", async () => {

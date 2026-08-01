@@ -289,10 +289,19 @@ export function EntityStageRunner({
   }
 
   async function handleSkip(aspect: StageAspect): Promise<void> {
-    const next = buildNextStage(
-      (a) => ({ ...a, status: "skipped" as const }),
-      aspect.id,
-    );
+    await setAspectStatus(aspect, "skipped");
+  }
+
+  /** A skipped section is not a deleted one — the author can pick it back up. */
+  async function handleRestore(aspect: StageAspect): Promise<void> {
+    await setAspectStatus(aspect, "pending");
+  }
+
+  async function setAspectStatus(
+    aspect: StageAspect,
+    status: "skipped" | "pending",
+  ): Promise<void> {
+    const next = buildNextStage((a) => ({ ...a, status }), aspect.id);
     setBusyAspectId(aspect.id);
     try {
       await onPatch(revision, next);
@@ -481,9 +490,19 @@ export function EntityStageRunner({
               )}
 
             {aspect.status === "skipped" && (
-              <p className="text-xs text-[var(--color-muted-foreground)]">
-                Пропущено
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-[var(--color-muted-foreground)]">
+                  Пропущено
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleRestore(aspect)}
+                  disabled={busy}
+                  className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                >
+                  Вернуть раздел
+                </button>
+              </div>
             )}
 
             {err && (

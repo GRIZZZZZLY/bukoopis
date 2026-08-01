@@ -194,16 +194,12 @@ export function AspectRunner<TPayload>({
     await applyPatch(aspect.id, next);
   }
 
-  async function handleEdit(aspect: StageAspect): Promise<void> {
+  /** Reopens the variant list. The accepted text stays on the aspect so that
+   *  walking away mid-reconsideration loses nothing; accepting again just
+   *  overwrites it. */
+  async function handleReopen(aspect: StageAspect): Promise<void> {
     const next = buildNextStage(
-      (a) => ({
-        ...a,
-        status: "reviewing" as const,
-        ...(a.selectedVariantId !== undefined
-          ? { selectedVariantId: undefined }
-          : {}),
-        ...(a.finalPayload !== undefined ? { finalPayload: undefined } : {}),
-      }),
+      (a) => ({ ...a, status: "reviewing" as const }),
       aspect.id,
     );
     await applyPatch(aspect.id, next);
@@ -392,6 +388,11 @@ export function AspectRunner<TPayload>({
                           <span className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
                             {v.label}
                           </span>
+                          {v.id === aspect.selectedVariantId && (
+                            <span className="lw-pill" data-tone="green">
+                              сейчас выбран
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleAccept(aspect, v)}
@@ -489,19 +490,20 @@ export function AspectRunner<TPayload>({
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => handleEdit(aspect)}
+                      onClick={() => handleReopen(aspect)}
                       disabled={busy}
                       className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
                     >
-                      Изменить
+                      Выбрать другой вариант
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSkip(aspect)}
                       disabled={busy}
+                      title="Раздел останется в списке — его можно вернуть"
                       className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
                     >
-                      Удалить
+                      Пропустить раздел
                     </button>
                   </div>
                 </div>
@@ -515,7 +517,7 @@ export function AspectRunner<TPayload>({
                   disabled={busy}
                   className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
                 >
-                  Восстановить
+                  Вернуть раздел
                 </button>
               </div>
             )}
