@@ -122,8 +122,39 @@ describe("ConceptForm braindump entry", () => {
     );
   });
 
-  it("restores the idea text after a reload", async () => {
-    const { unmount } = render(
+  it("saves the idea with the concept so it survives more than a reload", async () => {
+    const onSave = vi.fn(async (c: BookConcept) => c);
+    render(
+      <ConceptForm
+        initialConcept={emptyBookConcept()}
+        onSave={onSave}
+        onRefine={noopRefine}
+        bookId={42}
+        onFromIdea={vi.fn()}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText(/Свободное описание идеи/), IDEA);
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0].idea).toBe(IDEA);
+  });
+
+  it("shows an idea that was already saved on the concept", () => {
+    render(
+      <ConceptForm
+        initialConcept={{ ...emptyBookConcept(), idea: IDEA }}
+        onSave={vi.fn()}
+        onRefine={noopRefine}
+        bookId={42}
+        onFromIdea={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText(/Свободное описание идеи/)).toHaveValue(IDEA);
+  });
+
+  it("adopts an idea stranded in localStorage by the previous build", async () => {
+    localStorage.setItem("bf-idea-42", IDEA);
+    render(
       <ConceptForm
         initialConcept={emptyBookConcept()}
         onSave={vi.fn()}
@@ -132,12 +163,17 @@ describe("ConceptForm braindump entry", () => {
         onFromIdea={vi.fn()}
       />,
     );
-    await userEvent.type(screen.getByLabelText(/Свободное описание идеи/), IDEA);
-    unmount();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Свободное описание идеи/)).toHaveValue(IDEA),
+    );
+    expect(localStorage.getItem("bf-idea-42")).toBeNull();
+  });
 
+  it("does not let a stranded value overwrite the saved idea", () => {
+    localStorage.setItem("bf-idea-42", "старый мусор");
     render(
       <ConceptForm
-        initialConcept={emptyBookConcept()}
+        initialConcept={{ ...emptyBookConcept(), idea: IDEA }}
         onSave={vi.fn()}
         onRefine={noopRefine}
         bookId={42}

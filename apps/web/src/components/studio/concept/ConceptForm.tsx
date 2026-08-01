@@ -45,6 +45,8 @@ function mergeConcept(current: BookConcept, incoming: BookConcept): BookConcept 
       : incoming.customTones;
   return {
     ...current,
+    // The author's own words outrank whatever the expansion echoed back.
+    ...(current.idea !== undefined ? { idea: current.idea } : {}),
     genres: current.genres.length > 0 ? current.genres : incoming.genres,
     ...(customGenres !== undefined ? { customGenres } : {}),
     tones: current.tones.length > 0 ? current.tones : incoming.tones,
@@ -114,6 +116,8 @@ export function ConceptForm({
       {onFromIdea && bookId !== undefined && (
         <IdeaBraindump
           bookId={bookId}
+          value={draft.idea ?? ""}
+          onChange={(idea) => setDraft((d) => ({ ...d, idea }))}
           onExpand={onFromIdea}
           onExpanded={(incoming) =>
             setDraft((d) => mergeConcept(d, incoming))

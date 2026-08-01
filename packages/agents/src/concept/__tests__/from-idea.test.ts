@@ -49,6 +49,16 @@ describe("toBookConcept", () => {
     expect(c.customGenres).toEqual(["свой жанр"]);
   });
 
+  it("records the sentence the concept was derived from", () => {
+    const c = toBookConcept(BASE, "adult", "  Девочка находит карту.  ");
+    expect(c.idea).toBe("Девочка находит карту.");
+  });
+
+  it("leaves idea unset when there was no free-form text", () => {
+    expect(toBookConcept(BASE).idea).toBeUndefined();
+    expect(toBookConcept(BASE, "adult", "   ").idea).toBeUndefined();
+  });
+
   it("keeps a nested registry id such as fantasy.dark_fantasy", () => {
     const c = toBookConcept({ ...BASE, genres: ["fantasy.dark_fantasy"] });
     expect(c.genres).toEqual(["fantasy.dark_fantasy"]);

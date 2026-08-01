@@ -112,15 +112,21 @@ function splitByRegistry(
   return { ids, custom };
 }
 
-/** Maps the agent output onto a BookConcept the concept form can load directly. */
+/** Maps the agent output onto a BookConcept the concept form can load directly.
+ *  `idea` is carried through so the structured concept keeps a record of the
+ *  sentence it was derived from. */
 export function toBookConcept(
   out: ConceptFromIdeaOutput,
   audienceFallback: Audience = "adult",
+  idea?: string,
 ): BookConcept {
   const genres = splitByRegistry(out.genres, GENRE_IDS);
   const tones = splitByRegistry(out.tones, TONE_IDS);
   return {
     ...emptyBookConcept(),
+    ...(idea !== undefined && idea.trim().length > 0
+      ? { idea: idea.trim() }
+      : {}),
     genres: genres.ids,
     ...(genres.custom.length > 0 ? { customGenres: genres.custom } : {}),
     tones: tones.ids,
@@ -156,5 +162,5 @@ export async function runConceptFromIdea(
       : {}),
     maxTokens: 2048,
   });
-  return toBookConcept(raw);
+  return toBookConcept(raw, "adult", input.idea);
 }

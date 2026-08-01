@@ -3,6 +3,10 @@ import type { BookConcept } from "@book-forge/shared";
 
 interface Props {
   bookId: number;
+  /** Lives on the concept, so it is saved with everything else and survives a
+   *  move to another machine. */
+  value: string;
+  onChange: (idea: string) => void;
   onExpand: (idea: string) => Promise<BookConcept>;
   onExpanded: (concept: BookConcept) => void;
 }
@@ -14,30 +18,38 @@ function storageKey(bookId: number): string {
 }
 
 /** The entry point authors actually start from: one line of "what if", in their
- *  own words, before any genre or antagonist exists. The text is kept in
- *  localStorage rather than the concept — it is the author's scratch note, not a
- *  field of the concept, and losing it on reload would be worse than a schema
- *  bump is worth. */
-export function IdeaBraindump({ bookId, onExpand, onExpanded }: Props) {
-  const [idea, setIdea] = useState("");
+ *  own words, before any genre or antagonist exists. */
+export function IdeaBraindump({
+  bookId,
+  value,
+  onChange,
+  onExpand,
+  onExpanded,
+}: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const idea = value;
 
+  // Ideas typed before the field moved onto the concept still sit in
+  // localStorage; adopt them once, then stop reading that key.
   useEffect(() => {
+    if (value.trim().length > 0) return;
     try {
-      setIdea(localStorage.getItem(storageKey(bookId)) ?? "");
+      const stranded = localStorage.getItem(storageKey(bookId));
+      if (stranded && stranded.trim().length > 0) {
+        onChange(stranded);
+        localStorage.removeItem(storageKey(bookId));
+      }
     } catch {
-      /* private mode / storage disabled — the field just starts empty */
+      /* private mode / storage disabled — nothing to recover */
     }
+    // Recovery is a one-shot per book; re-running on every keystroke would
+    // fight the author's edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
 
   function handleChange(next: string) {
-    setIdea(next);
-    try {
-      localStorage.setItem(storageKey(bookId), next);
-    } catch {
-      /* ignore */
-    }
+    onChange(next);
   }
 
   async function handleExpand() {

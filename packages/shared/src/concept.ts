@@ -13,6 +13,10 @@ export type Premise = z.infer<typeof premiseSchema>;
 
 export const bookConceptSchema = z.object({
   schemaVersion: z.literal(1),
+  /** The author's own words about the book, before any structure. Additive and
+   *  optional on purpose: bumping schemaVersion would make every stored v1
+   *  concept fail to parse, and this field earns no such price. */
+  idea: z.string().max(8000).optional(),
   genres: z.array(z.string()),
   customGenres: z.array(z.string()).optional(),
   tones: z.array(z.string()),
