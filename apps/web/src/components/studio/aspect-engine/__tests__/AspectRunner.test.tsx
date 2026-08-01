@@ -37,6 +37,55 @@ beforeEach(() => {
 });
 
 describe("AspectRunner", () => {
+  it("shows a progress bar while generating markdown variants", async () => {
+    let release: (() => void) | undefined;
+    // Только на один вызов: beforeEach делает mockClear, который implementation
+    // не снимает, и «висящий» промис протёк бы в остальные тесты.
+    generateSpy.mockImplementationOnce(
+      ((_input: unknown, onProgress?: (p: unknown) => void) => {
+        onProgress?.({
+          phase: "writing",
+          pct: 55,
+          attempt: 1,
+          maxAttempts: 4,
+          elapsedMs: 41_000,
+          attemptElapsedMs: 41_000,
+          attemptTimeoutMs: 180_000,
+          estimateMs: 75_000,
+        });
+        return new Promise((resolve) => {
+          release = () => resolve([]);
+        });
+      }) as never,
+    );
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <AspectRunner
+        stage={makeStage([makeAspect()])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать варианты/ }),
+    );
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "55");
+    expect(screen.getByText(/Модель пишет ответ/)).toBeInTheDocument();
+    expect(screen.getByText(/55% · 41 c/)).toBeInTheDocument();
+
+    release?.();
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+  });
+
   it("shows empty state when stage has no aspects", () => {
     render(
       <AspectRunner

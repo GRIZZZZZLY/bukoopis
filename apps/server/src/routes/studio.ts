@@ -16,6 +16,7 @@ import {
 } from "../db/studio.js";
 import { notFound, validationFailed } from "../utils/errors.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
+import { runConceptFromIdea } from "@book-forge/agents/concept/from-idea";
 import { runAspectPlaybook } from "@book-forge/agents/aspects/playbook";
 import {
   runAspectVariants,
@@ -31,6 +32,8 @@ import {
 } from "@book-forge/agents/aspects/entity-variants";
 import { stageIdSchema } from "@book-forge/shared";
 import { buildContextRef } from "../services/studio/contextHash.js";
+import { ESTIMATE_MS } from "../utils/generation-progress.js";
+import { streamAgentProgress } from "../utils/sse-progress.js";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -47,6 +50,10 @@ const refineFieldSchema = z.enum([
 const refineConceptBodySchema = z.object({
   field: refineFieldSchema,
   draft: z.string().max(2000).optional(),
+});
+
+const conceptFromIdeaBodySchema = z.object({
+  idea: z.string().trim().min(10).max(8000),
 });
 
 const playbookBodySchema = z.object({
@@ -108,6 +115,34 @@ const materializeBodySchema = z.object({
     )
     .min(1),
 });
+
+/** Принятые сущности предыдущих аспектов entity-стадии → вход агента.
+ *  Аспекты без валидного entity_set-payload отбрасываются. */
+function toAccumulatedEntities(
+  accumulated: Array<{ id: string; name: string; finalPayload: unknown }>,
+): Array<{
+  name: string;
+  finalEntities: Array<{ kind: "character" | "location" | "item"; profile: unknown }>;
+}> {
+  return accumulated
+    .map((a) => {
+      const fp = a.finalPayload;
+      if (!fp || typeof fp !== "object") return null;
+      const candidates = (fp as { candidates?: unknown }).candidates;
+      if (!Array.isArray(candidates)) return null;
+      const finalEntities = (
+        candidates as Array<{
+          kind?: "character" | "location" | "item";
+          profile?: unknown;
+          status?: string;
+        }>
+      )
+        .filter((c) => c.status === "accepted" || c.status === "merged")
+        .map((c) => ({ kind: c.kind ?? "character", profile: c.profile }));
+      return { name: a.name, finalEntities };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+}
 
 function loadCanonSummary(sqlite: DatabaseType, bookId: number): CanonSummary {
   const row = sqlite
@@ -267,6 +302,33 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     }
   });
 
+  // Braindump entry: a free-form idea in, a filled-in concept draft out. The
+  // author still reviews and saves it — nothing is persisted here.
+  r.post("/books/:id/concept/from-idea", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = conceptFromIdeaBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    try {
+      repo.loadConcept(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
+    }
+
+    try {
+      const concept = await runConceptFromIdea({ idea: parsed.data.idea });
+      return c.json(concept);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.json(
+        { error: "concept_from_idea_failed", details: { message } },
+        500,
+      );
+    }
+  });
+
   r.post("/books/:id/stages/:stageId/playbook", async (c) => {
     const id = Number(c.req.param("id"));
     const stageParse = stageIdSchema.safeParse(c.req.param("stageId"));
@@ -341,27 +403,7 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
           400,
         );
       }
-      const accumulatedEntities = parsed.data.accumulated
-        .map((a) => {
-          const fp = a.finalPayload;
-          if (!fp || typeof fp !== "object") return null;
-          const candidates = (fp as { candidates?: unknown }).candidates;
-          if (!Array.isArray(candidates)) return null;
-          const finalEntities = (
-            candidates as Array<{
-              kind?: "character" | "location" | "item";
-              profile?: unknown;
-              status?: string;
-            }>
-          )
-            .filter((c) => c.status === "accepted" || c.status === "merged")
-            .map((c) => ({
-              kind: c.kind ?? "character",
-              profile: c.profile,
-            }));
-          return { name: a.name, finalEntities };
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
+      const accumulatedEntities = toAccumulatedEntities(parsed.data.accumulated);
       const contextRefEntity = buildContextRef({
         stageId,
         concept,
@@ -438,6 +480,233 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
         500,
       );
     }
+  });
+
+  /** Тот же результат, что у `/generate`, но потоком: события `progress`
+   *  (реальные вехи вызова + heartbeat раз в секунду), затем `done` с
+   *  вариантами или `error`. Работает для обоих видов payload — markdown
+   *  (мир/лор) и entity_set (персонажи/предметы). Нужен потому, что вызов идёт
+   *  десятки секунд и молчащая кнопка выглядела как зависание. */
+  r.post(
+    "/books/:id/stages/:stageId/aspects/:aspectId/generate-stream",
+    async (c) => {
+      const id = Number(c.req.param("id"));
+      const stageParse = stageIdSchema.safeParse(c.req.param("stageId"));
+      if (!stageParse.success) return validationFailed(c, stageParse.error);
+      const stageId = stageParse.data;
+      const body = await c.req.json().catch(() => null);
+      const parsed = generateAspectBodySchema.safeParse(body);
+      if (!parsed.success) return validationFailed(c, parsed.error);
+      const payload = parsed.data;
+      const payloadKind = payload.aspect.payloadKind ?? "markdown";
+      const isEntityStage = stageId === "characters" || stageId === "items";
+      if (payloadKind === "entity_set" && !isEntityStage) {
+        return c.json({ error: "stage_not_entity", details: { stageId } }, 400);
+      }
+
+      let concept;
+      try {
+        concept = repo.loadConcept(id);
+      } catch (e) {
+        if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+        throw e;
+      }
+
+      if (payloadKind === "entity_set") {
+        const entityStageId = stageId as "characters" | "items";
+        const contextRef = buildContextRef({
+          stageId: entityStageId,
+          concept,
+          accumulated: payload.accumulated.map((a) => ({
+            id: a.id,
+            name: a.name,
+            finalPayload: JSON.stringify(a.finalPayload),
+          })),
+          extra: { kind: "entity_variants", aspectId: payload.aspect.id },
+        });
+        const accumulatedEntities = toAccumulatedEntities(payload.accumulated);
+        return streamAgentProgress(c, {
+          errorCode: "aspect_entity_variants_failed",
+          estimateMs: ESTIMATE_MS.entityVariants,
+          run: (onProgress) =>
+            runAspectEntityVariants(
+              {
+                stageId: entityStageId,
+                concept,
+                aspect: payload.aspect,
+                accumulated: accumulatedEntities,
+                contextRef,
+              },
+              { onProgress },
+            ),
+          buildDone: (result) => ({
+            variants: toStoredEntityVariants(result, {
+              contextRef,
+              modelId: "subscription:claude-sonnet-4-6",
+            }),
+            contextRef,
+          }),
+        });
+      }
+
+      const accumulatedMarkdown = payload.accumulated.map((a) => ({
+        id: a.id,
+        name: a.name,
+        finalPayload:
+          typeof a.finalPayload === "string"
+            ? a.finalPayload
+            : JSON.stringify(a.finalPayload),
+      }));
+      const contextRef = buildContextRef({
+        stageId,
+        concept,
+        accumulated: accumulatedMarkdown,
+        extra: {
+          kind: "variants",
+          aspectId: payload.aspect.id,
+          ...(payload.draft !== undefined ? { draft: payload.draft } : {}),
+        },
+      });
+      return streamAgentProgress(c, {
+        errorCode: "aspect_variants_failed",
+        estimateMs: ESTIMATE_MS.markdownVariants,
+        run: (onProgress) =>
+          runAspectVariants(
+            {
+              stageId,
+              concept,
+              aspect: payload.aspect,
+              accumulated: accumulatedMarkdown.map((a) => ({
+                name: a.name,
+                finalPayload: a.finalPayload,
+              })),
+              ...(payload.draft !== undefined ? { draft: payload.draft } : {}),
+              contextRef,
+            },
+            { onProgress },
+          ),
+        buildDone: (result) => ({
+          variants: toStoredVariants(result, {
+            contextRef,
+            modelId: "subscription:claude-sonnet-4-6",
+          }),
+          contextRef,
+        }),
+      });
+    },
+  );
+
+  /** Стрим-вариант `/refine` — уточнение одного markdown-варианта. */
+  r.post(
+    "/books/:id/stages/:stageId/aspects/:aspectId/refine-stream",
+    async (c) => {
+      const id = Number(c.req.param("id"));
+      const stageParse = stageIdSchema.safeParse(c.req.param("stageId"));
+      if (!stageParse.success) return validationFailed(c, stageParse.error);
+      const body = await c.req.json().catch(() => null);
+      const parsed = refineAspectBodySchema.safeParse(body);
+      if (!parsed.success) return validationFailed(c, parsed.error);
+
+      let concept;
+      try {
+        concept = repo.loadConcept(id);
+      } catch (e) {
+        if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+        throw e;
+      }
+
+      const stageId = stageParse.data;
+      const payload = parsed.data;
+      const contextRef = buildContextRef({
+        stageId,
+        concept,
+        accumulated: payload.accumulated.map((a, i) => ({
+          id: `acc${i}`,
+          name: a.name,
+          finalPayload: a.finalPayload,
+        })),
+        extra: {
+          kind: "refine",
+          aspectId: payload.aspect.id,
+          parentVariantId: payload.parentVariant.id,
+          instructions: payload.instructions,
+        },
+      });
+      return streamAgentProgress(c, {
+        errorCode: "aspect_refine_failed",
+        estimateMs: ESTIMATE_MS.refine,
+        run: (onProgress) =>
+          runAspectRefine(
+            {
+              stageId,
+              concept,
+              aspect: payload.aspect,
+              parentVariant: payload.parentVariant,
+              instructions: payload.instructions,
+              accumulated: payload.accumulated,
+              contextRef,
+            },
+            { onProgress },
+          ),
+        buildDone: (result) => ({
+          variant: toStoredRefinedVariant(result, {
+            parentVariantId: payload.parentVariant.id,
+            contextRef,
+            modelId: "subscription:claude-sonnet-4-6",
+          }),
+          contextRef,
+        }),
+      });
+    },
+  );
+
+  /** Стрим-вариант `/playbook` — список аспектов стадии. */
+  r.post("/books/:id/stages/:stageId/playbook-stream", async (c) => {
+    const id = Number(c.req.param("id"));
+    const stageParse = stageIdSchema.safeParse(c.req.param("stageId"));
+    if (!stageParse.success) return validationFailed(c, stageParse.error);
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = playbookBodySchema.safeParse(body ?? {});
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    let concept;
+    try {
+      concept = repo.loadConcept(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
+    }
+
+    const stageId = stageParse.data;
+    const existingAspectNames = parsed.data.existingAspectNames ?? [];
+    const contextRef = buildContextRef({
+      stageId,
+      concept,
+      accumulated: [],
+      extra: { kind: "playbook", existingAspectNames },
+    });
+    const isEntity = ENTITY_STAGES.has(stageId as "characters" | "items");
+    return streamAgentProgress(c, {
+      errorCode: "aspect_playbook_failed",
+      estimateMs: ESTIMATE_MS.playbook,
+      run: (onProgress) =>
+        runAspectPlaybook(
+          { stageId, concept, existingAspectNames, contextRef },
+          { onProgress },
+        ),
+      // Для entity-стадий сервер сам проставляет payloadKind — фронт больше не
+      // угадывает (иначе аспект уходил в state как markdown, см. инвариант
+      // variant_payload_kind_mismatch).
+      buildDone: (result) => ({
+        aspects: isEntity
+          ? result.aspects.map((a) => ({
+              ...a,
+              payloadKind: "entity_set" as const,
+            }))
+          : result.aspects,
+        contextRef,
+      }),
+    });
   });
 
   r.post("/books/:id/stages/:stageId/aspects/:aspectId/refine", async (c) => {

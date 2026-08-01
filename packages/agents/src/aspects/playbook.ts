@@ -4,6 +4,7 @@ import {
   registerAgentContract,
   dispatchStructured,
   type AgentStructuredContract,
+  type StructuredProgressEvent,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -101,6 +102,8 @@ export function registerAspectPlaybookContract(): void {
 export interface RunAspectPlaybookOptions {
   model?: ModelChoice;
   temperature?: number;
+  /** Вехи вызова для SSE-прогресса в UI. */
+  onProgress?: (e: StructuredProgressEvent) => void;
 }
 
 export async function runAspectPlaybook(
@@ -116,6 +119,9 @@ export async function runAspectPlaybook(
     model: options.model ?? "sonnet",
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
+      : {}),
+    ...(options.onProgress !== undefined
+      ? { onProgress: options.onProgress }
       : {}),
     maxTokens: 2048,
   });

@@ -22,6 +22,14 @@ export const bookConceptSchema = z.object({
 });
 export type BookConcept = z.infer<typeof bookConceptSchema>;
 
+/** The concept stage keeps no record in `studio_state`, so its progress is read
+ *  off the concept itself. The logline is the gate because it is the one premise
+ *  field every aspect agent reads and the outline agent requires; genres and the
+ *  rest only soften the prompts (see studio-warnings). */
+export function isConceptComplete(concept: BookConcept): boolean {
+  return (concept.premise.logline ?? "").trim().length > 0;
+}
+
 export function emptyBookConcept(): BookConcept {
   return {
     schemaVersion: 1,

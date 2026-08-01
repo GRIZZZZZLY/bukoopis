@@ -145,6 +145,13 @@ describe("computeRecommendedNextStage", () => {
     ).toBe("concept");
   });
 
+  it("moves past concept as soon as the logline is filled in", () => {
+    const concept = { ...emptyBookConcept(), premise: { logline: "Картограф ищет остров." } };
+    expect(
+      computeRecommendedNextStage({ concept, studioState: emptyStudioState() }),
+    ).toBe("world");
+  });
+
   it("skips skipped stages", () => {
     const state = emptyStudioState();
     state.stages.concept = { status: "complete", playbookGenerated: false, aspects: [] };

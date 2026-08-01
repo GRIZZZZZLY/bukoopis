@@ -41,7 +41,19 @@ export interface DispatchStructuredInput<I> {
   maxTokens?: number;
   /** Lightweight observability hook fired once after the call resolves. */
   onDiagnostics?: (d: StructuredDiagnostics) => void;
+  /** Вехи выполнения для UI-прогресса. Best-effort, вызов не роняют. */
+  onProgress?: (e: StructuredProgressEvent) => void;
 }
+
+/** Вехи структурного вызова. Токен-дельт у structured-режима нет, поэтому это
+ *  события уровня «запрос ушёл / модель пишет / инструмент вызван». */
+export type StructuredProgressEvent =
+  | { kind: "dispatch"; backend: LLMBackend; modelId: string }
+  | { kind: "attempt"; attempt: number }
+  | { kind: "model_started" }
+  | { kind: "model_output"; chars: number }
+  | { kind: "tool_call" }
+  | { kind: "validated" };
 
 export interface DispatchStructuredResult<O> {
   raw: O;
@@ -60,6 +72,14 @@ export async function dispatchStructured<I, O>(
   });
 
   const start = performance.now();
+  const emit = (e: StructuredProgressEvent): void => {
+    try {
+      input.onProgress?.(e);
+    } catch {
+      /* прогресс — best-effort */
+    }
+  };
+  emit({ kind: "dispatch", backend, modelId: resolveModelId(input.model) });
 
   if (backend === "api") {
     let apiUsage: StructuredUsage | undefined;
@@ -77,12 +97,14 @@ export async function dispatchStructured<I, O>(
         apiUsage = u;
       },
     });
+    emit({ kind: "tool_call" });
     const validated = outputSchema.safeParse(raw);
     if (!validated.success) {
       throw new LLMError(
         `[dispatcher] post-validation failed for ${input.agentName}: ${validated.error.message}`,
       );
     }
+    emit({ kind: "validated" });
     const diagnostics: StructuredDiagnostics = {
       modelId: apiUsage?.modelId ?? resolveModelId(input.model),
       backend: "api",
@@ -112,6 +134,7 @@ export async function dispatchStructured<I, O>(
   const sub = await callViaSdkMcpSubmitTool(contract, outputSchema as ZodType<O>, {
     payload: input.payload,
     model: input.model,
+    ...(input.onProgress !== undefined ? { onProgress: emit } : {}),
   });
   const validated = outputSchema.safeParse(sub.raw);
   if (!validated.success) {
@@ -119,6 +142,7 @@ export async function dispatchStructured<I, O>(
       `[dispatcher] post-validation failed for ${input.agentName}: ${validated.error.message}`,
     );
   }
+  emit({ kind: "validated" });
   const diagnostics: StructuredDiagnostics = {
     modelId: sub.diagnostics.modelId,
     backend: "subscription",

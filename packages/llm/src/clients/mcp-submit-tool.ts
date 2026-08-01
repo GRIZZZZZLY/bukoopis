@@ -18,6 +18,15 @@ import { withRetry, isTransientLlmError, llmTimeoutMs } from "../retry.js";
 import type { AgentStructuredContract } from "../types.js";
 import type { ModelChoice } from "@book-forge/shared";
 
+/** Наблюдаемые события одного вызова. Structured-режим не даёт токен-дельт,
+ *  но SDK-поток даёт вехи: попытка началась, модель заговорила, инструмент
+ *  вызван. Их достаточно, чтобы UI показывал живой прогресс, а не спиннер. */
+export type McpProgressEvent =
+  | { kind: "attempt"; attempt: number }
+  | { kind: "model_started" }
+  | { kind: "model_output"; chars: number }
+  | { kind: "tool_call" };
+
 export interface McpSubmitToolInput<I> {
   payload: I;
   model: ModelChoice;
@@ -26,6 +35,8 @@ export interface McpSubmitToolInput<I> {
   systemPromptOverride?: string;
   /** Override of contract.mcp.maxTurns for this call. */
   maxTurnsOverride?: number;
+  /** Прогресс-хук; синхронный, ошибки внутри не должны ломать вызов. */
+  onProgress?: (event: McpProgressEvent) => void;
 }
 
 export interface McpSubmitToolDiagnostics {
@@ -56,6 +67,19 @@ function isAuthErrorCode(code: string): boolean {
   );
 }
 
+/** Длина текстовых блоков ассистента — грубая мера «сколько уже написано».
+ *  Форма сообщения задаётся SDK, поэтому доступ защитный. */
+function assistantTextLength(msg: SDKMessage): number {
+  const content = (msg as { message?: { content?: unknown } }).message?.content;
+  if (!Array.isArray(content)) return 0;
+  let total = 0;
+  for (const block of content) {
+    const text = (block as { text?: unknown }).text;
+    if (typeof text === "string") total += text.length;
+  }
+  return total;
+}
+
 function summariseAssistantError(
   msg: SDKMessage,
   modelId: string,
@@ -83,9 +107,19 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   }
   const mcp = contract.mcp;
   const modelId = `subscription:${resolveModelId(input.model)}`;
+  let attempt = 0;
+  const emit = (event: McpProgressEvent): void => {
+    try {
+      input.onProgress?.(event);
+    } catch {
+      /* прогресс — best-effort, вызов не роняем */
+    }
+  };
 
   // One attempt. Per-attempt state lives inside so retries start clean.
   const runOnce = async (): Promise<McpSubmitToolResult<O>> => {
+  attempt++;
+  emit({ kind: "attempt", attempt });
   let capturedPayload: O | undefined;
   let capturedValidationError: ZodError | undefined;
   let toolCallCount = 0;
@@ -100,6 +134,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     toolInputSchema,
     async (args: unknown) => {
       toolCallCount++;
+      emit({ kind: "tool_call" });
       const parsed = outputSchema.safeParse(args);
       if (!parsed.success) {
         capturedValidationError = parsed.error;
@@ -162,10 +197,22 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   });
 
   let resultMsg: SDKMessage | undefined;
+  let modelStarted = false;
   try {
     for await (const msg of q) {
       const authErr = summariseAssistantError(msg, modelId);
       if (authErr) throw authErr;
+      if (msg.type === "system" && !modelStarted) {
+        modelStarted = true;
+        emit({ kind: "model_started" });
+      }
+      if (msg.type === "assistant") {
+        if (!modelStarted) {
+          modelStarted = true;
+          emit({ kind: "model_started" });
+        }
+        emit({ kind: "model_output", chars: assistantTextLength(msg) });
+      }
       if (msg.type === "result") resultMsg = msg;
     }
   } finally {

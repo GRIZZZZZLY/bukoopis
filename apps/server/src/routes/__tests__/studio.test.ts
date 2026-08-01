@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
-import { emptyBookConcept, emptyStudioState } from "@book-forge/shared";
+import {
+  emptyBookConcept,
+  emptyStudioState,
+  type StudioState,
+} from "@book-forge/shared";
 
 let t: TestApp;
 
@@ -90,10 +94,12 @@ describe("studio routes", () => {
     expect(body.details.actual).toBe(0);
   });
 
-  it("PATCH /api/books/:id/studio-state rejects invariant-violating state (400)", async () => {
+  it("PATCH /api/books/:id/studio-state normalizes a stage status the caller got wrong", async () => {
     const id = await createBook();
-    const bad = emptyStudioState();
-    bad.stages.world = {
+    const next = emptyStudioState();
+    next.stages.world = {
+      // "complete" with a pending required aspect used to be rejected; the server
+      // now derives stage status, so the claim is corrected instead.
       status: "complete",
       playbookGenerated: false,
       aspects: [
@@ -106,6 +112,74 @@ describe("studio routes", () => {
           source: "llm",
           payloadKind: "markdown",
           variants: [],
+        },
+      ],
+    };
+    const r = await send(t.app, `/api/books/${id}/studio-state`, "PATCH", {
+      expectedRevision: 0,
+      next,
+    });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as StudioState;
+    expect(body.stages.world?.status).toBe("in_progress");
+  });
+
+  it("PATCH /api/books/:id/studio-state completes a stage once its required aspects land", async () => {
+    const id = await createBook();
+    const next = emptyStudioState();
+    next.stages.world = {
+      status: "in_progress",
+      playbookGenerated: true,
+      aspects: [
+        {
+          id: "a1",
+          name: "география",
+          status: "accepted",
+          order: 0,
+          required: true,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [],
+          finalPayload: "Архипелаг северных островов.",
+        },
+        {
+          id: "a2",
+          name: "климат",
+          status: "skipped",
+          order: 1,
+          required: true,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [],
+        },
+      ],
+    };
+    const r = await send(t.app, `/api/books/${id}/studio-state`, "PATCH", {
+      expectedRevision: 0,
+      next,
+    });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as StudioState;
+    expect(body.stages.world?.status).toBe("complete");
+  });
+
+  it("PATCH /api/books/:id/studio-state still rejects invariant-violating state (400)", async () => {
+    const id = await createBook();
+    const bad = emptyStudioState();
+    bad.stages.world = {
+      status: "in_progress",
+      playbookGenerated: false,
+      aspects: [
+        {
+          id: "a1",
+          name: "география",
+          status: "accepted",
+          order: 0,
+          required: true,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [],
+          // accepted without finalPayload
         },
       ],
     };

@@ -49,6 +49,10 @@ export function isTransientLlmError(err: unknown): boolean {
   return shouldRetry(err);
 }
 
+/** Сколько попыток делает один LLM-вызов: withRetry(retries = 3) → 4 попытки.
+ *  Нужно UI, чтобы показывать «попытка 2/4», а не голое число. */
+export const LLM_MAX_ATTEMPTS = 4;
+
 /** Per-call LLM timeout (ms) from LLM_TIMEOUT_MS; 0 disables. Default 120s. */
 export function llmTimeoutMs(): number {
   const raw = process.env.LLM_TIMEOUT_MS;

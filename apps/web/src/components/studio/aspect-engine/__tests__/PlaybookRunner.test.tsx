@@ -22,6 +22,46 @@ function makeGenerator(
 }
 
 describe("PlaybookRunner", () => {
+  it("shows a progress bar while the playbook is generating", async () => {
+    let release: ((value: { aspects: [] }) => void) | undefined;
+    const generator: PlaybookGenerator = {
+      generate: vi.fn((_args: unknown, onProgress?: (p: unknown) => void) => {
+        onProgress?.({
+          phase: "model",
+          pct: 22,
+          attempt: 1,
+          maxAttempts: 4,
+          elapsedMs: 9_000,
+          attemptElapsedMs: 9_000,
+          attemptTimeoutMs: 180_000,
+          estimateMs: 40_000,
+        });
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }) as never,
+    };
+    render(
+      <PlaybookRunner
+        stage={makeEmptyStage()}
+        revision={0}
+        generator={generator}
+        onPatch={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать список аспектов/ }),
+    );
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "22");
+    expect(screen.getByText(/обычно ~40 c/)).toBeInTheDocument();
+
+    release?.({ aspects: [] });
+    await waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+  });
+
   it("renders Generate button when stage has no aspects", () => {
     render(
       <PlaybookRunner

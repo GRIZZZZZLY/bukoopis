@@ -14,6 +14,7 @@ export interface StudioContext {
   concept: BookConcept | null;
   worldAspects: StudioContextAspect[];
   loreAspects: StudioContextAspect[];
+  plotAspects: StudioContextAspect[];
 }
 
 export function loadStudioContext(
@@ -26,7 +27,7 @@ export function loadStudioContext(
     | { concept: string | null; studio_state: string | null }
     | undefined;
   if (!row) {
-    return { concept: null, worldAspects: [], loreAspects: [] };
+    return { concept: null, worldAspects: [], loreAspects: [], plotAspects: [] };
   }
   let concept: BookConcept | null = null;
   if (row.concept) {
@@ -44,21 +45,23 @@ export function loadStudioContext(
   }
   let worldAspects: StudioContextAspect[] = [];
   let loreAspects: StudioContextAspect[] = [];
+  let plotAspects: StudioContextAspect[] = [];
   if (row.studio_state) {
     try {
       const state = studioStateSchema.parse(JSON.parse(row.studio_state));
       worldAspects = extractMarkdownAspects(state.stages.world?.aspects ?? []);
       loreAspects = extractMarkdownAspects(state.stages.lore?.aspects ?? []);
+      plotAspects = extractMarkdownAspects(state.stages.plot?.aspects ?? []);
     } catch (e) {
-      // Corrupt studio_state means chapters generate with no world/lore context.
+      // Corrupt studio_state means chapters generate with no world/lore/plot context.
       // Log loudly so the degradation is visible rather than silent.
       console.warn(
-        `[studio-context] book ${bookId}: corrupt studio_state JSON — world/lore context dropped. Reason:`,
+        `[studio-context] book ${bookId}: corrupt studio_state JSON — world/lore/plot context dropped. Reason:`,
         e instanceof Error ? e.message : e,
       );
     }
   }
-  return { concept, worldAspects, loreAspects };
+  return { concept, worldAspects, loreAspects, plotAspects };
 }
 
 function extractMarkdownAspects(
@@ -80,6 +83,24 @@ function extractMarkdownAspects(
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((a) => ({ name: a.name, payload: a.finalPayload as string }));
+}
+
+/** Studio never writes the legacy `books.premise` column, so its consumers
+ *  (outline agent above all) see nothing unless the concept is folded in here.
+ *  Logline first — that is the one premise field every aspect agent already
+ *  reads; protagonist/conflict/stakes ride along when the author filled them. */
+export function derivePremiseFromConcept(
+  concept: BookConcept | null,
+): string | null {
+  if (!concept) return null;
+  const p = concept.premise;
+  const lines: string[] = [];
+  if (p.logline?.trim()) lines.push(p.logline.trim());
+  if (p.protagonist?.trim()) lines.push(`Протагонист: ${p.protagonist.trim()}`);
+  if (p.conflict?.trim()) lines.push(`Конфликт: ${p.conflict.trim()}`);
+  if (p.stakes?.trim()) lines.push(`Ставки: ${p.stakes.trim()}`);
+  if (lines.length === 0) return null;
+  return lines.join("\n");
 }
 
 export function studioContextToPrompt(ctx: StudioContext): string | null {
@@ -126,6 +147,13 @@ export function studioContextToPrompt(ctx: StudioContext): string | null {
       .map((a) => `### ${a.name}\n${a.payload}`)
       .join("\n\n");
     parts.push(`## Лор\n${blocks}`);
+  }
+
+  if (ctx.plotAspects.length > 0) {
+    const blocks = ctx.plotAspects
+      .map((a) => `### ${a.name}\n${a.payload}`)
+      .join("\n\n");
+    parts.push(`## Сюжет\n${blocks}`);
   }
 
   if (parts.length === 0) return null;

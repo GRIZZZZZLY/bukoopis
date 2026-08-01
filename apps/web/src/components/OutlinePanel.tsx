@@ -27,17 +27,20 @@ export function OutlinePanel({ book, onUpdated }: Props) {
 
   async function onGenerate() {
     setError(null);
-    if (!book.premise || book.premise.trim().length === 0) {
-      setError("Сначала задай премису книги.");
-      return;
-    }
     setGenerating(true);
     try {
       const result = await api.generateBookOutline(book.id, { variants });
       setOutline(result);
       await onUpdated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      // The server derives the premise from the concept logline, so this can
+      // only mean the concept is still empty.
+      setError(
+        message.includes("premise required")
+          ? "Нужен логлайн: заполни его на этапе «Концепт» в Мастерской."
+          : message,
+      );
     } finally {
       setGenerating(false);
     }

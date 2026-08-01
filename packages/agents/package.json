@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./concept/refiner": "./src/concept/refiner.ts",
+    "./concept/from-idea": "./src/concept/from-idea.ts",
     "./aspects/playbook": "./src/aspects/playbook.ts",
     "./aspects/variants": "./src/aspects/variants.ts",
     "./aspects/refine": "./src/aspects/refine.ts",

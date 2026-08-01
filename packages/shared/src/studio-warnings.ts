@@ -1,4 +1,5 @@
 import type { BookConcept } from "./concept.js";
+import { isConceptComplete } from "./concept.js";
 import type { StageId, StageState, StudioState } from "./studio-state.js";
 import { STAGE_IDS } from "./studio-state.js";
 import { GENRES } from "./genre-registry.js";
@@ -116,12 +117,24 @@ export interface RecommendedNextInput {
   studioState: StudioState;
 }
 
+/** The concept stage has no `studio_state` record — it is a form — so its
+ *  doneness comes from the concept itself. Without this every other stage
+ *  status is irrelevant: the recommendation never moves off "concept". */
+function isStageDone(
+  concept: BookConcept,
+  state: StudioState,
+  id: StageId,
+): boolean {
+  const s = stageStatus(state, id) ?? "not_started";
+  if (s === "complete" || s === "skipped") return true;
+  return id === "concept" && isConceptComplete(concept);
+}
+
 export function computeRecommendedNextStage(
   input: RecommendedNextInput,
 ): StageId | undefined {
   for (const id of STAGE_ORDER) {
-    const s = stageStatus(input.studioState, id) ?? "not_started";
-    if (s === "complete" || s === "skipped") continue;
+    if (isStageDone(input.concept, input.studioState, id)) continue;
     return id;
   }
   return undefined;
@@ -146,8 +159,7 @@ export function computeStudioProgress(
 ): StudioProgress {
   const recommended = computeRecommendedNextStage({ concept, studioState });
   const stages: StudioStageProgress[] = STAGE_IDS.map((id) => {
-    const s = stageStatus(studioState, id) ?? "not_started";
-    const done = s === "complete" || s === "skipped";
+    const done = isStageDone(concept, studioState, id);
     const status: StudioStageProgress["status"] = done
       ? "done"
       : id === recommended

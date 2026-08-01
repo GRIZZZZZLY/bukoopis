@@ -9,6 +9,7 @@ import {
   registerAgentContract,
   dispatchStructured,
   type AgentStructuredContract,
+  type StructuredProgressEvent,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -56,6 +57,8 @@ const SYSTEM = `Ты — литературный соавтор, раскрыв
 Цель: выдать 2–3 НЕЗАВИСИМЫХ варианта, каждый — самостоятельная подача аспекта в виде markdown-абзаца (200–500 слов). Не "продолжение" предыдущего, а альтернативное направление.
 
 Стиль: ёмко, конкретно, без штампов и общих мест. Согласовано с жанрами/тоном/аудиторией концепта. Учти все принятые аспекты — варианты должны им не противоречить.
+
+Если дан ЧЕРНОВИК ОТ АВТОРА: его конкретика (имена, факты, образы, заданные ограничения) обязательна к сохранению во ВСЕХ вариантах — это материал автора, а не одна из версий. Варьируй подачу, акценты и следствия из черновика, но не отменяй и не заменяй то, что автор уже решил. Пробелы в черновике — как раз то место, где варианты должны расходиться.
 
 У каждого варианта есть короткий label (одно-два слова, отличающее этот вариант: "морской", "пустынный", "тёмный", "героический" и т.п.) и payload — собственно текст.`;
 
@@ -116,6 +119,8 @@ export function registerAspectVariantsContract(): void {
 export interface RunAspectVariantsOptions {
   model?: ModelChoice;
   temperature?: number;
+  /** Вехи вызова для SSE-прогресса в UI. */
+  onProgress?: (e: StructuredProgressEvent) => void;
 }
 
 export async function runAspectVariants(
@@ -131,6 +136,9 @@ export async function runAspectVariants(
     model: options.model ?? "sonnet",
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
+      : {}),
+    ...(options.onProgress !== undefined
+      ? { onProgress: options.onProgress }
       : {}),
     maxTokens: 4096,
   });

@@ -69,10 +69,10 @@ describe("studio repository", () => {
     );
   });
 
-  it("patchStudioState rejects state that violates invariants", () => {
+  it("patchStudioState derives stage status instead of trusting the caller", () => {
     const repo = createStudioRepository(sqlite);
-    const bad = emptyStudioState();
-    bad.stages.world = {
+    const next = emptyStudioState();
+    next.stages.world = {
       status: "complete",
       playbookGenerated: false,
       aspects: [
@@ -88,8 +88,33 @@ describe("studio repository", () => {
         },
       ],
     };
+    const saved = repo.patchStudioState(1, { expectedRevision: 0, next });
+    expect(saved.stages.world?.status).toBe("in_progress");
+    expect(repo.loadStudioState(1).stages.world?.status).toBe("in_progress");
+  });
+
+  it("patchStudioState rejects state that violates invariants", () => {
+    const repo = createStudioRepository(sqlite);
+    const bad = emptyStudioState();
+    bad.stages.world = {
+      status: "in_progress",
+      playbookGenerated: false,
+      aspects: [
+        {
+          id: "a1",
+          name: "география",
+          status: "accepted",
+          order: 0,
+          required: true,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [],
+          // accepted without finalPayload — nothing derivable can paper over this
+        },
+      ],
+    };
     expect(() => repo.patchStudioState(1, { expectedRevision: 0, next: bad })).toThrow(
-      /stage_complete_with_pending_required/,
+      /accepted_without_final_payload/,
     );
   });
 

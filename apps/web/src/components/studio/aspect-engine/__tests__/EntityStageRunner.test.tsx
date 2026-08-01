@@ -54,6 +54,115 @@ describe("EntityStageRunner", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a progress bar with phase and percent while generating", async () => {
+    let release: (() => void) | undefined;
+    generator.generate.mockImplementation(
+      (_input: unknown, onProgress?: (p: unknown) => void) => {
+        onProgress?.({
+          phase: "writing",
+          pct: 42,
+          attempt: 1,
+          maxAttempts: 4,
+          elapsedMs: 31_000,
+          attemptElapsedMs: 31_000,
+          attemptTimeoutMs: 180_000,
+          estimateMs: 75_000,
+        });
+        return new Promise((resolve) => {
+          release = () => resolve([]);
+        });
+      },
+    );
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <EntityStageRunner
+        stage={makeStage([makeAspect()])}
+        revision={0}
+        stageId="items"
+        generator={generator as never}
+        onPatch={onPatch}
+        onMaterialize={materialize}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать варианты/ }),
+    );
+    const bar = await screen.findByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "42");
+    expect(screen.getByText(/Модель пишет ответ/)).toBeInTheDocument();
+    expect(screen.getByText(/42% · 31 c/)).toBeInTheDocument();
+
+    release?.();
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("labels a retry with attempt number, per-attempt time and total", async () => {
+    generator.generate.mockImplementation(
+      (_input: unknown, onProgress?: (p: unknown) => void) => {
+        onProgress?.({
+          phase: "dispatch",
+          pct: 8,
+          attempt: 2,
+          maxAttempts: 4,
+          elapsedMs: 190_000,
+          attemptElapsedMs: 4_000,
+          attemptTimeoutMs: 180_000,
+          estimateMs: 75_000,
+        });
+        return new Promise(() => {});
+      },
+    );
+    render(
+      <EntityStageRunner
+        stage={makeStage([makeAspect()])}
+        revision={0}
+        stageId="items"
+        generator={generator as never}
+        onPatch={vi.fn()}
+        onMaterialize={materialize}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать варианты/ }),
+    );
+    expect(await screen.findByText(/попытка 2\/4/)).toBeInTheDocument();
+    expect(screen.getByText(/8% · 4 c \(всего 190 c\)/)).toBeInTheDocument();
+    expect(screen.getByText(/таймаут попытки 180 c/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Предыдущая попытка не уложилась в таймаут/),
+    ).toBeInTheDocument();
+  });
+
+  it("marks the aspect payloadKind as entity_set when generating", async () => {
+    generator.generate.mockResolvedValue([]);
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <EntityStageRunner
+        stage={makeStage([makeAspect({ payloadKind: "markdown" })])}
+        revision={0}
+        stageId="items"
+        generator={generator as never}
+        onPatch={onPatch}
+        onMaterialize={materialize}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Сгенерировать варианты/ }),
+    );
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    const [, next] = onPatch.mock.calls[0]!;
+    expect(next.aspects[0]!.payloadKind).toBe("entity_set");
+  });
+
   it("clicking Принять on variant enters review-entities mode", async () => {
     const reviewing = makeAspect({
       status: "reviewing",

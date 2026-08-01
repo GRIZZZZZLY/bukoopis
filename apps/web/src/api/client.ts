@@ -1,4 +1,5 @@
 import type {
+  AspectVariant,
   Book,
   BookConcept,
   BookNote,
@@ -60,6 +61,22 @@ class ApiError extends Error {
   }
 }
 
+/** Тело ошибки сервера — `{error, details:{message}}`; в UI полезен текст,
+ *  а не сырой JSON. Не-JSON тела отдаём как есть. */
+function errorSummary(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: string;
+      details?: { message?: string };
+    };
+    const detail = parsed.details?.message;
+    if (parsed.error && detail) return `${parsed.error} — ${detail}`;
+    return detail ?? parsed.error ?? body;
+  } catch {
+    return body;
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -70,7 +87,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new ApiError(res.status, `HTTP ${res.status}: ${text}`);
+    throw new ApiError(res.status, `HTTP ${res.status}: ${errorSummary(text)}`);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -427,6 +444,12 @@ export const api = {
         ...(draft !== undefined ? { draft } : {}),
       }),
     }),
+  /** Free-form idea → a concept draft. Returns it; saving is a separate step. */
+  conceptFromIdea: (bookId: number, idea: string) =>
+    req<BookConcept>(`/api/books/${bookId}/concept/from-idea`, {
+      method: "POST",
+      body: JSON.stringify({ idea }),
+    }),
   generateStagePlaybook: (
     bookId: number,
     stageId: string,
@@ -437,7 +460,8 @@ export const api = {
         name: string;
         description: string;
         required: boolean;
-        payloadKind: "markdown";
+        /** Сервер отдаёт entity_set для стадий characters/items. */
+        payloadKind: "markdown" | "entity_set";
       }>;
       contextRef: {
         hash: string;
@@ -662,6 +686,169 @@ export async function streamInlineCommand(
       }
     }
   }
+}
+
+// ── SSE entity-variants streaming ──
+/** Фазы приходят с сервера (utils/generation-progress.ts). `pct` внутри фазы
+ *  ожидания — оценка по времени, не реальный прогресс токенов. */
+export interface AspectGenerationProgress {
+  phase:
+    | "context"
+    | "dispatch"
+    | "model"
+    | "writing"
+    | "submitting"
+    | "validating"
+    | "done";
+  pct: number;
+  attempt: number;
+  maxAttempts: number;
+  /** Общее время с начала запроса, включая провалившиеся попытки. */
+  elapsedMs: number;
+  /** Время с начала текущей попытки — к нему привязан pct. */
+  attemptElapsedMs: number;
+  /** Бюджет одной попытки (LLM_TIMEOUT_MS); 0 — таймаут выключен. */
+  attemptTimeoutMs: number;
+  estimateMs: number;
+}
+
+export interface AspectStreamHandlers<TDone> {
+  onProgress: (p: AspectGenerationProgress) => void;
+  onDone: (payload: TDone) => void;
+  onError: (message: string) => void;
+}
+
+/** POST → SSE со схемой `progress` / `done` / `error` (см.
+ *  server utils/sse-progress.ts). Один парсер на все аспектные вызовы. */
+async function postAspectStream<TDone>(
+  path: string,
+  body: unknown,
+  handlers: AspectStreamHandlers<TDone>,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => res.statusText);
+    handlers.onError(`HTTP ${res.status}: ${errorSummary(text)}`);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawTerminal = false;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sepIdx;
+    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, sepIdx);
+      buffer = buffer.slice(sepIdx + 2);
+      const evMatch = raw.match(/^event: (.+)$/m);
+      const dataMatch = raw.match(/^data: (.+)$/m);
+      if (!dataMatch) continue;
+      const ev = evMatch?.[1] ?? "message";
+      try {
+        const data = JSON.parse(dataMatch[1]!);
+        if (ev === "progress") {
+          handlers.onProgress(data as AspectGenerationProgress);
+        } else if (ev === "done") {
+          sawTerminal = true;
+          handlers.onDone(data as TDone);
+        } else if (ev === "error") {
+          sawTerminal = true;
+          handlers.onError(data.message as string);
+        }
+      } catch {
+        /* ignore malformed event */
+      }
+    }
+  }
+  if (!sawTerminal) {
+    handlers.onError("Поток генерации оборвался без результата");
+  }
+}
+
+export function streamAspectEntityVariants(
+  bookId: number,
+  stageId: "characters" | "items",
+  aspectId: string,
+  body: {
+    aspect: {
+      id: string;
+      name: string;
+      description?: string;
+      payloadKind: "entity_set";
+    };
+    accumulated: Array<{ id: string; name: string; finalPayload: unknown }>;
+  },
+  handlers: AspectStreamHandlers<{ variants: AspectVariant[] }>,
+): Promise<void> {
+  return postAspectStream(
+    `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/generate-stream`,
+    body,
+    handlers,
+  );
+}
+
+export function streamAspectVariants(
+  bookId: number,
+  stageId: string,
+  aspectId: string,
+  body: {
+    aspect: { id: string; name: string; description?: string };
+    accumulated: Array<{ id: string; name: string; finalPayload: string }>;
+    draft?: string;
+  },
+  handlers: AspectStreamHandlers<{ variants: AspectVariant[] }>,
+): Promise<void> {
+  return postAspectStream(
+    `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/generate-stream`,
+    body,
+    handlers,
+  );
+}
+
+export function streamAspectRefine(
+  bookId: number,
+  stageId: string,
+  aspectId: string,
+  body: {
+    aspect: { id: string; name: string; description?: string };
+    parentVariant: { id: string; label: string; payload: string };
+    instructions: string;
+    accumulated: Array<{ name: string; finalPayload: string }>;
+  },
+  handlers: AspectStreamHandlers<{ variant: AspectVariant }>,
+): Promise<void> {
+  return postAspectStream(
+    `/api/books/${bookId}/stages/${stageId}/aspects/${aspectId}/refine-stream`,
+    body,
+    handlers,
+  );
+}
+
+export function streamStagePlaybook(
+  bookId: number,
+  stageId: string,
+  existingAspectNames: string[],
+  handlers: AspectStreamHandlers<{
+    aspects: Array<{
+      name: string;
+      description: string;
+      required: boolean;
+      payloadKind: "markdown" | "entity_set";
+    }>;
+  }>,
+): Promise<void> {
+  return postAspectStream(
+    `/api/books/${bookId}/stages/${stageId}/playbook-stream`,
+    { existingAspectNames },
+    handlers,
+  );
 }
 
 // ── SSE repair streaming ──

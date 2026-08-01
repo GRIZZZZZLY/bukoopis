@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import {
+  derivePremiseFromConcept,
   loadStudioContext,
   studioContextToPrompt,
 } from "../studio-context.js";
@@ -41,6 +42,7 @@ describe("loadStudioContext", () => {
     expect(ctx.concept).toBeNull();
     expect(ctx.worldAspects).toEqual([]);
     expect(ctx.loreAspects).toEqual([]);
+    expect(ctx.plotAspects).toEqual([]);
   });
 
   it("loads concept from books.concept JSON", () => {
@@ -61,7 +63,7 @@ describe("loadStudioContext", () => {
     expect(ctx.concept?.premise.logline).toBe("Герой ищет правду");
   });
 
-  it("loads accepted world+lore aspects, ignoring pending/skipped/non-markdown", () => {
+  it("loads accepted world+lore+plot aspects, ignoring pending/skipped/non-markdown", () => {
     const studioState = {
       schemaVersion: 1,
       revision: 5,
@@ -121,6 +123,33 @@ describe("loadStudioContext", () => {
             },
           ],
         },
+        plot: {
+          status: "in_progress",
+          playbookGenerated: true,
+          aspects: [
+            {
+              id: "c1",
+              name: "завязка",
+              status: "accepted",
+              order: 0,
+              required: true,
+              source: "llm",
+              payloadKind: "markdown",
+              variants: [],
+              finalPayload: "Героиня теряет корабль в первую же ночь.",
+            },
+            {
+              id: "c2",
+              name: "финал",
+              status: "skipped",
+              order: 1,
+              required: false,
+              source: "llm",
+              payloadKind: "markdown",
+              variants: [],
+            },
+          ],
+        },
       },
     };
     sqlite
@@ -133,6 +162,9 @@ describe("loadStudioContext", () => {
     expect(ctx.loreAspects).toEqual([
       { name: "фракции", payload: "Три гильдии — морская, кузнечная, певчая." },
     ]);
+    expect(ctx.plotAspects).toEqual([
+      { name: "завязка", payload: "Героиня теряет корабль в первую же ночь." },
+    ]);
   });
 
   it("returns empty for unknown book id", () => {
@@ -140,6 +172,7 @@ describe("loadStudioContext", () => {
     expect(ctx.concept).toBeNull();
     expect(ctx.worldAspects).toEqual([]);
     expect(ctx.loreAspects).toEqual([]);
+    expect(ctx.plotAspects).toEqual([]);
   });
 });
 
@@ -149,11 +182,12 @@ describe("studioContextToPrompt", () => {
       concept: null,
       worldAspects: [],
       loreAspects: [],
+      plotAspects: [],
     });
     expect(out).toBeNull();
   });
 
-  it("renders concept + world + lore in sections", () => {
+  it("renders concept + world + lore + plot in sections", () => {
     const out = studioContextToPrompt({
       concept: {
         schemaVersion: 1,
@@ -164,6 +198,7 @@ describe("studioContextToPrompt", () => {
       },
       worldAspects: [{ name: "география", payload: "Острова." }],
       loreAspects: [{ name: "фракции", payload: "Гильдии." }],
+      plotAspects: [{ name: "завязка", payload: "Корабль тонет." }],
     });
     expect(out).not.toBeNull();
     expect(out!).toContain("## Концепт");
@@ -174,6 +209,9 @@ describe("studioContextToPrompt", () => {
     expect(out!).toContain("Острова.");
     expect(out!).toContain("## Лор");
     expect(out!).toContain("фракции");
+    expect(out!).toContain("## Сюжет");
+    expect(out!).toContain("завязка");
+    expect(out!).toContain("Корабль тонет.");
   });
 
   it("renders only concept when no aspects", () => {
@@ -187,10 +225,69 @@ describe("studioContextToPrompt", () => {
       },
       worldAspects: [],
       loreAspects: [],
+      plotAspects: [],
     });
     expect(out).not.toBeNull();
     expect(out!).toContain("## Концепт");
     expect(out!).not.toContain("## Мир");
     expect(out!).not.toContain("## Лор");
+    expect(out!).not.toContain("## Сюжет");
+  });
+});
+
+describe("derivePremiseFromConcept", () => {
+  const base = {
+    schemaVersion: 1 as const,
+    genres: [],
+    tones: [],
+    audience: "adult" as const,
+  };
+
+  it("returns null without a concept", () => {
+    expect(derivePremiseFromConcept(null)).toBeNull();
+  });
+
+  it("returns null when every premise field is blank", () => {
+    expect(
+      derivePremiseFromConcept({ ...base, premise: { logline: "   " } }),
+    ).toBeNull();
+  });
+
+  it("uses the logline alone when it is the only field", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        premise: { logline: "Картограф ищет остров, которого нет." },
+      }),
+    ).toBe("Картограф ищет остров, которого нет.");
+  });
+
+  it("appends protagonist/conflict/stakes when present", () => {
+    const out = derivePremiseFromConcept({
+      ...base,
+      premise: {
+        logline: "Картограф ищет остров, которого нет.",
+        protagonist: "Мира, картограф",
+        conflict: "Гильдия скрывает карты",
+        stakes: "Затонет весь архипелаг",
+      },
+    });
+    expect(out).toBe(
+      [
+        "Картограф ищет остров, которого нет.",
+        "Протагонист: Мира, картограф",
+        "Конфликт: Гильдия скрывает карты",
+        "Ставки: Затонет весь архипелаг",
+      ].join("\n"),
+    );
+  });
+
+  it("works from premise fields alone when the logline is missing", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        premise: { protagonist: "Мира" },
+      }),
+    ).toBe("Протагонист: Мира");
   });
 });

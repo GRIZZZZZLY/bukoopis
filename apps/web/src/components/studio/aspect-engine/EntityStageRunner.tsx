@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { StageAspect, StageState } from "@book-forge/shared";
+import type { AspectGenerationProgress } from "@/api/client";
 import type { VariantGenerator } from "./types.js";
 import { candidateLabel, createEntityAdapter } from "./entityAdapter.js";
+import { GenerationProgress } from "./GenerationProgress.js";
 
 /** Те же подписи, что в AspectRunner: пилюля показывала внутренний код
  *  («accepted») латиницей в русском интерфейсе. */
@@ -74,6 +76,9 @@ export function EntityStageRunner({
   const [pendingDecisions, setPendingDecisions] = useState<
     Record<string, Record<string, "accept" | "reject">>
   >({});
+  const [progressByAspect, setProgressByAspect] = useState<
+    Record<string, AspectGenerationProgress>
+  >({});
 
   if (stage.aspects.length === 0) {
     return (
@@ -113,18 +118,35 @@ export function EntityStageRunner({
     };
   }
 
+  function clearProgress(aspectId: string): void {
+    setProgressByAspect((p) => {
+      if (!(aspectId in p)) return p;
+      const copy = { ...p };
+      delete copy[aspectId];
+      return copy;
+    });
+  }
+
   async function handleGenerate(aspect: StageAspect): Promise<void> {
     setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
     setBusyAspectId(aspect.id);
     try {
-      const variants = await generator.generate({
-        aspect,
-        accumulated: { acceptedAspects: buildAccumulated(aspect.id) },
-      });
+      const variants = await generator.generate(
+        {
+          aspect,
+          accumulated: { acceptedAspects: buildAccumulated(aspect.id) },
+        },
+        (progress) =>
+          setProgressByAspect((p) => ({ ...p, [aspect.id]: progress })),
+      );
       const next = buildNextStage(
         (a) => ({
           ...a,
           status: "reviewing" as const,
+          // Самопочинка legacy-состояния: аспекты entity-стадий, созданные
+          // старым плейбуком, лежат с payloadKind "markdown" — PATCH таких
+          // отбивался инвариантом variant_payload_kind_mismatch.
+          payloadKind: "entity_set" as const,
           variants,
           ...(a.selectedVariantId !== undefined
             ? { selectedVariantId: undefined }
@@ -140,6 +162,7 @@ export function EntityStageRunner({
       }));
     } finally {
       setBusyAspectId(null);
+      clearProgress(aspect.id);
     }
   }
 
@@ -295,6 +318,7 @@ export function EntityStageRunner({
           (v) => v.id === aspect.selectedVariantId,
         );
         const decisions = pendingDecisions[aspect.id] ?? {};
+        const progress = progressByAspect[aspect.id];
         return (
           <li key={aspect.id} className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-2">
@@ -325,6 +349,13 @@ export function EntityStageRunner({
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 {aspect.description}
               </p>
+            )}
+
+            {progress && (
+              <GenerationProgress
+                progress={progress}
+                label={`progress-${aspect.id}`}
+              />
             )}
 
             {aspect.status === "pending" && (
@@ -456,7 +487,10 @@ export function EntityStageRunner({
             )}
 
             {err && (
-              <p role="alert" className="text-xs text-[var(--color-ink-red)]">
+              <p
+                role="alert"
+                className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+              >
                 {err}
               </p>
             )}

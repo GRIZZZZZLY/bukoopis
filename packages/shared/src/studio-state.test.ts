@@ -10,7 +10,12 @@ import {
   VARIANT_STATUSES,
   STAGE_IDS,
   emptyStudioState,
+  deriveStageStatus,
+  withDerivedStageStatuses,
+  type StageAspect,
+  type StageState,
 } from "./studio-state.js";
+import { assertStudioStateInvariants } from "./studio-invariants.js";
 
 describe("studio-state schemas", () => {
   it("emptyStudioState is schemaVersion 1, revision 0, no stages", () => {
@@ -136,5 +141,128 @@ describe("studio-state schemas", () => {
       stages: { unknown_stage: { status: "not_started", playbookGenerated: false, aspects: [] } },
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("deriveStageStatus", () => {
+  function aspect(over: Partial<StageAspect> = {}): StageAspect {
+    return {
+      id: `a${Math.round(over.order ?? 0)}`,
+      name: "география",
+      status: "pending",
+      order: 0,
+      required: true,
+      source: "llm",
+      payloadKind: "markdown",
+      variants: [],
+      ...over,
+    };
+  }
+  function stage(over: Partial<StageState> = {}): StageState {
+    return { status: "not_started", playbookGenerated: false, aspects: [], ...over };
+  }
+
+  it("stays not_started with no aspects and no playbook", () => {
+    expect(deriveStageStatus(stage())).toBe("not_started");
+  });
+
+  it("becomes in_progress once the playbook ran but no aspects landed", () => {
+    expect(deriveStageStatus(stage({ playbookGenerated: true }))).toBe("in_progress");
+  });
+
+  it("keeps a stored status for aspect-less stages (concept, chapters, imports)", () => {
+    expect(deriveStageStatus(stage({ status: "complete" }))).toBe("complete");
+  });
+
+  it("is in_progress while a required aspect is still pending", () => {
+    const s = stage({
+      playbookGenerated: true,
+      aspects: [
+        aspect({ status: "accepted", finalPayload: "x" }),
+        aspect({ order: 1, status: "pending" }),
+      ],
+    });
+    expect(deriveStageStatus(s)).toBe("in_progress");
+  });
+
+  it("completes when every required aspect is accepted or skipped", () => {
+    const s = stage({
+      playbookGenerated: true,
+      aspects: [
+        aspect({ status: "accepted", finalPayload: "x" }),
+        aspect({ order: 1, status: "skipped" }),
+        aspect({ order: 2, status: "pending", required: false }),
+      ],
+    });
+    expect(deriveStageStatus(s)).toBe("complete");
+  });
+
+  it("reads as skipped when the author skipped every aspect", () => {
+    const s = stage({
+      playbookGenerated: true,
+      aspects: [aspect({ status: "skipped" }), aspect({ order: 1, status: "skipped" })],
+    });
+    expect(deriveStageStatus(s)).toBe("skipped");
+  });
+
+  it("never downgrades an explicitly skipped stage", () => {
+    const s = stage({
+      status: "skipped",
+      playbookGenerated: true,
+      aspects: [aspect({ status: "pending" })],
+    });
+    expect(deriveStageStatus(s)).toBe("skipped");
+  });
+
+  it("derived completion cannot violate the stage_complete invariant", () => {
+    const next = withDerivedStageStatuses({
+      schemaVersion: 1,
+      revision: 1,
+      stages: {
+        world: stage({
+          playbookGenerated: true,
+          aspects: [
+            aspect({ status: "accepted", finalPayload: "x" }),
+            aspect({ order: 1, status: "pending" }),
+          ],
+        }),
+      },
+    });
+    expect(next.stages.world?.status).toBe("in_progress");
+    expect(() => assertStudioStateInvariants(next)).not.toThrow();
+  });
+});
+
+describe("withDerivedStageStatuses", () => {
+  it("rewrites every stage and leaves revision/schemaVersion alone", () => {
+    const next = withDerivedStageStatuses({
+      schemaVersion: 1,
+      revision: 7,
+      stages: {
+        concept: { status: "complete", playbookGenerated: false, aspects: [] },
+        world: {
+          status: "not_started",
+          playbookGenerated: true,
+          aspects: [
+            {
+              id: "a0",
+              name: "география",
+              status: "accepted",
+              order: 0,
+              required: true,
+              source: "llm",
+              payloadKind: "markdown",
+              variants: [],
+              finalPayload: "Острова.",
+            },
+          ],
+        },
+      },
+    });
+    expect(next.revision).toBe(7);
+    expect(next.schemaVersion).toBe(1);
+    expect(next.stages.concept?.status).toBe("complete");
+    expect(next.stages.world?.status).toBe("complete");
+    expect(studioStateSchema.parse(next)).toEqual(next);
   });
 });

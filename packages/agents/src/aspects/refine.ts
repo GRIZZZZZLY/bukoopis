@@ -9,6 +9,7 @@ import {
   registerAgentContract,
   dispatchStructured,
   type AgentStructuredContract,
+  type StructuredProgressEvent,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -111,6 +112,8 @@ export function registerAspectRefineContract(): void {
 export interface RunAspectRefineOptions {
   model?: ModelChoice;
   temperature?: number;
+  /** Вехи вызова для SSE-прогресса в UI. */
+  onProgress?: (e: StructuredProgressEvent) => void;
 }
 
 export async function runAspectRefine(
@@ -126,6 +129,9 @@ export async function runAspectRefine(
     model: options.model ?? "sonnet",
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
+      : {}),
+    ...(options.onProgress !== undefined
+      ? { onProgress: options.onProgress }
       : {}),
     maxTokens: 2048,
   });

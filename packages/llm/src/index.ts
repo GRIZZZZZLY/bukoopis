@@ -35,6 +35,9 @@ export type {
   ResolveStructuredModeInput,
 } from "./router.js";
 
+// Бюджет одного вызова: сколько попыток и какой таймаут на попытку (для UI).
+export { LLM_MAX_ATTEMPTS, llmTimeoutMs } from "./retry.js";
+
 // Hybrid pipeline: subscription text + api structured extraction (etap 0.2.3)
 export { generateThenStructure } from "./hybrid.js";
 export type {
@@ -58,4 +61,5 @@ export type {
   DispatchStructuredInput,
   DispatchStructuredResult,
   StructuredDiagnostics,
+  StructuredProgressEvent,
 } from "./dispatcher.js";

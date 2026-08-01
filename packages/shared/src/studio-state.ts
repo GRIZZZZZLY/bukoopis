@@ -14,6 +14,15 @@ export const STAGE_IDS = [
 export const stageIdSchema = z.enum(STAGE_IDS);
 export type StageId = z.infer<typeof stageIdSchema>;
 
+/** Stages a novel can be finished without. Worldbuilding and lore matter for
+ *  some books and not others, and no established method treats a props catalogue
+ *  as a step — so the UI must say out loud that these are branches, not gates. */
+export const OPTIONAL_STAGE_IDS = ["world", "lore", "items"] as const;
+
+export function isOptionalStage(id: StageId): boolean {
+  return (OPTIONAL_STAGE_IDS as readonly string[]).includes(id);
+}
+
 export const ASPECT_STATUSES = [
   "pending",
   "generating",
@@ -197,4 +206,42 @@ export type StudioEventPayload = z.infer<typeof studioEventPayloadSchema>;
 
 export function emptyStudioState(): StudioState {
   return { schemaVersion: 1, revision: 0, stages: {} };
+}
+
+// ─────────────── derived stage status ───────────────
+
+/** Stage status is derived from its aspects rather than set by the caller — the
+ *  UI patches aspects one at a time and would otherwise never close a stage.
+ *  A stage the author skipped explicitly keeps that status: only they can
+ *  reopen it. The "complete" rule mirrors the `stage_complete_with_pending_required`
+ *  invariant, so a derived status can never violate it. */
+export function deriveStageStatus(stage: StageState): StageStatus {
+  if (stage.status === "skipped") return "skipped";
+  if (stage.aspects.length === 0) {
+    // concept and chapters carry no aspects, and an import may have marked a
+    // stage complete outright — nothing here to derive from, so keep the record.
+    if (stage.status === "not_started" && stage.playbookGenerated) {
+      return "in_progress";
+    }
+    return stage.status;
+  }
+  const settled = (a: StageAspect) =>
+    a.status === "accepted" || a.status === "skipped";
+  const requiredSettled = stage.aspects.every((a) => !a.required || settled(a));
+  if (!requiredSettled) return "in_progress";
+  // Nothing accepted anywhere means the author walked past every aspect. Calling
+  // that "complete" would overstate it, but it must still unblock the flow.
+  if (!stage.aspects.some((a) => a.status === "accepted")) return "skipped";
+  return "complete";
+}
+
+/** Applies {@link deriveStageStatus} to every stage. Called on the write path so
+ *  stored status can never drift from the aspects it describes. */
+export function withDerivedStageStatuses(state: StudioState): StudioState {
+  const stages: Record<string, StageState> = {};
+  for (const [id, stage] of Object.entries(state.stages)) {
+    if (!stage) continue;
+    stages[id] = { ...stage, status: deriveStageStatus(stage) };
+  }
+  return { ...state, stages };
 }

@@ -7,6 +7,7 @@ import {
   emptyBookConcept,
   emptyStudioState,
   assertStudioStateInvariants,
+  withDerivedStageStatuses,
   type BookConcept,
   type StudioEventPayload,
   type StudioEventType,
@@ -90,11 +91,13 @@ export function createStudioRepository(
     if (current.revision !== input.expectedRevision) {
       throw new StudioConflictError(input.expectedRevision, current.revision);
     }
-    const nextState: StudioState = {
+    // Stage status is server-derived: the UI patches one aspect at a time and
+    // has no vantage point from which to close a stage.
+    const nextState: StudioState = withDerivedStageStatuses({
       ...input.next,
       schemaVersion: 1,
       revision: current.revision + 1,
-    };
+    });
     // Hard-invariant guard before persistence.
     assertStudioStateInvariants(nextState);
     studioStateSchema.parse(nextState);

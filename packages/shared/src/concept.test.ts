@@ -3,6 +3,7 @@ import {
   bookConceptSchema,
   emptyBookConcept,
   audienceSchema,
+  isConceptComplete,
 } from "./concept.js";
 import { GENRES, TONES, getGenreById, getToneById } from "./genre-registry.js";
 
@@ -51,5 +52,32 @@ describe("genre-registry seed", () => {
   it("GENRES + TONES are non-empty", () => {
     expect(GENRES.length).toBeGreaterThan(3);
     expect(TONES.length).toBeGreaterThan(3);
+  });
+});
+
+describe("isConceptComplete", () => {
+  it("an empty concept is not complete", () => {
+    expect(isConceptComplete(emptyBookConcept())).toBe(false);
+  });
+
+  it("a logline alone completes it — genres are not a gate", () => {
+    expect(
+      isConceptComplete({
+        ...emptyBookConcept(),
+        premise: { logline: "Картограф ищет остров, которого нет." },
+      }),
+    ).toBe(true);
+  });
+
+  it("genres without a logline do not complete it", () => {
+    expect(
+      isConceptComplete({ ...emptyBookConcept(), genres: ["fantasy"] }),
+    ).toBe(false);
+  });
+
+  it("a whitespace-only logline does not count", () => {
+    expect(
+      isConceptComplete({ ...emptyBookConcept(), premise: { logline: "  \n " } }),
+    ).toBe(false);
   });
 });

@@ -8,6 +8,10 @@ import type {
   StudioState,
 } from "@book-forge/shared";
 import { StageStepper } from "@/components/studio/StageStepper";
+import {
+  StageSkipControl,
+  StageOptionalBadge,
+} from "@/components/studio/StageSkipControl";
 import { AspectRunner } from "@/components/studio/aspect-engine/AspectRunner";
 import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
 import { createMarkdownAdapter } from "@/components/studio/aspect-engine/markdownAdapter";
@@ -149,17 +153,33 @@ export function MarkdownStagePage() {
 
         <div className="page-head">
           <div>
-            <h1>{STAGE_LABELS[stageId]}</h1>
+            <h1>
+              {STAGE_LABELS[stageId]}
+              <StageOptionalBadge stageId={stageId} />
+            </h1>
             <p className="muted page-sub">{STAGE_HINTS[stageId]}</p>
           </div>
-          <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
-            ← К Studio
-          </Link>
+          <div className="flex items-center gap-2">
+            <StageSkipControl
+              stageId={stageId}
+              stage={stage}
+              revision={studio.revision}
+              onPatch={handlePatch}
+            />
+            <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
+              ← К Studio
+            </Link>
+          </div>
         </div>
 
         {/* Workspace */}
         <div className="card">
-          {stage.aspects.length === 0 ? (
+          {stage.status === "skipped" ? (
+            <p className="muted" style={{ fontSize: 13 }}>
+              Этап пропущен. Генерация главы обойдётся без него — вернуть можно в
+              любой момент.
+            </p>
+          ) : stage.aspects.length === 0 ? (
             <PlaybookRunner
               stage={stage}
               revision={studio.revision}

@@ -16,6 +16,7 @@ console.log("book:", id);
 console.log("concept logline:", ctx.concept?.premise.logline ?? "(none)");
 console.log("world aspects:", ctx.worldAspects.map((a) => a.name));
 console.log("lore aspects:", ctx.loreAspects.map((a) => a.name));
+console.log("plot aspects:", ctx.plotAspects.map((a) => a.name));
 console.log("prompt length:", studioContextToPrompt(ctx)?.length ?? 0);
 
 const chars = sqlite

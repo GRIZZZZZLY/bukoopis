@@ -21,6 +21,7 @@ import {
 } from "@book-forge/agents";
 import { loadStyleContext } from "../utils/style-context.js";
 import {
+  derivePremiseFromConcept,
   loadStudioContext,
   studioContextToPrompt,
 } from "../utils/studio-context.js";
@@ -98,9 +99,14 @@ function loadBookContext(
       /* ignore corrupt outline */
     }
   }
+  const storedPremise = row.premise?.trim() ? row.premise : null;
+  const conceptPremise =
+    storedPremise === null
+      ? derivePremiseFromConcept(loadStudioContext(sqlite, bookId).concept)
+      : null;
   return {
     title: row.title,
-    premise: row.premise ?? "(премиса не задана)",
+    premise: storedPremise ?? conceptPremise ?? "(премиса не задана)",
     language: row.language,
     outlineSelected,
     styleProfileId: row.style_profile_id,

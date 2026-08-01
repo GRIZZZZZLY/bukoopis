@@ -4,6 +4,7 @@ import { GenrePicker } from "./GenrePicker";
 import { TonePicker } from "./TonePicker";
 import { AudiencePicker } from "./AudiencePicker";
 import { PremiseFieldPuzzle, type PremiseField } from "./PremiseFieldPuzzle";
+import { IdeaBraindump } from "./IdeaBraindump";
 
 interface Props {
   initialConcept: BookConcept;
@@ -14,16 +15,66 @@ interface Props {
   ) => Promise<{
     variants: Array<{ id: string; label: string; payload: string }>;
   }>;
+  /** Present when the braindump entry is wired up: free idea → concept draft. */
+  bookId?: number;
+  onFromIdea?: (idea: string) => Promise<BookConcept>;
 }
 
 function isEqualConcept(a: BookConcept, b: BookConcept): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function isBlank(value: string | undefined): boolean {
+  return (value ?? "").trim().length === 0;
+}
+
+/** Fills the author's empty slots and touches nothing they already wrote —
+ *  expanding an idea must never overwrite a decision. */
+function mergeConcept(current: BookConcept, incoming: BookConcept): BookConcept {
+  const untouched =
+    current.genres.length === 0 &&
+    (current.customGenres ?? []).length === 0 &&
+    Object.values(current.premise).every(isBlank);
+  const customGenres =
+    (current.customGenres ?? []).length > 0
+      ? current.customGenres
+      : incoming.customGenres;
+  const customTones =
+    (current.customTones ?? []).length > 0
+      ? current.customTones
+      : incoming.customTones;
+  return {
+    ...current,
+    genres: current.genres.length > 0 ? current.genres : incoming.genres,
+    ...(customGenres !== undefined ? { customGenres } : {}),
+    tones: current.tones.length > 0 ? current.tones : incoming.tones,
+    ...(customTones !== undefined ? { customTones } : {}),
+    // "adult" is also the default, so an explicit choice is only distinguishable
+    // on a concept the author has otherwise not touched.
+    audience: untouched ? incoming.audience : current.audience,
+    premise: {
+      protagonist: isBlank(current.premise.protagonist)
+        ? incoming.premise.protagonist
+        : current.premise.protagonist,
+      conflict: isBlank(current.premise.conflict)
+        ? incoming.premise.conflict
+        : current.premise.conflict,
+      stakes: isBlank(current.premise.stakes)
+        ? incoming.premise.stakes
+        : current.premise.stakes,
+      logline: isBlank(current.premise.logline)
+        ? incoming.premise.logline
+        : current.premise.logline,
+    },
+  };
+}
+
 export function ConceptForm({
   initialConcept,
   onSave,
   onRefine,
+  bookId,
+  onFromIdea,
 }: Props) {
   const [draft, setDraft] = useState<BookConcept>(initialConcept);
   const [saving, setSaving] = useState(false);
@@ -59,6 +110,16 @@ export function ConceptForm({
       <h2 id="concept-heading" className="text-lg font-semibold">
         Концепт
       </h2>
+
+      {onFromIdea && bookId !== undefined && (
+        <IdeaBraindump
+          bookId={bookId}
+          onExpand={onFromIdea}
+          onExpanded={(incoming) =>
+            setDraft((d) => mergeConcept(d, incoming))
+          }
+        />
+      )}
 
       <GenrePicker
         selected={draft.genres}

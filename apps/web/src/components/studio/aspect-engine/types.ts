@@ -6,6 +6,7 @@ import type {
   StageAspect,
   StageId,
 } from "@book-forge/shared";
+import type { AspectGenerationProgress } from "@/api/client";
 
 /** Поведение, специфичное для сцены. Каждая сцена (мир/легенды/персонажи/предметы)
  *  предоставляет собственную реализацию. C1 поставляет только адаптер markdown для тестов;
@@ -26,7 +27,11 @@ export interface StageAdapter<TPayload> {
 /** Интерфейс генератора вариантов. C1 поставляет mock-реализацию; C2 подключает
  *  генераторы на основе LLM. */
 export interface VariantGenerator<TPayload> {
-  generate(input: GenerateInput<TPayload>): Promise<AspectVariant[]>;
+  /** `onProgress` опционален: генераторы без стрима его игнорируют. */
+  generate(
+    input: GenerateInput<TPayload>,
+    onProgress?: (p: AspectGenerationProgress) => void,
+  ): Promise<AspectVariant[]>;
 }
 
 export interface GenerateInput<TPayload> {

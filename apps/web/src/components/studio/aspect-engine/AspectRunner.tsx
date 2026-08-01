@@ -4,11 +4,13 @@ import type {
   StageAspect,
   StageState,
 } from "@book-forge/shared";
+import type { AspectGenerationProgress } from "@/api/client";
 import type {
   AccumulatedContext,
   StageAdapter,
   VariantGenerator,
 } from "./types.js";
+import { GenerationProgress } from "./GenerationProgress.js";
 
 interface Props<TPayload> {
   stage: StageState;
@@ -45,6 +47,9 @@ export function AspectRunner<TPayload>({
   );
   const [refiningVariantId, setRefiningVariantId] = useState<string | null>(null);
   const [refineInstructions, setRefineInstructions] = useState<string>("");
+  const [progressByAspect, setProgressByAspect] = useState<
+    Record<string, AspectGenerationProgress>
+  >({});
 
   if (stage.aspects.length === 0) {
     return (
@@ -100,14 +105,33 @@ export function AspectRunner<TPayload>({
     }
   }
 
+  function trackProgress(
+    aspectId: string,
+  ): (p: AspectGenerationProgress) => void {
+    return (progress) =>
+      setProgressByAspect((p) => ({ ...p, [aspectId]: progress }));
+  }
+
+  function clearProgress(aspectId: string): void {
+    setProgressByAspect((p) => {
+      if (!(aspectId in p)) return p;
+      const copy = { ...p };
+      delete copy[aspectId];
+      return copy;
+    });
+  }
+
   async function handleGenerate(aspect: StageAspect): Promise<void> {
     setErrorByAspect((p) => ({ ...p, [aspect.id]: "" }));
     setBusyAspectId(aspect.id);
     try {
-      const variants = await generator.generate({
-        aspect,
-        accumulated: buildAccumulatedContext(aspect.id),
-      });
+      const variants = await generator.generate(
+        {
+          aspect,
+          accumulated: buildAccumulatedContext(aspect.id),
+        },
+        trackProgress(aspect.id),
+      );
       const next = buildNextStage(
         (a) => ({
           ...a,
@@ -127,6 +151,7 @@ export function AspectRunner<TPayload>({
       }));
     } finally {
       setBusyAspectId(null);
+      clearProgress(aspect.id);
     }
   }
 
@@ -198,15 +223,18 @@ export function AspectRunner<TPayload>({
           `payload не валиден: ${parsed.error.message}`,
         );
       }
-      const newVariants = await generator.generate({
-        aspect,
-        accumulated: buildAccumulatedContext(aspect.id),
-        refineFrom: {
-          variantId: variant.id,
-          payload: parsed.data,
-          instructions,
+      const newVariants = await generator.generate(
+        {
+          aspect,
+          accumulated: buildAccumulatedContext(aspect.id),
+          refineFrom: {
+            variantId: variant.id,
+            payload: parsed.data,
+            instructions,
+          },
         },
-      });
+        trackProgress(aspect.id),
+      );
       const next = buildNextStage(
         (a) => ({
           ...a,
@@ -231,6 +259,7 @@ export function AspectRunner<TPayload>({
       }));
     } finally {
       setBusyAspectId(null);
+      clearProgress(aspect.id);
     }
   }
 
@@ -266,6 +295,7 @@ export function AspectRunner<TPayload>({
       {stage.aspects.map((aspect) => {
         const busy = busyAspectId === aspect.id;
         const err = errorByAspect[aspect.id];
+        const progress = progressByAspect[aspect.id];
         return (
           <li
             key={aspect.id}
@@ -315,6 +345,13 @@ export function AspectRunner<TPayload>({
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 {aspect.description}
               </p>
+            )}
+
+            {progress && (
+              <GenerationProgress
+                progress={progress}
+                label={`progress-${aspect.id}`}
+              />
             )}
 
             {aspect.status === "pending" && (

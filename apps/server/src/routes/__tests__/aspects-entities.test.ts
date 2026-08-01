@@ -167,6 +167,178 @@ describe("/aspects/:aspectId/generate dispatches by payloadKind", () => {
   });
 });
 
+describe("/aspects/:aspectId/generate-stream", () => {
+  const VARIANTS = {
+    variants: [
+      {
+        label: "полевой набор",
+        candidates: [
+          {
+            tempId: "i1",
+            kind: "item" as const,
+            profile: {
+              name: "Зонд «Игла»",
+              type: "инструмент",
+              description:
+                "Титановый щуп для чтения кристаллической решётки на глубину до метра.",
+            },
+          },
+        ],
+      },
+      {
+        label: "лабораторный набор",
+        candidates: [
+          {
+            tempId: "i2",
+            kind: "item" as const,
+            profile: {
+              name: "Резонатор «Зеркало»",
+              type: "прибор",
+              description:
+                "Читает спектр решётки по обратному рассеянию инфракрасного импульса.",
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  async function readEvents(
+    res: Response,
+  ): Promise<Array<{ event: string; data: Record<string, unknown> }>> {
+    const text = await res.text();
+    return text
+      .split("\n\n")
+      .filter((frame) => frame.includes("data:"))
+      .map((frame) => ({
+        event: frame.match(/^event: (.+)$/m)?.[1] ?? "message",
+        data: JSON.parse(frame.match(/^data: (.+)$/m)![1]!) as Record<
+          string,
+          unknown
+        >,
+      }));
+  }
+
+  it("streams progress phases and a final done event with variants", async () => {
+    vi.mocked(runAspectEntityVariants).mockImplementation(
+      async (_input, options) => {
+        options?.onProgress?.({ kind: "attempt", attempt: 1 });
+        options?.onProgress?.({ kind: "model_started" });
+        options?.onProgress?.({ kind: "model_output", chars: 120 });
+        options?.onProgress?.({ kind: "tool_call" });
+        options?.onProgress?.({ kind: "validated" });
+        return VARIANTS;
+      },
+    );
+    const id = await createBook();
+    const res = await send(
+      t.app,
+      `/api/books/${id}/stages/items/aspects/asp1/generate-stream`,
+      "POST",
+      {
+        aspect: { id: "asp1", name: "Зонды", payloadKind: "entity_set" },
+        accumulated: [],
+      },
+    );
+    expect(res.status).toBe(200);
+    const events = await readEvents(res);
+    const progress = events.filter((e) => e.event === "progress");
+    expect(progress.length).toBeGreaterThan(1);
+    // Проценты монотонны и до `done` не достигают 100.
+    const pcts = progress.map((e) => e.data.pct as number);
+    for (let i = 1; i < pcts.length; i++) {
+      expect(pcts[i]!).toBeGreaterThanOrEqual(pcts[i - 1]!);
+    }
+    expect(progress.at(-1)!.data.pct).toBe(100);
+    expect(progress.at(-1)!.data.phase).toBe("done");
+    expect(progress.some((e) => e.data.phase === "writing")).toBe(true);
+
+    const done = events.find((e) => e.event === "done");
+    expect(done).toBeDefined();
+    const variants = done!.data.variants as Array<{
+      payloadKind: string;
+      payload: { candidates: Array<{ tempId: string }> };
+    }>;
+    expect(variants).toHaveLength(2);
+    expect(variants[0]!.payloadKind).toBe("entity_set");
+    expect(variants[0]!.payload.candidates[0]!.tempId).toBe("i1");
+  });
+
+  it("rolls the percent back and reports attempt N/max on retry", async () => {
+    vi.mocked(runAspectEntityVariants).mockImplementation(
+      async (_input, options) => {
+        options?.onProgress?.({ kind: "attempt", attempt: 1 });
+        options?.onProgress?.({ kind: "model_started" });
+        options?.onProgress?.({ kind: "model_output", chars: 400 });
+        // Попытка 1 упала по таймауту, p-retry запустил вторую.
+        options?.onProgress?.({ kind: "attempt", attempt: 2 });
+        options?.onProgress?.({ kind: "model_started" });
+        options?.onProgress?.({ kind: "tool_call" });
+        return VARIANTS;
+      },
+    );
+    const id = await createBook();
+    const res = await send(
+      t.app,
+      `/api/books/${id}/stages/items/aspects/asp1/generate-stream`,
+      "POST",
+      {
+        aspect: { id: "asp1", name: "Зонды", payloadKind: "entity_set" },
+        accumulated: [],
+      },
+    );
+    const events = await readEvents(res);
+    const progress = events.filter((e) => e.event === "progress");
+    const retryFrame = progress.find((e) => e.data.attempt === 2);
+    expect(retryFrame).toBeDefined();
+    expect(retryFrame!.data.maxAttempts).toBe(4);
+    expect(retryFrame!.data.phase).toBe("dispatch");
+    const beforeRetry = progress.filter((e) => e.data.attempt === 1).at(-1)!;
+    expect(retryFrame!.data.pct as number).toBeLessThan(
+      beforeRetry.data.pct as number,
+    );
+    expect(retryFrame!.data.attemptElapsedMs as number).toBeLessThanOrEqual(
+      retryFrame!.data.elapsedMs as number,
+    );
+    expect(events.some((e) => e.event === "done")).toBe(true);
+  });
+
+  it("emits an error event when the agent throws", async () => {
+    vi.mocked(runAspectEntityVariants).mockRejectedValue(
+      new Error("model did not call submit tool"),
+    );
+    const id = await createBook();
+    const res = await send(
+      t.app,
+      `/api/books/${id}/stages/items/aspects/asp1/generate-stream`,
+      "POST",
+      {
+        aspect: { id: "asp1", name: "Зонды", payloadKind: "entity_set" },
+        accumulated: [],
+      },
+    );
+    const events = await readEvents(res);
+    const err = events.find((e) => e.event === "error");
+    expect(err).toBeDefined();
+    expect(err!.data.message).toContain("submit tool");
+    expect(events.some((e) => e.event === "done")).toBe(false);
+  });
+
+  it("rejects non-entity stages with 400", async () => {
+    const id = await createBook();
+    const res = await send(
+      t.app,
+      `/api/books/${id}/stages/world/aspects/asp1/generate-stream`,
+      "POST",
+      {
+        aspect: { id: "asp1", name: "география", payloadKind: "entity_set" },
+        accumulated: [],
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("/aspects/:aspectId/materialize", () => {
   it("creates character rows for accepted candidates and returns ids", async () => {
     const id = await createBook();

@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { StageAspect, StageState } from "@book-forge/shared";
+import type { AspectGenerationProgress } from "@/api/client";
 import type { PlaybookGenerator } from "./llmGenerators";
+import { GenerationProgress } from "./GenerationProgress.js";
 
 interface ProposedAspect {
   name: string;
   description: string;
   required: boolean;
-  payloadKind: "markdown";
+  payloadKind: "markdown" | "entity_set";
 }
 
 interface ReviewItem extends ProposedAspect {
@@ -32,19 +34,24 @@ export function PlaybookRunner({
   const [proposed, setProposed] = useState<ReviewItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<AspectGenerationProgress | null>(
+    null,
+  );
 
   async function handleGenerate(): Promise<void> {
     setError(null);
     setBusy(true);
     try {
-      const r = await generator.generate({
-        existingAspectNames: stage.aspects.map((a) => a.name),
-      });
+      const r = await generator.generate(
+        { existingAspectNames: stage.aspects.map((a) => a.name) },
+        setProgress,
+      );
       setProposed(r.aspects.map((a) => ({ ...a, include: true })));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -63,7 +70,9 @@ export function PlaybookRunner({
         order: baseOrder + i,
         required: p.required,
         source: "llm",
-        payloadKind: "markdown",
+        // Сервер решает вид payload по стадии (characters/items → entity_set);
+        // хардкод "markdown" ломал инвариант variant_payload_kind_mismatch.
+        payloadKind: p.payloadKind,
         variants: [],
       }));
       const next: StageState = {
@@ -111,6 +120,9 @@ export function PlaybookRunner({
           В стадии пока нет аспектов. Запустите генерацию плейбука: LLM
           предложит 5–9 ключевых полей, которые потом раскроем по одному.
         </p>
+        {progress && (
+          <GenerationProgress progress={progress} label="progress-playbook" />
+        )}
         <div>
           <button
             type="button"
@@ -175,6 +187,9 @@ export function PlaybookRunner({
           </li>
         ))}
       </ul>
+      {progress && (
+        <GenerationProgress progress={progress} label="progress-playbook" />
+      )}
       <div className="flex gap-2">
         <button
           type="button"

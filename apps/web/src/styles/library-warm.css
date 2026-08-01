@@ -578,6 +578,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 }
 .stagecard-reco .stagecard-icon { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
 .stagecard-reco-flag { color: var(--color-brass); }
+.stagecard-optional { color: var(--color-muted-foreground); opacity: .75; }
 
 .stagecard-complete .stagecard-icon { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
 

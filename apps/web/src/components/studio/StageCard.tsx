@@ -1,4 +1,5 @@
 import type { StageId } from "@book-forge/shared";
+import { isOptionalStage } from "@book-forge/shared";
 import { Link } from "react-router-dom";
 import {
   FlaskConical,
@@ -88,6 +89,9 @@ export function StageCard({
       <div className="stagecard-meta cap mono">
         {recommended && (
           <span className="stagecard-reco-flag">↳ продолжить</span>
+        )}
+        {isOptionalStage(stageId) && (
+          <span className="stagecard-optional">необязательный</span>
         )}
       </div>
     </>
