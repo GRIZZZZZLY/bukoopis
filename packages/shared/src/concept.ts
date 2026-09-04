@@ -78,11 +78,11 @@ export const bookConceptSchema = z.object({
   hook: z.string().max(600).optional(),
   audience: audienceSchema,
   premise: premiseSchema,
-  /** Наследие пикеров. Сворачиваются в genre/tone в normalizeConcept; Task 8
-   *  делает их опциональными, Task 9 убирает каталог. */
-  genres: z.array(z.string()),
+  /** Наследие пикеров: только чтобы старые записи парсились. normalizeConcept
+   *  сворачивает их в genre/tone и убирает. */
+  genres: z.array(z.string()).optional(),
   customGenres: z.array(z.string()).optional(),
-  tones: z.array(z.string()),
+  tones: z.array(z.string()).optional(),
   customTones: z.array(z.string()).optional(),
 });
 export type BookConcept = z.infer<typeof bookConceptSchema>;
@@ -98,8 +98,6 @@ export function emptyBookConcept(): BookConcept {
   return {
     schemaVersion: 1,
     pitches: [],
-    genres: [],
-    tones: [],
     audience: "adult",
     premise: {},
   };
@@ -122,13 +120,12 @@ function joinLabels(
  *  выводит `genre`/`tone` из старых массивов, если явных строк нет. Вызывается
  *  при каждом чтении из БД, поэтому миграция данных не нужна. */
 export function normalizeConcept(input: BookConcept): BookConcept {
-  const genre =
-    (input.genre ?? "").trim() || joinLabels(input.genres, input.customGenres);
-  const tone =
-    (input.tone ?? "").trim() || joinLabels(input.tones, input.customTones);
+  const { genres, customGenres, tones, customTones, ...rest } = input;
+  const genre = (rest.genre ?? "").trim() || joinLabels(genres, customGenres);
+  const tone = (rest.tone ?? "").trim() || joinLabels(tones, customTones);
   return {
-    ...input,
-    pitches: input.pitches ?? [],
+    ...rest,
+    pitches: rest.pitches ?? [],
     ...(genre !== undefined ? { genre } : {}),
     ...(tone !== undefined ? { tone } : {}),
   };

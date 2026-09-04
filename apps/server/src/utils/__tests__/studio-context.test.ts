@@ -7,6 +7,7 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { emptyBookConcept } from "@book-forge/shared";
 import {
   derivePremiseFromConcept,
   loadStudioContext,
@@ -192,8 +193,8 @@ describe("studioContextToPrompt", () => {
       concept: {
         schemaVersion: 1,
         pitches: [],
-        genres: ["fantasy"],
-        tones: ["dark"],
+        genre: "fantasy",
+        tone: "dark",
         audience: "adult",
         premise: { logline: "Герой ищет правду" },
       },
@@ -220,8 +221,8 @@ describe("studioContextToPrompt", () => {
       concept: {
         schemaVersion: 1,
         pitches: [],
-        genres: ["thriller"],
-        tones: ["tense"],
+        genre: "thriller",
+        tone: "tense",
         audience: "ya",
         premise: {},
       },
@@ -234,6 +235,25 @@ describe("studioContextToPrompt", () => {
     expect(out!).not.toContain("## Мир");
     expect(out!).not.toContain("## Лор");
     expect(out!).not.toContain("## Сюжет");
+  });
+
+  it("renders genre, tone and hook as single lines", () => {
+    const text = studioContextToPrompt({
+      concept: {
+        ...emptyBookConcept(),
+        genre: "камерная антиутопия",
+        tone: "холодный",
+        hook: "В списке — её имя.",
+        premise: { logline: "Когда…" },
+      },
+      worldAspects: [],
+      loreAspects: [],
+      plotAspects: [],
+    } as never);
+    expect(text).toContain("Жанр: камерная антиутопия");
+    expect(text).toContain("Тон: холодный");
+    expect(text).toContain("Крючок: В списке — её имя.");
+    expect(text).not.toContain("Жанры:");
   });
 });
 

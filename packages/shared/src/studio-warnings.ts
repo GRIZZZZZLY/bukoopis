@@ -2,7 +2,6 @@ import type { BookConcept } from "./concept.js";
 import { isConceptComplete } from "./concept.js";
 import type { StageId, StageState, StudioState } from "./studio-state.js";
 import { STAGE_IDS } from "./studio-state.js";
-import { GENRES } from "./genre-registry.js";
 
 export type StudioWarningSeverity = "info" | "warning" | "danger";
 
@@ -49,11 +48,6 @@ const STAGE_LABELS: Record<StageId, string> = {
   chapters: "Главы",
 };
 
-function genreLabel(id: string | undefined): string {
-  if (id === undefined) return "";
-  return GENRES.find((g) => g.id === id)?.label ?? id;
-}
-
 function stageStatus(state: StudioState, id: StageId): StageState["status"] | undefined {
   return state.stages[id]?.status;
 }
@@ -73,12 +67,12 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
   const advancedNonConcept = (["world", "lore", "characters", "items", "plot", "chapters"] as const).find(
     (s) => isAdvanced(studioState, s),
   );
-  if (concept.genres.length === 0 && (concept.customGenres ?? []).length === 0 && advancedNonConcept) {
+  if ((concept.genre ?? "").trim().length === 0 && advancedNonConcept) {
     out.push({
       id: `concept_genres_empty_for_${advancedNonConcept}`,
       severity: "warning",
       stageId: "concept",
-      message: `Этап «${STAGE_LABELS[advancedNonConcept]}» уже идёт, а жанр не выбран — генерация опирается на него. Выберите жанр в «Концепте».`,
+      message: `Этап «${STAGE_LABELS[advancedNonConcept]}» уже идёт, а жанр не задан — генерация опирается на него. Утвердите замысел.`,
     });
   }
 
@@ -113,31 +107,8 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
       severity: "warning",
       stageId: "plot",
       message:
-        "Логлайн не задан — сюжет будет строиться вслепую. Впишите его на этапе «Концепт».",
+        "Логлайн не задан — сюжет будет строиться вслепую. Утвердите замысел.",
     });
-  }
-
-  // 5. Incompatible genre pair from registry. Dedup by sorted-pair key so
-  //    symmetric incompatibleWith entries (A→B and B→A) emit one warning.
-  const seenPairs = new Set<string>();
-  for (const id of concept.genres) {
-    const def = GENRES.find((g) => g.id === id);
-    if (!def?.incompatibleWith) continue;
-    for (const other of concept.genres) {
-      if (other === id) continue;
-      if (!def.incompatibleWith.includes(other)) continue;
-      const pairKey = [id, other].sort().join("␟");
-      if (seenPairs.has(pairKey)) continue;
-      seenPairs.add(pairKey);
-      const [a, b] = [id, other].sort();
-      out.push({
-        id: `incompatible_genres__${a}__${b}`,
-        severity: "warning",
-        stageId: "concept",
-        // Ids are internal — the author picked these by their Russian labels.
-        message: `Жанры «${genreLabel(a)}» и «${genreLabel(b)}» плохо уживаются в одной книге.`,
-      });
-    }
   }
 
   return out;

@@ -99,6 +99,7 @@ export function derivePremiseFromConcept(
   if (p.protagonist?.trim()) lines.push(`Протагонист: ${p.protagonist.trim()}`);
   if (p.conflict?.trim()) lines.push(`Конфликт: ${p.conflict.trim()}`);
   if (p.stakes?.trim()) lines.push(`Ставки: ${p.stakes.trim()}`);
+  if (concept.hook?.trim()) lines.push(`Крючок: ${concept.hook.trim()}`);
   if (lines.length === 0) return null;
   return lines.join("\n");
 }
@@ -109,15 +110,10 @@ export function studioContextToPrompt(ctx: StudioContext): string | null {
   if (ctx.concept) {
     const c = ctx.concept;
     const conceptLines: string[] = [];
-    const allGenres = [...c.genres, ...(c.customGenres ?? [])];
-    if (allGenres.length > 0) {
-      conceptLines.push(`Жанры: ${allGenres.join(", ")}`);
-    }
-    const allTones = [...c.tones, ...(c.customTones ?? [])];
-    if (allTones.length > 0) {
-      conceptLines.push(`Тон: ${allTones.join(", ")}`);
-    }
+    if (c.genre) conceptLines.push(`Жанр: ${c.genre}`);
+    if (c.tone) conceptLines.push(`Тон: ${c.tone}`);
     conceptLines.push(`Аудитория: ${c.audience}`);
+    if (c.hook) conceptLines.push(`Крючок: ${c.hook}`);
     if (c.premise.protagonist) {
       conceptLines.push(`Протагонист: ${c.premise.protagonist}`);
     }

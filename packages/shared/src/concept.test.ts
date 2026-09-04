@@ -35,6 +35,7 @@ describe("bookConceptSchema", () => {
     expect(c.pitches).toEqual([]);
     expect(c.audience).toBe("adult");
     expect(c.lockedAt).toBeUndefined();
+    expect(c.genres).toBeUndefined();
   });
 
   it("parses a legacy concept without the pitches field", () => {
@@ -88,6 +89,15 @@ describe("normalizeConcept", () => {
 
   it("leaves genre undefined when nothing is known", () => {
     expect(normalizeConcept(emptyBookConcept()).genre).toBeUndefined();
+  });
+
+  it("drops the legacy arrays after folding them", () => {
+    const c = normalizeConcept({ ...emptyBookConcept(), genres: ["fantasy"], tones: ["dark"] });
+    expect(c.genres).toBeUndefined();
+    expect(c.tones).toBeUndefined();
+    expect(c.customGenres).toBeUndefined();
+    expect(c.customTones).toBeUndefined();
+    expect(bookConceptSchema.parse(c)).toEqual(c);
   });
 });
 

@@ -35,18 +35,18 @@ describe("studio routes", () => {
     expect(r.status).toBe(404);
   });
 
-  it("PATCH /api/books/:id/concept persists genres", async () => {
+  it("PATCH /api/books/:id/concept persists genre", async () => {
     const id = await createBook();
     const c = emptyBookConcept();
-    c.genres = ["fantasy"];
+    c.genre = "фэнтези";
     const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", c);
     expect(r.status).toBe(200);
-    const round = await sendJson<{ genres: string[] }>(
+    const round = await sendJson<{ genre: string }>(
       t.app,
       `/api/books/${id}/concept`,
       "GET",
     );
-    expect(round.genres).toEqual(["fantasy"]);
+    expect(round.genre).toBe("фэнтези");
   });
 
   it("PATCH /api/books/:id/concept rejects invalid body (400)", async () => {

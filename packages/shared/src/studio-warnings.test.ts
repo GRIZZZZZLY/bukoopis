@@ -60,20 +60,6 @@ describe("computeStudioWarnings", () => {
     expect(w.find((x) => x.id === "lore_not_started_after_world")).toBeDefined();
   });
 
-  it("warns on incompatible genres pair from registry", () => {
-    const concept = emptyBookConcept();
-    concept.genres = ["sci_fi.hard_sci_fi", "fantasy"];
-    const w = computeStudioWarnings({
-      concept,
-      studioState: emptyStudioState(),
-      canon: emptyCanon,
-    });
-    expect(w.find((x) => x.id.startsWith("incompatible_genres"))).toBeDefined();
-    // Dedup: symmetric pair must not produce duplicate warnings.
-    const incompatPair = w.filter((x) => x.id.startsWith("incompatible_genres"));
-    expect(incompatPair).toHaveLength(1);
-  });
-
   it("warns when plot started but logline empty", () => {
     const state = emptyStudioState();
     state.stages.plot = { status: "in_progress", playbookGenerated: false, aspects: [] };
@@ -87,7 +73,7 @@ describe("computeStudioWarnings", () => {
 
   it("no warnings on a healthy minimal state", () => {
     const concept = emptyBookConcept();
-    concept.genres = ["fantasy"];
+    concept.genre = "фэнтези";
     concept.premise.logline = "Герой ищет правду";
     const w = computeStudioWarnings({
       concept,
