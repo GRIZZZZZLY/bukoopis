@@ -10,3 +10,6 @@ data/backups/
 *.tsbuildinfo
 .planning/spike-stderr.log
 
+.claude/
+.superpowers/
+.worktrees/
