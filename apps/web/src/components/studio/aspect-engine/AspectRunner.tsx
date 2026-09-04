@@ -401,7 +401,7 @@ export function AspectRunner<TPayload>({
     const parsed = adapter.payloadSchema.safeParse(variant.payload);
     if (!parsed.success) {
       return (
-        <p className="text-xs text-[var(--color-ink-red)]">
+        <p className="text-xs text-[var(--color-ink-red-fg)]">
           Не удалось разобрать payload: {parsed.error.message}
         </p>
       );
@@ -413,7 +413,7 @@ export function AspectRunner<TPayload>({
     const parsed = adapter.payloadSchema.safeParse(payload);
     if (!parsed.success) {
       return (
-        <p className="text-xs text-[var(--color-ink-red)]">
+        <p className="text-xs text-[var(--color-ink-red-fg)]">
           Не удалось разобрать финальный payload: {parsed.error.message}
         </p>
       );
@@ -468,7 +468,7 @@ export function AspectRunner<TPayload>({
                   {aspect.name}
                 </span>
                 {aspect.required && (
-                  <span className="text-xs text-[var(--color-ink-amber)]">
+                  <span className="text-xs text-[var(--color-ink-amber-fg)]">
                     (обязательно)
                   </span>
                 )}
@@ -753,7 +753,7 @@ export function AspectRunner<TPayload>({
             )}
 
             {err && (
-              <p role="alert" className="text-xs text-[var(--color-ink-red)]">
+              <p role="alert" className="text-xs text-[var(--color-ink-red-fg)]">
                 {err}
               </p>
             )}

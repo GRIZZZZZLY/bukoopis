@@ -5,9 +5,9 @@ interface Props {
 }
 
 const SEVERITY_COLOR: Record<StudioWarning["severity"], string> = {
-  info: "text-[var(--color-ink-blue)] bg-[var(--color-ink-blue-tint)] border border-[var(--color-ink-blue)]/40",
-  warning: "text-[var(--color-ink-amber)] bg-[var(--color-ink-amber-tint)] border border-[var(--color-ink-amber)]/40",
-  danger: "text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40",
+  info: "text-[var(--color-ink-blue-fg)] bg-[var(--color-ink-blue-tint)] border border-[var(--color-ink-blue)]/40",
+  warning: "text-[var(--color-ink-amber-fg)] bg-[var(--color-ink-amber-tint)] border border-[var(--color-ink-amber)]/40",
+  danger: "text-[var(--color-ink-red-fg)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40",
 };
 
 export function WarningsFeed({ warnings }: Props) {

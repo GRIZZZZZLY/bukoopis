@@ -29,6 +29,7 @@ import {
   type ChapterCanonEntry,
 } from "@/api/client";
 import { toast } from "@/lib/toast";
+import { formatUsd } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type {
   Character,
@@ -438,7 +439,7 @@ function ExtractionStatusLine({
   }
   if (extraction.status === "error") {
     return (
-      <span className="text-xs text-[var(--color-destructive)] inline-flex items-center gap-1">
+      <span className="text-xs text-[var(--color-ink-red-fg)] inline-flex items-center gap-1">
         <AlertCircle className="size-3" aria-hidden="true" />
         Ошибка: {extraction.errorMessage ?? "неизвестно"}
       </span>
@@ -447,7 +448,7 @@ function ExtractionStatusLine({
   return (
     <span className="text-xs text-[var(--color-muted-foreground)] inline-flex items-center gap-1">
       <Check className="size-3" aria-hidden="true" />
-      {`Готово · $${extraction.costUsd.toFixed(4)}`}
+      {`Готово · ${formatUsd(extraction.costUsd)}`}
     </span>
   );
 }

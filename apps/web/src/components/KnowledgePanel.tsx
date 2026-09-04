@@ -36,7 +36,7 @@ function DeleteButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="size-8 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-ink-red)] hover:bg-[var(--color-ink-red-tint)]"
+      className="size-8 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-ink-red-fg)] hover:bg-[var(--color-ink-red-tint)]"
     >
       <Trash2 className="size-4" aria-hidden="true" />
     </Button>

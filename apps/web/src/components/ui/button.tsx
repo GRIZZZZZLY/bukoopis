@@ -10,16 +10,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // hover сменой фона, а не opacity: полупрозрачность гасила и текст
+        // вместе с фоном, роняя контраст на самом заметном действии.
         default:
-          "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:opacity-90",
+          "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:bg-[var(--color-brass-hi)]",
         secondary:
-          "bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] hover:opacity-90",
+          "bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] hover:bg-[var(--color-surface-3)]",
         outline:
           "border border-[var(--color-input)] bg-[var(--color-background)] hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
         ghost:
           "hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
         destructive:
-          "bg-[var(--color-destructive)] text-[var(--color-destructive-foreground)] hover:opacity-90",
+          "bg-[var(--color-destructive)] text-[var(--color-destructive-foreground)] hover:bg-[var(--color-ink-red-fg)] hover:text-[var(--color-bg)]",
       },
       size: {
         default: "h-9 px-4 py-2",

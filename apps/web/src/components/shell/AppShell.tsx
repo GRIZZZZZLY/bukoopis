@@ -128,13 +128,18 @@ export function AppShell() {
 
   return (
     <div className="app" data-focus={focused ? "true" : "false"}>
+      {/* Первая цель Tab: топбар и рейл — это 10+ остановок перед содержимым
+          на каждой странице. */}
+      <a className="skip-link" href="#main">
+        Перейти к содержимому
+      </a>
       <TopBar route={route} scrolled={scrolled} />
       <LeftRail
         route={route}
         expanded={expanded}
         onToggle={() => setExpanded((v) => !v)}
       />
-      <main className="main">
+      <main className="main" id="main" tabIndex={-1}>
         <Outlet />
       </main>
       <StatusBar />

@@ -59,7 +59,7 @@ export function GenerationProgress({
           : ""}
       </span>
       {retry && (
-        <span className="text-[10px] text-[var(--color-ink-amber)]">
+        <span className="text-[10px] text-[var(--color-ink-amber-fg)]">
           Предыдущая попытка не уложилась в таймаут — вызов перезапущен с нуля.
         </span>
       )}

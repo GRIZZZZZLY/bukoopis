@@ -37,6 +37,7 @@ import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
+import { formatUsdApprox } from "@/lib/money";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
 import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
 import {
@@ -913,7 +914,7 @@ function DiscardOption({ onDiscard }: { onDiscard: () => void }) {
       <button
         type="button"
         onClick={onDiscard}
-        className="pointer-events-auto translate-y-[-92px] rounded-md bg-[var(--color-background)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-destructive)] shadow-sm"
+        className="pointer-events-auto translate-y-[-92px] rounded-md bg-[var(--color-background)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-ink-red-fg)] shadow-sm"
       >
         Отбросить изменения и уйти
       </button>
@@ -1107,12 +1108,12 @@ function AutosaveStatus({
   if (error) {
     icon = (
       <AlertCircle
-        className="size-3.5 text-[var(--color-destructive)]"
+        className="size-3.5 text-[var(--color-ink-red-fg)]"
         aria-hidden="true"
       />
     );
     label = (
-      <span className="text-[var(--color-destructive)]">
+      <span className="text-[var(--color-ink-red-fg)]">
         Не удалось сохранить
       </span>
     );
@@ -1195,7 +1196,7 @@ function WriterCostBadge({
       ) : (
         <>
           <span className="font-medium text-[var(--color-foreground)]">
-            ~${cost.toFixed(2)}
+            {formatUsdApprox(cost)}
           </span>{" "}
           · {book.writerModel} · ~{targetWords} сл.
         </>

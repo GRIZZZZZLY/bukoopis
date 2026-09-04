@@ -5,6 +5,7 @@ import { PageSkeleton } from "@/components/ui/Skeleton";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
+import { formatUsdApprox } from "@/lib/money";
 import { estimatePerChapterUsd } from "@/lib/chapter-cost";
 import type {
   Book,
@@ -253,7 +254,7 @@ export function SettingsStagePage() {
           <div className="panel-head" style={{ marginBottom: 14 }}>
             <h3>Модели</h3>
             <span className="cap mono faint">
-              ≈ ${forecastUsd.toFixed(2)} за главу
+              {formatUsdApprox(forecastUsd)} за главу
             </span>
           </div>
           <div className="settings-grid">

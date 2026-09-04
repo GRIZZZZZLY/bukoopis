@@ -46,6 +46,14 @@
   --color-ink-amber:      #CDA24E;
   --color-ink-amber-tint: rgba(205, 162, 78, 0.12);
 
+  /* Тексты цветом чернил. Базовые ink-* остаются для графики (линии нити,
+     полосы, рамки — там достаточно 3:1), но как текст на своём же тинте они
+     давали 3.3–4.0:1. Пары ниже держат ≥4.6:1 и на surface-1, и на surface-2. */
+  --color-ink-red-fg:   #E58A7C;
+  --color-ink-green-fg: #8CB57F;
+  --color-ink-blue-fg:  #8DAEDB;
+  --color-ink-amber-fg: #DCB264;
+
   /* manuscript */
   --color-paper:        #212A3D;
   --color-margin-rule:  #43507A;
@@ -220,7 +228,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 .btn-destructive {
   background: transparent;
-  color: var(--color-ink-red);
+  color: var(--color-ink-red-fg);
   border-color: var(--color-ink-red);
 }
 .btn-destructive:hover { background: var(--color-ink-red-tint); }
@@ -256,10 +264,10 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 }
 .pill .dot { width: 6px; height: 6px; background: currentColor; }
 .pill-brass   { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
-.pill-red     { color: var(--color-ink-red); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
-.pill-amber   { color: var(--color-ink-amber); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
-.pill-green   { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
-.pill-blue    { color: var(--color-ink-blue); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
+.pill-red     { color: var(--color-ink-red-fg); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
+.pill-amber   { color: var(--color-ink-amber-fg); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
+.pill-green   { color: var(--color-ink-green-fg); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
+.pill-blue    { color: var(--color-ink-blue-fg); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
 .pill-strong  { color: var(--color-text-strong); border-color: var(--color-border-strong); }
 .pill-mono    { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; }
 .pill-lg      { height: 26px; padding: 0 12px; font-size: 12px; }
@@ -507,7 +515,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 }
 .step-glyph svg { width: 11px; height: 11px; }
 
-.step-complete .step-glyph    { background: var(--color-ink-green-tint); color: var(--color-ink-green); border-color: var(--color-ink-green); }
+.step-complete .step-glyph    { background: var(--color-ink-green-tint); color: var(--color-ink-green-fg); border-color: var(--color-ink-green); }
 .step-in_progress .step-glyph { background: var(--color-brass-tint); color: var(--color-brass); border-color: var(--color-brass-soft); }
 .step-skipped .step-glyph     { color: var(--color-text-faint); }
 .step-todo .step-glyph        { color: var(--color-text-faint); }
@@ -757,7 +765,27 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .leftrail-item-active .leftrail-icon { color: var(--color-brass); }
 .leftrail-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; flex: none; }
 
+/* Skip-link: не видно мышью, появляется первой остановкой Tab */
+.skip-link {
+  position: fixed;
+  top: 8px; left: 8px;
+  z-index: 100;
+  transform: translateY(-200%);
+  padding: 8px 14px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-brass);
+  color: var(--color-text-strong);
+  font-size: 13px;
+  transition: transform var(--motion-2) var(--ease-in-out);
+}
+/* :focus, а не только :focus-visible — до содержимого ссылка добирается
+   исключительно с клавиатуры, и прятать её при программном фокусе незачем. */
+.skip-link:focus,
+.skip-link:focus-visible { transform: translateY(0); outline: 2px solid var(--color-brass); outline-offset: 2px; }
+
 /* Main / route container */
+.main:focus { outline: none; }
 .main {
   grid-area: main;
   min-width: 0;
@@ -890,8 +918,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   border-bottom-color: var(--color-border);
 }
 .diff-toolbar-label { color: var(--color-text-strong); }
-.diff-stat-add { color: var(--color-ink-green); }
-.diff-stat-del { color: var(--color-ink-red); }
+.diff-stat-add { color: var(--color-ink-green-fg); }
+.diff-stat-del { color: var(--color-ink-red-fg); }
 
 .chapter-grid {
   display: grid;
@@ -998,13 +1026,13 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 .diff-add {
   background: var(--color-ink-green-tint);
-  color: var(--color-ink-green);
+  color: var(--color-ink-green-fg);
   border-bottom: 1.5px solid var(--color-ink-green);
   padding: 0 2px; border-radius: 2px;
 }
 .diff-del {
   background: var(--color-ink-red-tint);
-  color: var(--color-ink-red);
+  color: var(--color-ink-red-fg);
   padding: 0 2px; border-radius: 2px;
 }
 .diff-del s { text-decoration-color: var(--color-ink-red); text-decoration-thickness: 1.5px; }
@@ -1201,7 +1229,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 }
 .aspect-actions { display: flex; gap: 8px; margin-top: 10px; }
 .aspect-accepted { border-color: var(--color-ink-green); }
-.aspect-accepted .aspect-title::before { content: "✓ "; color: var(--color-ink-green); font-family: var(--font-ui); }
+.aspect-accepted .aspect-title::before { content: "✓ "; color: var(--color-ink-green-fg); font-family: var(--font-ui); }
 .aspect-pending .aspect-title { color: var(--color-text-muted); }
 
 /* entity grid */
@@ -1404,8 +1432,8 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .stat-val { font-family: var(--font-display); font-size: 36px; color: var(--color-text-strong); line-height: 1; }
 .stat-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .delta { font-weight: 500; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
-.delta-up { color: var(--color-ink-green); background: var(--color-ink-green-tint); }
-.delta-down { color: var(--color-ink-red); background: var(--color-ink-red-tint); }
+.delta-up { color: var(--color-ink-green-fg); background: var(--color-ink-green-tint); }
+.delta-down { color: var(--color-ink-red-fg); background: var(--color-ink-red-tint); }
 
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
@@ -2067,7 +2095,7 @@ html.atm-off::view-transition-new(root) {
 .lw-btn[data-variant="ghost"] { background: transparent; border-color: transparent; }
 .lw-btn[data-variant="ghost"]:hover { background: var(--color-surface-2); }
 .lw-btn[data-variant="destructive"] {
-  background: transparent; border-color: var(--color-ink-red); color: var(--color-ink-red);
+  background: transparent; border-color: var(--color-ink-red); color: var(--color-ink-red-fg);
 }
 .lw-btn[data-variant="destructive"]:hover { background: var(--color-ink-red-tint); }
 
@@ -2079,10 +2107,10 @@ html.atm-off::view-transition-new(root) {
   font-family: var(--font-ui); font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.lw-pill[data-tone="green"] { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
-.lw-pill[data-tone="amber"] { color: var(--color-ink-amber); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
-.lw-pill[data-tone="red"]   { color: var(--color-ink-red); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
-.lw-pill[data-tone="blue"]  { color: var(--color-ink-blue); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
+.lw-pill[data-tone="green"] { color: var(--color-ink-green-fg); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
+.lw-pill[data-tone="amber"] { color: var(--color-ink-amber-fg); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
+.lw-pill[data-tone="red"]   { color: var(--color-ink-red-fg); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
+.lw-pill[data-tone="blue"]  { color: var(--color-ink-blue-fg); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
 .lw-pill[data-tone="brass"] { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
 
 .stagecard-status { margin-left: auto; }

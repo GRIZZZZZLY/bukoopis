@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
+import { formatUsd } from "@/lib/money";
 import type { UsageSummary } from "@book-forge/shared";
 
 function fmt(n: number): string {
@@ -133,7 +134,14 @@ export function UsagePage() {
         >
           <div className="card stat-card">
             <div className="cap-upper">Всего</div>
-            <div className="stat-val mono">${summary.totalUsd.toFixed(4)}</div>
+            <div className="stat-val mono">{formatUsd(summary.totalUsd)}</div>
+            {/* Ноль при непустой статистике читался как сломанный счётчик —
+                объясняем, откуда он берётся. */}
+            {summary.totalUsd === 0 && summary.totalCalls > 0 && (
+              <div className="cap muted" style={{ marginTop: 6 }}>
+                вызовы шли через подписочный бэкенд и не тарифицировались по API
+              </div>
+            )}
           </div>
           <div className="card stat-card">
             <div className="cap-upper">Вызовов</div>
@@ -183,7 +191,7 @@ export function UsagePage() {
                     <tr key={row.route}>
                       <td className="mono">{row.route}</td>
                       <td className="num mono">{row.calls}</td>
-                      <td className="num mono">${row.costUsd.toFixed(4)}</td>
+                      <td className="num mono">{formatUsd(row.costUsd)}</td>
                       <td className="num mono">{fmt(row.inputTokens)}</td>
                       <td className="num mono">{fmt(row.outputTokens)}</td>
                     </tr>
@@ -247,7 +255,7 @@ export function UsagePage() {
                       <td className="num mono">
                         {r.cacheReadInputTokens}/{r.cacheCreationInputTokens}
                       </td>
-                      <td className="num mono">${r.costUsd.toFixed(4)}</td>
+                      <td className="num mono">{formatUsd(r.costUsd)}</td>
                       <td className="num mono muted">
                         {r.bookId ?? "–"}/{r.chapterId ?? "–"}/
                         {r.versionId ?? "–"}
@@ -271,13 +279,24 @@ function PerDayBars({
 }) {
   const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
   const max = Math.max(...sorted.map((d) => d.costUsd), 0.0001);
+  // Все нули — рисовать полосы нулевой длины бессмысленно: это выглядит как
+  // не отрисовавшийся график.
+  const allZero = sorted.every((d) => d.costUsd === 0);
+  if (allZero) {
+    return (
+      <p className="muted" style={{ fontSize: 13 }}>
+        Расходов за период нет — {sorted.reduce((n, d) => n + d.calls, 0)}{" "}
+        вызовов прошли без списаний по API.
+      </p>
+    );
+  }
   return (
     <div className="bar-chart">
       {sorted.map((d) => (
         <div
           key={d.date}
           className="bar-row"
-          title={`${d.date}: $${d.costUsd.toFixed(4)} · ${d.calls} вызовов`}
+          title={`${d.date}: ${formatUsd(d.costUsd)} · ${d.calls} вызовов`}
         >
           <span className="bar-label mono">{d.date.slice(5)}</span>
           <div className="bar-track">
@@ -289,7 +308,7 @@ function PerDayBars({
               }}
             />
           </div>
-          <span className="bar-val mono">${d.costUsd.toFixed(4)}</span>
+          <span className="bar-val mono">{formatUsd(d.costUsd)}</span>
         </div>
       ))}
     </div>

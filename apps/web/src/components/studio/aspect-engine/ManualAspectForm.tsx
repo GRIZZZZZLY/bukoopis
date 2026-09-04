@@ -97,12 +97,12 @@ export function ManualAspectForm({
         />
       </label>
       {duplicate && trimmed.length > 0 && (
-        <p className="text-xs text-[var(--color-ink-amber)]">
+        <p className="text-xs text-[var(--color-ink-amber-fg)]">
           Раздел с таким названием уже есть.
         </p>
       )}
       {error && (
-        <p role="alert" className="text-xs text-[var(--color-ink-red)]">
+        <p role="alert" className="text-xs text-[var(--color-ink-red-fg)]">
           {error}
         </p>
       )}

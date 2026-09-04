@@ -149,7 +149,7 @@ export function PlaybookRunner({
         {error && (
           <p
             role="alert"
-            className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+            className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red-fg)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
           >
             {error}
           </p>
@@ -236,7 +236,7 @@ export function PlaybookRunner({
       {error && (
         <p
           role="alert"
-          className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
+          className="text-xs rounded-md px-2 py-1 text-[var(--color-ink-red-fg)] bg-[var(--color-ink-red-tint)] border border-[var(--color-ink-red)]/40"
         >
           {error}
         </p>

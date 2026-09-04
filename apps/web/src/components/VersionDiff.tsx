@@ -68,7 +68,7 @@ export function VersionDiff({
             +{stats.added}
           </span>{" "}
           добавлено ·{" "}
-          <span className="text-[var(--color-destructive)] font-medium">
+          <span className="text-[var(--color-ink-red-fg)] font-medium">
             −{stats.removed}
           </span>{" "}
           удалено

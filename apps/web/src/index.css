@@ -45,6 +45,12 @@
   --color-ink-blue:     #6C8FBF;
   --color-ink-amber:    #CDA24E;
 
+  /* текстовые пары к ink-* (см. комментарий в library-warm.css) */
+  --color-ink-red-fg:   #E58A7C;
+  --color-ink-green-fg: #8CB57F;
+  --color-ink-blue-fg:  #8DAEDB;
+  --color-ink-amber-fg: #DCB264;
+
   /* manuscript */
   --color-paper:        #212A3D;
   --color-margin-rule:  #43507A;

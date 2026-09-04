@@ -156,7 +156,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-[var(--color-ink-red)]">Ошибка: {error}</p>}
+      {error && <p className="text-sm text-[var(--color-ink-red-fg)]">Ошибка: {error}</p>}
       {loading && <p className="text-sm">Загрузка…</p>}
 
       {!loading && !report && (
@@ -166,7 +166,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
       )}
 
       {report && report.status === "error" && !report.report && (
-        <p className="text-sm text-[var(--color-ink-red)]">
+        <p className="text-sm text-[var(--color-ink-red-fg)]">
           Все критики упали: {report.errorMessage}
         </p>
       )}
@@ -214,7 +214,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
               </p>
             )}
             {repairError && (
-              <p className="text-sm text-[var(--color-ink-red)]">Ошибка: {repairError}</p>
+              <p className="text-sm text-[var(--color-ink-red-fg)]">Ошибка: {repairError}</p>
             )}
             {repairing && repairBuffer && (
               <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] max-h-[300px] overflow-auto">
@@ -252,7 +252,7 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
         </span>
       </div>
       {report.errorMessage && (
-        <p className="text-xs text-[var(--color-ink-amber)]">
+        <p className="text-xs text-[var(--color-ink-amber-fg)]">
           Частичные ошибки: {report.errorMessage}
         </p>
       )}

@@ -40,7 +40,7 @@ export function candidateLabel(profile: {
 function UnnamedFlag() {
   return (
     <span
-      className="text-xs text-[var(--color-ink-amber)] ml-2"
+      className="text-xs text-[var(--color-ink-amber-fg)] ml-2"
       title="Нет имени — задайте его перед добавлением в канон"
     >
       имя не задано

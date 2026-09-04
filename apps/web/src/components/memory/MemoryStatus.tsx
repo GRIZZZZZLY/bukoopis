@@ -41,7 +41,7 @@ export function MemoryStatusBadge({
     case "error":
       return (
         <span
-          className="inline-flex items-center gap-1.5 text-xs text-[var(--color-destructive)]"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-red-fg)]"
           role="status"
         >
           <AlertCircle className="size-3.5" aria-hidden="true" />
