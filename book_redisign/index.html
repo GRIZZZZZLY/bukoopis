@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bookopis · Library Warm — Redesign Canvas</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap&subset=cyrillic,cyrillic-ext,latin,latin-ext" rel="stylesheet">
+
+<link rel="stylesheet" href="styles/library-warm.css" />
+
+<style>
+  body { margin: 0; }
+  /* Canvas-level background: warmer than DC's default cool gray, fits the brand. */
+  body[data-canvas] { background: #2a221c; }
+  /* DC cards stretch comfortably; we don't want their inside scrollbars to look like text columns. */
+  .lw-artboard {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    border-radius: 6px;
+  }
+  /* In-artboard root for grain control */
+  .lw-artboard[data-grain="off"]    { --grain-opacity: 0; }
+  .lw-artboard[data-grain="subtle"] { --grain-opacity: 0.5; }
+  .lw-artboard[data-grain="strong"] { --grain-opacity: 1; }
+
+  /* override DC chrome styles for warm background */
+  body { font-family: 'Inter', system-ui, sans-serif; }
+</style>
+</head>
+<body data-canvas>
+
+<div id="root"></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Starter components -->
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<!-- Components -->
+<script type="text/babel" src="src/lw-shell.jsx"></script>
+<script type="text/babel" src="src/screen-chapter.jsx"></script>
+<script type="text/babel" src="src/screens.jsx"></script>
+<script type="text/babel" src="src/screens-extra.jsx"></script>
+
+<script type="text/babel">
+const { useState } = React;
+
+// Tweakable defaults — persist via __edit_mode_set_keys host bridge.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "aiSurface": "pill",
+  "serif": "lora",
+  "grain": "subtle"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  const Frame = ({ children, grain, screenLabel }) => (
+    <div className="lw-artboard" data-grain={grain || t.grain} data-screen-label={screenLabel}>
+      {children}
+    </div>
+  );
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="hero" title="Bookopis · Library Warm" subtitle="Тёмная-только, бумажно-латунная редизайн-система. 4–8 ч в день — без напряжения.">
+          <DCArtboard id="chapter-hero" label="ChapterPage · флагман (Tweaks)" width={1600} height={920}>
+            <Frame screenLabel="01 Chapter (главная)">
+              <ChapterPage aiSurface={t.aiSurface} serif={t.serif} grain={t.grain} />
+            </Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="chapter-states" title="ChapterPage · состояния" subtitle="Diff, фокус-режим, командная палитра — те же кости, разные настроения.">
+          <DCArtboard id="chapter-diff" label="Принять / отклонить · диф ИИ" width={1600} height={920}>
+            <Frame screenLabel="02 Chapter — diff">
+              <ChapterPage aiSurface="bottombar" serif={t.serif} showDiff={true} />
+            </Frame>
+          </DCArtboard>
+          <DCArtboard id="chapter-focus" label="Фокус-режим · ⌘⇧F" width={1100} height={760}>
+            <Frame screenLabel="03 Focus">
+              <FocusMode />
+            </Frame>
+          </DCArtboard>
+          <DCArtboard id="cmdk" label="Командная палитра · ⌘K" width={1100} height={760}>
+            <Frame screenLabel="04 ⌘K palette">
+              <div style={{ position: "relative", height: "100%" }}>
+                <ChapterPage aiSurface="pill" serif={t.serif} />
+                <CommandPalette />
+              </div>
+            </Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="book" title="BookPage · все вкладки" subtitle="Обзор · План · Канон · Знания · Импорт-Экспорт. Один трёх-панельный шасси.">
+          <DCArtboard id="book-overview" label="Обзор · хиро + лента глав" width={1600} height={920}>
+            <Frame screenLabel="05 Book — Overview"><BookPage tab="Обзор" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-plan" label="План · сюжетные узлы + ИИ" width={1600} height={920}>
+            <Frame screenLabel="06 Book — Plan"><BookPage tab="План" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-canon" label="Канон · факты + конфликты" width={1600} height={920}>
+            <Frame screenLabel="07 Book — Canon"><BookPage tab="Канон" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-knowledge" label="Знания · база мира" width={1600} height={920}>
+            <Frame screenLabel="08 Book — Knowledge"><BookPage tab="Знания" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-io" label="Импорт / Экспорт" width={1600} height={920}>
+            <Frame screenLabel="09 Book — Import/Export"><BookPage tab="Импорт/Экспорт" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="library" title="Список книг и стиль" subtitle="Каталог + профили стиля — тёмный янтарь, а не дашборд.">
+          <DCArtboard id="books" label="/books · витрина" width={1600} height={920}>
+            <Frame screenLabel="10 Books"><BooksList /></Frame>
+          </DCArtboard>
+          <DCArtboard id="profiles" label="/style-profiles · витрина" width={1600} height={920}>
+            <Frame screenLabel="11 Style Profiles"><StyleProfilesList /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="usage" title="Метрики и состояния" subtitle="Использование, ошибки, 404.">
+          <DCArtboard id="usage" label="/usage · стоимость, токены, журнал" width={1600} height={920}>
+            <Frame screenLabel="12 Usage"><UsagePage /></Frame>
+          </DCArtboard>
+          <DCArtboard id="states" label="Состояния · ошибки, конфликты, тосты" width={1280} height={900}>
+            <Frame screenLabel="13 States"><ErrorAndStates /></Frame>
+          </DCArtboard>
+          <DCArtboard id="404" label="/* 404" width={900} height={680}>
+            <Frame screenLabel="14 404"><NotFound /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="kit" title="Примитивы" subtitle="Section 3 — кнопки, пилюли, поля, цвета чернил, палитра.">
+          <DCArtboard id="kit" label="UI kit · components/ui/" width={1280} height={1000}>
+            <Frame screenLabel="15 Kit"><Toolkit /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks · ChapterPage">
+        <TweakSection title="Поверхность ИИ-команды">
+          <TweakRadio
+            value={t.aiSurface}
+            onChange={v => setTweak('aiSurface', v)}
+            options={[
+              { value: 'pill', label: 'Пилюля' },
+              { value: 'bottombar', label: 'Стр.' },
+              { value: 'gutter', label: 'В поле' },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection title="Шрифт рукописи">
+          <TweakRadio
+            value={t.serif}
+            onChange={v => setTweak('serif', v)}
+            options={[
+              { value: 'lora', label: 'Lora' },
+              { value: 'sourceserif', label: 'Source' },
+              { value: 'fraunces', label: 'Fraunces' },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection title="Текстура бумаги">
+          <TweakRadio
+            value={t.grain}
+            onChange={v => setTweak('grain', v)}
+            options={[
+              { value: 'off', label: 'Выкл' },
+              { value: 'subtle', label: 'Лёгкая' },
+              { value: 'strong', label: 'Сильная' },
+            ]}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>

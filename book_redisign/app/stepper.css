@@ -1,0 +1,122 @@
+/* Library Warm — stepper.css */
+
+.stepper {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 20px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-panel);
+}
+.stepper-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; align-items: center; flex: 1;
+}
+.step {
+  position: relative;
+  display: flex; align-items: center;
+  flex: 1; min-width: 0;
+}
+.step-rail {
+  flex: 1; height: 1px;
+  background: var(--color-border-soft);
+  margin: 0 8px;
+}
+.step-inner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px; font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+  transition: background var(--motion-1) var(--ease-hover), color var(--motion-1) var(--ease-hover);
+}
+.step-inner:hover { background: var(--color-surface-2); color: var(--color-text); }
+.step-num {
+  font-size: 10px;
+  color: var(--color-text-faint);
+  letter-spacing: 0.04em;
+}
+.step-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+.step-glyph svg { width: 11px; height: 11px; }
+
+.step-complete .step-glyph    { background: var(--color-ink-green-tint); color: var(--color-ink-green); border-color: var(--color-ink-green); }
+.step-in_progress .step-glyph { background: var(--color-brass-tint); color: var(--color-brass); border-color: var(--color-brass-soft); }
+.step-skipped .step-glyph     { color: var(--color-text-faint); }
+.step-todo .step-glyph        { color: var(--color-text-faint); }
+.step-todo .step-glyph svg    { width: 6px; height: 6px; }
+
+.step-active .step-inner {
+  background: var(--color-brass-tint);
+  color: var(--color-text-strong);
+  box-shadow: var(--shadow-glow);
+}
+.step-active .step-label { font-weight: 600; }
+.step-active .step-glyph { border-color: var(--color-brass); }
+
+.stepper-counter {
+  font-size: 12px;
+  white-space: nowrap;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border-soft);
+  height: 28px;
+  display: inline-flex; align-items: center; gap: 1px;
+}
+.stepper-counter .strong { color: var(--color-brass); font-size: 14px; }
+.stepper-counter .faint { color: var(--color-text-faint); }
+
+/* ─── StageCard ──────────────────────────────────────────── */
+
+.stagecard {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 18px 18px 14px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-card);
+  min-height: 132px;
+  position: relative;
+  cursor: default;
+  transition: background var(--motion-2) var(--ease-hover),
+              border-color var(--motion-2) var(--ease-hover),
+              box-shadow var(--motion-2) var(--ease-hover);
+}
+.stagecard:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+.stagecard-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.stagecard-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+}
+.stagecard:hover .stagecard-icon { color: var(--color-brass); }
+.stagecard-title {
+  font-family: var(--font-display); font-size: 20px; line-height: 1.2;
+  font-weight: 500; color: var(--color-text-strong);
+  margin: 4px 0 0;
+}
+.stagecard-meta {
+  display: flex; gap: 12px; align-items: center; margin-top: auto;
+}
+.stagecard-reco {
+  border-color: var(--color-brass-soft);
+  box-shadow: var(--shadow-glow);
+}
+.stagecard-reco .stagecard-icon { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
+.stagecard-reco-flag { color: var(--color-brass); }
+
+.stagecard-complete .stagecard-icon { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }

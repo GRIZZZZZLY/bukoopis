@@ -1,0 +1,27 @@
+/* Library Warm — extras for tweaks variant buttons */
+
+.twk-variants {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 2px 0;
+}
+.twk-variant {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit; font-size: 11px;
+  color: rgba(41,38,27,.85);
+  cursor: default; text-align: left;
+}
+.twk-variant:hover { background: rgba(0,0,0,0.08); }
+.twk-variant-on {
+  background: rgba(212,154,78,0.12);
+  border-color: rgba(212,154,78,0.35);
+  color: #29261b;
+}
+.twk-variant-swatch {
+  width: 14px; height: 14px; border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.18);
+}
+.twk-variant-label { flex: 1; font-weight: 500; }

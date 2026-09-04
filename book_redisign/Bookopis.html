@@ -1,0 +1,3470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bookopis · Library Warm — Redesign Canvas</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap&subset=cyrillic,cyrillic-ext,latin,latin-ext" rel="stylesheet">
+
+<style>
+/* Library Warm — design tokens, base typography, paper grain.
+   Dark-only. Source of truth for both this prototype and the
+   real apps/web/src/styles/library-warm.css handoff. */
+
+:root {
+  /* surfaces */
+  --bg:           #1A1410;
+  --surface-1:    #221A14;
+  --surface-2:    #2B2118;
+  --surface-3:    #342719;
+  --overlay:      rgba(10,7,5,0.72);
+
+  /* borders */
+  --border:       #3A2D22;
+  --border-soft:  #2E241B;
+  --border-strong:#54402F;
+
+  /* text */
+  --text:         #EDE4D3;
+  --text-strong:  #FBF5E6;
+  --text-muted:   #9C8B73;
+  --text-faint:   #6E5F4D;
+
+  /* accents */
+  --brass:        #D49A4E;
+  --brass-soft:   #B07F33;
+  --brass-glow:   rgba(212,154,78,0.18);
+
+  --ink-red:      #C44536;
+  --ink-green:   #6A8E4E;
+  --ink-blue:     #5B7A99;
+  --ink-amber:    #C9A24A;
+
+  /* manuscript */
+  --paper:        #2B2118;
+  --paper-grain:  url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0.92  0 0 0 0 0.86  0 0 0 0 0.74  0 0 0 0.025 0"/></filter><rect width="100%25" height="100%25" filter="url(%23n)"/></svg>');
+  --margin-rule:  #3A2D22;
+  --grain-opacity: 0.5;
+
+  /* shadows */
+  --shadow-sm:    0 1px 2px rgba(0,0,0,0.35);
+  --shadow-md:    0 6px 16px rgba(0,0,0,0.45), 0 0 0 1px var(--border-soft);
+  --shadow-lg:    0 24px 48px rgba(0,0,0,0.55), 0 0 0 1px var(--border-soft);
+  --shadow-glow:  0 0 0 3px var(--brass-glow);
+
+  /* motion */
+  --motion-1: 80ms cubic-bezier(0.4, 0, 0.6, 1);
+  --motion-2: 160ms cubic-bezier(0.22, 0.9, 0.32, 1);
+  --motion-3: 200ms cubic-bezier(0.22, 0.9, 0.32, 1);
+  --motion-4: 320ms cubic-bezier(0.22, 0.9, 0.32, 1);
+
+  /* type stacks */
+  --font-prose: 'Lora', 'Source Serif 4', Georgia, serif;
+  --font-display: 'Fraunces', 'Lora', Georgia, serif;
+  --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01","cv05";
+}
+
+/* ---------- focus ---------- */
+.lw :focus-visible,
+.lw button:focus-visible,
+.lw [role="button"]:focus-visible,
+.lw a:focus-visible,
+.lw input:focus-visible,
+.lw textarea:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+  box-shadow: var(--shadow-glow);
+  border-radius: 6px;
+}
+
+/* ---------- buttons ---------- */
+.lw-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 14px;
+  border-radius: 6px;
+  font: 500 13px/1 var(--font-ui);
+  border: 1px solid transparent;
+  cursor: pointer; user-select: none;
+  transition: background var(--motion-1), border-color var(--motion-1), color var(--motion-1), transform var(--motion-1);
+}
+.lw-btn:active { transform: translateY(0.5px); }
+.lw-btn[data-size="sm"] { height: 28px; padding: 0 10px; font-size: 12px; }
+.lw-btn[data-size="lg"] { height: 40px; padding: 0 18px; font-size: 14px; }
+.lw-btn[data-variant="primary"] { background: var(--brass); color: #1A1410; }
+.lw-btn[data-variant="primary"]:hover { background: #E1A858; }
+.lw-btn[data-variant="primary"]:active { background: var(--brass-soft); }
+.lw-btn[data-variant="secondary"] { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.lw-btn[data-variant="secondary"]:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.lw-btn[data-variant="ghost"] { background: transparent; color: var(--text); }
+.lw-btn[data-variant="ghost"]:hover { background: var(--surface-2); }
+.lw-btn[data-variant="ink-red"] { background: transparent; border-color: var(--ink-red); color: var(--ink-red); }
+.lw-btn[data-variant="ink-red"]:hover { background: rgba(196,69,54,0.08); }
+.lw-btn[data-variant="link"] { background: transparent; padding: 0; height: auto; color: var(--brass); }
+.lw-btn[data-variant="link"]:hover { text-decoration: underline; }
+.lw-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- pills / kbd ---------- */
+.lw-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 10px;
+  border-radius: 999px;
+  font: 500 11px/1 var(--font-ui); letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: transparent;
+}
+.lw-pill[data-tone="brass"] { color: var(--brass); border-color: var(--brass-soft); }
+.lw-pill[data-tone="amber"] { color: var(--ink-amber); border-color: rgba(201,162,74,0.45); }
+.lw-pill[data-tone="green"] { color: var(--ink-green); border-color: rgba(106,142,78,0.45); }
+.lw-pill[data-tone="red"]   { color: var(--ink-red);   border-color: rgba(196,69,54,0.45); }
+.lw-pill[data-tone="blue"]  { color: var(--ink-blue);  border-color: rgba(91,122,153,0.45); }
+
+.lw-kbd {
+  display: inline-flex; align-items: center;
+  height: 20px; padding: 0 6px;
+  border-radius: 4px;
+  font: 500 11px/1 var(--font-mono); letter-spacing: 0.02em;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ---------- card ---------- */
+.lw-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 16px;
+  transition: background var(--motion-2), border-color var(--motion-2), box-shadow var(--motion-2), transform var(--motion-2);
+}
+.lw-card:hover { background: var(--surface-2); box-shadow: var(--shadow-md); }
+
+/* ---------- inputs ---------- */
+.lw-input, .lw-textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: 400 13px/1.4 var(--font-ui);
+}
+.lw-input:focus, .lw-textarea:focus { border-color: var(--brass-soft); outline: none; box-shadow: var(--shadow-glow); }
+.lw-input::placeholder, .lw-textarea::placeholder { color: var(--text-faint); }
+
+/* ---------- paper / manuscript ---------- */
+.lw-paper {
+  background-color: var(--paper);
+  position: relative;
+}
+.lw-paper::before {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: var(--paper-grain);
+  background-size: 160px 160px;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.lw-prose {
+  font-family: var(--font-prose);
+  font-size: 18px;
+  line-height: 1.75;
+  color: var(--text);
+  text-wrap: pretty;
+}
+.lw-prose p { margin: 0 0 16px; }
+.lw-prose p:first-of-type::first-letter {
+  font-family: var(--font-display);
+  font-size: 56px;
+  line-height: 0.9;
+  float: left;
+  color: var(--brass);
+  margin: 6px 8px 0 0;
+  font-weight: 500;
+}
+
+.lw-margin-rule {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  width: 1px; background: var(--margin-rule);
+}
+
+/* ---------- skeletons ---------- */
+.lw-skel {
+  background: var(--surface-2);
+  border-radius: 6px;
+  position: relative; overflow: hidden;
+}
+.lw-skel::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(212,154,78,0.06), transparent);
+  animation: lwShimmer 1.6s ease-in-out infinite;
+}
+@keyframes lwShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes lwPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+/* ---------- diff / ink ---------- */
+.lw-add { color: var(--ink-green); background: rgba(106,142,78,0.08); border-bottom: 1px solid rgba(106,142,78,0.5); padding: 0 1px; }
+.lw-del { color: var(--ink-red); background: rgba(196,69,54,0.06); text-decoration: line-through; text-decoration-color: rgba(196,69,54,0.7); padding: 0 1px; }
+
+/* caret */
+.lw-caret { display: inline-block; width: 1ch; border-bottom: 2px solid var(--brass); animation: lwBlink 1s steps(1) infinite; vertical-align: -2px; }
+@keyframes lwBlink { 50% { opacity: 0; } }
+
+/* ---------- shell ---------- */
+.lw-topbar {
+  height: 56px;
+  display: flex; align-items: center;
+  padding: 0 20px; gap: 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+}
+.lw-leftrail {
+  width: 60px;
+  background: var(--bg);
+  border-right: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 0; gap: 6px;
+}
+.lw-statusbar {
+  height: 24px;
+  background: var(--bg);
+  border-top: 1px solid var(--border-soft);
+  display: flex; align-items: center;
+  padding: 0 16px; gap: 16px;
+  font: 400 11px/1 var(--font-mono);
+  color: var(--text-faint);
+}
+
+/* rail nav button */
+.lw-railbtn {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0; cursor: pointer;
+  position: relative;
+  transition: background var(--motion-1), color var(--motion-1);
+}
+.lw-railbtn:hover { background: var(--surface-2); color: var(--text); }
+.lw-railbtn[data-active="true"] { color: var(--text-strong); background: var(--surface-2); }
+.lw-railbtn[data-active="true"]::before {
+  content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--brass);
+}
+
+/* breadcrumb */
+.lw-crumb { color: var(--text-muted); font: 500 13px/1 var(--font-ui); display: inline-flex; align-items: center; gap: 8px; }
+.lw-crumb .sep { color: var(--text-faint); }
+.lw-crumb b { color: var(--text); font-weight: 500; }
+
+/* tabs */
+.lw-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-soft); position: relative; }
+.lw-tab {
+  background: transparent; border: 0; cursor: pointer;
+  padding: 10px 14px;
+  font: 500 13px/1 var(--font-ui);
+  color: var(--text-muted);
+  position: relative;
+  transition: color var(--motion-1);
+}
+.lw-tab:hover { color: var(--text); }
+.lw-tab[data-active="true"] { color: var(--text-strong); }
+.lw-tab[data-active="true"]::after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px;
+  height: 2px; background: var(--brass); border-radius: 2px;
+}
+
+/* dot */
+.lw-dot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--text-faint); }
+.lw-dot[data-tone="green"] { background: var(--ink-green); }
+.lw-dot[data-tone="amber"] { background: var(--ink-amber); }
+.lw-dot[data-tone="red"]   { background: var(--ink-red); }
+.lw-dot[data-tone="blue"]  { background: var(--ink-blue); }
+.lw-dot[data-tone="brass"] { background: var(--brass); }
+
+/* progress */
+.lw-progress { height: 2px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
+.lw-progress > i { display: block; height: 100%; background: var(--brass); transition: width var(--motion-3); }
+
+/* mono */
+.lw-mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+
+/* divider */
+.lw-divider { height: 1px; background: var(--border-soft); border: 0; margin: 0; }
+
+/* selection */
+.lw-prose ::selection { background: rgba(212,154,78,0.18); }
+
+/* link */
+.lw-link { color: var(--brass); text-decoration: none; }
+.lw-link:hover { text-decoration: underline; }
+
+/* spine on book card */
+.lw-spine {
+  height: 12px;
+  background: linear-gradient(180deg, #B07F33, #D49A4E 50%, #8C6325);
+  border-radius: 10px 10px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+.lw-spine::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 12px, rgba(0,0,0,0.12) 12px 13px);
+}
+
+/* trait chart helpers */
+.lw-radar-stroke { stroke: var(--brass); fill: rgba(212,154,78,0.12); stroke-width: 1.5; }
+.lw-radar-grid   { stroke: var(--border); fill: none; stroke-width: 1; }
+.lw-radar-axis   { stroke: var(--border-soft); stroke-width: 1; }
+
+/* diagnostic gutter dot */
+.lw-gutter-dot { position: absolute; left: -16px; top: 12px; width: 6px; height: 6px; border-radius: 999px; }
+
+/* toast */
+.lw-toast {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brass);
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-size: 13px;
+}
+.lw-toast[data-tone="error"] { border-left-color: var(--ink-red); }
+.lw-toast[data-tone="success"] { border-left-color: var(--ink-green); }
+
+/* hairline */
+.lw-hairline { border: 0; border-top: 1px solid var(--border-soft); margin: 0; }
+
+/* misc */
+.lw-italic-muted { color: var(--text-muted); font-style: italic; }
+.lw-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.01em; }
+.lw-meta    { font: 500 11px/1.2 var(--font-ui); letter-spacing: 0.02em; color: var(--text-muted); text-transform: uppercase; }
+
+</style>
+
+<style>
+  body { margin: 0; }
+  /* Canvas-level background: warmer than DC's default cool gray, fits the brand. */
+  body[data-canvas] { background: #2a221c; }
+  /* DC cards stretch comfortably; we don't want their inside scrollbars to look like text columns. */
+  .lw-artboard {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    border-radius: 6px;
+  }
+  /* In-artboard root for grain control */
+  .lw-artboard[data-grain="off"]    { --grain-opacity: 0; }
+  .lw-artboard[data-grain="subtle"] { --grain-opacity: 0.5; }
+  .lw-artboard[data-grain="strong"] { --grain-opacity: 1; }
+
+  /* override DC chrome styles for warm background */
+  body { font-family: 'Inter', system-ui, sans-serif; }
+</style>
+</head>
+<body data-canvas>
+
+<div id="root"></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Starter components -->
+<script type="text/babel" data-presets="react">
+;(function(){
+
+
+// DesignCanvas.jsx — Figma-ish design canvas wrapper
+// Warm gray grid bg + Sections + Artboards + PostIt notes.
+// Artboards are reorderable (grip-drag), deletable, labels/titles are
+// inline-editable, and any artboard can be opened in a fullscreen focus
+// overlay (←/→/Esc). State persists to a .design-canvas.state.json sidecar
+// via the host bridge. No assets, no deps.
+//
+// Usage:
+//   <DesignCanvas>
+//     <DCSection id="onboarding" title="Onboarding" subtitle="First-run variants">
+//       <DCArtboard id="a" label="A · Dusk" width={260} height={480}>…</DCArtboard>
+//       <DCArtboard id="b" label="B · Minimal" width={260} height={480}>…</DCArtboard>
+//     </DCSection>
+//   </DesignCanvas>
+
+const DC = {
+  bg: '#f0eee9',
+  grid: 'rgba(0,0,0,0.06)',
+  label: 'rgba(60,50,40,0.7)',
+  title: 'rgba(40,30,20,0.85)',
+  subtitle: 'rgba(60,50,40,0.6)',
+  postitBg: '#fef4a8',
+  postitText: '#5a4a2a',
+  font: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+};
+
+// One-time CSS injection (classes are dc-prefixed so they don't collide with
+// the hosted design's own styles).
+if (typeof document !== 'undefined' && !document.getElementById('dc-styles')) {
+  const s = document.createElement('style');
+  s.id = 'dc-styles';
+  s.textContent = [
+    '.dc-editable{cursor:text;outline:none;white-space:nowrap;border-radius:3px;padding:0 2px;margin:0 -2px}',
+    '.dc-editable:focus{background:#fff;box-shadow:0 0 0 1.5px #c96442}',
+    '[data-dc-slot]{transition:transform .18s cubic-bezier(.2,.7,.3,1)}',
+    '[data-dc-slot].dc-dragging{transition:none;z-index:10;pointer-events:none}',
+    '[data-dc-slot].dc-dragging .dc-card{box-shadow:0 12px 40px rgba(0,0,0,.25),0 0 0 2px #c96442;transform:scale(1.02)}',
+    // isolation:isolate contains artboard content's z-indexes so a
+    // z-indexed child (sticky navbar etc.) can't paint over .dc-header or
+    // the .dc-menu popover that drops into the top of the card.
+    '.dc-card{isolation:isolate;transition:box-shadow .15s,transform .15s}',
+    '.dc-card *{scrollbar-width:none}',
+    '.dc-card *::-webkit-scrollbar{display:none}',
+    // Per-artboard header: grip + label on the left, delete/expand on the
+    // right. Single flex row; when the artboard's on-screen width is too
+    // narrow for both the label yields (ellipsis, then hidden entirely below
+    // ~4ch via the container query) and the buttons stay on the row.
+    '.dc-header{position:absolute;bottom:100%;left:-4px;margin-bottom:calc(4px * var(--dc-inv-zoom,1));z-index:2;',
+    '  display:flex;align-items:center;container-type:inline-size}',
+    '.dc-labelrow{display:flex;align-items:center;gap:4px;height:24px;flex:1 1 auto;min-width:0}',
+    '.dc-grip{flex:0 0 auto;cursor:grab;display:flex;align-items:center;padding:5px 4px;border-radius:4px;transition:background .12s,opacity .12s}',
+    '.dc-grip:hover{background:rgba(0,0,0,.08)}',
+    '.dc-grip:active{cursor:grabbing}',
+    '.dc-labeltext{flex:1 1 auto;min-width:0;cursor:pointer;border-radius:4px;padding:3px 6px;',
+    '  display:flex;align-items:center;transition:background .12s;overflow:hidden}',
+    // Below ~4ch of label room: hide the label entirely, and drop the grip to
+    // hover-only (same reveal rule as .dc-btns) so a narrow header is clean
+    // until the card is moused.
+    '@container (max-width: 110px){',
+    '  .dc-labeltext{display:none}',
+    '  .dc-grip{opacity:0}',
+    '  [data-dc-slot]:hover .dc-grip{opacity:1}',
+    '}',
+    '.dc-labeltext:hover{background:rgba(0,0,0,.05)}',
+    '.dc-labeltext .dc-editable{overflow:hidden;text-overflow:ellipsis;max-width:100%}',
+    '.dc-labeltext .dc-editable:focus{overflow:visible;text-overflow:clip}',
+    '.dc-btns{flex:0 0 auto;margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .12s}',
+    '[data-dc-slot]:hover .dc-btns,.dc-btns:has(.dc-menu){opacity:1}',
+    '.dc-expand,.dc-kebab{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;padding:0;',
+    '  background:transparent;color:rgba(60,50,40,.7);display:flex;align-items:center;justify-content:center;',
+    '  font:inherit;transition:background .12s,color .12s}',
+    '.dc-expand:hover,.dc-kebab:hover{background:rgba(0,0,0,.06);color:#2a251f}',
+    // Slot hosting an open menu floats above later siblings (which otherwise
+    // paint on top — same z-index:auto, later DOM order) so the popup isn't
+    // clipped by the next card.
+    '[data-dc-slot]:has(.dc-menu){z-index:10}',
+    '.dc-menu{position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border-radius:8px;',
+    '  box-shadow:0 8px 28px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.05);padding:4px;min-width:160px;z-index:10}',
+    '.dc-menu button{display:block;width:100%;padding:7px 10px;border:0;background:transparent;',
+    '  border-radius:5px;font-family:inherit;font-size:13px;font-weight:500;line-height:1.2;',
+    '  color:#29261b;cursor:pointer;text-align:left;transition:background .12s;white-space:nowrap}',
+    '.dc-menu button:hover{background:rgba(0,0,0,.05)}',
+    '.dc-menu hr{border:0;border-top:1px solid rgba(0,0,0,.08);margin:4px 2px}',
+    '.dc-menu .dc-danger{color:#c96442}',
+    '.dc-menu .dc-danger:hover{background:rgba(201,100,66,.1)}',
+    // Chrome (titles / labels / buttons) counter-scales against the viewport
+    // zoom so it stays a constant on-screen size. --dc-inv-zoom is set by
+    // DCViewport on every transform update and inherits to all descendants —
+    // any overlay inside the world (e.g. a TweaksPanel on an artboard) can use
+    // it the same way.
+    //
+    // The header uses transform:scale (out-of-flow, so layout impact doesn't
+    // matter) with its world-space width set to card-width / inv-zoom so that
+    // after counter-scaling its on-screen width exactly matches the card's —
+    // that's what lets the container query + text-overflow behave against the
+    // card's visible edge at every zoom level.
+    //
+    // The section head uses CSS zoom instead of transform so its layout box
+    // grows with the counter-scale, pushing the card row down — otherwise the
+    // constant-screen-size title would overflow into the (shrinking) world-
+    // space gap and overlap the artboard headers at low zoom.
+    '.dc-header{width:calc((100% + 4px) / var(--dc-inv-zoom,1));',
+    '  transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom left}',
+    '.dc-sectionhead{zoom:var(--dc-inv-zoom,1)}',
+  ].join('\n');
+  document.head.appendChild(s);
+}
+
+const DCCtx = React.createContext(null);
+
+// ─────────────────────────────────────────────────────────────
+// DesignCanvas — stateful wrapper around the pan/zoom viewport.
+// Owns runtime state (per-section order, renamed titles/labels, hidden
+// artboards, focused artboard). Order/titles/labels/hidden persist to a
+// .design-canvas.state.json
+// sidecar next to the HTML. Reads go via plain fetch() so the saved
+// arrangement is visible anywhere the HTML + sidecar are served together
+// (omelette preview, direct link, downloaded zip). Writes go through the
+// host's window.omelette bridge — editing requires the omelette runtime.
+// Focus is ephemeral.
+// ─────────────────────────────────────────────────────────────
+const DC_STATE_FILE = '.design-canvas.state.json';
+
+function DesignCanvas({ children, minScale, maxScale, style }) {
+  const [state, setState] = React.useState({ sections: {}, focus: null });
+  // Hold rendering until the sidecar read settles so the saved order/titles
+  // appear on first paint (no source-order flash). didRead gates writes until
+  // the read settles so the empty initial state can't clobber a slow read;
+  // skipNextWrite suppresses the one echo-write that would otherwise follow
+  // hydration.
+  const [ready, setReady] = React.useState(false);
+  const didRead = React.useRef(false);
+  const skipNextWrite = React.useRef(false);
+
+  React.useEffect(() => {
+    let off = false;
+    fetch('./' + DC_STATE_FILE)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((saved) => {
+        if (off || !saved || !saved.sections) return;
+        skipNextWrite.current = true;
+        setState((s) => ({ ...s, sections: saved.sections }));
+      })
+      .catch(() => {})
+      .finally(() => { didRead.current = true; if (!off) setReady(true); });
+    const t = setTimeout(() => { if (!off) setReady(true); }, 150);
+    return () => { off = true; clearTimeout(t); };
+  }, []);
+
+  React.useEffect(() => {
+    if (!didRead.current) return;
+    if (skipNextWrite.current) { skipNextWrite.current = false; return; }
+    const t = setTimeout(() => {
+      window.omelette?.writeFile(DC_STATE_FILE, JSON.stringify({ sections: state.sections })).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [state.sections]);
+
+  // Build registries synchronously from children so FocusOverlay can read
+  // them in the same render. Only direct DCSection > DCArtboard children are
+  // walked — wrapping them in other elements opts out of focus/reorder.
+  const registry = {};     // slotId -> { sectionId, artboard }
+  const sectionMeta = {};  // sectionId -> { title, subtitle, slotIds[] }
+  const sectionOrder = [];
+  React.Children.forEach(children, (sec) => {
+    if (!sec || sec.type !== DCSection) return;
+    const sid = sec.props.id ?? sec.props.title;
+    if (!sid) return;
+    sectionOrder.push(sid);
+    const persisted = state.sections[sid] || {};
+    const abs = [];
+    React.Children.forEach(sec.props.children, (ab) => {
+      if (!ab || ab.type !== DCArtboard) return;
+      const aid = ab.props.id ?? ab.props.label;
+      if (aid) abs.push([aid, ab]);
+    });
+    // hidden is scoped to one source revision — when the agent regenerates
+    // (artboard-ID set changes), prior deletes don't apply to new content.
+    const srcKey = abs.map(([k]) => k).join('\x1f');
+    const hidden = persisted.srcKey === srcKey ? (persisted.hidden || []) : [];
+    const srcIds = [];
+    abs.forEach(([aid, ab]) => {
+      if (hidden.includes(aid)) return;
+      registry[`${sid}/${aid}`] = { sectionId: sid, artboard: ab };
+      srcIds.push(aid);
+    });
+    const kept = (persisted.order || []).filter((k) => srcIds.includes(k));
+    sectionMeta[sid] = {
+      title: persisted.title ?? sec.props.title,
+      subtitle: sec.props.subtitle,
+      slotIds: [...kept, ...srcIds.filter((k) => !kept.includes(k))],
+    };
+  });
+
+  const api = React.useMemo(() => ({
+    state,
+    section: (id) => state.sections[id] || {},
+    patchSection: (id, p) => setState((s) => ({
+      ...s,
+      sections: { ...s.sections, [id]: { ...s.sections[id], ...(typeof p === 'function' ? p(s.sections[id] || {}) : p) } },
+    })),
+    setFocus: (slotId) => setState((s) => ({ ...s, focus: slotId })),
+  }), [state]);
+
+  // Esc exits focus; any outside pointerdown commits an in-progress rename.
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') api.setFocus(null); };
+    const onPd = (e) => {
+      const ae = document.activeElement;
+      if (ae && ae.isContentEditable && !ae.contains(e.target)) ae.blur();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPd, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPd, true);
+    };
+  }, [api]);
+
+  return (
+    <DCCtx.Provider value={api}>
+      <DCViewport minScale={minScale} maxScale={maxScale} style={style}>{ready && children}</DCViewport>
+      {state.focus && registry[state.focus] && (
+        <DCFocusOverlay entry={registry[state.focus]} sectionMeta={sectionMeta} sectionOrder={sectionOrder} />
+      )}
+    </DCCtx.Provider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DCViewport — transform-based pan/zoom (internal)
+//
+// Input mapping (Figma-style):
+//   • trackpad pinch  → zoom   (ctrlKey wheel; Safari gesture* events)
+//   • trackpad scroll → pan    (two-finger)
+//   • mouse wheel     → zoom   (notched; distinguished from trackpad scroll)
+//   • middle-drag / primary-drag-on-bg → pan
+//
+// Transform state lives in a ref and is written straight to the DOM
+// (translate3d + will-change) so wheel ticks don't go through React —
+// keeps pans at 60fps on dense canvases.
+// ─────────────────────────────────────────────────────────────
+function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
+  const vpRef = React.useRef(null);
+  const worldRef = React.useRef(null);
+  const tf = React.useRef({ x: 0, y: 0, scale: 1 });
+  // Persist viewport across reloads so the user lands back where they were
+  // after an agent edit or browser refresh. The sandbox origin is already
+  // per-project; pathname keeps multiple canvas files in one project apart.
+  const tfKey = 'dc-viewport:' + location.pathname;
+  const saveT = React.useRef(0);
+
+  const lastPostedScale = React.useRef();
+  const apply = React.useCallback(() => {
+    const { x, y, scale } = tf.current;
+    const el = worldRef.current;
+    if (!el) return;
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+    // Exposed for zoom-invariant chrome (labels, buttons, TweaksPanel).
+    el.style.setProperty('--dc-inv-zoom', String(1 / scale));
+    // Keep the host toolbar's % readout in sync with the canvas scale. Pan
+    // ticks leave scale unchanged — skip the cross-frame post for those.
+    if (lastPostedScale.current !== scale) {
+      lastPostedScale.current = scale;
+      window.parent.postMessage({ type: '__dc_zoom', scale }, '*');
+    }
+    clearTimeout(saveT.current);
+    saveT.current = setTimeout(() => {
+      try { localStorage.setItem(tfKey, JSON.stringify(tf.current)); } catch {}
+    }, 200);
+  }, [tfKey]);
+
+  React.useLayoutEffect(() => {
+    const flush = () => {
+      clearTimeout(saveT.current);
+      try { localStorage.setItem(tfKey, JSON.stringify(tf.current)); } catch {}
+    };
+    try {
+      const s = JSON.parse(localStorage.getItem(tfKey) || 'null');
+      if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.scale)) {
+        tf.current = { x: s.x, y: s.y, scale: Math.min(maxScale, Math.max(minScale, s.scale)) };
+        apply();
+      }
+    } catch {}
+    // Flush on pagehide and unmount so a reload within the 200ms debounce
+    // window doesn't drop the last pan/zoom.
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('pagehide', flush); flush(); };
+  }, []);
+
+  React.useEffect(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+
+    const zoomAt = (cx, cy, factor) => {
+      const r = vp.getBoundingClientRect();
+      const px = cx - r.left, py = cy - r.top;
+      const t = tf.current;
+      const next = Math.min(maxScale, Math.max(minScale, t.scale * factor));
+      const k = next / t.scale;
+      // keep the world point under the cursor fixed
+      t.x = px - (px - t.x) * k;
+      t.y = py - (py - t.y) * k;
+      t.scale = next;
+      apply();
+    };
+
+    // Mouse-wheel vs trackpad-scroll heuristic. A physical wheel sends
+    // line-mode deltas (Firefox) or large integer pixel deltas with no X
+    // component (Chrome/Safari, typically multiples of 100/120). Trackpad
+    // two-finger scroll sends small/fractional pixel deltas, often with
+    // non-zero deltaX. ctrlKey is set by the browser for trackpad pinch.
+    const isMouseWheel = (e) =>
+      e.deltaMode !== 0 ||
+      (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40);
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      if (isGesturing) return; // Safari: gesture* owns the pinch — discard concurrent wheels
+      if ((e.ctrlKey || e.metaKey) && !isMouseWheel(e)) {
+        // trackpad pinch, or ctrl/cmd + smooth-scroll mouse. Notched
+        // wheels fall through to the fixed-step branch below.
+        zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+      } else if (isMouseWheel(e)) {
+        // notched mouse wheel — fixed-ratio step per click
+        zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+      } else {
+        // trackpad two-finger scroll — pan
+        tf.current.x -= e.deltaX;
+        tf.current.y -= e.deltaY;
+        apply();
+      }
+    };
+
+    // Safari sends native gesture* events for trackpad pinch with a smooth
+    // e.scale; preferring these over the ctrl+wheel fallback gives a much
+    // better feel there. No-ops on other browsers. Safari also fires
+    // ctrlKey wheel events during the same pinch — isGesturing makes
+    // onWheel drop those entirely so they neither zoom nor pan.
+    let gsBase = 1;
+    let isGesturing = false;
+    const onGestureStart = (e) => { e.preventDefault(); isGesturing = true; gsBase = tf.current.scale; };
+    const onGestureChange = (e) => {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
+    };
+    const onGestureEnd = (e) => { e.preventDefault(); isGesturing = false; };
+
+    // Drag-pan: middle button anywhere, or primary button on canvas
+    // background (anything that isn't an artboard or an inline editor).
+    let drag = null;
+    const onPointerDown = (e) => {
+      const onBg = !e.target.closest('[data-dc-slot], .dc-editable');
+      if (!(e.button === 1 || (e.button === 0 && onBg))) return;
+      e.preventDefault();
+      vp.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
+      vp.style.cursor = 'grabbing';
+    };
+    const onPointerMove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      tf.current.x += e.clientX - drag.lx;
+      tf.current.y += e.clientY - drag.ly;
+      drag.lx = e.clientX; drag.ly = e.clientY;
+      apply();
+    };
+    const onPointerUp = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      vp.releasePointerCapture(e.pointerId);
+      drag = null;
+      vp.style.cursor = '';
+    };
+
+    // Host-driven zoom (toolbar % menu). Zooms around viewport centre so the
+    // visible midpoint stays fixed — matching the host's iframe-zoom feel.
+    const onHostMsg = (e) => {
+      const d = e.data;
+      if (d && d.type === '__dc_set_zoom' && typeof d.scale === 'number') {
+        const r = vp.getBoundingClientRect();
+        zoomAt(r.left + r.width / 2, r.top + r.height / 2, d.scale / tf.current.scale);
+      } else if (d && d.type === '__dc_probe') {
+        // Host's [readyGen] reset asks whether a canvas is present; it
+        // fires on the iframe's native 'load', which for canvases with
+        // images/fonts is after our mount-time announce, so re-announce.
+        // Clear the pan-tick guard so apply() re-posts the current scale
+        // even if it's unchanged — the host just reset dcScale to 1.
+        window.parent.postMessage({ type: '__dc_present' }, '*');
+        lastPostedScale.current = undefined;
+        apply();
+      }
+    };
+    window.addEventListener('message', onHostMsg);
+    // Announce canvas mode so the host toolbar proxies its % control here
+    // instead of scaling the iframe element (which would just shrink the
+    // viewport window of an infinite canvas). The apply() that follows emits
+    // the initial __dc_zoom so the toolbar % is correct before first pinch.
+    // lastPostedScale reset mirrors the __dc_probe handler: the layout
+    // effect's restore-path apply() may already have posted the restored
+    // scale (before __dc_present), so clear the guard to re-post it in order.
+    window.parent.postMessage({ type: '__dc_present' }, '*');
+    lastPostedScale.current = undefined;
+    apply();
+
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    vp.addEventListener('gesturestart', onGestureStart, { passive: false });
+    vp.addEventListener('gesturechange', onGestureChange, { passive: false });
+    vp.addEventListener('gestureend', onGestureEnd, { passive: false });
+    vp.addEventListener('pointerdown', onPointerDown);
+    vp.addEventListener('pointermove', onPointerMove);
+    vp.addEventListener('pointerup', onPointerUp);
+    vp.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('message', onHostMsg);
+      vp.removeEventListener('wheel', onWheel);
+      vp.removeEventListener('gesturestart', onGestureStart);
+      vp.removeEventListener('gesturechange', onGestureChange);
+      vp.removeEventListener('gestureend', onGestureEnd);
+      vp.removeEventListener('pointerdown', onPointerDown);
+      vp.removeEventListener('pointermove', onPointerMove);
+      vp.removeEventListener('pointerup', onPointerUp);
+      vp.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [apply, minScale, maxScale]);
+
+  const gridSvg = `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M120 0H0v120' fill='none' stroke='${encodeURIComponent(DC.grid)}' stroke-width='1'/%3E%3C/svg%3E")`;
+  return (
+    <div
+      ref={vpRef}
+      className="design-canvas"
+      style={{
+        height: '100vh', width: '100vw',
+        background: DC.bg,
+        overflow: 'hidden',
+        overscrollBehavior: 'none',
+        touchAction: 'none',
+        position: 'relative',
+        fontFamily: DC.font,
+        boxSizing: 'border-box',
+        ...style,
+      }}
+    >
+      <div
+        ref={worldRef}
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          transformOrigin: '0 0',
+          willChange: 'transform',
+          width: 'max-content', minWidth: '100%',
+          minHeight: '100%',
+          padding: '60px 0 80px',
+        }}
+      >
+        <div style={{ position: 'absolute', inset: -6000, backgroundImage: gridSvg, backgroundSize: '120px 120px', pointerEvents: 'none', zIndex: -1 }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DCSection — editable title + h-row of artboards in persisted order
+// ─────────────────────────────────────────────────────────────
+function DCSection({ id, title, subtitle, children, gap = 48 }) {
+  const ctx = React.useContext(DCCtx);
+  const sid = id ?? title;
+  const all = React.Children.toArray(children);
+  const artboards = all.filter((c) => c && c.type === DCArtboard);
+  const rest = all.filter((c) => !(c && c.type === DCArtboard));
+  const sec = (ctx && sid && ctx.section(sid)) || {};
+  // Must match DesignCanvas's srcKey computation exactly (it filters falsy
+  // IDs), or onDelete persists a srcKey that DesignCanvas never recognizes.
+  const allIds = artboards.map((a) => a.props.id ?? a.props.label).filter(Boolean);
+  const srcKey = allIds.join('\x1f');
+  const hidden = sec.srcKey === srcKey ? (sec.hidden || []) : [];
+  const srcOrder = allIds.filter((k) => !hidden.includes(k));
+
+  const order = React.useMemo(() => {
+    const kept = (sec.order || []).filter((k) => srcOrder.includes(k));
+    return [...kept, ...srcOrder.filter((k) => !kept.includes(k))];
+  }, [sec.order, srcOrder.join('|')]);
+
+  const byId = Object.fromEntries(artboards.map((a) => [a.props.id ?? a.props.label, a]));
+
+  // marginBottom counter-scales so the on-screen gap between sections stays
+  // constant — otherwise at low zoom the (world-space) gap collapses while
+  // the screen-constant sectionhead below it doesn't, and the title reads as
+  // belonging to the section above. paddingBottom below is just enough for
+  // the 24px artboard-header (abs-positioned above each card) plus ~8px, so
+  // the title sits tight against its own row at every zoom.
+  return (
+    <div data-dc-section={sid}
+      style={{ marginBottom: 'calc(80px * var(--dc-inv-zoom, 1))', position: 'relative' }}>
+      <div style={{ padding: '0 60px' }}>
+        <div className="dc-sectionhead" style={{ paddingBottom: 36 }}>
+          <DCEditable tag="div" value={sec.title ?? title}
+            onChange={(v) => ctx && sid && ctx.patchSection(sid, { title: v })}
+            style={{ fontSize: 28, fontWeight: 600, color: DC.title, letterSpacing: -0.4, marginBottom: 6, display: 'inline-block' }} />
+          {subtitle && <div style={{ fontSize: 16, color: DC.subtitle }}>{subtitle}</div>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start', width: 'max-content' }}>
+        {order.map((k) => (
+          <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
+            label={(sec.labels || {})[k] ?? byId[k].props.label}
+            onRename={(v) => ctx && ctx.patchSection(sid, (x) => ({ labels: { ...x.labels, [k]: v } }))}
+            onReorder={(next) => ctx && ctx.patchSection(sid, { order: next })}
+            onDelete={() => ctx && ctx.patchSection(sid, (x) => ({
+              hidden: [...(x.srcKey === srcKey ? (x.hidden || []) : []), k],
+              srcKey,
+            }))}
+            onFocus={() => ctx && ctx.setFocus(`${sid}/${k}`)} />
+        ))}
+      </div>
+      {rest}
+    </div>
+  );
+}
+
+// DCArtboard — marker; rendered by DCArtboardFrame via DCSection.
+function DCArtboard() { return null; }
+
+// Per-artboard export (kind: 'png' | 'html'). Both paths share the same
+// self-contained clone: computed styles baked in, @font-face / <img> /
+// inline-style background-image urls inlined as data URIs. PNG wraps the
+// clone in foreignObject→canvas at 3× the artboard's natural width×height
+// (same pipeline the host uses for page captures); HTML wraps it in a
+// minimal standalone document. Both are independent of viewport zoom.
+async function dcExport(node, w, h, name, kind) {
+  try { await document.fonts.ready; } catch {}
+  const toDataURL = (url) => fetch(url).then((r) => r.blob()).then((b) => new Promise((res) => {
+    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(url); fr.readAsDataURL(b);
+  })).catch(() => url);
+
+  // Collect @font-face rules. ss.cssRules throws SecurityError on
+  // cross-origin sheets (e.g. fonts.googleapis.com) — in that case fetch
+  // the CSS text directly (those endpoints send ACAO:*) and regex-extract
+  // the blocks. @import and @media/@supports are walked so nested
+  // @font-face rules aren't missed.
+  const fontRules = [], pending = [], seen = new Set();
+  const scrapeCss = (href) => {
+    if (seen.has(href)) return; seen.add(href);
+    pending.push(fetch(href).then((r) => r.text()).then((css) => {
+      for (const m of css.match(/@font-face\s*{[^}]*}/g) || []) fontRules.push({ css: m, base: href });
+      for (const m of css.matchAll(/@import\s+(?:url\()?['"]?([^'")\s;]+)/g))
+        scrapeCss(new URL(m[1], href).href);
+    }).catch(() => {}));
+  };
+  const walk = (rules, base) => {
+    for (const r of rules) {
+      if (r.type === CSSRule.FONT_FACE_RULE) fontRules.push({ css: r.cssText, base });
+      else if (r.type === CSSRule.IMPORT_RULE && r.styleSheet) {
+        const ibase = r.styleSheet.href || base;
+        try { walk(r.styleSheet.cssRules, ibase); } catch { scrapeCss(ibase); }
+      } else if (r.cssRules) walk(r.cssRules, base);
+    }
+  };
+  for (const ss of document.styleSheets) {
+    const base = ss.href || location.href;
+    try { walk(ss.cssRules, base); } catch { if (ss.href) scrapeCss(ss.href); }
+  }
+  while (pending.length) await pending.shift();
+  const fontCss = (await Promise.all(fontRules.map(async (rule) => {
+    let out = rule.css, m; const re = /url\((['"]?)([^'")]+)\1\)/g;
+    while ((m = re.exec(rule.css))) {
+      if (m[2].indexOf('data:') === 0) continue;
+      let abs; try { abs = new URL(m[2], rule.base).href; } catch { continue; }
+      out = out.split(m[0]).join('url("' + await toDataURL(abs) + '")');
+    }
+    return out;
+  }))).join('\n');
+
+  const cloneStyled = (src) => {
+    if (src.nodeType === 8 || (src.nodeType === 1 && src.tagName === 'SCRIPT')) return document.createTextNode('');
+    const dst = src.cloneNode(false);
+    if (src.nodeType === 1) {
+      const cs = getComputedStyle(src); let txt = '';
+      for (let i = 0; i < cs.length; i++) txt += cs[i] + ':' + cs.getPropertyValue(cs[i]) + ';';
+      dst.setAttribute('style', txt + 'animation:none;transition:none;');
+      if (src.tagName === 'CANVAS') try { const im = document.createElement('img'); im.src = src.toDataURL(); im.setAttribute('style', txt); return im; } catch {}
+    }
+    for (let c = src.firstChild; c; c = c.nextSibling) dst.appendChild(cloneStyled(c));
+    return dst;
+  };
+  const clone = cloneStyled(node);
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  // Drop the card's own shadow/radius so the export is a flush w×h rect;
+  // the artboard's own background (if any) is already in the computed style.
+  clone.style.boxShadow = 'none'; clone.style.borderRadius = '0';
+
+  const jobs = [];
+  clone.querySelectorAll('img').forEach((el) => {
+    const s = el.getAttribute('src');
+    if (s && s.indexOf('data:') !== 0) jobs.push(toDataURL(el.src).then((d) => el.setAttribute('src', d)));
+  });
+  [clone, ...clone.querySelectorAll('*')].forEach((el) => {
+    const bg = el.style.backgroundImage; if (!bg) return;
+    let m; const re = /url\(["']?([^"')]+)["']?\)/g;
+    while ((m = re.exec(bg))) {
+      const tok = m[0], url = m[1];
+      if (url.indexOf('data:') === 0) continue;
+      jobs.push(toDataURL(url).then((d) => { el.style.backgroundImage = el.style.backgroundImage.split(tok).join('url("' + d + '")'); }));
+    }
+  });
+  await Promise.all(jobs);
+
+  const xml = new XMLSerializer().serializeToString(clone);
+  const save = (blob, ext) => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name + '.' + ext; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  if (kind === 'html') {
+    const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + name + '</title>' +
+      (fontCss ? '<style>' + fontCss + '</style>' : '') +
+      '</head><body style="margin:0">' + xml + '</body></html>';
+    return save(new Blob([html], { type: 'text/html' }), 'html');
+  }
+
+  // PNG: the SVG's own width/height must be the output resolution — an
+  // <img>-loaded SVG rasterizes at its intrinsic size, so sizing it at 1×
+  // and ctx.scale()-ing up would just upscale a 1× bitmap. viewBox maps the
+  // w×h foreignObject onto the px·w × px·h SVG canvas so the browser renders
+  // the HTML at full resolution.
+  const px = 3;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w * px + '" height="' + h * px +
+    '" viewBox="0 0 ' + w + ' ' + h + '"><foreignObject width="' + w + '" height="' + h + '">' +
+    (fontCss ? '<style><![CDATA[' + fontCss + ']]></style>' : '') + xml + '</foreignObject></svg>';
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = () => rej(new Error('svg load failed'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  const cv = document.createElement('canvas');
+  cv.width = w * px; cv.height = h * px;
+  cv.getContext('2d').drawImage(img, 0, 0);
+  cv.toBlob((blob) => save(blob, 'png'), 'image/png');
+}
+
+function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorder, onFocus, onDelete }) {
+  const { id: rawId, label: rawLabel, width = 260, height = 480, children, style = {} } = artboard.props;
+  const id = rawId ?? rawLabel;
+  const ref = React.useRef(null);
+  const cardRef = React.useRef(null);
+  const menuRef = React.useRef(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
+
+  // ⋯ menu: close on any outside pointerdown. Two-click delete lives inside
+  // the menu — first click arms the row, second commits; closing disarms.
+  React.useEffect(() => {
+    if (!menuOpen) { setConfirming(false); return; }
+    const off = (e) => { if (!menuRef.current || !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('pointerdown', off, true);
+    return () => document.removeEventListener('pointerdown', off, true);
+  }, [menuOpen]);
+
+  const doExport = (kind) => {
+    setMenuOpen(false);
+    if (!cardRef.current) return;
+    const name = String(label || id || 'artboard').replace(/[^\w\s.-]+/g, '_');
+    dcExport(cardRef.current, width, height, name, kind)
+      .catch((e) => console.error('[design-canvas] export failed:', e));
+  };
+
+  // Live drag-reorder: dragged card sticks to cursor; siblings slide into
+  // their would-be slots in real time via transforms. DOM order only
+  // changes on drop.
+  const onGripDown = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const me = ref.current;
+    // translateX is applied in local (pre-scale) space but pointer deltas and
+    // getBoundingClientRect().left are screen-space — divide by the viewport's
+    // current scale so the dragged card tracks the cursor at any zoom level.
+    const scale = me.getBoundingClientRect().width / me.offsetWidth || 1;
+    const peers = Array.from(document.querySelectorAll(`[data-dc-section="${sectionId}"] [data-dc-slot]`));
+    const homes = peers.map((el) => ({ el, id: el.dataset.dcSlot, x: el.getBoundingClientRect().left }));
+    const slotXs = homes.map((h) => h.x);
+    const startIdx = order.indexOf(id);
+    const startX = e.clientX;
+    let liveOrder = order.slice();
+    me.classList.add('dc-dragging');
+
+    const layout = () => {
+      for (const h of homes) {
+        if (h.id === id) continue;
+        const slot = liveOrder.indexOf(h.id);
+        h.el.style.transform = `translateX(${(slotXs[slot] - h.x) / scale}px)`;
+      }
+    };
+
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      me.style.transform = `translateX(${dx / scale}px)`;
+      const cur = homes[startIdx].x + dx;
+      let nearest = 0, best = Infinity;
+      for (let i = 0; i < slotXs.length; i++) {
+        const d = Math.abs(slotXs[i] - cur);
+        if (d < best) { best = d; nearest = i; }
+      }
+      if (liveOrder.indexOf(id) !== nearest) {
+        liveOrder = order.filter((k) => k !== id);
+        liveOrder.splice(nearest, 0, id);
+        layout();
+      }
+    };
+
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      const finalSlot = liveOrder.indexOf(id);
+      me.classList.remove('dc-dragging');
+      me.style.transform = `translateX(${(slotXs[finalSlot] - homes[startIdx].x) / scale}px)`;
+      // After the settle transition, kill transitions + clear transforms +
+      // commit the reorder in the same frame so there's no visual snap-back.
+      setTimeout(() => {
+        for (const h of homes) { h.el.style.transition = 'none'; h.el.style.transform = ''; }
+        if (liveOrder.join('|') !== order.join('|')) onReorder(liveOrder);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          for (const h of homes) h.el.style.transition = '';
+        }));
+      }, 180);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+
+  return (
+    <div ref={ref} data-dc-slot={id} style={{ position: 'relative', flexShrink: 0 }}>
+      <div className="dc-header" style={{ color: DC.label }} onPointerDown={(e) => e.stopPropagation()}>
+        <div className="dc-labelrow">
+          <div className="dc-grip" onPointerDown={onGripDown} title="Drag to reorder">
+            <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/><circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/><circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>
+          </div>
+          <div className="dc-labeltext" onClick={onFocus} title="Click to focus">
+            <DCEditable value={label} onChange={onRename} onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: 15, fontWeight: 500, color: DC.label, lineHeight: 1 }} />
+          </div>
+        </div>
+        <div className="dc-btns">
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button className="dc-kebab" title="More" onClick={() => setMenuOpen((o) => !o)}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="2.5" cy="6" r="1.1"/><circle cx="6" cy="6" r="1.1"/><circle cx="9.5" cy="6" r="1.1"/></svg>
+            </button>
+            {menuOpen && (
+              <div className="dc-menu" onPointerDown={(e) => e.stopPropagation()}>
+                <button onClick={() => doExport('png')}>Download PNG</button>
+                <button onClick={() => doExport('html')}>Download HTML</button>
+                <hr />
+                <button className="dc-danger"
+                  onClick={() => { if (confirming) { setMenuOpen(false); onDelete(); } else setConfirming(true); }}>
+                  {confirming ? 'Click again to delete' : 'Delete'}
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="dc-expand" onClick={onFocus} title="Focus">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M7 1h4v4M5 11H1V7M11 1L7.5 4.5M1 11l3.5-3.5"/></svg>
+          </button>
+        </div>
+      </div>
+      <div ref={cardRef} className="dc-card"
+        style={{ borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)', overflow: 'hidden', width, height, background: '#fff', ...style }}>
+        {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 13, fontFamily: DC.font }}>{id}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Inline rename — commits on blur or Enter.
+function DCEditable({ value, onChange, style, tag = 'span', onClick }) {
+  const T = tag;
+  return (
+    <T className="dc-editable" contentEditable suppressContentEditableWarning
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={(e) => onChange && onChange(e.currentTarget.textContent)}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      style={style}>{value}</T>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Focus mode — overlay one artboard; ←/→ within section, ↑/↓ across
+// sections, Esc or backdrop click to exit.
+// ─────────────────────────────────────────────────────────────
+function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
+  const ctx = React.useContext(DCCtx);
+  const { sectionId, artboard } = entry;
+  const sec = ctx.section(sectionId);
+  const meta = sectionMeta[sectionId];
+  const peers = meta.slotIds;
+  const aid = artboard.props.id ?? artboard.props.label;
+  const idx = peers.indexOf(aid);
+  const secIdx = sectionOrder.indexOf(sectionId);
+
+  const go = (d) => { const n = peers[(idx + d + peers.length) % peers.length]; if (n) ctx.setFocus(`${sectionId}/${n}`); };
+  const goSection = (d) => {
+    // Sections whose artboards are all deleted have slotIds:[] — step past
+    // them to the next non-empty section so ↑/↓ doesn't dead-end.
+    const n = sectionOrder.length;
+    for (let i = 1; i < n; i++) {
+      const ns = sectionOrder[(((secIdx + d * i) % n) + n) % n];
+      const first = sectionMeta[ns] && sectionMeta[ns].slotIds[0];
+      if (first) { ctx.setFocus(`${ns}/${first}`); return; }
+    }
+  };
+
+  React.useEffect(() => {
+    const k = (e) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); goSection(-1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); goSection(1); }
+    };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  });
+
+  const { width = 260, height = 480, children } = artboard.props;
+  const [vp, setVp] = React.useState({ w: window.innerWidth, h: window.innerHeight });
+  React.useEffect(() => { const r = () => setVp({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const scale = Math.max(0.1, Math.min((vp.w - 200) / width, (vp.h - 260) / height, 2));
+
+  const [ddOpen, setDd] = React.useState(false);
+  const Arrow = ({ dir, onClick }) => (
+    <button onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{ position: 'absolute', top: '50%', [dir]: 28, transform: 'translateY(-50%)',
+        border: 'none', background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.9)',
+        width: 44, height: 44, borderRadius: 22, fontSize: 18, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.08)')}>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d={dir === 'left' ? 'M11 3L5 9l6 6' : 'M7 3l6 6-6 6'} /></svg>
+    </button>
+  );
+
+  // Portal to body so position:fixed is the real viewport regardless of any
+  // transform on DesignCanvas's ancestors (including the canvas zoom itself).
+  return ReactDOM.createPortal(
+    <div onClick={() => ctx.setFocus(null)}
+      onWheel={(e) => e.preventDefault()}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(24,20,16,.6)', backdropFilter: 'blur(14px)',
+        fontFamily: DC.font, color: '#fff' }}>
+
+      {/* top bar: section dropdown (left) · close (right) */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72, display: 'flex', alignItems: 'flex-start', padding: '16px 20px 0', gap: 16 }}>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setDd((o) => !o)}
+            style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', padding: '6px 8px',
+              borderRadius: 6, textAlign: 'left', fontFamily: 'inherit' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>{meta.title}</span>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ opacity: .7 }}><path d="M2 4l3.5 3.5L9 4"/></svg>
+            </span>
+            {meta.subtitle && <span style={{ display: 'block', fontSize: 13, opacity: .6, fontWeight: 400, marginTop: 2 }}>{meta.subtitle}</span>}
+          </button>
+          {ddOpen && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#2a251f', borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,.4)', padding: 4, minWidth: 200, zIndex: 10 }}>
+              {sectionOrder.filter((sid) => sectionMeta[sid].slotIds.length).map((sid) => (
+                <button key={sid} onClick={() => { setDd(false); const f = sectionMeta[sid].slotIds[0]; if (f) ctx.setFocus(`${sid}/${f}`); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
+                    background: sid === sectionId ? 'rgba(255,255,255,.1)' : 'transparent', color: '#fff',
+                    padding: '8px 12px', borderRadius: 5, fontSize: 14, fontWeight: sid === sectionId ? 600 : 400, fontFamily: 'inherit' }}>
+                  {sectionMeta[sid].title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => ctx.setFocus(null)}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.12)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,.7)', width: 32, height: 32,
+            borderRadius: 16, fontSize: 20, cursor: 'pointer', lineHeight: 1, transition: 'background .12s' }}>×</button>
+      </div>
+
+      {/* card centered, label + index below — only the card itself stops
+          propagation so any backdrop click (including the margins around
+          the card) exits focus */}
+      <div
+        style={{ position: 'absolute', top: 64, bottom: 56, left: 100, right: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: width * scale, height: height * scale, position: 'relative' }}>
+          <div style={{ width, height, transform: `scale(${scale})`, transformOrigin: 'top left', background: '#fff', borderRadius: 2, overflow: 'hidden',
+            boxShadow: '0 20px 80px rgba(0,0,0,.4)' }}>
+            {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb' }}>{aid}</div>}
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()} style={{ fontSize: 14, fontWeight: 500, opacity: .85, textAlign: 'center' }}>
+          {(sec.labels || {})[aid] ?? artboard.props.label}
+          <span style={{ opacity: .5, marginLeft: 10, fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {peers.length}</span>
+        </div>
+      </div>
+
+      <Arrow dir="left" onClick={() => go(-1)} />
+      <Arrow dir="right" onClick={() => go(1)} />
+
+      {/* dots */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8 }}>
+        {peers.map((p, i) => (
+          <button key={p} onClick={() => ctx.setFocus(`${sectionId}/${p}`)}
+            style={{ border: 'none', padding: 0, cursor: 'pointer', width: 6, height: 6, borderRadius: 3,
+              background: i === idx ? '#fff' : 'rgba(255,255,255,.3)' }} />
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Post-it — absolute-positioned sticky note
+// ─────────────────────────────────────────────────────────────
+function DCPostIt({ children, top, left, right, bottom, rotate = -2, width = 180 }) {
+  return (
+    <div style={{
+      position: 'absolute', top, left, right, bottom, width,
+      background: DC.postitBg, padding: '14px 16px',
+      fontFamily: '"Comic Sans MS", "Marker Felt", "Segoe Print", cursive',
+      fontSize: 14, lineHeight: 1.4, color: DC.postitText,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)',
+      transform: `rotate(${rotate}deg)`,
+      zIndex: 5,
+    }}>{children}</div>
+  );
+}
+
+Object.assign(window, { DesignCanvas, DCSection, DCArtboard, DCPostIt });
+
+
+
+})();
+</script>
+<script type="text/babel" data-presets="react">
+;(function(){
+
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  // Auto-inject a rail toggle when a <deck-stage> is on the page. The
+  // toggle drives the deck's per-viewer _railVisible via window message;
+  // state is mirrored from the same localStorage key the deck reads so
+  // the control reflects reality across reloads. The mechanism is the
+  // message — authors who want custom placement can post it directly
+  // and pass noDeckControls to suppress this one.
+  const hasDeckStage = React.useMemo(
+    () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+    [],
+  );
+  // Hide the toggle until the host has actually enabled the rail (the
+  // __omelette_rail_enabled window message, posted only when the
+  // omelette_deck_rail_enabled flag is on for this user). The initial read
+  // covers TweaksPanel mounting after the message already arrived; the
+  // listener covers the common case of mounting first.
+  const [railEnabled, setRailEnabled] = React.useState(
+    () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+  );
+  React.useEffect(() => {
+    if (!hasDeckStage || railEnabled) return undefined;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [hasDeckStage, railEnabled]);
+  const [railVisible, setRailVisible] = React.useState(() => {
+    try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+  });
+  const toggleRail = (on) => {
+    setRailVisible(on);
+    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+  };
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+          {hasDeckStage && railEnabled && !noDeckControls && (
+            <TweakSection label="Deck">
+              <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+            </TweakSection>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+
+})();
+</script>
+
+<!-- Components -->
+<script type="text/babel" data-presets="react">
+;(function(){
+
+// Shared shell + primitive components for Library Warm.
+// All components are React function components attached to window.
+// Loaded as a Babel script.
+
+const { useState, useEffect, useRef, useMemo } = React;
+
+// --------------------------------------------------
+// Icons (inline SVG, 16px)
+// --------------------------------------------------
+const Icon = ({ name, size = 16, stroke = 1.5, style }) => {
+  const paths = {
+    book: "M4 4h12v16H4zM7 4v16",
+    plus: "M10 4v12M4 10h12",
+    search: "M9 16a7 7 0 1 1 0-14 7 7 0 0 1 0 14zm5-2 4 4",
+    chev: "M6 8l4 4 4-4",
+    chevR: "M8 6l4 4-4 4",
+    cmd: "M6 3a3 3 0 1 1 0 6h12a3 3 0 1 1 0 6H6a3 3 0 1 1 0-6h12a3 3 0 1 1 0 6",
+    sparkle: "M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8L10 3z",
+    x: "M5 5l10 10M15 5L5 15",
+    check: "M4 10l4 4 8-8",
+    dots: "M5 10h.01M10 10h.01M15 10h.01",
+    clock: "M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12zM10 7v3l2 2",
+    pen: "M3 17l4-1 9-9-3-3-9 9-1 4zM12 5l3 3",
+    settings: "M10 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM10 2v2M10 16v2M2 10h2M16 10h2M4 4l1.5 1.5M14.5 14.5L16 16M16 4l-1.5 1.5M5.5 14.5L4 16",
+    chart: "M3 17h14M5 14V8M9 14V5M13 14v-3M17 14V9",
+    library: "M3 4h2v14H3zM7 4h2v14H7zM12 4l4 14 1.8-.5L13.8 3.5z",
+    feather: "M16 4c-6 0-12 4-12 11v1l4-4h6c2 0 4-2 4-4M4 16l8-8",
+    globe: "M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM2 10h16M10 2c2.5 3 2.5 13 0 16M10 2c-2.5 3-2.5 13 0 16",
+    grip: "M7 5h.01M7 10h.01M7 15h.01M13 5h.01M13 10h.01M13 15h.01",
+    sun: "M10 4V2M10 18v-2M4 10H2M18 10h-2M5 5L3.5 3.5M16.5 16.5L15 15M5 15l-1.5 1.5M16.5 3.5L15 5M10 6a4 4 0 1 1 0 8 4 4 0 0 1 0-8z",
+    download: "M10 3v10M5 9l5 4 5-4M3 17h14",
+    upload: "M10 17V7M5 11l5-4 5 4M3 3h14",
+    arrow: "M4 10h12M12 6l4 4-4 4",
+    trash: "M4 6h12M8 6V4h4v2M6 6l1 11h6l1-11",
+    bookmark: "M5 3h10v15l-5-3-5 3z",
+    quote: "M5 7v3a3 3 0 0 0 3 3M13 7v3a3 3 0 0 0 3 3",
+    folder: "M3 5h5l2 2h7v9H3z",
+    eye: "M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5zM10 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z",
+    filter: "M3 5h14M5 10h10M8 15h4",
+    undo: "M6 7L3 10l3 3M3 10h9a4 4 0 0 1 0 8H8",
+  };
+  const d = paths[name] || paths.book;
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none"
+      stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
+      style={style}>
+      <path d={d} />
+    </svg>
+  );
+};
+
+// --------------------------------------------------
+// Buttons / pills / kbd
+// --------------------------------------------------
+const Btn = ({ variant = "secondary", size = "md", children, icon, iconRight, onClick, disabled, style }) => (
+  <button className="lw-btn" data-variant={variant} data-size={size} onClick={onClick} disabled={disabled} style={style}>
+    {icon && <Icon name={icon} />}
+    {children}
+    {iconRight && <Icon name={iconRight} />}
+  </button>
+);
+
+const Pill = ({ tone, children, icon, style }) => (
+  <span className="lw-pill" data-tone={tone} style={style}>
+    {icon && <Icon name={icon} size={11} />}
+    {children}
+  </span>
+);
+
+const Kbd = ({ children }) => <span className="lw-kbd">{children}</span>;
+const Dot = ({ tone, style }) => <span className="lw-dot" data-tone={tone} style={style} />;
+const Mono = ({ children, style }) => <span className="lw-mono" style={style}>{children}</span>;
+
+// --------------------------------------------------
+// TopBar / LeftRail / StatusBar
+// --------------------------------------------------
+const TopBar = ({ crumbs = [], center, right }) => (
+  <div className="lw-topbar">
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flex: "0 0 auto" }}>
+      <div className="lw-display" style={{ fontSize: 18, color: "var(--brass)", letterSpacing: "0.01em" }}>Bookopis</div>
+      <div className="lw-crumb">
+        {crumbs.map((c, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <span className="sep">/</span>}
+            {c.bold ? <b>{c.label}</b> : <span>{c.label}</span>}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+    <div style={{ flex: 1, display: "flex", justifyContent: "center", color: "var(--text)" }}>
+      {center}
+    </div>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "0 0 auto", color: "var(--text-muted)" }}>
+      {right || (
+        <>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <Kbd>⌘K</Kbd>
+            <span>команды</span>
+          </span>
+          <Pill icon="feather">Тёплый рассказчик</Pill>
+          <a className="lw-link" style={{ fontSize: 13 }}>Использование</a>
+          <div style={{ width: 28, height: 28, borderRadius: 999, background: "var(--surface-3)", border: "1px solid var(--border)", display: "grid", placeItems: "center", color: "var(--brass)", fontSize: 12, fontWeight: 600 }}>А</div>
+        </>
+      )}
+    </div>
+  </div>
+);
+
+const LeftRail = ({ active = "books" }) => {
+  const items = [
+    { id: "books",   icon: "library",  label: "Книги" },
+    { id: "current", icon: "book",     label: "Текущая" },
+    { id: "style",   icon: "feather",  label: "Стиль" },
+    { id: "usage",   icon: "chart",    label: "Использование" },
+    { id: "settings",icon: "settings", label: "Настройки" },
+  ];
+  return (
+    <div className="lw-leftrail">
+      {items.map(it => (
+        <button key={it.id} className="lw-railbtn" data-active={active === it.id} title={it.label}>
+          <Icon name={it.icon} size={18} />
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const StatusBar = ({ tokens = "12 480", agent = "writer", backend = "api", cost = "$0.18", net = "online", extra }) => (
+  <div className="lw-statusbar">
+    <span><Mono>{tokens}</Mono> tok / сессия</span>
+    <span style={{ color: "var(--text-faint)" }}>·</span>
+    <span>backend: <Mono style={{ color: "var(--brass)" }}>{backend}</Mono></span>
+    <span style={{ color: "var(--text-faint)" }}>·</span>
+    <span>агент: <Mono style={{ color: "var(--text-muted)" }}>{agent}</Mono></span>
+    <span style={{ color: "var(--text-faint)" }}>·</span>
+    <span><Mono>{cost}</Mono></span>
+    <span style={{ flex: 1 }} />
+    {extra}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <Dot tone={net === "online" ? "green" : "amber"} />
+      {net}
+    </span>
+    <span style={{ color: "var(--text-faint)" }}>·</span>
+    <span>Сохранено · только что</span>
+  </div>
+);
+
+// --------------------------------------------------
+// Tabs
+// --------------------------------------------------
+const Tabs = ({ items, active, onChange }) => (
+  <div className="lw-tabs" role="tablist">
+    {items.map(it => (
+      <button key={it.id} role="tab"
+        className="lw-tab" data-active={it.id === active}
+        onClick={() => onChange?.(it.id)}>
+        {it.label}
+      </button>
+    ))}
+  </div>
+);
+
+// --------------------------------------------------
+// Skeleton
+// --------------------------------------------------
+const Skel = ({ w = "100%", h = 12, r = 6, style }) => (
+  <div className="lw-skel" style={{ width: w, height: h, borderRadius: r, ...style }} />
+);
+
+// --------------------------------------------------
+// Card
+// --------------------------------------------------
+const Card = ({ children, style, padding = 16 }) => (
+  <div className="lw-card" style={{ padding, ...style }}>{children}</div>
+);
+
+// --------------------------------------------------
+// Trait radar (stylized)
+// --------------------------------------------------
+const Radar = ({ values = [70, 60, 80, 55, 65, 75], size = 140, labels }) => {
+  const cx = size / 2, cy = size / 2, r = size / 2 - 14;
+  const n = values.length;
+  const pt = (i, v) => {
+    const a = (Math.PI * 2 * i) / n - Math.PI / 2;
+    const rr = (r * v) / 100;
+    return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+  };
+  const grid = [25, 50, 75, 100].map(g => {
+    const pts = Array.from({length: n}, (_, i) => pt(i, g));
+    return pts.map((p,i) => `${i===0?'M':'L'}${p[0]},${p[1]}`).join(" ") + "Z";
+  });
+  const poly = values.map((v,i) => pt(i, v)).map((p,i) => `${i===0?'M':'L'}${p[0]},${p[1]}`).join(" ") + "Z";
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
+      {grid.map((d,i) => <path key={i} d={d} className="lw-radar-grid" opacity={0.4 + i*0.1} />)}
+      {Array.from({length: n}, (_, i) => {
+        const [x,y] = pt(i, 100);
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} className="lw-radar-axis" />;
+      })}
+      <path d={poly} className="lw-radar-stroke" />
+      {labels && labels.map((l, i) => {
+        const [x,y] = pt(i, 118);
+        return <text key={i} x={x} y={y} fill="var(--text-muted)" fontSize="9" fontFamily="var(--font-ui)" textAnchor="middle" dominantBaseline="middle">{l}</text>;
+      })}
+    </svg>
+  );
+};
+
+Object.assign(window, { Icon, Btn, Pill, Kbd, Dot, Mono, TopBar, LeftRail, StatusBar, Tabs, Skel, Card, Radar });
+
+
+})();
+</script>
+<script type="text/babel" data-presets="react">
+;(function(){
+
+// ChapterPage — the highest-leverage screen, shown most prominently.
+// 3-column: OutlineRail | Manuscript (paper) | CritiqueRail.
+// Includes Tweaks: aiSurface (pill/bottombar/gutter), serif (lora/sourceserif/fraunces), grain (off/subtle/strong)
+
+const { useState: useStateChp } = React;
+
+// Public-domain Russian classic excerpt — Bulgakov, "Мастер и Маргарита" (1940), public domain in source country.
+// Light remix to fit the demo as if it's the user's draft.
+const DEMO_PARAGRAPHS = [
+  "Однажды весною, в час небывало жаркого заката, в Москве, на Патриарших прудах, появились двое граждан. Первый из них, одетый в летнюю серенькую пару, был маленького роста, упитан, лыс, свою приличную шляпу пирожком нёс в руке, а на хорошо выбритом лице его помещались сверхъестественных размеров очки в чёрной роговой оправе.",
+  "Второй — плечистый, рыжеватый, вихрастый молодой человек в заломленной на затылок клетчатой кепке — был в ковбойке, жёваных белых брюках и в чёрных тапочках. Они шли молча, и каждый из них думал о своём; и если бы кто-нибудь со стороны попытался прочесть их мысли, то с удивлением обнаружил бы, что обоих занимает один и тот же неназванный предмет.",
+  "Когда они проходили мимо третьей скамейки, пыльная аллея сама собой стихла. Лишь где-то далеко, за прудом, прокричала чайка — и снова молчание, такое плотное, что казалось, его можно было трогать рукой. Берлиоз остановился и повернул голову к спутнику с тем медленным и осторожным движением, каким человек поворачивается в темноте, услышав за спиной шаги.",
+  "— Иван Николаевич, — начал он, глядя куда-то поверх скамеек, — вы серьёзно полагаете, что в этом городе сегодня ничего не произошло? Что воздух не сделался иной, что лица прохожих не сделались иными? Я не говорю о ваших стихах. Я говорю о другом, о большем. Воздух пахнет грозою, которой ещё нет.",
+];
+
+const CritiqueCard = ({ tone = "amber", agent, title, body, line, onScroll }) => (
+  <div className="lw-card" style={{ padding: 14, position: "relative" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <Dot tone={tone} />
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", flex: 1 }}>{title}</div>
+      <span className="lw-pill" data-tone="brass" style={{ height: 18, fontSize: 10 }}>{agent}</span>
+    </div>
+    <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55, marginBottom: 10 }}>{body}</div>
+    {line && (
+      <div style={{
+        fontFamily: "var(--font-prose)", fontStyle: "italic", fontSize: 12,
+        color: "var(--text-faint)", padding: "6px 10px", borderLeft: "2px solid var(--border-strong)",
+        marginBottom: 10
+      }}>« {line} »</div>
+    )}
+    <div style={{ display: "flex", gap: 6 }}>
+      <button className="lw-btn" data-variant="primary" data-size="sm">Применить</button>
+      <button className="lw-btn" data-variant="ghost" data-size="sm">Игнорировать</button>
+      <button className="lw-btn" data-variant="link" data-size="sm" onClick={onScroll} style={{ marginLeft: "auto" }}>Перейти →</button>
+    </div>
+  </div>
+);
+
+const OutlineRail = () => {
+  const chapters = [
+    { n: 1, title: "Перед грозой", words: 3120, status: "готова" },
+    { n: 2, title: "Незваный гость", words: 4580, status: "готова" },
+    { n: 3, title: "На Патриарших", words: 5210, status: "готова" },
+    { n: 4, title: "Разговор о невозможном", words: 2840, status: "редактируется", active: true },
+    { n: 5, title: "Воланд", words: 0, status: "черновик" },
+    { n: 6, title: "Берлиоз и трамвай", words: 0, status: "черновик" },
+  ];
+  return (
+    <div style={{ width: 240, borderRight: "1px solid var(--border-soft)", background: "var(--bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-soft)" }}>
+        <div className="lw-meta" style={{ marginBottom: 8 }}>Главы</div>
+        <div style={{ position: "relative" }}>
+          <input className="lw-input" placeholder="Поиск по плану…" style={{ paddingLeft: 28, height: 28, fontSize: 12 }} />
+          <span style={{ position: "absolute", left: 8, top: 6, color: "var(--text-faint)" }}><Icon name="search" size={14} /></span>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
+        {chapters.map(c => (
+          <div key={c.n} style={{
+            position: "relative", padding: "8px 10px", marginBottom: 2,
+            borderRadius: 6, cursor: "pointer",
+            background: c.active ? "var(--surface-2)" : "transparent",
+          }}>
+            {c.active && <span style={{ position: "absolute", left: 0, top: 6, bottom: 6, width: 3, background: "var(--brass)", borderRadius: 2 }} />}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-faint)" }}>{String(c.n).padStart(2,"0")}</span>
+              <span style={{ fontSize: 13, color: c.active ? "var(--text-strong)" : "var(--text)", fontWeight: c.active ? 500 : 400 }}>{c.title}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+              <div style={{ flex: 1, height: 2, background: "var(--surface-2)", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: `${Math.min(100, c.words/60)}%`, height: "100%", background: c.status === "готова" ? "var(--ink-green)" : c.status === "редактируется" ? "var(--brass)" : "var(--text-faint)" }} />
+              </div>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-faint)" }}>{c.words || "—"}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: 10, borderTop: "1px solid var(--border-soft)", display: "flex", alignItems: "center", gap: 6 }}>
+        <Btn variant="ghost" size="sm" icon="search" style={{ width: "100%", justifyContent: "flex-start" }}>
+          К главе… <span style={{ marginLeft: "auto" }}><Kbd>⌘P</Kbd></span>
+        </Btn>
+      </div>
+    </div>
+  );
+};
+
+const Manuscript = ({ aiSurface, serif, showDiff = false }) => {
+  const fontFamily = serif === "sourceserif" ? "'Source Serif 4', Georgia, serif"
+    : serif === "fraunces" ? "'Fraunces', Georgia, serif"
+    : "'Lora', Georgia, serif";
+
+  return (
+    <div style={{ flex: 1, position: "relative", overflow: "auto", display: "flex", flexDirection: "column" }}>
+      <div className="lw-paper" style={{ flex: 1, padding: "48px 32px 80px", position: "relative" }}>
+        <div style={{ maxWidth: 680, margin: "0 auto", position: "relative", paddingLeft: 24 }}>
+          <div className="lw-margin-rule" style={{ left: 0 }} />
+
+          <div style={{ marginBottom: 32 }}>
+            <div className="lw-italic-muted" style={{ fontSize: 13, marginBottom: 8 }}>Глава 4</div>
+            <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 36, lineHeight: 1.15, margin: 0, color: "var(--text-strong)" }}>
+              Разговор о невозможном
+            </h1>
+          </div>
+
+          <div className="lw-prose" style={{ fontFamily, position: "relative" }}>
+            <p>{DEMO_PARAGRAPHS[0]}</p>
+            <p style={{ position: "relative" }}>
+              <span className="lw-gutter-dot" style={{ background: "var(--ink-amber)" }} title="Замечание стиля" />
+              {DEMO_PARAGRAPHS[1]}
+            </p>
+            {showDiff ? (
+              <p style={{ position: "relative" }}>
+                <span className="lw-gutter-dot" style={{ background: "var(--ink-red)" }} />
+                Когда они проходили мимо третьей скамейки, <span className="lw-del">пыльная аллея сама собой стихла.</span>
+                <span className="lw-add"> воздух будто загустел, и пыль на аллее замерла, словно в ожидании.</span>
+                {" "}Лишь где-то далеко, за прудом, прокричала чайка — и снова молчание, такое плотное, что казалось, его можно было <span className="lw-del">трогать</span><span className="lw-add">осязать</span> рукой. Берлиоз остановился и повернул голову к спутнику с тем медленным и осторожным движением, каким человек поворачивается в темноте, услышав за спиной шаги.
+              </p>
+            ) : (
+              <p>{DEMO_PARAGRAPHS[2]}</p>
+            )}
+            <p>
+              {DEMO_PARAGRAPHS[3]}
+              <span className="lw-caret" />
+            </p>
+          </div>
+
+          {/* word counter */}
+          <div style={{
+            position: "absolute", left: 0, bottom: -56,
+            fontFamily: "var(--font-mono)", fontSize: 11,
+            color: "var(--text-faint)",
+            display: "flex", gap: 14
+          }}>
+            <span>2 840 слов</span>
+            <span>16 942 знака</span>
+            <span>≈ 11 мин чтения</span>
+          </div>
+        </div>
+
+        {/* AI surface variants */}
+        {aiSurface === "pill" && (
+          <div style={{
+            position: "absolute", left: "50%", top: 280,
+            transform: "translateX(-50%)",
+            background: "var(--surface-2)", border: "1px solid var(--brass-soft)",
+            borderRadius: 999, padding: "6px 14px",
+            display: "flex", alignItems: "center", gap: 8,
+            boxShadow: "var(--shadow-md)",
+            color: "var(--text-strong)", fontSize: 12,
+          }}>
+            <Icon name="sparkle" size={13} style={{ color: "var(--brass)" }} />
+            Что сделать?
+            <Kbd>⌘↵</Kbd>
+          </div>
+        )}
+
+        {aiSurface === "gutter" && (
+          <div style={{
+            position: "absolute", left: 32, top: 380,
+            display: "flex", flexDirection: "column", gap: 4,
+          }}>
+            {["Переписать", "Сократить", "Развернуть"].map(a => (
+              <button key={a} className="lw-btn" data-variant="ghost" data-size="sm" style={{
+                justifyContent: "flex-start", width: 130,
+                background: "var(--surface-2)", border: "1px solid var(--border-soft)"
+              }}>
+                <Icon name="sparkle" size={12} style={{ color: "var(--brass)" }} />
+                {a}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* AI surface: bottom command bar */}
+      {aiSurface === "bottombar" && (
+        <div style={{
+          padding: "10px 16px",
+          background: "var(--surface-1)",
+          borderTop: "1px solid var(--border)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <Icon name="sparkle" size={16} style={{ color: "var(--brass)" }} />
+          <input className="lw-input" placeholder="Скажи модели, что сделать с выделением…" style={{ flex: 1, height: 32, background: "var(--surface-2)" }} />
+          <Pill icon="feather">writer</Pill>
+          <Btn variant="primary" size="sm" iconRight="arrow">Запустить</Btn>
+          <Kbd>⌘↵</Kbd>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CritiqueRail = () => {
+  const cards = [
+    { tone: "red", agent: "canon_check", title: "Несоответствие канону", body: "Берлиоз в гл. 2 уже упоминается как «маленького роста, упитан, лыс». Описание в гл. 4 повторяет канон без развития — рискует звучать как штамп.", line: "маленького роста, упитан, лыс" },
+    { tone: "amber", agent: "style_extractor", title: "Сбой ритма", body: "Длинное сложноподчинённое во втором абзаце (44 слова) после двух предыдущих коротких — подумать о разрыве на два предложения.", line: "если бы кто-нибудь со стороны попытался прочесть их мысли…" },
+    { tone: "amber", agent: "critic_prose", title: "Тавтология", body: "«молчание, такое плотное, что его можно было трогать» — рассмотреть «осязать» вместо «трогать».", line: "его можно было трогать рукой" },
+    { tone: "blue", agent: "summarizer", title: "Заметка", body: "Первое появление мотива грозы — стоит проверить, поддержан ли он в гл. 5 как обещание.", line: "Воздух пахнет грозою, которой ещё нет" },
+    { tone: "green", agent: "writer", title: "Хорошая находка", body: "Метафора «молчание, которое можно было трогать рукой» — оставить, даже если переписывать абзац: образ держит сцену." },
+  ];
+  return (
+    <div style={{ width: 380, background: "var(--bg)", borderLeft: "1px solid var(--border-soft)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-soft)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <div className="lw-meta" style={{ flex: 1 }}>Разбор главы</div>
+          <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
+            <Dot tone="amber" /> сюжет
+          </span>
+          <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
+            <Dot tone="amber" /> стиль
+          </span>
+          <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
+            <Dot tone="red" /> канон
+          </span>
+        </div>
+        <div className="lw-tabs" style={{ borderBottom: "none" }}>
+          {["Все","Сюжет","Стиль","Канон","Факты"].map((t,i) => (
+            <button key={t} className="lw-tab" data-active={i===0} style={{ padding: "6px 10px", fontSize: 12 }}>{t}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+        {cards.map((c, i) => <CritiqueCard key={i} {...c} />)}
+      </div>
+      <div style={{ padding: 12, borderTop: "1px solid var(--border-soft)", display: "flex", gap: 8 }}>
+        <Btn variant="primary" icon="sparkle" style={{ flex: 1 }}>Запросить новый разбор</Btn>
+        <Btn variant="secondary" icon="chev" />
+      </div>
+    </div>
+  );
+};
+
+const ChapterPage = ({ aiSurface = "pill", serif = "lora", grain = "subtle", showDiff = false }) => {
+  // grain handled by parent setting --grain-opacity on the artboard
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      <TopBar
+        crumbs={[{ label: "Книги" }, { label: "Стальные ливни" }, { label: "Глава 4", bold: true }]}
+        center={
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span className="lw-italic-muted" style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>Гл. 4 ·</span>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--text-strong)", fontWeight: 500 }}>Разговор о невозможном</span>
+          </div>
+        }
+      />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <LeftRail active="current" />
+        <OutlineRail />
+        <Manuscript aiSurface={aiSurface} serif={serif} showDiff={showDiff} />
+        <CritiqueRail />
+      </div>
+      <StatusBar
+        tokens="12 480"
+        agent="writer"
+        backend="api"
+        cost="$0.18"
+        extra={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span>стрим</span>
+            <div style={{ width: 80 }}><div className="lw-progress"><i style={{ width: "62%" }} /></div></div>
+            <Mono>3 100 / 5 000</Mono>
+          </span>
+        }
+      />
+    </div>
+  );
+};
+
+window.ChapterPage = ChapterPage;
+
+
+})();
+</script>
+<script type="text/babel" data-presets="react">
+;(function(){
+
+// BooksList, BookPage (with all 5 tabs), StyleProfiles, Usage, NotFound, Errors
+
+const BookCard = ({ title, meta, chapters, words, edited, status, statusTone }) => (
+  <div style={{
+    width: 320, background: "var(--surface-1)",
+    border: "1px solid var(--border-soft)", borderRadius: 12,
+    overflow: "hidden", cursor: "pointer",
+    transition: "all 200ms cubic-bezier(0.22, 0.9, 0.32, 1)",
+  }}>
+    <div className="lw-spine" />
+    <div className="lw-paper" style={{ padding: 18, position: "relative" }}>
+      <div className="lw-display" style={{ fontSize: 22, color: "var(--text-strong)", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{meta}</div>
+      <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
+        <Mono style={{ fontSize: 12, color: "var(--text-muted)" }}>{chapters} глав</Mono>
+        <Mono style={{ fontSize: 12, color: "var(--text-muted)" }}>{words}</Mono>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: "var(--text-faint)", flex: 1 }}>{edited}</span>
+        <Pill tone={statusTone}>{status}</Pill>
+      </div>
+    </div>
+  </div>
+);
+
+const BooksList = () => {
+  const books = [
+    { title: "Стальные ливни", meta: "Военная проза · А. Кулагин", chapters: 12, words: "48 200", edited: "2 ч назад", status: "редактируется", statusTone: "blue" },
+    { title: "Тёплая зима", meta: "Магический реализм", chapters: 7, words: "21 040", edited: "вчера", status: "черновик", statusTone: "amber" },
+    { title: "Лестница", meta: "Психологический триллер", chapters: 24, words: "92 800", edited: "3 дня", status: "готова", statusTone: "green" },
+    { title: "Вешние воды", meta: "Литературная фантастика", chapters: 5, words: "14 320", edited: "неделю назад", status: "черновик", statusTone: "amber" },
+    { title: "Север, далее везде", meta: "Документальный роман", chapters: 18, words: "76 110", edited: "месяц назад", status: "редактируется", statusTone: "blue" },
+    { title: "Из жизни сторожа Г.", meta: "Сборник рассказов", chapters: 9, words: "34 800", edited: "месяц назад", status: "готова", statusTone: "green" },
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      <TopBar crumbs={[{ label: "Книги", bold: true }]} />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <LeftRail active="books" />
+        <div style={{ flex: 1, overflow: "auto", padding: "32px 48px" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", marginBottom: 28, gap: 20 }}>
+            <div style={{ flex: 1 }}>
+              <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: 0, color: "var(--text-strong)" }}>Ваши книги</h1>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 6 }}>
+                12 книг · последняя правка <span style={{ color: "var(--text)" }}>2 ч. назад</span>
+              </div>
+            </div>
+            <Btn variant="primary" icon="plus">Новая книга</Btn>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+            {books.map((b, i) => <BookCard key={i} {...b} />)}
+          </div>
+
+          <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+            <Skel h={220} r={12} />
+            <Skel h={220} r={12} />
+            <Skel h={220} r={12} />
+          </div>
+        </div>
+      </div>
+      <StatusBar />
+    </div>
+  );
+};
+
+// ----------------------------------------------------------
+// BookPage — three-pane with tabs
+// ----------------------------------------------------------
+const BookOutlinePanel = () => {
+  const items = [
+    { type: "part", title: "Часть I — Покой" },
+    { n: 1, title: "Перед грозой", words: 3120 },
+    { n: 2, title: "Незваный гость", words: 4580 },
+    { n: 3, title: "На Патриарших", words: 5210 },
+    { type: "part", title: "Часть II — Гроза" },
+    { n: 4, title: "Разговор о невозможном", words: 2840, active: true },
+    { n: 5, title: "Воланд", words: 0 },
+    { n: 6, title: "Берлиоз и трамвай", words: 0 },
+    { n: 7, title: "Иван у психиатра", words: 0 },
+  ];
+  return (
+    <div style={{ width: 280, borderRight: "1px solid var(--border-soft)", background: "var(--bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--border-soft)" }}>
+        <div className="lw-meta" style={{ flex: 1 }}>План</div>
+        <button className="lw-railbtn" style={{ width: 24, height: 24 }}><Icon name="search" size={14} /></button>
+        <button className="lw-railbtn" style={{ width: 24, height: 24 }}><Icon name="plus" size={14} /></button>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
+        {items.map((it, i) => (
+          it.type === "part" ? (
+            <div key={i} className="lw-meta" style={{ padding: "12px 10px 6px", color: "var(--text-faint)" }}>{it.title}</div>
+          ) : (
+            <div key={i} style={{
+              position: "relative", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+              background: it.active ? "var(--surface-2)" : "transparent",
+              display: "flex", alignItems: "baseline", gap: 8
+            }}>
+              {it.active && <span style={{ position: "absolute", left: 0, top: 6, bottom: 6, width: 3, background: "var(--brass)", borderRadius: 2 }} />}
+              <Mono style={{ fontSize: 11, color: "var(--text-faint)" }}>{String(it.n).padStart(2,"0")}</Mono>
+              <span style={{ flex: 1, fontSize: 13, color: it.active ? "var(--text-strong)" : "var(--text)" }}>{it.title}</span>
+              <Mono style={{ fontSize: 10, color: "var(--text-faint)" }}>{it.words || "—"}</Mono>
+            </div>
+          )
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Inspector = () => (
+  <div style={{ width: 360, borderLeft: "1px solid var(--border-soft)", background: "var(--bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ padding: "10px 16px 0", borderBottom: "1px solid var(--border-soft)" }}>
+      <div className="lw-tabs" style={{ borderBottom: "none" }}>
+        {["Метаданные","Стиль","История"].map((t,i) => (
+          <button key={t} className="lw-tab" data-active={i===1} style={{ padding: "10px 12px", fontSize: 13 }}>{t}</button>
+        ))}
+      </div>
+    </div>
+    <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+      <div className="lw-card" style={{ padding: 16, marginBottom: 14 }}>
+        <div className="lw-meta" style={{ marginBottom: 12 }}>Профиль стиля</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <Pill tone="brass" icon="feather">Тёплый рассказчик</Pill>
+          <span style={{ fontSize: 11, color: "var(--text-faint)" }}>извлечён из гл. 1–3</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 16px" }}>
+          <Radar size={200} values={[78,52,88,64,58,72]} labels={["тон","темп","лекс.","образ.","диал.","ритм"]} />
+        </div>
+        <Btn variant="secondary" icon="sparkle" style={{ width: "100%" }}>Извлечь из этой главы</Btn>
+      </div>
+
+      <div className="lw-card" style={{ padding: 16, marginBottom: 14 }}>
+        <div className="lw-meta" style={{ marginBottom: 12 }}>Запреты</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {["канцелярит","разговорная брань","анахронизмы","современный сленг"].map(t => (
+            <Pill key={t} tone="red">{t}</Pill>
+          ))}
+        </div>
+      </div>
+
+      <div className="lw-card" style={{ padding: 16 }}>
+        <div className="lw-meta" style={{ marginBottom: 12 }}>Образцы стиля</div>
+        <div style={{ fontFamily: "var(--font-prose)", fontStyle: "italic", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+          «И ничего иного не оставалось ему: только смотреть в это пыльное небо, где едва угадывалось обещание грозы, и думать о том, как тиха стала аллея.»
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-faint)" }}>— гл. 2, фр. 18</div>
+      </div>
+    </div>
+  </div>
+);
+
+const BookOverview = () => {
+  return (
+    <div style={{ padding: "28px 36px" }}>
+      <div style={{ display: "flex", gap: 32, alignItems: "flex-start", marginBottom: 32 }}>
+        <div style={{ flex: 1 }}>
+          <div className="lw-meta" style={{ marginBottom: 10 }}>Военная проза</div>
+          <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 40, margin: 0, color: "var(--text-strong)", lineHeight: 1.1 }}>Стальные ливни</h1>
+          <div style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 8 }}>А. Кулагин · 2025 · русский</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <Pill icon="feather">Тёплый рассказчик</Pill>
+            <Pill tone="blue">редактируется</Pill>
+            <Pill>взрослая аудитория</Pill>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, minWidth: 460 }}>
+          {[
+            { label: "Всего слов", value: "48 200", delta: "+1 240" },
+            { label: "Глав", value: "12 / 18" },
+            { label: "Последняя правка", value: "2 ч", delta: "сегодня" },
+          ].map((s,i) => (
+            <div key={i} className="lw-card" style={{ padding: 16 }}>
+              <div className="lw-meta">{s.label}</div>
+              <Mono style={{ fontSize: 24, color: "var(--text-strong)", display: "block", marginTop: 8 }}>{s.value}</Mono>
+              {s.delta && <div style={{ marginTop: 4, color: "var(--ink-green)", fontSize: 11, fontFamily: "var(--font-mono)" }}>▲ {s.delta}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="lw-meta" style={{ marginBottom: 14 }}>Лента глав</div>
+      <div style={{ position: "relative", paddingLeft: 24 }}>
+        <div style={{ position: "absolute", left: 5, top: 8, bottom: 8, width: 1, background: "var(--border)" }} />
+        {[
+          { n: 1, title: "Перед грозой", words: 3120, edited: "12 апр", status: "готова", tone: "green" },
+          { n: 2, title: "Незваный гость", words: 4580, edited: "14 апр", status: "готова", tone: "green" },
+          { n: 3, title: "На Патриарших", words: 5210, edited: "20 апр", status: "готова", tone: "green" },
+          { n: 4, title: "Разговор о невозможном", words: 2840, edited: "сегодня", status: "редактируется", tone: "blue", active: true },
+          { n: 5, title: "Воланд", words: 0, edited: "—", status: "черновик", tone: "amber" },
+          { n: 6, title: "Берлиоз и трамвай", words: 0, edited: "—", status: "черновик", tone: "amber" },
+        ].map((c) => (
+          <div key={c.n} style={{
+            position: "relative", padding: "12px 16px", marginLeft: -8,
+            display: "flex", alignItems: "center", gap: 14, borderRadius: 8,
+            background: c.active ? "var(--surface-2)" : "transparent",
+            cursor: "pointer", marginBottom: 4,
+          }}>
+            <span style={{
+              position: "absolute", left: -3, top: "50%", marginTop: -5,
+              width: 10, height: 10, borderRadius: 999,
+              background: c.active ? "var(--brass)" : "var(--surface-3)",
+              border: `2px solid ${c.active ? "var(--brass-soft)" : "var(--border)"}`,
+            }} />
+            <Mono style={{ fontSize: 12, color: "var(--text-faint)", width: 28 }}>гл. {c.n}</Mono>
+            <span style={{ flex: 1, color: "var(--text)", fontSize: 14 }}>{c.title}</span>
+            <Mono style={{ fontSize: 12, color: "var(--text-muted)" }}>{c.words || "—"} слов</Mono>
+            <span style={{ fontSize: 12, color: "var(--text-faint)", width: 80, textAlign: "right" }}>{c.edited}</span>
+            <Pill tone={c.tone}>{c.status}</Pill>
+            <Icon name="chevR" size={14} style={{ color: "var(--text-faint)" }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const PlanTab = () => (
+  <div style={{ padding: "28px 36px", display: "grid", gridTemplateColumns: "1fr 360px", gap: 20 }}>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+        <h2 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 22, margin: 0, color: "var(--text-strong)", flex: 1 }}>Сюжетные узлы</h2>
+        <Btn variant="secondary" size="sm" icon="plus">Новый узел</Btn>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[
+          { act: "Завязка", title: "Жара на Патриарших", body: "Берлиоз и Бездомный встречают Воланда. Закладывается мотив грозы — ещё не пришедшей." },
+          { act: "Развитие", title: "Разговор о невозможном", body: "Воланд намекает на свою природу; Берлиоз отрицает. Пророчество о трамвае." },
+          { act: "Перелом", title: "Берлиоз и трамвай", body: "Сбывается первое предсказание. Иван бросается в погоню." },
+          { act: "Развязка (?)", title: "Иван у психиатра", body: "Под вопросом: оставить ли больничную сцену в этом томе или вынести во второй?" },
+        ].map((b,i) => (
+          <div key={i} className="lw-card" style={{ padding: 16, display: "flex", gap: 14 }}>
+            <Icon name="grip" size={16} style={{ color: "var(--text-faint)", marginTop: 2 }} />
+            <div style={{ flex: 1 }}>
+              <div className="lw-meta" style={{ marginBottom: 4 }}>{b.act}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)", marginBottom: 4 }}>{b.title}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{b.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+    <div>
+      <div className="lw-meta" style={{ marginBottom: 12 }}>Предложения ИИ <Pill tone="brass" style={{ marginLeft: 6 }}>3 новых</Pill></div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[
+          { title: "Вставить эпилог-ретроспективу", body: "Ретроспективный взгляд Иванушки в эпилоге свяжет первую и вторую части." },
+          { title: "Перенести «Воланд» вперёд", body: "Главу 5 имеет смысл сдвинуть на 4-ю позицию для лучшего темпа." },
+          { title: "Углубить мотив грозы", body: "Гроза проброшена в гл. 4, но не возвращается. Можно посеять в гл. 6." },
+        ].map((s,i) => (
+          <div key={i} className="lw-card" style={{ padding: 14, borderLeft: "3px solid var(--brass)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", marginBottom: 4 }}>{s.title}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{s.body}</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Btn variant="primary" size="sm">Принять</Btn>
+              <Btn variant="ghost" size="sm">Отклонить</Btn>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const CanonTab = () => (
+  <div style={{ padding: "28px 36px" }}>
+    <div style={{ display: "flex", gap: 6, marginBottom: 18, flexWrap: "wrap" }}>
+      {["Все","Персонажи","Места","События","Предметы","Время"].map((c,i) => (
+        <Pill key={c} tone={i===0?"brass":undefined}>{c}</Pill>
+      ))}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      {[
+        { s: "Берлиоз", p: "является", o: "редактором журнала", chap: "гл. 1" },
+        { s: "Бездомный", p: "пишет", o: "антирелигиозную поэму", chap: "гл. 1" },
+        { s: "Патриаршие", p: "имеют", o: "три скамейки на аллее", chap: "гл. 3" },
+        { s: "Воланд", p: "появляется", o: "в час жаркого заката", chap: "гл. 4", warn: true },
+        { s: "Гроза", p: "обещана", o: "в воздухе, ещё не пришла", chap: "гл. 4" },
+        { s: "Трамвай (Аннушка)", p: "пройдёт", o: "по Бронной", chap: "гл. 6" },
+      ].map((f,i) => (
+        <div key={i} className="lw-card" style={{ padding: 16, position: "relative", ...(f.warn && { borderLeft: "3px solid var(--ink-red)" }) }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, color: "var(--text-strong)", fontSize: 14 }}>{f.s}</span>
+            <span style={{ color: "var(--text-faint)", fontSize: 12, fontStyle: "italic" }}>{f.p}</span>
+            <span style={{ flex: 1, color: "var(--text)", fontSize: 14 }}>{f.o}</span>
+            <a className="lw-link" style={{ fontSize: 12 }}>{f.chap}</a>
+          </div>
+          {f.warn && <div style={{ fontSize: 11, color: "var(--ink-red)", marginTop: 6 }}>⚠ Похожий факт уже зафиксирован в гл. 1 — проверьте на дубль.</div>}
+        </div>
+      ))}
+    </div>
+    <div style={{ marginTop: 24, padding: 16, background: "var(--surface-2)", borderRadius: 10, border: "1px solid var(--border-soft)" }}>
+      <div className="lw-meta" style={{ marginBottom: 8 }}>Добавить факт</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8 }}>
+        <input className="lw-input" placeholder="Субъект" />
+        <input className="lw-input" placeholder="Действие" />
+        <input className="lw-input" placeholder="Объект / описание" />
+        <Btn variant="primary">Добавить</Btn>
+      </div>
+    </div>
+  </div>
+);
+
+const KnowledgeTab = () => (
+  <div style={{ padding: "28px 36px", display: "grid", gridTemplateColumns: "200px 1fr", gap: 24 }}>
+    <div>
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <input className="lw-input" placeholder="Поиск…" style={{ paddingLeft: 28 }} />
+        <span style={{ position: "absolute", left: 8, top: 9, color: "var(--text-faint)" }}><Icon name="search" size={14} /></span>
+      </div>
+      <div className="lw-meta" style={{ marginBottom: 8 }}>Категории</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {[
+          ["Все","32"], ["Персонажи","8"], ["Места","6"], ["Лор","11"], ["Эпоха","7"]
+        ].map(([n,c],i) => (
+          <button key={n} className="lw-railbtn" data-active={i===0} style={{ width: "100%", justifyContent: "flex-start", padding: "8px 10px", height: "auto" }}>
+            <span style={{ flex: 1, textAlign: "left", fontSize: 13 }}>{n}</span>
+            <Mono style={{ fontSize: 11, color: "var(--text-faint)" }}>{c}</Mono>
+          </button>
+        ))}
+      </div>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      {[
+        { tag: "Персонаж", title: "Берлиоз, Михаил Александрович", body: "Председатель МАССОЛИТа. Эрудит, прагматик. Лысина, очки в роговой оправе. Идеологически непреклонен." },
+        { tag: "Место", title: "Патриаршие пруды", body: "Сквер с тремя скамейками на главной аллее. В жару — почти безлюдны. Ключевая точка для встреч." },
+        { tag: "Лор", title: "Свита Воланда", body: "Коровьев, Бегемот, Азазелло, Гелла. Появляются по нарастающей, начиная с гл. 7." },
+        { tag: "Эпоха", title: "Москва 1930-х", body: "Атеистическая пропаганда, дефицит, коммуналки. Анахронизмы — в стоп-лист стиля." },
+      ].map((k,i) => (
+        <div key={i} className="lw-card" style={{ padding: 16 }}>
+          <Pill tone="blue" style={{ marginBottom: 8 }}>{k.tag}</Pill>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-strong)", marginBottom: 6 }}>{k.title}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55 }}>{k.body}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const ImportExportTab = () => (
+  <div style={{ padding: "28px 36px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+    <div>
+      <h3 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 20, margin: "0 0 14px", color: "var(--text-strong)" }}>Импорт</h3>
+      <div className="lw-paper" style={{
+        border: "1.5px dashed var(--brass-soft)",
+        borderRadius: 12, padding: 36,
+        textAlign: "center", color: "var(--text-muted)",
+      }}>
+        <Icon name="upload" size={28} style={{ color: "var(--brass)", marginBottom: 10 }} />
+        <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 4 }}>Перетащите файл сюда</div>
+        <div style={{ fontSize: 12, marginBottom: 14 }}>или нажмите, чтобы выбрать</div>
+        <Btn variant="secondary" size="sm">Выбрать файл</Btn>
+      </div>
+      <div className="lw-meta" style={{ marginTop: 18, marginBottom: 8 }}>Поддерживаемые форматы</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {["txt","md","docx","fb2","epub"].map(f => <Pill key={f}>{f}</Pill>)}
+      </div>
+    </div>
+    <div>
+      <h3 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 20, margin: "0 0 14px", color: "var(--text-strong)" }}>Экспорт</h3>
+      <div className="lw-card" style={{ padding: 18 }}>
+        <div className="lw-meta" style={{ marginBottom: 10 }}>Формат</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
+          {[["docx",true],["epub",false],["pdf",false],["md",false],["fb2",false]].map(([f,a]) => (
+            <Pill key={f} tone={a?"brass":undefined}>{f}</Pill>
+          ))}
+        </div>
+        <div className="lw-meta" style={{ marginBottom: 10 }}>Включить</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+          {[["Заметки критика", true], ["Канон-факты", false], ["План глав", true], ["История правок", false]].map(([n,a]) => (
+            <label key={n} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text)" }}>
+              <span style={{
+                width: 16, height: 16, borderRadius: 4,
+                border: "1px solid var(--border-strong)",
+                background: a ? "var(--brass)" : "var(--surface-2)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                color: "#1A1410",
+              }}>{a && <Icon name="check" size={11} stroke={2.5} />}</span>
+              {n}
+            </label>
+          ))}
+        </div>
+        <div className="lw-meta" style={{ marginBottom: 8 }}>Прогресс</div>
+        <div className="lw-progress" style={{ marginBottom: 14 }}><i style={{ width: "42%" }} /></div>
+        <Btn variant="primary" icon="download" style={{ width: "100%" }}>Экспортировать</Btn>
+      </div>
+    </div>
+  </div>
+);
+
+const BookPage = ({ tab = "Обзор" }) => {
+  const tabs = [
+    { id: "Обзор", label: "Обзор" },
+    { id: "План", label: "План" },
+    { id: "Канон", label: "Канон" },
+    { id: "Знания", label: "Знания" },
+    { id: "Импорт/Экспорт", label: "Импорт/Экспорт" },
+  ];
+  const Body =
+    tab === "План" ? <PlanTab />
+    : tab === "Канон" ? <CanonTab />
+    : tab === "Знания" ? <KnowledgeTab />
+    : tab === "Импорт/Экспорт" ? <ImportExportTab />
+    : <BookOverview />;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      <TopBar crumbs={[{ label: "Книги" }, { label: "Стальные ливни", bold: true }]} />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <LeftRail active="current" />
+        <BookOutlinePanel />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "0 36px", borderBottom: "1px solid var(--border-soft)" }}>
+            <Tabs items={tabs} active={tab} />
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>{Body}</div>
+        </div>
+        <Inspector />
+      </div>
+      <StatusBar />
+    </div>
+  );
+};
+
+// ----------------------------------------------------------
+// StyleProfilesList
+// ----------------------------------------------------------
+const TraitMini = ({ values }) => {
+  const labels = ["тон","темп","лекс.","образ.","диал.","ритм"];
+  return <Radar size={120} values={values} labels={labels} />;
+};
+
+const StyleProfilesList = () => {
+  const profiles = [
+    { name: "Тёплый рассказчик", source: "из «Стальные ливни», гл. 1–3", uses: 3, values: [78,52,88,64,58,72] },
+    { name: "Сухой летописец", source: "из «Север, далее везде»", uses: 1, values: [42,68,38,52,30,82] },
+    { name: "Голос Бездомного", source: "ручной профиль", uses: 1, values: [62,82,48,72,88,40] },
+    { name: "Магреализм", source: "из «Тёплая зима», гл. 1–4", uses: 2, values: [70,48,82,90,42,68] },
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      <TopBar crumbs={[{ label: "Профили стиля", bold: true }]} />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <LeftRail active="style" />
+        <div style={{ flex: 1, overflow: "auto", padding: "32px 48px" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", marginBottom: 28 }}>
+            <div style={{ flex: 1 }}>
+              <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: 0, color: "var(--text-strong)" }}>Профили стиля</h1>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 6 }}>4 профиля · единый голос для модели</div>
+            </div>
+            <Btn variant="primary" icon="plus">Новый профиль</Btn>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}>
+            {profiles.map((p,i) => (
+              <div key={i} className="lw-card" style={{ padding: 22, display: "flex", gap: 20 }}>
+                <TraitMini values={p.values} />
+                <div style={{ flex: 1 }}>
+                  <h3 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 22, margin: 0, color: "var(--text-strong)" }}>{p.name}</h3>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, marginBottom: 14 }}>{p.source}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                    {["лиризм","паузы","метафора"].map(t => <Pill key={t}>{t}</Pill>)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-faint)" }}>используется в {p.uses} {p.uses===1?"книге":"книгах"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <StatusBar />
+    </div>
+  );
+};
+
+// ----------------------------------------------------------
+// Usage page
+// ----------------------------------------------------------
+const UsagePage = () => {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      <TopBar crumbs={[{ label: "Использование", bold: true }]} />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <LeftRail active="usage" />
+        <div style={{ flex: 1, overflow: "auto", padding: "32px 48px" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", marginBottom: 24, gap: 14 }}>
+            <div style={{ flex: 1 }}>
+              <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 32, margin: 0, color: "var(--text-strong)" }}>Использование</h1>
+              <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 6 }}>Стоимость, токены, сессии</div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {["сегодня","7д","30д","свой"].map((p,i) => (
+                <button key={p} className="lw-pill" data-tone={i===1?"brass":undefined} style={{ background: i===1?"rgba(212,154,78,0.08)":undefined }}>{p}</button>
+              ))}
+            </div>
+            <Pill icon="globe">backend: api</Pill>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
+            {[
+              { label: "Всего токенов", v: "1 248 320", d: "+12.4%", up: true },
+              { label: "Стоимость", v: "$24.18", d: "−4.2%", up: false },
+              { label: "Сессий", v: "47", d: "+6", up: true },
+            ].map((s,i) => (
+              <div key={i} className="lw-card" style={{ padding: 18 }}>
+                <div className="lw-meta">{s.label}</div>
+                <Mono style={{ fontSize: 28, color: "var(--text-strong)", display: "block", marginTop: 10 }}>{s.v}</Mono>
+                <Mono style={{ fontSize: 11, color: s.up ? "var(--ink-green)" : "var(--ink-red)", marginTop: 4, display: "block" }}>
+                  {s.up ? "▲" : "▼"} {s.d} к прошлой неделе
+                </Mono>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
+            <div className="lw-card" style={{ padding: 18 }}>
+              <div className="lw-meta" style={{ marginBottom: 14 }}>Токены по агентам</div>
+              {[
+                ["writer", 92], ["critic_prose", 58], ["style_extractor", 38],
+                ["canon_check", 24], ["summarizer", 16], ["editor", 11],
+              ].map(([n,v]) => (
+                <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <Mono style={{ width: 130, fontSize: 11, color: "var(--text-muted)" }}>{n}</Mono>
+                  <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 3 }}>
+                    <div style={{ width: `${v}%`, height: "100%", background: "var(--brass)", borderRadius: 3 }} />
+                  </div>
+                  <Mono style={{ fontSize: 11, color: "var(--text)", width: 50, textAlign: "right" }}>{(v*4).toLocaleString()}k</Mono>
+                </div>
+              ))}
+            </div>
+            <div className="lw-card" style={{ padding: 18 }}>
+              <div className="lw-meta" style={{ marginBottom: 14 }}>Стоимость во времени</div>
+              <svg width="100%" height="160" viewBox="0 0 400 160" style={{ display: "block" }}>
+                {[0.25, 0.5, 0.75].map((y,i) => <line key={i} x1="0" x2="400" y1={160*y} y2={160*y} stroke="var(--border-soft)" />)}
+                <path d="M0 130 L40 110 L80 95 L120 105 L160 80 L200 65 L240 70 L280 50 L320 55 L360 35 L400 28"
+                  fill="none" stroke="var(--brass)" strokeWidth="2" />
+                <path d="M0 130 L40 110 L80 95 L120 105 L160 80 L200 65 L240 70 L280 50 L320 55 L360 35 L400 28 L400 160 L0 160 Z"
+                  fill="rgba(212,154,78,0.10)" />
+                {[0,1,2,3,4,5,6,7,8,9,10].map(i => (
+                  <circle key={i} cx={i*40} cy={[130,110,95,105,80,65,70,50,55,35,28][i]} r="2.5" fill="var(--brass)" />
+                ))}
+              </svg>
+              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-faint)", marginTop: 6 }}>
+                {["пн","вт","ср","чт","пт","сб","вс"].map(d => <span key={d}>{d}</span>)}
+              </div>
+            </div>
+          </div>
+
+          <div className="lw-card" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border-soft)", display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="lw-meta" style={{ flex: 1 }}>Журнал вызовов</div>
+              <Btn variant="ghost" size="sm" icon="filter">Фильтр</Btn>
+              <Btn variant="ghost" size="sm" icon="download">CSV</Btn>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "var(--surface-2)" }}>
+                  {["Время","Агент","Backend","Модель","Вход","Выход","Цена","Статус"].map(h => (
+                    <th key={h} className="lw-meta" style={{ padding: "8px 14px", textAlign: "left" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+                <tbody>
+                {[
+                  ["12:42","writer","api","claude-haiku-4-5","1 240","820","$0.018","ok"],
+                  ["12:41","critic_prose","api","claude-haiku-4-5","2 100","640","$0.022","ok"],
+                  ["12:38","style_extractor","subscription","gpt-5","3 800","210","$0.000","ok"],
+                  ["12:35","canon_check","api","claude-haiku-4-5","920","180","$0.006","ok"],
+                  ["12:30","writer","api","claude-haiku-4-5","640","2 040","$0.024","ok"],
+                  ["12:24","summarizer","api","claude-haiku-4-5","4 200","380","$0.018","timeout"],
+                ].map((r,i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border-soft)" }}>
+                    {r.map((c,j) => (
+                      <td key={j} style={{
+                        padding: "10px 14px",
+                        fontFamily: j>=4 || j===0 ? "var(--font-mono)" : "var(--font-ui)",
+                        color: j===7 ? (c==="ok" ? "var(--ink-green)" : "var(--ink-red)") : "var(--text)",
+                      }}>{c}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <StatusBar />
+    </div>
+  );
+};
+
+// ----------------------------------------------------------
+// 404 / Error states
+// ----------------------------------------------------------
+const NotFound = () => (
+  <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+    <TopBar crumbs={[{ label: "404" }]} />
+    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <LeftRail active="" />
+      <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
+        <div style={{ maxWidth: 440, textAlign: "center" }}>
+          <Icon name="bookmark" size={40} style={{ color: "var(--brass)", marginBottom: 16 }} />
+          <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 28, margin: 0, color: "var(--text-strong)" }}>Страница потерялась</h1>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 10, marginBottom: 22 }}>
+            Возможно, её перенесли в другую главу. Или закладка осталась в книге, которой больше нет.
+          </p>
+          <Btn variant="primary" icon="library">На главную</Btn>
+        </div>
+      </div>
+    </div>
+    <StatusBar />
+  </div>
+);
+
+const ErrorAndStates = () => (
+  <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+    <TopBar crumbs={[{ label: "Состояния", bold: true }]} />
+    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <LeftRail active="" />
+      <div style={{ flex: 1, overflow: "auto", padding: "28px 40px" }}>
+        <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 28, margin: 0, color: "var(--text-strong)" }}>Состояния и реакции</h1>
+        <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 6, marginBottom: 24 }}>
+          Загрузка, пустота, ошибки, конфликты, офлайн, оптимистичные действия — на все случаи.
+        </div>
+
+        {/* offline ribbon */}
+        <div style={{
+          padding: "10px 14px", borderRadius: 8,
+          background: "var(--surface-2)", border: "1px solid var(--border-soft)",
+          color: "var(--text-muted)", fontSize: 13, marginBottom: 12,
+          display: "flex", alignItems: "center", gap: 10
+        }}>
+          <Dot tone="amber" /> Офлайн — изменения сохраняются локально, синхронизация при подключении.
+        </div>
+
+        {/* conflict ribbon */}
+        <div style={{
+          padding: "10px 14px", borderRadius: 8,
+          background: "var(--surface-2)", borderLeft: "3px solid var(--ink-amber)",
+          color: "var(--text)", fontSize: 13, marginBottom: 12,
+          display: "flex", alignItems: "center", gap: 14
+        }}>
+          <span style={{ flex: 1 }}>Глава была изменена в другом окне. Объединить, перезагрузить или отменить?</span>
+          <Btn variant="ghost" size="sm">Отменить</Btn>
+          <Btn variant="secondary" size="sm">Перезагрузить</Btn>
+          <Btn variant="primary" size="sm">Объединить</Btn>
+        </div>
+
+        {/* recoverable error */}
+        <div style={{
+          padding: "12px 14px", borderRadius: 8,
+          background: "var(--surface-1)", borderLeft: "3px solid var(--ink-red)",
+          marginBottom: 24
+        }}>
+          <div style={{ fontSize: 13, color: "var(--text-strong)", fontWeight: 600 }}>Не удалось загрузить разбор</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Сервер ответил 503. Попробуйте через минуту.</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+            <Btn variant="ghost" size="sm" icon="undo">Повторить</Btn>
+            <Mono style={{ fontSize: 11, color: "var(--text-faint)" }}>err: critic.unavailable · req_id 0x1f4a</Mono>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* Empty state */}
+          <div className="lw-card" style={{ padding: 36, textAlign: "center" }}>
+            <Icon name="book" size={36} style={{ color: "var(--brass-soft)", marginBottom: 14 }} />
+            <h3 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 20, margin: 0, color: "var(--text-strong)" }}>
+              Здесь будет ваша первая книга
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 8, marginBottom: 18 }}>
+              Импортируйте уже написанное или начните с чистой страницы — план поможет нащупать контуры.
+            </p>
+            <Btn variant="primary" icon="plus">Создать книгу</Btn>
+          </div>
+
+          {/* Loading skeleton */}
+          <div className="lw-card" style={{ padding: 22 }}>
+            <div className="lw-meta" style={{ marginBottom: 14 }}>Загрузка</div>
+            <Skel h={20} w="60%" style={{ marginBottom: 12 }} />
+            <Skel h={12} w="92%" style={{ marginBottom: 8 }} />
+            <Skel h={12} w="80%" style={{ marginBottom: 8 }} />
+            <Skel h={12} w="74%" style={{ marginBottom: 16 }} />
+            <Skel h={120} w="100%" />
+          </div>
+
+          {/* Toasts */}
+          <div className="lw-card" style={{ padding: 22 }}>
+            <div className="lw-meta" style={{ marginBottom: 14 }}>Тосты</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="lw-toast">Глава 4 переименована · <a className="lw-link">Отменить</a></div>
+              <div className="lw-toast" data-tone="success">Профиль стиля извлечён ✓</div>
+              <div className="lw-toast" data-tone="error">Не удалось сохранить — повторим автоматически</div>
+            </div>
+          </div>
+
+          {/* Destructive dialog mock */}
+          <div className="lw-card" style={{ padding: 22 }}>
+            <div className="lw-meta" style={{ marginBottom: 14 }}>Подтверждение удаления</div>
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-strong)", marginBottom: 6 }}>Удалить «Стальные ливни»?</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+                Это действие необратимо. Введите название книги, чтобы подтвердить.
+              </div>
+              <input className="lw-input" placeholder="Стальные ливни" style={{ marginBottom: 14 }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <Btn variant="ghost">Отмена</Btn>
+                <Btn variant="ink-red">Удалить навсегда</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <StatusBar />
+  </div>
+);
+
+Object.assign(window, { BooksList, BookPage, StyleProfilesList, UsagePage, NotFound, ErrorAndStates });
+
+
+})();
+</script>
+<script type="text/babel" data-presets="react">
+;(function(){
+
+// Extra screens: CommandPalette, Search, FocusMode, Toolkit (primitives showcase)
+
+const CommandPalette = () => (
+  <div style={{ position: "absolute", inset: 0, background: "var(--overlay)", backdropFilter: "blur(16px)", display: "grid", placeItems: "start center", paddingTop: 120 }}>
+    <div style={{
+      width: 560, background: "var(--surface-1)",
+      border: "1px solid var(--border)", borderRadius: 14,
+      boxShadow: "var(--shadow-lg)", overflow: "hidden",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border-soft)", gap: 10 }}>
+        <Icon name="search" size={18} style={{ color: "var(--brass)" }} />
+        <input className="lw-input" defaultValue="перепис" autoFocus style={{ background: "transparent", border: 0, padding: 0, fontSize: 15, height: 24 }} />
+        <Kbd>Esc</Kbd>
+      </div>
+      <div style={{ padding: 6, maxHeight: 360, overflow: "auto" }}>
+        <div className="lw-meta" style={{ padding: "8px 12px", color: "var(--text-faint)" }}>Действия</div>
+        {[
+          { icon: "sparkle", t: "Переписать выделение", k: "⌘↵", active: true },
+          { icon: "sparkle", t: "Переписать в стиле «Тёплый рассказчик»" },
+          { icon: "feather", t: "Перейти к разбору главы", k: "⌘/" },
+        ].map((it, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 12px", borderRadius: 8,
+            background: it.active ? "var(--surface-3)" : "transparent",
+            ...(it.active && { boxShadow: "inset 2px 0 0 var(--brass)" }),
+            cursor: "pointer",
+          }}>
+            <Icon name={it.icon} size={14} style={{ color: it.active ? "var(--brass)" : "var(--text-muted)" }} />
+            <span style={{ flex: 1, fontSize: 13, color: it.active ? "var(--text-strong)" : "var(--text)" }}>{it.t}</span>
+            {it.k && <Kbd>{it.k}</Kbd>}
+          </div>
+        ))}
+        <div className="lw-meta" style={{ padding: "12px 12px 8px", color: "var(--text-faint)" }}>Главы</div>
+        {[
+          { t: "Гл. 4 · Разговор о невозможном" },
+          { t: "Гл. 3 · На Патриарших" },
+          { t: "Гл. 5 · Воланд" },
+        ].map((it, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8 }}>
+            <Icon name="book" size={14} style={{ color: "var(--text-muted)" }} />
+            <span style={{ flex: 1, fontSize: 13, color: "var(--text)" }}>{it.t}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderTop: "1px solid var(--border-soft)", background: "var(--bg)", color: "var(--text-faint)", fontSize: 11 }}>
+        <Kbd>↑↓</Kbd> навигация
+        <Kbd>↵</Kbd> выбрать
+        <span style={{ flex: 1 }} />
+        <span style={{ fontFamily: "var(--font-mono)" }}>Bookopis · CMD-K</span>
+      </div>
+    </div>
+  </div>
+);
+
+const FocusMode = () => (
+  <div style={{ height: "100%", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+    <div className="lw-paper" style={{ flex: 1, padding: "80px 32px", overflow: "auto" }}>
+      <div style={{ maxWidth: 680, margin: "0 auto" }}>
+        <div className="lw-italic-muted" style={{ fontSize: 13, marginBottom: 8 }}>Глава 4</div>
+        <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 40, lineHeight: 1.15, margin: 0, color: "var(--text-strong)" }}>Разговор о невозможном</h1>
+        <div className="lw-prose" style={{ marginTop: 36 }}>
+          <p>Однажды весною, в час небывало жаркого заката, в Москве, на Патриарших прудах, появились двое граждан. Первый из них, одетый в летнюю серенькую пару, был маленького роста, упитан, лыс, свою приличную шляпу пирожком нёс в руке, а на хорошо выбритом лице его помещались сверхъестественных размеров очки в чёрной роговой оправе.</p>
+          <p>Второй — плечистый, рыжеватый, вихрастый молодой человек в заломленной на затылок клетчатой кепке — был в ковбойке, жёваных белых брюках и в чёрных тапочках. Они шли молча, и каждый из них думал о своём.</p>
+          <p>Когда они проходили мимо третьей скамейки, пыльная аллея сама собой стихла.<span className="lw-caret" /></p>
+        </div>
+      </div>
+    </div>
+    <div style={{
+      position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
+      display: "flex", alignItems: "center", gap: 12,
+      background: "var(--surface-2)", border: "1px solid var(--border)",
+      borderRadius: 999, padding: "6px 14px",
+      boxShadow: "var(--shadow-md)",
+      fontSize: 11, color: "var(--text-muted)",
+      fontFamily: "var(--font-mono)",
+    }}>
+      <Dot tone="green" /> 2 840 слов · 11 мин · фокус-режим
+      <span style={{ color: "var(--text-faint)" }}>·</span>
+      выйти <Kbd>⌘⇧F</Kbd>
+    </div>
+  </div>
+);
+
+const Toolkit = () => (
+  <div style={{ background: "var(--bg)", padding: 32, height: "100%", overflow: "auto" }}>
+    <h1 className="lw-display" style={{ fontFamily: "var(--font-display)", fontSize: 28, margin: 0, color: "var(--text-strong)", marginBottom: 4 }}>Library Warm — примитивы</h1>
+    <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Кнопки · пилюли · карточки · клавиши · точки · радар</div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Кнопки</div>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+      <Btn variant="primary" icon="sparkle">Сгенерировать</Btn>
+      <Btn variant="primary" size="sm">Принять</Btn>
+      <Btn variant="primary" size="lg" icon="plus">Новая глава</Btn>
+      <Btn variant="secondary">Отмена</Btn>
+      <Btn variant="ghost" icon="search">Поиск</Btn>
+      <Btn variant="ink-red" icon="trash">Удалить навсегда</Btn>
+      <Btn variant="link">Перейти к главе</Btn>
+      <Btn variant="primary" disabled>Недоступно</Btn>
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Пилюли и точки</div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, alignItems: "center" }}>
+      <Pill>черновик</Pill>
+      <Pill tone="brass" icon="feather">Тёплый рассказчик</Pill>
+      <Pill tone="green">готова</Pill>
+      <Pill tone="amber">требуется правка</Pill>
+      <Pill tone="red">конфликт канона</Pill>
+      <Pill tone="blue">примечание</Pill>
+      <span style={{ flex: 1 }} />
+      <Dot tone="green" /><Dot tone="amber" /><Dot tone="red" /><Dot tone="blue" /><Dot tone="brass" />
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Клавиши</div>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 24 }}>
+      <Kbd>⌘K</Kbd><Kbd>⌘S</Kbd><Kbd>⌘↵</Kbd><Kbd>⌘/</Kbd><Kbd>⌘⇧F</Kbd><Kbd>Esc</Kbd>
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Поля</div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24, maxWidth: 600 }}>
+      <input className="lw-input" placeholder="Заголовок главы…" />
+      <input className="lw-input" placeholder="Поиск" />
+      <textarea className="lw-textarea" rows={3} placeholder="Свободный ввод…" />
+      <div className="lw-progress" style={{ alignSelf: "center" }}><i style={{ width: "62%" }} /></div>
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Цвета чернил</div>
+    <div className="lw-prose" style={{ fontFamily: "Lora, Georgia, serif", marginBottom: 24, maxWidth: 640 }}>
+      <p>
+        Берлиоз остановился и повернул голову к спутнику с тем
+        {" "}<span className="lw-add">медленным и осторожным</span>{" "}
+        <span className="lw-del">быстрым</span> движением, каким человек поворачивается в темноте, услышав за спиной шаги.
+      </p>
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Карточки</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24, maxWidth: 900 }}>
+      <Card>
+        <div className="lw-meta">Стат-карточка</div>
+        <Mono style={{ fontSize: 24, color: "var(--text-strong)", display: "block", marginTop: 8 }}>48 200</Mono>
+      </Card>
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <Dot tone="amber" />
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-strong)", flex: 1 }}>Замечание</div>
+          <Pill tone="brass">critic</Pill>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Длинное предложение во втором абзаце.</div>
+      </Card>
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Radar size={80} values={[78,52,88,64,58,72]} />
+          <div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--text-strong)" }}>Тёплый рассказчик</div>
+            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>3 книги</div>
+          </div>
+        </div>
+      </Card>
+    </div>
+
+    <div className="lw-meta" style={{ marginBottom: 12 }}>Палитра</div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {[
+        ["bg","#1A1410"], ["surface-1","#221A14"], ["surface-2","#2B2118"], ["surface-3","#342719"],
+        ["brass","#D49A4E"], ["brass-soft","#B07F33"],
+        ["ink-red","#C44536"], ["ink-green","#6A8E4E"], ["ink-blue","#5B7A99"], ["ink-amber","#C9A24A"],
+        ["text","#EDE4D3"], ["text-muted","#9C8B73"], ["text-faint","#6E5F4D"],
+      ].map(([n,c]) => (
+        <div key={n} style={{ width: 100, fontSize: 11 }}>
+          <div style={{ height: 56, borderRadius: 8, background: c, border: "1px solid var(--border-soft)" }} />
+          <div style={{ marginTop: 6, color: "var(--text)", fontFamily: "var(--font-mono)" }}>{n}</div>
+          <div style={{ color: "var(--text-faint)", fontFamily: "var(--font-mono)" }}>{c}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+Object.assign(window, { CommandPalette, FocusMode, Toolkit });
+
+
+})();
+</script>
+
+<script type="text/babel">
+const { useState } = React;
+
+// Tweakable defaults — persist via __edit_mode_set_keys host bridge.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "aiSurface": "pill",
+  "serif": "lora",
+  "grain": "subtle"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  const Frame = ({ children, grain, screenLabel }) => (
+    <div className="lw-artboard" data-grain={grain || t.grain} data-screen-label={screenLabel}>
+      {children}
+    </div>
+  );
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="hero" title="Bookopis · Library Warm" subtitle="Тёмная-только, бумажно-латунная редизайн-система. 4–8 ч в день — без напряжения.">
+          <DCArtboard id="chapter-hero" label="ChapterPage · флагман (Tweaks)" width={1600} height={920}>
+            <Frame screenLabel="01 Chapter (главная)">
+              <ChapterPage aiSurface={t.aiSurface} serif={t.serif} grain={t.grain} />
+            </Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="chapter-states" title="ChapterPage · состояния" subtitle="Diff, фокус-режим, командная палитра — те же кости, разные настроения.">
+          <DCArtboard id="chapter-diff" label="Принять / отклонить · диф ИИ" width={1600} height={920}>
+            <Frame screenLabel="02 Chapter — diff">
+              <ChapterPage aiSurface="bottombar" serif={t.serif} showDiff={true} />
+            </Frame>
+          </DCArtboard>
+          <DCArtboard id="chapter-focus" label="Фокус-режим · ⌘⇧F" width={1100} height={760}>
+            <Frame screenLabel="03 Focus">
+              <FocusMode />
+            </Frame>
+          </DCArtboard>
+          <DCArtboard id="cmdk" label="Командная палитра · ⌘K" width={1100} height={760}>
+            <Frame screenLabel="04 ⌘K palette">
+              <div style={{ position: "relative", height: "100%" }}>
+                <ChapterPage aiSurface="pill" serif={t.serif} />
+                <CommandPalette />
+              </div>
+            </Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="book" title="BookPage · все вкладки" subtitle="Обзор · План · Канон · Знания · Импорт-Экспорт. Один трёх-панельный шасси.">
+          <DCArtboard id="book-overview" label="Обзор · хиро + лента глав" width={1600} height={920}>
+            <Frame screenLabel="05 Book — Overview"><BookPage tab="Обзор" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-plan" label="План · сюжетные узлы + ИИ" width={1600} height={920}>
+            <Frame screenLabel="06 Book — Plan"><BookPage tab="План" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-canon" label="Канон · факты + конфликты" width={1600} height={920}>
+            <Frame screenLabel="07 Book — Canon"><BookPage tab="Канон" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-knowledge" label="Знания · база мира" width={1600} height={920}>
+            <Frame screenLabel="08 Book — Knowledge"><BookPage tab="Знания" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="book-io" label="Импорт / Экспорт" width={1600} height={920}>
+            <Frame screenLabel="09 Book — Import/Export"><BookPage tab="Импорт/Экспорт" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="library" title="Список книг и стиль" subtitle="Каталог + профили стиля — тёмный янтарь, а не дашборд.">
+          <DCArtboard id="books" label="/books · витрина" width={1600} height={920}>
+            <Frame screenLabel="10 Books"><BooksList /></Frame>
+          </DCArtboard>
+          <DCArtboard id="profiles" label="/style-profiles · витрина" width={1600} height={920}>
+            <Frame screenLabel="11 Style Profiles"><StyleProfilesList /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="usage" title="Метрики и состояния" subtitle="Использование, ошибки, 404.">
+          <DCArtboard id="usage" label="/usage · стоимость, токены, журнал" width={1600} height={920}>
+            <Frame screenLabel="12 Usage"><UsagePage /></Frame>
+          </DCArtboard>
+          <DCArtboard id="states" label="Состояния · ошибки, конфликты, тосты" width={1280} height={900}>
+            <Frame screenLabel="13 States"><ErrorAndStates /></Frame>
+          </DCArtboard>
+          <DCArtboard id="404" label="/* 404" width={900} height={680}>
+            <Frame screenLabel="14 404"><NotFound /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="kit" title="Примитивы" subtitle="Section 3 — кнопки, пилюли, поля, цвета чернил, палитра.">
+          <DCArtboard id="kit" label="UI kit · components/ui/" width={1280} height={1000}>
+            <Frame screenLabel="15 Kit"><Toolkit /></Frame>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks · ChapterPage">
+        <TweakSection title="Поверхность ИИ-команды">
+          <TweakRadio
+            value={t.aiSurface}
+            onChange={v => setTweak('aiSurface', v)}
+            options={[
+              { value: 'pill', label: 'Пилюля' },
+              { value: 'bottombar', label: 'Стр.' },
+              { value: 'gutter', label: 'В поле' },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection title="Шрифт рукописи">
+          <TweakRadio
+            value={t.serif}
+            onChange={v => setTweak('serif', v)}
+            options={[
+              { value: 'lora', label: 'Lora' },
+              { value: 'sourceserif', label: 'Source' },
+              { value: 'fraunces', label: 'Fraunces' },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection title="Текстура бумаги">
+          <TweakRadio
+            value={t.grain}
+            onChange={v => setTweak('grain', v)}
+            options={[
+              { value: 'off', label: 'Выкл' },
+              { value: 'subtle', label: 'Лёгкая' },
+              { value: 'strong', label: 'Сильная' },
+            ]}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>

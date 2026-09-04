@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookopis — Library Warm</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Crimson+Pro:wght@400;500;600&family=Spectral:wght@400;500;600&family=EB+Garamond:wght@400;500;600&display=swap" />
+
+  <link rel="stylesheet" href="app/tokens.css" />
+  <link rel="stylesheet" href="app/primitives.css" />
+  <link rel="stylesheet" href="app/stepper.css" />
+  <link rel="stylesheet" href="app/shell.css" />
+  <link rel="stylesheet" href="app/pages.css" />
+  <link rel="stylesheet" href="app/tweaks-extras.css" />
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="app/data.js"></script>
+
+  <template id="__bundler_thumbnail">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+      <rect width="200" height="200" fill="#1A1410" />
+      <g transform="translate(50,40)">
+        <rect x="0" y="0" width="100" height="120" rx="4" fill="none" stroke="#D49A4E" stroke-width="3" />
+        <path d="M50 0 v90 l-15 -10 l-15 10 V0" fill="none" stroke="#D49A4E" stroke-width="3" />
+        <line x1="20" y1="50" x2="80" y2="50" stroke="#D49A4E" stroke-width="2" opacity="0.5" />
+        <line x1="20" y1="70" x2="80" y2="70" stroke="#D49A4E" stroke-width="2" opacity="0.5" />
+      </g>
+    </svg>
+  </template>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="text/babel" data-presets="react" src="app/tweaks-panel.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/primitives.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/stepper.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/shell.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/books.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/studio.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/chapter.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/stages.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/settings.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/style-profiles.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/pages/ds.jsx"></script>
+  <script type="text/babel" data-presets="react" src="app/app.jsx"></script>
+</body>
+</html>

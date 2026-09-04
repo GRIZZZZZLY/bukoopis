@@ -1,0 +1,265 @@
+/* Library Warm — primitives.css */
+
+/* ─── Button ──────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid transparent; border-radius: var(--radius-control);
+  font-family: var(--font-ui); font-weight: 500; font-size: 13px;
+  line-height: 1; white-space: nowrap;
+  cursor: default; user-select: none;
+  transition: background var(--motion-1) var(--ease-hover),
+              color var(--motion-1) var(--ease-hover),
+              border-color var(--motion-1) var(--ease-hover),
+              box-shadow var(--motion-1) var(--ease-hover);
+}
+.btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn-md { height: 32px; padding: 0 14px; }
+.btn-lg { height: 40px; padding: 0 18px; font-size: 14px; }
+.btn-label { font-weight: inherit; }
+
+.btn-primary {
+  background: var(--color-brass);
+  color: #1A1410; border-color: var(--color-brass);
+  font-weight: 600;
+}
+.btn-primary:hover  { background: var(--color-brass-hi); border-color: var(--color-brass-hi); }
+.btn-primary:active { background: var(--color-brass-soft); border-color: var(--color-brass-soft); }
+
+.btn-secondary {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.btn-secondary:hover  { background: var(--color-surface-3); border-color: var(--color-border-strong); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text);
+  border-color: transparent;
+}
+.btn-ghost:hover { background: var(--color-surface-2); }
+
+.btn-destructive {
+  background: transparent;
+  color: var(--color-ink-red);
+  border-color: var(--color-ink-red);
+}
+.btn-destructive:hover { background: var(--color-ink-red-tint); }
+
+.btn-link {
+  background: transparent; border: 0; padding: 0; height: auto;
+  color: var(--color-brass); font-weight: 500;
+}
+.btn-link:hover { color: var(--color-brass-hi); text-decoration: underline; text-underline-offset: 3px; }
+
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+.btn-spinner {
+  width: 12px; height: 12px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Pill / Tag ──────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+}
+.pill-brass   { color: var(--color-brass); border-color: var(--color-brass-soft); background: var(--color-brass-tint); }
+.pill-red     { color: var(--color-ink-red); border-color: var(--color-ink-red); background: var(--color-ink-red-tint); }
+.pill-amber   { color: var(--color-ink-amber); border-color: var(--color-ink-amber); background: var(--color-ink-amber-tint); }
+.pill-green   { color: var(--color-ink-green); border-color: var(--color-ink-green); background: var(--color-ink-green-tint); }
+.pill-blue    { color: var(--color-ink-blue); border-color: var(--color-ink-blue); background: var(--color-ink-blue-tint); }
+.pill-strong  { color: var(--color-text-strong); border-color: var(--color-border-strong); }
+.pill-mono    { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0; }
+.pill-lg      { height: 26px; padding: 0 12px; font-size: 12px; }
+
+/* ─── Kbd ─────────────────────────────────────────────────── */
+
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 20px; padding: 0 6px;
+  background: var(--color-surface-3); color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em;
+}
+
+/* ─── Diagnostic dot ──────────────────────────────────────── */
+
+.dot { display: inline-block; border-radius: 999px; flex: none; }
+
+/* ─── Card ────────────────────────────────────────────────── */
+
+.card {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  position: relative;
+  transition: background var(--motion-2) var(--ease-hover),
+              border-color var(--motion-2) var(--ease-hover),
+              box-shadow var(--motion-2) var(--ease-hover),
+              transform var(--motion-2) var(--ease-hover);
+}
+.card-paper {
+  background: var(--color-paper);
+  padding: 0;
+  overflow: hidden;
+}
+.card-paper .card-inner { padding: 20px; }
+.card-int { cursor: default; }
+.card-int:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+.card-accent {
+  border-color: var(--color-brass-soft);
+  box-shadow: var(--shadow-glow);
+}
+
+/* ─── ProgressBar ─────────────────────────────────────────── */
+
+.pbar-wrap { display: flex; align-items: center; gap: 12px; width: 100%; }
+.pbar {
+  flex: 1; height: 2px;
+  background: var(--color-surface-2);
+  border-radius: 2px; overflow: hidden;
+}
+.pbar-fill {
+  height: 100%; background: var(--color-brass);
+  transition: width var(--motion-3) var(--ease-in-out);
+}
+.pbar-label { white-space: nowrap; }
+
+/* ─── Tabs ────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex; gap: 24px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+.tab {
+  position: relative;
+  background: transparent; border: 0;
+  padding: 12px 0; cursor: default;
+  color: var(--color-text-muted);
+  font-family: var(--font-ui); font-size: 13px; font-weight: 500;
+  letter-spacing: 0.01em;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color var(--motion-1) var(--ease-hover);
+}
+.tab:hover { color: var(--color-text); }
+.tab-active { color: var(--color-text-strong); }
+.tab-active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--color-brass);
+  border-radius: 1px;
+  animation: tab-underline var(--motion-2) var(--ease-in-out);
+}
+@keyframes tab-underline { from { transform: scaleX(0.4); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+.tab-count {
+  font-family: var(--font-mono); font-size: 10px;
+  background: var(--color-surface-2); color: var(--color-text-muted);
+  padding: 2px 6px; border-radius: 999px; min-width: 18px; text-align: center;
+}
+
+/* ─── Tooltip ─────────────────────────────────────────────── */
+
+.ttip-wrap { position: relative; display: inline-flex; }
+.ttip {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0; visibility: hidden;
+  transform: translateY(2px);
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  border: 1px solid var(--color-brass-soft);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: opacity var(--motion-2) var(--ease-in-out), transform var(--motion-2) var(--ease-in-out);
+  z-index: 100;
+}
+.ttip-wrap[data-side="right"]  .ttip { left: calc(100% + 10px); top: 50%; transform: translateY(-50%); }
+.ttip-wrap[data-side="bottom"] .ttip { top: calc(100% + 6px); left: 50%; transform: translateX(-50%); }
+.ttip-wrap[data-side="top"]    .ttip { bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); }
+.ttip-wrap:hover .ttip { opacity: 1; visibility: visible; }
+.ttip-wrap[data-side="right"]:hover .ttip { transform: translateY(-50%) translateX(0); }
+.ttip-kbd { margin-left: 4px; }
+
+/* ─── Skeleton ────────────────────────────────────────────── */
+
+.skel {
+  display: inline-block;
+  background: linear-gradient(90deg, var(--color-surface-2) 0%, var(--color-surface-3) 50%, var(--color-surface-2) 100%);
+  background-size: 200% 100%;
+  animation: skel-sweep 1.6s linear infinite;
+}
+@keyframes skel-sweep {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Toast (simple) ─────────────────────────────────────── */
+
+.toast-stack {
+  position: fixed; top: calc(var(--topbar-h) + 12px); right: 16px;
+  z-index: 100;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  min-width: 260px; max-width: 360px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-brass);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex; gap: 12px; align-items: flex-start;
+  box-shadow: var(--shadow-md);
+  animation: toast-in var(--motion-3) var(--ease-in-out);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.toast.toast-error   { border-left-color: var(--color-ink-red); }
+.toast.toast-success { border-left-color: var(--color-ink-green); }
+
+/* ─── Inline form controls ───────────────────────────────── */
+
+.input, .textarea, .select {
+  width: 100%;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font-family: var(--font-ui); font-size: 13px;
+  padding: 8px 12px;
+  transition: border-color var(--motion-1), background var(--motion-1);
+  outline: none;
+}
+.input:focus, .textarea:focus, .select:focus {
+  border-color: var(--color-brass-soft);
+  box-shadow: var(--shadow-glow);
+}
+.textarea { font-family: var(--font-prose); font-size: 15px; line-height: 1.6; min-height: 80px; resize: vertical; padding: 12px 14px; }
+.input::placeholder, .textarea::placeholder { color: var(--color-text-faint); }
+.input-lg { padding: 12px 14px; font-size: 15px; }
+.input-display { font-family: var(--font-display); font-size: 22px; font-weight: 500; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 12px; letter-spacing: 0.02em; color: var(--color-text-muted); font-weight: 500; }
+.field-hint  { font-size: 11px; color: var(--color-text-faint); font-family: var(--font-mono); }
