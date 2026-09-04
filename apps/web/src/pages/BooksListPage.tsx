@@ -46,7 +46,7 @@ export function BooksListPage() {
   const [recommended, setRecommended] = useState<Record<number, StageId>>({});
   const [stats, setStats] = useState<Record<string, BookStats>>({});
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
+  const [idea, setIdea] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
@@ -70,13 +70,16 @@ export function BooksListPage() {
     void load();
   }, []);
 
+  const IDEA_MIN = 10;
+
   async function onCreate(e?: FormEvent) {
     e?.preventDefault();
-    if (!title.trim()) return;
+    const trimmed = idea.trim();
+    if (trimmed.length < IDEA_MIN) return;
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createBook({ title: title.trim() });
+      const created = await api.createBook({ idea: trimmed });
       navigate(`/books/${created.id}/studio`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -139,32 +142,33 @@ export function BooksListPage() {
           ) : (
             <form
               onSubmit={onCreate}
-              style={{ display: "flex", gap: 8, alignItems: "center" }}
+              style={{ display: "flex", gap: 8, alignItems: "flex-start", width: "100%", maxWidth: 720 }}
               aria-label="Создать новую книгу"
             >
-              <input
+              <textarea
                 className="input"
                 autoFocus
-                placeholder="Название книги…"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                aria-label="Название книги"
-                style={{ width: 280 }}
+                rows={3}
+                placeholder="Одной фразой или сбивчиво, как думается. Название придумается позже."
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                aria-label="О чём книга?"
+                style={{ flex: 1, resize: "vertical" }}
                 disabled={busy}
               />
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={busy || !title.trim()}
+                disabled={busy || idea.trim().length < IDEA_MIN}
               >
-                {busy ? "…" : "Создать"}
+                {busy ? "…" : "Начать"}
               </button>
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => {
                   setCreating(false);
-                  setTitle("");
+                  setIdea("");
                 }}
                 disabled={busy}
               >

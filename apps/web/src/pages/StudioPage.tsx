@@ -189,10 +189,6 @@ export function StudioPage() {
     return await api.refineConceptField(bookId, field, draft);
   }
 
-  async function handleFromIdea(idea: string): Promise<BookConcept> {
-    return await api.conceptFromIdea(bookId, idea);
-  }
-
   const title = book?.title ?? `Книга #${bookId}`;
   const metaLine = book
     ? ` · ${book.language === "ru" ? "Русский" : book.language} · ${STATUS_RU[book.status] ?? book.status} · последняя правка ${relativeTime(book.updatedAt ?? book.createdAt)}`
@@ -281,7 +277,6 @@ export function StudioPage() {
             onSave={handleSaveConcept}
             onRefine={handleRefine}
             bookId={bookId}
-            onFromIdea={handleFromIdea}
           />
         </div>
 

@@ -36,27 +36,31 @@ describe("BooksListPage", () => {
     } as never);
   });
 
-  it("navigates to Studio after creating a book", async () => {
+  it("creates a book from an idea and navigates to Studio", async () => {
     m.listBooks.mockResolvedValue([] as never);
-    m.createBook.mockResolvedValue({ id: 42, title: "Новая" } as never);
+    m.createBook.mockResolvedValue({ id: 42, title: "Новая книга" } as never);
     render(
       <MemoryRouter initialEntries={["/books"]}>
         <Routes>
           <Route path="/books" element={<BooksListPage />} />
-          <Route
-            path="/books/:bookId/studio"
-            element={<div>STUDIO 42</div>}
-          />
+          <Route path="/books/:bookId/studio" element={<div>STUDIO 42</div>} />
         </Routes>
       </MemoryRouter>,
     );
     await waitFor(() => screen.getByRole("button", { name: /Новая книга/ }));
     await userEvent.click(screen.getByRole("button", { name: /Новая книга/ }));
-    await userEvent.type(screen.getByLabelText("Название книги"), "Новая");
-    await userEvent.click(screen.getByRole("button", { name: /Создать/ }));
-    await waitFor(() =>
-      expect(screen.getByText("STUDIO 42")).toBeInTheDocument(),
+    const start = screen.getByRole("button", { name: /Начать/ });
+    expect(start).toBeDisabled();
+    await userEvent.type(
+      screen.getByLabelText("О чём книга?"),
+      "Шестеро героев из двух враждующих миров.",
     );
+    expect(start).toBeEnabled();
+    await userEvent.click(start);
+    expect(m.createBook).toHaveBeenCalledWith({
+      idea: "Шестеро героев из двух враждующих миров.",
+    });
+    await waitFor(() => expect(screen.getByText("STUDIO 42")).toBeInTheDocument());
   });
 
   it("shows a Продолжить link to the recommended stage per book", async () => {
@@ -134,6 +138,6 @@ describe("BooksListPage", () => {
     renderPage();
     const ghost = await screen.findByRole("button", { name: "Добавить книгу" });
     fireEvent.click(ghost);
-    expect(screen.getByLabelText("Название книги")).toBeInTheDocument();
+    expect(screen.getByLabelText("О чём книга?")).toBeInTheDocument();
   });
 });
