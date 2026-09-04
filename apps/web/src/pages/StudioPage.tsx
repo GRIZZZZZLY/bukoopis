@@ -105,7 +105,16 @@ export function StudioPage() {
     };
   }, []);
 
+  // reload() has two call sites (the bookId effect, and the intake panel's
+  // onIntake) and neither is awaited by its caller, so two runs can overlap —
+  // switching book mid-fetch, or firing a second intake before the first
+  // reload lands. A monotonic id lets each run recognise it has been
+  // superseded and drop its response instead of overwriting newer state.
+  const requestIdRef = useRef(0);
+
   async function reload() {
+    const requestId = ++requestIdRef.current;
+    const stale = () => !aliveRef.current || requestIdRef.current !== requestId;
     try {
       // Book fetch is optional — fall back if mock missing.
       let b: Book | null = null;
@@ -132,14 +141,14 @@ export function StudioPage() {
         api.getStudioState(bookId),
         api.getStudioWarnings(bookId),
       ]);
-      if (!aliveRef.current) return;
+      if (stale()) return;
       setBook(b);
       setConcept(c);
       setStudio(s);
       setWarnings(w);
       setChapters(ch);
     } catch (e) {
-      if (!aliveRef.current) return;
+      if (stale()) return;
       setError(e instanceof Error ? e.message : String(e));
     }
   }
