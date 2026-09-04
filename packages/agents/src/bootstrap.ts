@@ -12,6 +12,7 @@ import {
 } from "./plot.js";
 import { registerConceptRefinerContract } from "./concept/refiner.js";
 import { registerConceptFromIdeaContract } from "./concept/from-idea.js";
+import { registerPitchGeneratorContract } from "./concept/pitches.js";
 import { registerAspectPlaybookContract } from "./aspects/playbook.js";
 import { registerAspectVariantsContract } from "./aspects/variants.js";
 import { registerAspectRefineContract } from "./aspects/refine.js";
@@ -43,6 +44,7 @@ export function registerAllAgentContracts(): void {
   registerPlotChapterPlanContract();
   registerConceptRefinerContract();
   registerConceptFromIdeaContract();
+  registerPitchGeneratorContract();
   registerAspectPlaybookContract();
   registerAspectVariantsContract();
   registerAspectRefineContract();
