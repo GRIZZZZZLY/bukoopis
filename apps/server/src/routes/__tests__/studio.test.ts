@@ -57,6 +57,45 @@ describe("studio routes", () => {
     expect(r.status).toBe(400);
   });
 
+  it("PATCH /api/books/:id/concept rejects clearing the logline on a locked concept (400)", async () => {
+    const id = await createBook();
+    await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      premise: { logline: "Картограф ищет остров, которого нет." },
+    });
+    await send(t.app, `/api/books/${id}/concept/lock`, "POST", {});
+    const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "" },
+    });
+    expect(r.status).toBe(400);
+    const body = (await r.json()) as { error: string };
+    expect(body.error).toBe("invariant_violation");
+    // the concept in storage must be untouched by the rejected patch
+    const round = await sendJson<{ premise: { logline?: string } }>(
+      t.app,
+      `/api/books/${id}/concept`,
+      "GET",
+    );
+    expect(round.premise.logline).toBe("Картограф ищет остров, которого нет.");
+  });
+
+  it("PATCH /api/books/:id/concept still allows an unlocked concept with no logline — the ordinary drafting state", async () => {
+    const id = await createBook();
+    const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      premise: {},
+    });
+    expect(r.status).toBe(200);
+  });
+
   it("GET /api/books/:id/studio-state returns default empty state", async () => {
     const id = await createBook();
     const r = await sendJson<{ revision: number; stages: object }>(

@@ -236,6 +236,9 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
       return c.json(repo.patchConcept(id, parsed.data));
     } catch (e) {
       if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      if (e instanceof Error && e.message.startsWith("Concept invariant")) {
+        return c.json({ error: "invariant_violation", details: { message: e.message } }, 400);
+      }
       throw e;
     }
   });
@@ -444,20 +447,32 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     if (concept instanceof Response) return concept;
 
     const now = new Date().toISOString();
-    if (parsed.data.pitchId === undefined) {
-      // Legacy concepts have a premise but no pitches: one click confirms them.
-      if ((concept.premise.logline ?? "").trim().length === 0) {
-        return badRequest(c, "nothing to lock: pick a pitch or fill the premise first");
+    try {
+      if (parsed.data.pitchId === undefined) {
+        // Legacy concepts have a premise but no pitches: one click confirms them.
+        if ((concept.premise.logline ?? "").trim().length === 0) {
+          return badRequest(c, "nothing to lock: pick a pitch or fill the premise first");
+        }
+        return c.json(repo.patchConcept(id, { ...concept, lockedAt: now }));
       }
-      return c.json(repo.patchConcept(id, { ...concept, lockedAt: now }));
+      const pitch = concept.pitches.find((p) => p.id === parsed.data.pitchId);
+      if (!pitch) return badRequest(c, `unknown pitch id: ${parsed.data.pitchId}`);
+      // Both writes must land together — a concept locked to a pitch whose
+      // working title never reached the book is a half-applied lock.
+      const lockTx = sqlite.transaction(() => {
+        const next = repo.patchConcept(id, lockConceptToPitch(concept, pitch.id, now));
+        sqlite
+          .prepare("UPDATE books SET title = ?, updated_at = ? WHERE id = ?")
+          .run(pitch.workingTitle, now, id);
+        return next;
+      });
+      return c.json(lockTx());
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("Concept invariant")) {
+        return c.json({ error: "invariant_violation", details: { message: e.message } }, 400);
+      }
+      throw e;
     }
-    const pitch = concept.pitches.find((p) => p.id === parsed.data.pitchId);
-    if (!pitch) return badRequest(c, `unknown pitch id: ${parsed.data.pitchId}`);
-    const next = repo.patchConcept(id, lockConceptToPitch(concept, pitch.id, now));
-    sqlite
-      .prepare("UPDATE books SET title = ?, updated_at = ? WHERE id = ?")
-      .run(pitch.workingTitle, now, id);
-    return c.json(next);
   });
 
   r.post("/books/:id/concept/unlock", (c) => {

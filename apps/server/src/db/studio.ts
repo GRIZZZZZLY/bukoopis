@@ -6,6 +6,7 @@ import {
   studioEventTypeSchema,
   emptyBookConcept,
   normalizeConcept,
+  assertConceptInvariants,
   emptyStudioState,
   assertStudioStateInvariants,
   withDerivedStageStatuses,
@@ -117,6 +118,9 @@ export function createStudioRepository(
 
   function patchConcept(bookId: number, next: BookConcept): BookConcept {
     const normalized = normalizeConcept(bookConceptSchema.parse(next));
+    // Hard-invariant guard before persistence, mirroring patchStudioState below:
+    // a locked concept without a logline is "complete" in name only.
+    assertConceptInvariants(normalized);
     const now = new Date().toISOString();
     const info = sqlite
       .prepare("UPDATE books SET concept = ?, updated_at = ? WHERE id = ?")
