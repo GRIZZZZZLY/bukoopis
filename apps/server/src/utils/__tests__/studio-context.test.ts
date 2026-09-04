@@ -313,4 +313,46 @@ describe("derivePremiseFromConcept", () => {
       }),
     ).toBe("Протагонист: Мира");
   });
+
+  it("uses the hook alone when the premise is otherwise empty", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        hook: "В списке — её имя.",
+        premise: {},
+      }),
+    ).toBe("Крючок: В списке — её имя.");
+  });
+
+  it("appends the hook after stakes, pinning the line order", () => {
+    const out = derivePremiseFromConcept({
+      ...base,
+      hook: "В списке — её имя.",
+      premise: {
+        logline: "Картограф ищет остров, которого нет.",
+        protagonist: "Мира, картограф",
+        conflict: "Гильдия скрывает карты",
+        stakes: "Затонет весь архипелаг",
+      },
+    });
+    expect(out).toBe(
+      [
+        "Картограф ищет остров, которого нет.",
+        "Протагонист: Мира, картограф",
+        "Конфликт: Гильдия скрывает карты",
+        "Ставки: Затонет весь архипелаг",
+        "Крючок: В списке — её имя.",
+      ].join("\n"),
+    );
+  });
+
+  it("does not emit the hook line when the hook is blank or whitespace-only", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        hook: "   ",
+        premise: { logline: "Картограф ищет остров, которого нет." },
+      }),
+    ).toBe("Картограф ищет остров, которого нет.");
+  });
 });
