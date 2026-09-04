@@ -42,6 +42,7 @@ import { buildContextRef } from "../services/studio/contextHash.js";
 import { ESTIMATE_MS } from "../utils/generation-progress.js";
 import { streamAgentProgress } from "../utils/sse-progress.js";
 import { runMaterialClassifier } from "@book-forge/agents/intake/classifier";
+import { docxToPlainText } from "../utils/docx.js";
 import {
   describeExistingStages,
   intakeRequestKey,
@@ -132,16 +133,19 @@ const refineAspectBodySchema = z.object({
 // lands.
 const MAX_INTAKE_FILE_CHARS = 40_000;
 
+const intakeFileSchema = z
+  .object({
+    filename: z.string().trim().min(1).max(400),
+    content: z.string().min(1).max(400_000).optional(),
+    /** .docx приходит байтами — сервер сам достанет из него текст. */
+    contentBase64: z.string().min(1).max(8_000_000).optional(),
+  })
+  .refine((f) => f.content !== undefined || f.contentBase64 !== undefined, {
+    message: "content or contentBase64 required",
+  });
+
 const intakeBodySchema = z.object({
-  files: z
-    .array(
-      z.object({
-        filename: z.string().trim().min(1).max(400),
-        content: z.string().min(1).max(400_000),
-      }),
-    )
-    .min(1)
-    .max(50),
+  files: z.array(intakeFileSchema).min(1).max(50),
 });
 
 const ENTITY_STAGES = new Set(["characters", "items"] as const);
@@ -526,8 +530,35 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       throw e;
     }
 
+    const failures: Array<{ filename: string; message: string }> = [];
+
+    // .docx приходит как contentBase64 — сервер сам распаковывает его в текст
+    // до классификации. Файл, который на деле не .docx (или иначе побитый),
+    // становится обычным per-file failure, а не валит весь запрос.
+    const readable: Array<{ filename: string; content: string }> = [];
+    for (const f of parsed.data.files) {
+      if (f.content !== undefined) {
+        readable.push({ filename: f.filename, content: f.content });
+        continue;
+      }
+      try {
+        const text = await docxToPlainText(Buffer.from(f.contentBase64!, "base64"));
+        if (text.trim().length === 0) throw new Error("файл пуст");
+        readable.push({ filename: f.filename, content: text });
+      } catch (e) {
+        failures.push({
+          filename: f.filename,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     // Повторное перетаскивание той же папки не должно удваивать черновики.
-    const requestKey = intakeRequestKey(parsed.data.files);
+    // Ключ считается по readable (то, что реально пойдёт в классификатор), а
+    // не по исходному телу запроса — иначе перетаскивание того же .docx с
+    // одинаковыми байтами, но не совпавшее по requestKey, разбиралось бы
+    // заново на каждый повтор.
+    const requestKey = intakeRequestKey(readable);
     const prior = sqlite
       .prepare(
         `SELECT payload FROM studio_events
@@ -546,13 +577,12 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
 
     const existingStages = describeExistingStages(state);
     const idea = (concept.idea ?? "").trim();
-    const failures: Array<{ filename: string; message: string }> = [];
     const fragments: Awaited<ReturnType<typeof runMaterialClassifier>>["fragments"] = [];
     let foundIdea: string | undefined;
 
     // Последовательно, а не пачкой: один файл — один вызов, и падение одного
     // не уносит остальные.
-    for (const file of parsed.data.files) {
+    for (const file of readable) {
       if (file.content.length > MAX_INTAKE_FILE_CHARS) {
         failures.push({
           filename: file.filename,

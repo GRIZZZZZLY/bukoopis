@@ -660,9 +660,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** Файлы уже прочитаны в текст на стороне браузера; сервер сам решает,
-   *  что куда положить. */
-  intake: (bookId: number, files: Array<{ filename: string; content: string }>) =>
+  /** Файлы уже прочитаны в текст на стороне браузера (кроме .docx, который
+   *  браузер прочитать как текст не может — тот едет как base64, и сервер сам
+   *  превращает его в текст); сервер решает, что куда положить. */
+  intake: (
+    bookId: number,
+    files: Array<{ filename: string; content?: string; contentBase64?: string }>,
+  ) =>
     req<IntakeResponse>(`/api/books/${bookId}/intake`, {
       method: "POST",
       body: JSON.stringify({ files }),

@@ -73,4 +73,38 @@ describe("IntakePanel", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("offline"));
     expect(screen.getByLabelText("Перетащите файлы с материалами")).toBeInTheDocument();
   });
+
+  it("sends a .docx as base64 rather than as text", async () => {
+    m.intake.mockResolvedValue(OK as never);
+    renderPanel();
+    const docx = new File([new Uint8Array([80, 75, 3, 4])], "черновик.docx");
+    drop([docx]);
+    await waitFor(() => expect(m.intake).toHaveBeenCalledTimes(1));
+    const sent = m.intake.mock.calls[0]![1][0] as { filename: string; contentBase64?: string };
+    expect(sent.filename).toBe("черновик.docx");
+    expect(typeof sent.contentBase64).toBe("string");
+  });
+
+  // Regression guard: btoa(String.fromCharCode(...new Uint8Array(buf))) spreads
+  // every byte as its own function argument, which throws "Maximum call stack
+  // size exceeded" well before a file gets this big (the limit is on the order
+  // of 100 KB of arguments) — this payload is deliberately past that ceiling.
+  it("base64-encodes a .docx well past the argument-spread call-stack limit", async () => {
+    m.intake.mockResolvedValue(OK as never);
+    renderPanel();
+    const size = 300_000;
+    const bytes = new Uint8Array(size);
+    for (let i = 0; i < size; i++) bytes[i] = i % 256;
+    const docx = new File([bytes], "большой.docx");
+    drop([docx]);
+    await waitFor(() => expect(m.intake).toHaveBeenCalledTimes(1));
+    const sent = m.intake.mock.calls[0]![1][0] as { filename: string; contentBase64?: string };
+    expect(sent.filename).toBe("большой.docx");
+    expect(typeof sent.contentBase64).toBe("string");
+    const decoded = atob(sent.contentBase64!);
+    expect(decoded.length).toBe(size);
+    expect(decoded.charCodeAt(0)).toBe(0);
+    expect(decoded.charCodeAt(255)).toBe(255);
+    expect(decoded.charCodeAt(size - 1)).toBe((size - 1) % 256);
+  });
 });
