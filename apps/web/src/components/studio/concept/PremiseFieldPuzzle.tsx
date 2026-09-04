@@ -87,7 +87,7 @@ export function PremiseFieldPuzzle({
               : "border-[var(--color-border)] hover:bg-[var(--color-muted)]")
           }
         >
-          {busy ? "Генерируем…" : "✨ Помочь сформулировать"}
+          {busy ? "Думаем…" : "Другие формулировки"}
         </button>
       </div>
 

@@ -35,7 +35,7 @@ describe("PremiseFieldPuzzle", () => {
     );
     expect(screen.getByDisplayValue("мой черновик")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Помочь сформулировать/ }),
+      screen.getByRole("button", { name: /Другие формулировки/ }),
     ).toBeInTheDocument();
   });
 
@@ -56,7 +56,7 @@ describe("PremiseFieldPuzzle", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Помочь сформулировать/ }),
+      screen.getByRole("button", { name: /Другие формулировки/ }),
     );
     await waitFor(() =>
       expect(fakeRefine).toHaveBeenCalledWith("protagonist", "черновик"),
@@ -83,7 +83,7 @@ describe("PremiseFieldPuzzle", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Помочь сформулировать/ }),
+      screen.getByRole("button", { name: /Другие формулировки/ }),
     );
     await waitFor(() => screen.getByText("Вариант A"));
     const acceptButtons = screen.getAllByRole("button", { name: /Принять/ });
@@ -104,13 +104,13 @@ describe("PremiseFieldPuzzle", () => {
       />,
     );
     await userEvent.click(
-      screen.getByRole("button", { name: /Помочь сформулировать/ }),
+      screen.getByRole("button", { name: /Другие формулировки/ }),
     );
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/offline/),
     );
     expect(
-      screen.getByRole("button", { name: /Помочь сформулировать/ }),
+      screen.getByRole("button", { name: /Другие формулировки/ }),
     ).toBeEnabled();
   });
 });

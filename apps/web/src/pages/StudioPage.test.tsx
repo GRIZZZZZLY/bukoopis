@@ -12,6 +12,10 @@ vi.mock("@/api/client", () => ({
     getStudioWarnings: vi.fn(),
     patchConcept: vi.fn(),
     refineConceptField: vi.fn(),
+    generatePitches: vi.fn(),
+    blendPitch: vi.fn(),
+    lockConcept: vi.fn(),
+    unlockConcept: vi.fn(),
   },
 }));
 
