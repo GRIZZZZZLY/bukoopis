@@ -14,18 +14,10 @@ import {
 import {
   runCritique,
   reviseChapter,
-  gatherCharacterContext,
-  characterContextToPrompt,
-  gatherLoreContext,
-  loreContextToPrompt,
   type CriticInput,
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
-import { renderActiveFactsPrompt } from "../utils/book-facts.js";
-import {
-  gatherRelevantNotes,
-  renderOpenNotesPrompt,
-} from "../utils/book-notes.js";
+import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
 import {
   enqueueMemoryJobs,
   COMMIT_JOB_KINDS,
@@ -34,6 +26,7 @@ import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { toVersion } from "../db/rows.js";
 import { loadStyleContext } from "../utils/style-context.js";
+import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
 import { logUsage } from "../utils/usageLogger.js";
 import {
   loadStudioContext,
@@ -45,31 +38,6 @@ import type {
   BookRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
-
-interface PlanVariantLite {
-  pov: string;
-  emotionalGoal: string;
-  beats?: Array<{
-    index?: number;
-    type: string;
-    summary: string;
-    goal: string;
-    conflict: string;
-    outcome: string;
-  }>;
-}
-
-// Render the accepted plan variant's beats in the same shape Writer uses, so
-// Editor/Reviser see the exact beat list the chapter was written against.
-function renderBeatSheetBlock(v: PlanVariantLite): string | null {
-  if (!v.beats || v.beats.length === 0) return null;
-  return v.beats
-    .map(
-      (b, i) =>
-        `${(b.index ?? i) + 1}. [${b.type}] ${b.summary}\n   Цель: ${b.goal}\n   Конфликт: ${b.conflict}\n   Исход: ${b.outcome}`,
-    )
-    .join("\n\n");
-}
 
 interface CritiqueReportRow {
   id: number;
@@ -187,136 +155,8 @@ export function createCritiqueRoute(
     if (!book) return notFound(c, "book");
 
     // Build input context (mirror Writer's context-gathering).
-    let outlineSelected: string | null = null;
-    if (book.outline_json) {
-      try {
-        const o = JSON.parse(book.outline_json) as {
-          variants: unknown[];
-          selectedIndex: number | null;
-        };
-        if (o.selectedIndex !== null && o.variants[o.selectedIndex]) {
-          outlineSelected = JSON.stringify(o.variants[o.selectedIndex]);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    let pov = "—";
-    let emotionalGoal = "—";
-    let beatSheet: string | null = null;
-    if (ch.plan_json) {
-      try {
-        const p = JSON.parse(ch.plan_json) as {
-          variants: Array<PlanVariantLite>;
-          selectedIndex: number | null;
-        };
-        if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
-          const sel = p.variants[p.selectedIndex]!;
-          pov = sel.pov;
-          emotionalGoal = sel.emotionalGoal;
-          beatSheet = renderBeatSheetBlock(sel);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const prevSummary = (() => {
-      const rows = sqlite
-        .prepare(
-          `SELECT c.id, c.title, c.order_index, v.content_text
-           FROM chapters c
-           LEFT JOIN chapter_versions v ON v.id = c.current_version_id
-           WHERE c.book_id = ? AND c.order_index < ?
-           ORDER BY c.order_index ASC`,
-        )
-        .all(book.id, ch.order_index) as Array<{
-        id: number;
-        title: string;
-        order_index: number;
-        content_text: string | null;
-      }>;
-      if (rows.length === 0) return null;
-      return rows
-        .map((r) => {
-          const snip = r.content_text ? r.content_text.slice(0, 1200) : "(пусто)";
-          return `Глава #${r.order_index} «${r.title}»:\n${snip}`;
-        })
-        .join("\n\n---\n\n");
-    })();
-
-    const contextTexts = [
-      ch.intent,
-      book.title,
-      book.premise,
-      outlineSelected,
-      pov,
-      emotionalGoal,
-      version.content_text,
-      prevSummary,
-    ];
-    const charResult = gatherCharacterContext(sqlite, book.id, contextTexts);
-    const charNameById = new Map(
-      charResult.characters.map((cc) => [
-        cc.character.id,
-        cc.character.canonicalName,
-      ]),
-    );
-    const characterContext =
-      charResult.characters.length > 0
-        ? characterContextToPrompt(charResult, charNameById)
-        : null;
-    const loreResult = gatherLoreContext(
-      sqlite,
-      book.id,
-      contextTexts,
-      ch.order_index,
-    );
-    const loreContext =
-      loreResult.locations.length > 0 ||
-      loreResult.items.length > 0 ||
-      loreResult.openHooks.length > 0
-        ? loreContextToPrompt(loreResult)
-        : null;
-
-    const bookContextLines: string[] = [
-      `Название: "${book.title}"`,
-      `Премиса: ${book.premise ?? "(не задана)"}`,
-    ];
-    if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
-    const baseBookContext = bookContextLines.join("\n");
-    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
-    // Phase 3: feed temporal canon facts to the Canon Guard critic so it can
-    // flag contradictions against what is *currently* true.
-    const factEntityNames = [
-      ...charResult.characters.map((cc) => cc.character.canonicalName),
-      ...loreResult.locations.map((l) => l.name),
-      ...loreResult.items.map((i) => i.name),
-    ];
-    const factsPrompt = renderActiveFactsPrompt(
-      sqlite,
-      book.id,
-      ch.order_index,
-      factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
-    );
-    // Phase 4: surface relevant open threads/foreshadowing so the
-    // Reader-Experience critic can flag forgotten payoffs.
-    const relevantNotes = await gatherRelevantNotes(
-      sqlite,
-      book.id,
-      `${ch.title}\n${emotionalGoal}`,
-      ch.order_index,
-    );
-    const notesPrompt = renderOpenNotesPrompt(
-      relevantNotes,
-      "Открытые линии",
-      ch.order_index,
-    );
-    const bookContext = `${baseBookContext}${
-      studioCtx ? `\n\n${studioCtx}` : ""
-    }${factsPrompt ? `\n\n${factsPrompt}` : ""}${
-      notesPrompt ? `\n\n${notesPrompt}` : ""
-    }`;
+    const { pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext, previousChaptersSummary: prevSummary } =
+      await loadChapterProseContext(sqlite, book, ch, version.content_text);
 
     // Style critic judges the chapter against the book's target style, not a
     // generic prose bar. Few-shot samples are excluded (0) — the critic needs
@@ -326,6 +166,12 @@ export function createCritiqueRoute(
       book.style_profile_id,
       0,
     ).prompt;
+
+    // Structural LLM tells are counted, not judged: the style critic gets the
+    // per-1000-word counts with quotes as evidence (docs/prose-tells-baseline.md).
+    const structuralTellsContext = renderStructuralTells(
+      measureStructuralTells(version.content_text),
+    );
 
     const criticInput: CriticInput = {
       chapterText: version.content_text,
@@ -338,6 +184,7 @@ export function createCritiqueRoute(
       characterContext,
       loreContext,
       styleContext: criticStyleContext,
+      structuralTellsContext,
       config: { variants: 1, model: book.critic_model as "sonnet" | "opus" },
       onUsage: (usage) =>
         logUsage(sqlite, {
@@ -457,135 +304,11 @@ export function createCritiqueRoute(
     }
     const report = fullCritiqueReportSchema.parse(JSON.parse(reportRow.report_json));
 
-    // Build context (mirror critique POST)
-    let outlineSelected: string | null = null;
-    if (book.outline_json) {
-      try {
-        const o = JSON.parse(book.outline_json) as {
-          variants: unknown[];
-          selectedIndex: number | null;
-        };
-        if (o.selectedIndex !== null && o.variants[o.selectedIndex]) {
-          outlineSelected = JSON.stringify(o.variants[o.selectedIndex]);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    let pov = "—";
-    let emotionalGoal = "—";
-    let beatSheet: string | null = null;
-    if (ch.plan_json) {
-      try {
-        const p = JSON.parse(ch.plan_json) as {
-          variants: Array<PlanVariantLite>;
-          selectedIndex: number | null;
-        };
-        if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
-          const sel = p.variants[p.selectedIndex]!;
-          pov = sel.pov;
-          emotionalGoal = sel.emotionalGoal;
-          beatSheet = renderBeatSheetBlock(sel);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    const prevSummary = (() => {
-      const rows = sqlite
-        .prepare(
-          `SELECT c.id, c.title, c.order_index, v.content_text
-           FROM chapters c
-           LEFT JOIN chapter_versions v ON v.id = c.current_version_id
-           WHERE c.book_id = ? AND c.order_index < ?
-           ORDER BY c.order_index ASC`,
-        )
-        .all(book.id, ch.order_index) as Array<{
-        id: number;
-        title: string;
-        order_index: number;
-        content_text: string | null;
-      }>;
-      if (rows.length === 0) return null;
-      return rows
-        .map((r) =>
-          `Глава #${r.order_index} «${r.title}»:\n${r.content_text ? r.content_text.slice(0, 1200) : "(пусто)"}`,
-        )
-        .join("\n\n---\n\n");
-    })();
 
-    const contextTexts = [
-      ch.intent,
-      book.title,
-      book.premise,
-      outlineSelected,
-      pov,
-      emotionalGoal,
-      v.content_text,
-      prevSummary,
-    ];
-    const charResult = gatherCharacterContext(sqlite, book.id, contextTexts);
-    const charNameById = new Map(
-      charResult.characters.map((cc) => [
-        cc.character.id,
-        cc.character.canonicalName,
-      ]),
-    );
-    const characterContext =
-      charResult.characters.length > 0
-        ? characterContextToPrompt(charResult, charNameById)
-        : null;
-    const loreResult = gatherLoreContext(
-      sqlite,
-      book.id,
-      contextTexts,
-      ch.order_index,
-    );
-    const loreContext =
-      loreResult.locations.length > 0 ||
-      loreResult.items.length > 0 ||
-      loreResult.openHooks.length > 0
-        ? loreContextToPrompt(loreResult)
-        : null;
-
-    const bookContextLines: string[] = [
-      `Название: "${book.title}"`,
-      `Премиса: ${book.premise ?? "(не задана)"}`,
-    ];
-    if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
-    const baseBookContext = bookContextLines.join("\n");
-    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
-    // Phase 3: feed temporal canon facts to the Canon Guard critic so it can
-    // flag contradictions against what is *currently* true.
-    const factEntityNames = [
-      ...charResult.characters.map((cc) => cc.character.canonicalName),
-      ...loreResult.locations.map((l) => l.name),
-      ...loreResult.items.map((i) => i.name),
-    ];
-    const factsPrompt = renderActiveFactsPrompt(
-      sqlite,
-      book.id,
-      ch.order_index,
-      factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
-    );
-    // Phase 4: surface relevant open threads/foreshadowing so the
-    // Reader-Experience critic can flag forgotten payoffs.
-    const relevantNotes = await gatherRelevantNotes(
-      sqlite,
-      book.id,
-      `${ch.title}\n${emotionalGoal}`,
-      ch.order_index,
-    );
-    const notesPrompt = renderOpenNotesPrompt(
-      relevantNotes,
-      "Открытые линии",
-      ch.order_index,
-    );
-    const bookContext = `${baseBookContext}${
-      studioCtx ? `\n\n${studioCtx}` : ""
-    }${factsPrompt ? `\n\n${factsPrompt}` : ""}${
-      notesPrompt ? `\n\n${notesPrompt}` : ""
-    }`;
+    // Same context the critics saw — one assembly, so a field added for them
+    // cannot silently miss the Reviser.
+    const { pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext, previousChaptersSummary: prevSummary, architectureContext } =
+      await loadChapterProseContext(sqlite, book, ch, v.content_text);
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -610,6 +333,7 @@ export function createCritiqueRoute(
           pov,
           emotionalGoal,
           beatSheet,
+          architectureContext,
           characterContext,
           loreContext,
           styleContext: styleCtx.prompt,
