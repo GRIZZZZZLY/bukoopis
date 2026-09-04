@@ -380,6 +380,46 @@ describe("AspectRunner", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks an aspect that came from the author's own material", () => {
+    const importedAspect = makeAspect({
+      id: "imported",
+      name: "Карта",
+      status: "reviewing",
+      order: 0,
+      required: false,
+      source: "import",
+      variants: [
+        {
+          id: "v1",
+          label: "из ваших материалов",
+          payloadKind: "markdown",
+          payload: "Барьер делит два мира.",
+          status: "generated",
+          editSource: "manual",
+          generatedAt: "2026-09-05T10:00:00.000Z",
+        },
+      ],
+    });
+    render(
+      <AspectRunner
+        stage={makeStage([importedAspect])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={vi.fn()}
+      />,
+    );
+    // The variant itself is also labelled "из ваших материалов" (that is how
+    // imported drafts arrive), so the pill is queried by its own class —
+    // otherwise this assertion would pass on the variant label alone and
+    // never actually exercise the marker next to the aspect's name.
+    expect(
+      screen.getByText("из ваших материалов", { selector: "span.pill" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Барьер делит два мира.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Принять/ })).toBeEnabled();
+  });
+
   it("submitting refine calls generator with refineFrom and patches with new variant + superseded parent", async () => {
     const reviewingAspect = makeAspect({
       status: "reviewing",
