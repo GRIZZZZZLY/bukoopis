@@ -52,8 +52,10 @@ const REWRITE_MODEL: "sonnet" | "opus" =
 // ─── Concept (contest pivot — combo #1+#4+#8: соляной архив + биомные импланты + солёный лёд) ───
 const CONCEPT: BookConcept = {
   schemaVersion: 1,
-  genres: ["научная фантастика", "технологический экшен"],
-  tones: ["тёмный", "инженерный", "психологический"],
+  pitches: [],
+  lockedAt: new Date().toISOString(),
+  genre: "научная фантастика, технологический экшен",
+  tone: "тёмный, инженерный, психологический",
   audience: "adult",
   premise: {
     protagonist:
@@ -613,8 +615,8 @@ function buildCharactersStage(
 
 function buildConceptStage(generatedAt: string): StageState {
   const summary = [
-    `Жанры: ${CONCEPT.genres.join(", ")}`,
-    `Тон: ${CONCEPT.tones.join(", ")}`,
+    `Жанр: ${CONCEPT.genre ?? "не задан"}`,
+    `Тон: ${CONCEPT.tone ?? "не задан"}`,
     `Аудитория: ${CONCEPT.audience}`,
     "",
     `**Протагонист.** ${CONCEPT.premise.protagonist}`,

@@ -58,7 +58,7 @@ describe("SettingsStagePage", () => {
     m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() => screen.getByDisplayValue("Тест"));
-    expect(screen.queryByText(/Замысел/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Замысел/)).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("СТАРЫЙ ЗАМЫСЕЛ")).not.toBeInTheDocument();
   });
 

@@ -23,6 +23,7 @@ import type {
   Hook,
   Item,
   Location,
+  PitchMixField,
   Relationship,
   StageId,
   StudioState,
@@ -451,11 +452,33 @@ export const api = {
         ...(draft !== undefined ? { draft } : {}),
       }),
     }),
-  /** Free-form idea → a concept draft. Returns it; saving is a separate step. */
-  conceptFromIdea: (bookId: number, idea: string) =>
-    req<BookConcept>(`/api/books/${bookId}/concept/from-idea`, {
+  /** Задумка уже лежит на концепте; сервер дописывает новые питчи к старым. */
+  generatePitches: (
+    bookId: number,
+    body: { direction?: string; count?: number } = {},
+  ) =>
+    req<{ concept: BookConcept; questions: string[]; newPitchIds: string[] }>(
+      `/api/books/${bookId}/concept/pitches`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  blendPitch: (
+    bookId: number,
+    body: { picks: Partial<Record<PitchMixField, string>>; note?: string },
+  ) =>
+    req<{ concept: BookConcept; pitchId: string }>(
+      `/api/books/${bookId}/concept/pitches/blend`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  /** Без pitchId утверждает текущую премису как есть (старые книги). */
+  lockConcept: (bookId: number, pitchId?: string) =>
+    req<BookConcept>(`/api/books/${bookId}/concept/lock`, {
       method: "POST",
-      body: JSON.stringify({ idea }),
+      body: JSON.stringify(pitchId !== undefined ? { pitchId } : {}),
+    }),
+  unlockConcept: (bookId: number) =>
+    req<BookConcept>(`/api/books/${bookId}/concept/unlock`, {
+      method: "POST",
+      body: JSON.stringify({}),
     }),
   generateStagePlaybook: (
     bookId: number,

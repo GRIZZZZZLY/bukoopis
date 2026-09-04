@@ -43,7 +43,7 @@ export function OutlinePanel({ book, onUpdated }: Props) {
       // only mean the concept is still empty.
       setError(
         message.includes("premise required")
-          ? "Нужен логлайн: заполни его на этапе «Концепт» в Мастерской."
+          ? "Сначала утвердите замысел книги в Мастерской."
           : message,
       );
     } finally {

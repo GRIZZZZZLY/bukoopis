@@ -25,11 +25,20 @@ export const bookSchema = z.object({
 });
 export type Book = z.infer<typeof bookSchema>;
 
-export const createBookInputSchema = z.object({
-  title: z.string().min(1).max(500),
-  language: z.string().min(1).max(16).optional(),
-  premise: z.string().max(20000).nullable().optional(),
-});
+/** Название до утверждения замысла: его заменит рабочее название питча. */
+export const DEFAULT_BOOK_TITLE = "Новая книга";
+
+export const createBookInputSchema = z
+  .object({
+    title: z.string().min(1).max(500).optional(),
+    /** Задумка автора; книга может начаться с неё одной, без названия. */
+    idea: z.string().trim().min(10).max(8000).optional(),
+    language: z.string().min(1).max(16).optional(),
+    premise: z.string().max(20000).nullable().optional(),
+  })
+  .refine((v) => v.title !== undefined || v.idea !== undefined, {
+    message: "title or idea required",
+  });
 export type CreateBookInput = z.infer<typeof createBookInputSchema>;
 
 export const updateBookInputSchema = z

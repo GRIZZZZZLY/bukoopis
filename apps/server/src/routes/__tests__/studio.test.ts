@@ -35,18 +35,18 @@ describe("studio routes", () => {
     expect(r.status).toBe(404);
   });
 
-  it("PATCH /api/books/:id/concept persists genres", async () => {
+  it("PATCH /api/books/:id/concept persists genre", async () => {
     const id = await createBook();
     const c = emptyBookConcept();
-    c.genres = ["fantasy"];
+    c.genre = "фэнтези";
     const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", c);
     expect(r.status).toBe(200);
-    const round = await sendJson<{ genres: string[] }>(
+    const round = await sendJson<{ genre: string }>(
       t.app,
       `/api/books/${id}/concept`,
       "GET",
     );
-    expect(round.genres).toEqual(["fantasy"]);
+    expect(round.genre).toBe("фэнтези");
   });
 
   it("PATCH /api/books/:id/concept rejects invalid body (400)", async () => {
@@ -55,6 +55,45 @@ describe("studio routes", () => {
       genres: "not-an-array",
     });
     expect(r.status).toBe(400);
+  });
+
+  it("PATCH /api/books/:id/concept rejects clearing the logline on a locked concept (400)", async () => {
+    const id = await createBook();
+    await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      premise: { logline: "Картограф ищет остров, которого нет." },
+    });
+    await send(t.app, `/api/books/${id}/concept/lock`, "POST", {});
+    const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "" },
+    });
+    expect(r.status).toBe(400);
+    const body = (await r.json()) as { error: string };
+    expect(body.error).toBe("invariant_violation");
+    // the concept in storage must be untouched by the rejected patch
+    const round = await sendJson<{ premise: { logline?: string } }>(
+      t.app,
+      `/api/books/${id}/concept`,
+      "GET",
+    );
+    expect(round.premise.logline).toBe("Картограф ищет остров, которого нет.");
+  });
+
+  it("PATCH /api/books/:id/concept still allows an unlocked concept with no logline — the ordinary drafting state", async () => {
+    const id = await createBook();
+    const r = await send(t.app, `/api/books/${id}/concept`, "PATCH", {
+      schemaVersion: 1,
+      pitches: [],
+      audience: "adult",
+      premise: {},
+    });
+    expect(r.status).toBe(200);
   });
 
   it("GET /api/books/:id/studio-state returns default empty state", async () => {
@@ -220,11 +259,15 @@ describe("studio routes", () => {
 
     await send(t.app, `/api/books/${id}/concept`, "PATCH", {
       schemaVersion: 1,
+      pitches: [],
       genres: [],
       tones: [],
       audience: "adult",
       premise: { logline: "Картограф ищет остров, которого нет." },
     });
+    // Lock through the real route rather than hand-setting lockedAt: this is a
+    // legacy-style concept (a filled premise, no pitches), the "as-is" path.
+    await send(t.app, `/api/books/${id}/concept/lock`, "POST", {});
     const afterConcept = await sendJson<Record<number, string>>(
       t.app,
       "/api/books/recommended",

@@ -17,12 +17,12 @@ import type {
   StudioWarning,
 } from "@book-forge/shared";
 import { StageCard } from "@/components/studio/StageCard";
-import { ConceptForm } from "@/components/studio/concept/ConceptForm";
+import { ConceptStage } from "@/components/studio/concept/ConceptStage";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { stageRoute } from "@/lib/studio-routes";
 
 const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Концепт",
+  concept: "Замысел",
   world: "Мир",
   lore: "Лор",
   characters: "Персонажи",
@@ -175,22 +175,11 @@ export function StudioPage() {
   const progress = computeStudioProgress(concept, studio, chapters);
   const continueStage = progress.recommended ?? "chapters";
 
-  async function handleSaveConcept(next: BookConcept): Promise<BookConcept> {
-    const saved = await api.patchConcept(bookId, next);
-    setConcept(saved);
-    setWarnings(await api.getStudioWarnings(bookId));
-    return saved;
-  }
-
-  async function handleRefine(
-    field: "protagonist" | "conflict" | "stakes" | "logline",
-    draft?: string,
-  ) {
-    return await api.refineConceptField(bookId, field, draft);
-  }
-
-  async function handleFromIdea(idea: string): Promise<BookConcept> {
-    return await api.conceptFromIdea(bookId, idea);
+  function handleConceptChange(next: BookConcept) {
+    setConcept(next);
+    // Locking renames the book and moves the recommendation; both live outside the concept.
+    void api.getBook(bookId).then(setBook).catch(() => {});
+    void api.getStudioWarnings(bookId).then(setWarnings).catch(() => {});
   }
 
   const title = book?.title ?? `Книга #${bookId}`;
@@ -273,16 +262,10 @@ export function StudioPage() {
 
         <div className="card concept">
           <div className="concept-head">
-            <h3>Концепт книги</h3>
+            <h3>Замысел книги</h3>
             <span className="cap-upper">Этап 1 из 7</span>
           </div>
-          <ConceptForm
-            initialConcept={concept}
-            onSave={handleSaveConcept}
-            onRefine={handleRefine}
-            bookId={bookId}
-            onFromIdea={handleFromIdea}
-          />
+          <ConceptStage bookId={bookId} concept={concept} onConceptChange={handleConceptChange} />
         </div>
 
         <div className="stagecard-grid">

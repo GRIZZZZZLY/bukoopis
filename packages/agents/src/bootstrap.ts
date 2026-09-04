@@ -11,7 +11,8 @@ import {
   registerPlotChapterPlanContract,
 } from "./plot.js";
 import { registerConceptRefinerContract } from "./concept/refiner.js";
-import { registerConceptFromIdeaContract } from "./concept/from-idea.js";
+import { registerPitchGeneratorContract } from "./concept/pitches.js";
+import { registerPitchBlenderContract } from "./concept/pitch-blend.js";
 import { registerAspectPlaybookContract } from "./aspects/playbook.js";
 import { registerAspectVariantsContract } from "./aspects/variants.js";
 import { registerAspectRefineContract } from "./aspects/refine.js";
@@ -28,7 +29,7 @@ import { registerAspectEntityVariantsContract } from "./aspects/entity-variants.
  * Phase 5: critic_dialogue, foreshadowing_planner.
  * Phase B2 (Studio): concept_refiner.
  * Phase C2 (Studio): aspect_playbook, aspect_variants, aspect_refine.
- * Braindump entry: concept_from_idea.
+ * Замысел: pitch_generator, pitch_blender.
  */
 export function registerAllAgentContracts(): void {
   registerCanonCriticContract();
@@ -42,7 +43,8 @@ export function registerAllAgentContracts(): void {
   registerPlotOutlineContract();
   registerPlotChapterPlanContract();
   registerConceptRefinerContract();
-  registerConceptFromIdeaContract();
+  registerPitchGeneratorContract();
+  registerPitchBlenderContract();
   registerAspectPlaybookContract();
   registerAspectVariantsContract();
   registerAspectRefineContract();

@@ -121,10 +121,29 @@ describe("studio repository", () => {
   it("patchConcept persists JSON and bumps updatedAt", () => {
     const repo = createStudioRepository(sqlite);
     const c = emptyBookConcept();
-    c.genres = ["fantasy"];
+    c.genre = "фэнтези";
     repo.patchConcept(1, c);
     const r = repo.loadConcept(1);
-    expect(r.genres).toEqual(["fantasy"]);
+    expect(r.genre).toBe("фэнтези");
+  });
+
+  it("loadConcept folds a legacy genres array into genre and drops it", () => {
+    sqlite
+      .prepare("UPDATE books SET concept = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          schemaVersion: 1,
+          pitches: [],
+          genres: ["fantasy"],
+          audience: "adult",
+          premise: {},
+        }),
+        1,
+      );
+    const repo = createStudioRepository(sqlite);
+    const r = repo.loadConcept(1);
+    expect(r.genre).toBe("fantasy");
+    expect(r.genres).toBeUndefined();
   });
 
   it("studioEventLogger.log writes a row with type-validated payload", () => {

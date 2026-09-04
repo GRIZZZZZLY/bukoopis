@@ -66,13 +66,11 @@ const SYSTEM = `Ты — литературный соавтор, помогаю
 Возвращай ровно 2 или 3 варианта. Каждый — независимая формулировка (не "продолжение" предыдущего, а альтернатива). У каждого есть короткий label (одно-два слова, что-то отличающее этот вариант: "героическая", "тёмная", "ироничная" и т.п.) и payload — собственно текст.`;
 
 function genresLine(c: BookConcept): string {
-  const all = [...c.genres, ...(c.customGenres ?? [])];
-  return all.length > 0 ? `Жанры: ${all.join(", ")}` : "Жанры: не выбраны";
+  return `Жанр: ${c.genre ?? "не задан"}`;
 }
 
 function tonesLine(c: BookConcept): string {
-  const all = [...c.tones, ...(c.customTones ?? [])];
-  return all.length > 0 ? `Тон: ${all.join(", ")}` : "Тон: не выбран";
+  return `Тон: ${c.tone ?? "не задан"}`;
 }
 
 function audienceLine(c: BookConcept): string {

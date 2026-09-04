@@ -82,7 +82,7 @@ function breadcrumb(route: RouteInfo): string[] {
         "Книги",
         `#${route.bookId}`,
         "Studio",
-        route.stage ? (STAGE_LABEL[route.stage] ?? route.stage) : "Концепт",
+        route.stage ? (STAGE_LABEL[route.stage] ?? route.stage) : "Замысел",
       ];
     case "board":
       return ["Книги", `#${route.bookId}`, "Доска"];

@@ -7,6 +7,7 @@ import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { emptyBookConcept } from "@book-forge/shared";
 import {
   derivePremiseFromConcept,
   loadStudioContext,
@@ -59,7 +60,12 @@ describe("loadStudioContext", () => {
         1,
       );
     const ctx = loadStudioContext(sqlite, 1);
-    expect(ctx.concept?.genres).toEqual(["fantasy"]);
+    // normalizeConcept folds the legacy id arrays into the free-text field and
+    // strips them — this is what studioContextToPrompt reads from.
+    expect(ctx.concept?.genre).toBe("fantasy");
+    expect(ctx.concept?.tone).toBe("dark");
+    expect(ctx.concept?.genres).toBeUndefined();
+    expect(ctx.concept?.tones).toBeUndefined();
     expect(ctx.concept?.premise.logline).toBe("Герой ищет правду");
   });
 
@@ -167,6 +173,29 @@ describe("loadStudioContext", () => {
     ]);
   });
 
+  it("normalizes a legacy stored concept so studioContextToPrompt still emits Жанр/Тон", () => {
+    // Regression for the loadStudioContext bug: a book stored before this branch
+    // has genres/tones arrays and no genre/tone strings. Without normalizeConcept,
+    // c.genre/c.tone are undefined and the prompt silently drops them.
+    sqlite
+      .prepare("UPDATE books SET concept = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          schemaVersion: 1,
+          genres: ["fantasy"],
+          tones: ["dark"],
+          audience: "adult",
+          premise: { logline: "Герой ищет правду" },
+        }),
+        1,
+      );
+    const ctx = loadStudioContext(sqlite, 1);
+    const prompt = studioContextToPrompt(ctx);
+    expect(prompt).not.toBeNull();
+    expect(prompt!).toContain("Жанр: fantasy");
+    expect(prompt!).toContain("Тон: dark");
+  });
+
   it("returns empty for unknown book id", () => {
     const ctx = loadStudioContext(sqlite, 9999);
     expect(ctx.concept).toBeNull();
@@ -191,8 +220,9 @@ describe("studioContextToPrompt", () => {
     const out = studioContextToPrompt({
       concept: {
         schemaVersion: 1,
-        genres: ["fantasy"],
-        tones: ["dark"],
+        pitches: [],
+        genre: "fantasy",
+        tone: "dark",
         audience: "adult",
         premise: { logline: "Герой ищет правду" },
       },
@@ -218,8 +248,9 @@ describe("studioContextToPrompt", () => {
     const out = studioContextToPrompt({
       concept: {
         schemaVersion: 1,
-        genres: ["thriller"],
-        tones: ["tense"],
+        pitches: [],
+        genre: "thriller",
+        tone: "tense",
         audience: "ya",
         premise: {},
       },
@@ -233,11 +264,31 @@ describe("studioContextToPrompt", () => {
     expect(out!).not.toContain("## Лор");
     expect(out!).not.toContain("## Сюжет");
   });
+
+  it("renders genre, tone and hook as single lines", () => {
+    const text = studioContextToPrompt({
+      concept: {
+        ...emptyBookConcept(),
+        genre: "камерная антиутопия",
+        tone: "холодный",
+        hook: "В списке — её имя.",
+        premise: { logline: "Когда…" },
+      },
+      worldAspects: [],
+      loreAspects: [],
+      plotAspects: [],
+    } as never);
+    expect(text).toContain("Жанр: камерная антиутопия");
+    expect(text).toContain("Тон: холодный");
+    expect(text).toContain("Крючок: В списке — её имя.");
+    expect(text).not.toContain("Жанры:");
+  });
 });
 
 describe("derivePremiseFromConcept", () => {
   const base = {
     schemaVersion: 1 as const,
+    pitches: [],
     genres: [],
     tones: [],
     audience: "adult" as const,
@@ -289,5 +340,47 @@ describe("derivePremiseFromConcept", () => {
         premise: { protagonist: "Мира" },
       }),
     ).toBe("Протагонист: Мира");
+  });
+
+  it("uses the hook alone when the premise is otherwise empty", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        hook: "В списке — её имя.",
+        premise: {},
+      }),
+    ).toBe("Крючок: В списке — её имя.");
+  });
+
+  it("appends the hook after stakes, pinning the line order", () => {
+    const out = derivePremiseFromConcept({
+      ...base,
+      hook: "В списке — её имя.",
+      premise: {
+        logline: "Картограф ищет остров, которого нет.",
+        protagonist: "Мира, картограф",
+        conflict: "Гильдия скрывает карты",
+        stakes: "Затонет весь архипелаг",
+      },
+    });
+    expect(out).toBe(
+      [
+        "Картограф ищет остров, которого нет.",
+        "Протагонист: Мира, картограф",
+        "Конфликт: Гильдия скрывает карты",
+        "Ставки: Затонет весь архипелаг",
+        "Крючок: В списке — её имя.",
+      ].join("\n"),
+    );
+  });
+
+  it("does not emit the hook line when the hook is blank or whitespace-only", () => {
+    expect(
+      derivePremiseFromConcept({
+        ...base,
+        hook: "   ",
+        premise: { logline: "Картограф ищет остров, которого нет." },
+      }),
+    ).toBe("Картограф ищет остров, которого нет.");
   });
 });

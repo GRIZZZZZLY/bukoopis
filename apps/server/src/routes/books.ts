@@ -4,6 +4,8 @@ import {
   createBookInputSchema,
   updateBookInputSchema,
   createChapterInputSchema,
+  emptyBookConcept,
+  DEFAULT_BOOK_TITLE,
 } from "@book-forge/shared";
 import { toBook, toChapter, type BookRow, type ChapterRow } from "../db/rows.js";
 import { notFound, validationFailed } from "../utils/errors.js";
@@ -31,15 +33,23 @@ export function createBooksRoute(
     const parsed = createBookInputSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
     const now = new Date().toISOString();
+    const title = parsed.data.title ?? DEFAULT_BOOK_TITLE;
+    // The idea is the one thing the author types; it lives on the concept so the
+    // pitch step can read it straight away.
+    const concept =
+      parsed.data.idea !== undefined
+        ? JSON.stringify({ ...emptyBookConcept(), idea: parsed.data.idea })
+        : null;
     const info = sqlite
       .prepare(
-        `INSERT INTO books (title, language, premise, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'draft', ?, ?)`,
+        `INSERT INTO books (title, language, premise, status, concept, created_at, updated_at)
+         VALUES (?, ?, ?, 'draft', ?, ?, ?)`,
       )
       .run(
-        parsed.data.title,
+        title,
         parsed.data.language ?? "ru",
         parsed.data.premise ?? null,
+        concept,
         now,
         now,
       );

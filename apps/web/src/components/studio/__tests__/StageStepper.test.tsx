@@ -33,7 +33,7 @@ describe("StageStepper", () => {
     const nav = screen.getByRole("navigation", { name: "Этапы книги" });
     const links = within(nav).getAllByRole("link");
     expect(links).toHaveLength(7);
-    expect(within(nav).getByRole("link", { name: /Концепт/ })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Замысел/ })).toHaveAttribute(
       "href",
       "/books/3/studio",
     );

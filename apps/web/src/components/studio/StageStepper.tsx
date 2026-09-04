@@ -11,7 +11,7 @@ import {
 import { stageRoute } from "@/lib/studio-routes";
 
 const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Концепт",
+  concept: "Замысел",
   world: "Мир",
   lore: "Лор",
   characters: "Персонажи",

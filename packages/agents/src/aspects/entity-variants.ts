@@ -111,8 +111,8 @@ function buildPrompt(input: AspectEntityVariantsInput): string {
   parts.push(
     "",
     "КОНЦЕПТ:",
-    `Жанры: ${[...input.concept.genres, ...(input.concept.customGenres ?? [])].join(", ") || "не выбраны"}`,
-    `Тон: ${[...input.concept.tones, ...(input.concept.customTones ?? [])].join(", ") || "не выбран"}`,
+    `Жанр: ${input.concept.genre ?? "не задан"}`,
+    `Тон: ${input.concept.tone ?? "не задан"}`,
     `Аудитория: ${input.concept.audience}`,
   );
   if (input.concept.premise.logline) {

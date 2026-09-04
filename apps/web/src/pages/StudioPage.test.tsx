@@ -8,10 +8,15 @@ import { emptyBookConcept, emptyStudioState } from "@book-forge/shared";
 vi.mock("@/api/client", () => ({
   api: {
     getConcept: vi.fn(),
+    getBook: vi.fn(),
     getStudioState: vi.fn(),
     getStudioWarnings: vi.fn(),
     patchConcept: vi.fn(),
     refineConceptField: vi.fn(),
+    generatePitches: vi.fn(),
+    blendPitch: vi.fn(),
+    lockConcept: vi.fn(),
+    unlockConcept: vi.fn(),
   },
 }));
 

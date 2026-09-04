@@ -82,4 +82,25 @@ describe("books CRUD", () => {
     const get = await send(t.app, `/api/books/${created.id}`, "GET");
     expect(get.status).toBe(404);
   });
+
+  it("POST /api/books creates a book from an idea alone with a working title", async () => {
+    const res = await send(t.app, "/api/books", "POST", {
+      idea: "Шестеро героев из двух враждующих миров сталкиваются с аномалиями.",
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as BookJson;
+    expect(body.title).toBe("Новая книга");
+    const concept = await sendJson<{ idea?: string; pitches: unknown[] }>(
+      t.app,
+      `/api/books/${body.id}/concept`,
+      "GET",
+    );
+    expect(concept.idea).toBe("Шестеро героев из двух враждующих миров сталкиваются с аномалиями.");
+    expect(concept.pitches).toEqual([]);
+  });
+
+  it("POST /api/books rejects a body with neither title nor idea (400)", async () => {
+    const res = await send(t.app, "/api/books", "POST", {});
+    expect(res.status).toBe(400);
+  });
 });
