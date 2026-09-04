@@ -221,12 +221,14 @@ describe("studio routes", () => {
     await send(t.app, `/api/books/${id}/concept`, "PATCH", {
       schemaVersion: 1,
       pitches: [],
-      lockedAt: "2026-09-04T10:00:00.000Z",
       genres: [],
       tones: [],
       audience: "adult",
       premise: { logline: "Картограф ищет остров, которого нет." },
     });
+    // Lock through the real route rather than hand-setting lockedAt: this is a
+    // legacy-style concept (a filled premise, no pitches), the "as-is" path.
+    await send(t.app, `/api/books/${id}/concept/lock`, "POST", {});
     const afterConcept = await sendJson<Record<number, string>>(
       t.app,
       "/api/books/recommended",

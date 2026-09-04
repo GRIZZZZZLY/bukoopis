@@ -1,10 +1,14 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   bookConceptSchema,
   studioStateSchema,
   computeStudioWarnings,
   computeStudioProgress,
+  lockConceptToPitch,
+  unlockConcept,
+  PITCH_MIX_FIELDS,
+  type BookConcept,
   type CanonSummary,
   type ChapterProgress,
   type StageId,
@@ -15,9 +19,11 @@ import {
   StudioBookNotFoundError,
   StudioConflictError,
 } from "../db/studio.js";
-import { notFound, validationFailed } from "../utils/errors.js";
+import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
-import { runConceptFromIdea } from "@book-forge/agents/concept/from-idea";
+import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
+import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
+import { randomUUID } from "node:crypto";
 import { runAspectPlaybook } from "@book-forge/agents/aspects/playbook";
 import {
   runAspectVariants,
@@ -53,8 +59,20 @@ const refineConceptBodySchema = z.object({
   draft: z.string().max(2000).optional(),
 });
 
-const conceptFromIdeaBodySchema = z.object({
-  idea: z.string().trim().min(10).max(8000),
+const generatePitchesBodySchema = z.object({
+  direction: z.string().trim().max(1000).optional(),
+  count: z.number().int().min(3).max(5).optional(),
+});
+
+const blendPitchBodySchema = z.object({
+  picks: z
+    .partialRecord(z.enum(PITCH_MIX_FIELDS), z.string().min(1))
+    .refine((p) => Object.keys(p).length > 0, { message: "at least one pick" }),
+  note: z.string().trim().max(1000).optional(),
+});
+
+const lockConceptBodySchema = z.object({
+  pitchId: z.string().min(1).optional(),
 });
 
 const playbookBodySchema = z.object({
@@ -326,31 +344,110 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     }
   });
 
-  // Braindump entry: a free-form idea in, a filled-in concept draft out. The
-  // author still reviews and saves it — nothing is persisted here.
-  r.post("/books/:id/concept/from-idea", async (c) => {
-    const id = Number(c.req.param("id"));
-    const body = await c.req.json().catch(() => null);
-    const parsed = conceptFromIdeaBodySchema.safeParse(body);
-    if (!parsed.success) return validationFailed(c, parsed.error);
-
+  function loadConceptOr404(c: Context, id: number): BookConcept | Response {
     try {
-      repo.loadConcept(id);
+      return repo.loadConcept(id);
     } catch (e) {
       if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
       throw e;
     }
+  }
 
+  r.post("/books/:id/concept/pitches", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = (await c.req.json().catch(() => ({}))) ?? {};
+    const parsed = generatePitchesBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const concept = loadConceptOr404(c, id);
+    if (concept instanceof Response) return concept;
+
+    const idea = (concept.idea ?? "").trim();
+    if (idea.length < 10) {
+      return badRequest(c, "idea is too short: write what the book is about first");
+    }
     try {
-      const concept = await runConceptFromIdea({ idea: parsed.data.idea });
-      return c.json(concept);
+      const out = await runPitchGenerator({
+        idea,
+        ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
+        ...(parsed.data.count !== undefined ? { count: parsed.data.count } : {}),
+        avoid: concept.pitches.map((p) => ({ workingTitle: p.workingTitle, logline: p.logline })),
+      });
+      const fresh = toPitches(out.pitches, () => randomUUID());
+      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, ...fresh] });
+      return c.json({
+        concept: next,
+        questions: out.questions,
+        newPitchIds: fresh.map((p) => p.id),
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      return c.json(
-        { error: "concept_from_idea_failed", details: { message } },
-        500,
-      );
+      return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
     }
+  });
+
+  r.post("/books/:id/concept/pitches/blend", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = blendPitchBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const concept = loadConceptOr404(c, id);
+    if (concept instanceof Response) return concept;
+
+    const byId = new Map(concept.pitches.map((p) => [p.id, p] as const));
+    const pickIds = [...new Set(Object.values(parsed.data.picks))];
+    const missing = pickIds.filter((pid) => !byId.has(pid));
+    if (missing.length > 0) return badRequest(c, `unknown pitch id: ${missing.join(", ")}`);
+    const sources = pickIds.flatMap((pid) => {
+      const p = byId.get(pid);
+      return p ? [p] : [];
+    });
+    try {
+      const draft = await runPitchBlender({
+        idea: (concept.idea ?? "").trim(),
+        sources,
+        picks: parsed.data.picks,
+        ...(parsed.data.note ? { note: parsed.data.note } : {}),
+      });
+      const blended = toPitches([draft], () => randomUUID())[0];
+      if (!blended) throw new Error("blender returned no pitch");
+      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, blended] });
+      return c.json({ concept: next, pitchId: blended.id });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.json({ error: "pitch_blend_failed", details: { message } }, 500);
+    }
+  });
+
+  r.post("/books/:id/concept/lock", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = (await c.req.json().catch(() => ({}))) ?? {};
+    const parsed = lockConceptBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const concept = loadConceptOr404(c, id);
+    if (concept instanceof Response) return concept;
+
+    const now = new Date().toISOString();
+    if (parsed.data.pitchId === undefined) {
+      // Legacy concepts have a premise but no pitches: one click confirms them.
+      if ((concept.premise.logline ?? "").trim().length === 0) {
+        return badRequest(c, "nothing to lock: pick a pitch or fill the premise first");
+      }
+      return c.json(repo.patchConcept(id, { ...concept, lockedAt: now }));
+    }
+    const pitch = concept.pitches.find((p) => p.id === parsed.data.pitchId);
+    if (!pitch) return badRequest(c, `unknown pitch id: ${parsed.data.pitchId}`);
+    const next = repo.patchConcept(id, lockConceptToPitch(concept, pitch.id, now));
+    sqlite
+      .prepare("UPDATE books SET title = ?, updated_at = ? WHERE id = ?")
+      .run(pitch.workingTitle, now, id);
+    return c.json(next);
+  });
+
+  r.post("/books/:id/concept/unlock", (c) => {
+    const id = Number(c.req.param("id"));
+    const concept = loadConceptOr404(c, id);
+    if (concept instanceof Response) return concept;
+    return c.json(repo.patchConcept(id, unlockConcept(concept)));
   });
 
   r.post("/books/:id/stages/:stageId/playbook", async (c) => {
