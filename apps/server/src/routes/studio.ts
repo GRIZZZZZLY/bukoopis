@@ -41,6 +41,14 @@ import { stageIdSchema } from "@book-forge/shared";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { ESTIMATE_MS } from "../utils/generation-progress.js";
 import { streamAgentProgress } from "../utils/sse-progress.js";
+import { runMaterialClassifier } from "@book-forge/agents/intake/classifier";
+import {
+  describeExistingStages,
+  intakeRequestKey,
+  landFragments,
+} from "../utils/intake-landing.js";
+import { insertChapters } from "./import-export.js";
+import { summarizeIntake, type IntakeLanded } from "@book-forge/shared";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -114,6 +122,26 @@ const refineAspectBodySchema = z.object({
       finalPayload: z.string().min(1),
     }),
   ),
+});
+
+// The classifier echoes the author's text back verbatim as fragment bodies in
+// a single tool-call JSON payload (maxTokens 32000, Russian ~2-2.5 chars/token).
+// A file much past this size overflows the call outright rather than
+// truncating, so it is rejected before the classifier ever sees it — as a
+// per-file failure, not a whole-request 400 — and the rest of the batch still
+// lands.
+const MAX_INTAKE_FILE_CHARS = 40_000;
+
+const intakeBodySchema = z.object({
+  files: z
+    .array(
+      z.object({
+        filename: z.string().trim().min(1).max(400),
+        content: z.string().min(1).max(400_000),
+      }),
+    )
+    .min(1)
+    .max(50),
 });
 
 const ENTITY_STAGES = new Set(["characters", "items"] as const);
@@ -195,7 +223,7 @@ function loadChapterProgress(
   return { total: row.total, finalized: row.finalized ?? 0 };
 }
 
-export function createStudioRoute(sqlite: DatabaseType): Hono {
+export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
 
@@ -480,6 +508,141 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     const concept = loadConceptOr404(c, id);
     if (concept instanceof Response) return concept;
     return c.json(repo.patchConcept(id, unlockConcept(concept)));
+  });
+
+  r.post("/books/:id/intake", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = intakeBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    let concept;
+    let state;
+    try {
+      concept = repo.loadConcept(id);
+      state = repo.loadStudioState(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
+    }
+
+    // Повторное перетаскивание той же папки не должно удваивать черновики.
+    const requestKey = intakeRequestKey(parsed.data.files);
+    const prior = sqlite
+      .prepare(
+        `SELECT payload FROM studio_events
+         WHERE book_id = ? AND event_type = 'import_merge'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(id) as { payload: string } | undefined;
+    if (prior) {
+      try {
+        const p = JSON.parse(prior.payload) as { note?: string; after?: unknown };
+        if (p.note === requestKey && p.after) return c.json(p.after);
+      } catch {
+        /* повреждённое старое событие — просто разбираем заново */
+      }
+    }
+
+    const existingStages = describeExistingStages(state);
+    const idea = (concept.idea ?? "").trim();
+    const failures: Array<{ filename: string; message: string }> = [];
+    const fragments: Awaited<ReturnType<typeof runMaterialClassifier>>["fragments"] = [];
+    let foundIdea: string | undefined;
+
+    // Последовательно, а не пачкой: один файл — один вызов, и падение одного
+    // не уносит остальные.
+    for (const file of parsed.data.files) {
+      if (file.content.length > MAX_INTAKE_FILE_CHARS) {
+        failures.push({
+          filename: file.filename,
+          message: `Файл «${file.filename}» слишком велик, чтобы прочитать за один раз (${file.content.length} символов, предел ${MAX_INTAKE_FILE_CHARS}). Разделите его на части поменьше и загрузите снова.`,
+        });
+        continue;
+      }
+      try {
+        const out = await runMaterialClassifier({
+          filename: file.filename,
+          content: file.content,
+          ...(idea.length > 0 ? { bookIdea: idea } : {}),
+          ...(existingStages.length > 0 ? { existingStages } : {}),
+        });
+        fragments.push(...out.fragments);
+        if (foundIdea === undefined && out.bookIdea && out.bookIdea.trim().length > 0) {
+          foundIdea = out.bookIdea.trim();
+        }
+      } catch (e) {
+        failures.push({
+          filename: file.filename,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { next, landed, chapterFragments } = landFragments(state, fragments, now);
+
+    let revision = state.revision;
+    if (landed.length > 0) {
+      try {
+        const saved = repo.patchStudioState(id, {
+          expectedRevision: state.revision,
+          next,
+        });
+        revision = saved.revision;
+      } catch (e) {
+        if (e instanceof StudioConflictError) {
+          return c.json(
+            { error: "revision_conflict", details: { expected: state.revision } },
+            409,
+          );
+        }
+        throw e;
+      }
+    }
+
+    const chapters = chapterFragments.length
+      ? await insertChapters(
+          sqlite,
+          hasVec,
+          id,
+          chapterFragments.map((f) => ({ title: f.title, body: f.body })),
+        )
+      : [];
+
+    let ideaSet = false;
+    if (idea.length === 0 && foundIdea !== undefined) {
+      repo.patchConcept(id, { ...concept, idea: foundIdea });
+      ideaSet = true;
+    }
+
+    const allLanded: IntakeLanded[] = [
+      ...(ideaSet ? [{ target: "concept" as const, title: "Задумка", kind: "idea" as const }] : []),
+      ...landed,
+      ...chapters.map((ch) => ({
+        target: "chapters" as const,
+        title: ch.title,
+        kind: "chapter" as const,
+      })),
+    ];
+
+    const response = {
+      summary: summarizeIntake(allLanded),
+      ideaSet,
+      chapters,
+      failures,
+      revision,
+    };
+
+    repo.events.log({
+      bookId: id,
+      eventType: "import_merge",
+      payload: { note: requestKey, after: response },
+      revisionBefore: state.revision,
+      revisionAfter: revision,
+    });
+
+    return c.json(response);
   });
 
   r.post("/books/:id/stages/:stageId/playbook", async (c) => {
