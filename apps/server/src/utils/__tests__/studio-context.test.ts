@@ -60,7 +60,12 @@ describe("loadStudioContext", () => {
         1,
       );
     const ctx = loadStudioContext(sqlite, 1);
-    expect(ctx.concept?.genres).toEqual(["fantasy"]);
+    // normalizeConcept folds the legacy id arrays into the free-text field and
+    // strips them — this is what studioContextToPrompt reads from.
+    expect(ctx.concept?.genre).toBe("fantasy");
+    expect(ctx.concept?.tone).toBe("dark");
+    expect(ctx.concept?.genres).toBeUndefined();
+    expect(ctx.concept?.tones).toBeUndefined();
     expect(ctx.concept?.premise.logline).toBe("Герой ищет правду");
   });
 
@@ -166,6 +171,29 @@ describe("loadStudioContext", () => {
     expect(ctx.plotAspects).toEqual([
       { name: "завязка", payload: "Героиня теряет корабль в первую же ночь." },
     ]);
+  });
+
+  it("normalizes a legacy stored concept so studioContextToPrompt still emits Жанр/Тон", () => {
+    // Regression for the loadStudioContext bug: a book stored before this branch
+    // has genres/tones arrays and no genre/tone strings. Without normalizeConcept,
+    // c.genre/c.tone are undefined and the prompt silently drops them.
+    sqlite
+      .prepare("UPDATE books SET concept = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          schemaVersion: 1,
+          genres: ["fantasy"],
+          tones: ["dark"],
+          audience: "adult",
+          premise: { logline: "Герой ищет правду" },
+        }),
+        1,
+      );
+    const ctx = loadStudioContext(sqlite, 1);
+    const prompt = studioContextToPrompt(ctx);
+    expect(prompt).not.toBeNull();
+    expect(prompt!).toContain("Жанр: fantasy");
+    expect(prompt!).toContain("Тон: dark");
   });
 
   it("returns empty for unknown book id", () => {

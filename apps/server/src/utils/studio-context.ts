@@ -2,6 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   bookConceptSchema,
   studioStateSchema,
+  normalizeConcept,
   type BookConcept,
 } from "@book-forge/shared";
 
@@ -32,7 +33,7 @@ export function loadStudioContext(
   let concept: BookConcept | null = null;
   if (row.concept) {
     try {
-      concept = bookConceptSchema.parse(JSON.parse(row.concept));
+      concept = normalizeConcept(bookConceptSchema.parse(JSON.parse(row.concept)));
     } catch (e) {
       // Corrupt concept means the agent will generate without genre/tone/premise
       // and the author would never know. Surface it instead of swallowing.
