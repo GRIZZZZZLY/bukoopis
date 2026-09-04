@@ -18,6 +18,19 @@ interface Props {
   onBackToIdea: () => void;
 }
 
+/** Picks are local state, but the pitch they point at can be removed out
+ *  from under them by the parent re-rendering with a shorter `pitches`
+ *  array. Both the gate and the blend payload must agree with the cards
+ *  actually on the board, not with whatever `picks` last recorded. */
+function livePicks(picks: Picks, pitches: Pitch[]): Picks {
+  const liveIds = new Set(pitches.map((p) => p.id));
+  const out: Picks = {};
+  for (const [field, id] of Object.entries(picks) as [PitchMixField, string][]) {
+    if (liveIds.has(id)) out[field] = id;
+  }
+  return out;
+}
+
 function distinctSources(picks: Picks): number {
   return new Set(Object.values(picks).filter((v): v is string => typeof v === "string")).size;
 }
@@ -40,10 +53,11 @@ export function PitchBoard({
   const [picks, setPicks] = useState<Picks>({});
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
-  const canBlend = mixMode && distinctSources(picks) >= 2;
+  const picksOnBoard = livePicks(picks, pitches);
+  const canBlend = mixMode && distinctSources(picksOnBoard) >= 2;
 
   async function blend() {
-    await onBlend(picks);
+    await onBlend(livePicks(picks, pitches));
     setPicks({});
     setMixMode(false);
   }

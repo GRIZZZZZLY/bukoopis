@@ -39,8 +39,15 @@ function renderBoard(over: Partial<ComponentProps<typeof PitchBoard>> = {}) {
     onBackToIdea: vi.fn(),
     ...over,
   };
-  render(<PitchBoard {...props} />);
-  return props;
+  const view = render(<PitchBoard {...props} />);
+  return {
+    ...props,
+    // simulates the parent re-rendering PitchBoard with an updated `pitches`
+    // array after a remove (or any other prop change) resolves, on the same
+    // mounted instance — so local state like `picks` survives the update.
+    rerender: (nextOver: Partial<ComponentProps<typeof PitchBoard>>) =>
+      view.rerender(<PitchBoard {...props} {...nextOver} />),
+  };
 }
 
 describe("PitchBoard", () => {
@@ -93,6 +100,28 @@ describe("PitchBoard", () => {
     expect(blend).toBeEnabled();
     await userEvent.click(blend);
     expect(p.onBlend).toHaveBeenCalledWith({ protagonist: "a", conflict: "b" });
+  });
+
+  it("drops a removed pitch's picks from the mix gate and never sends a stale id", async () => {
+    const p = renderBoard();
+    await userEvent.click(screen.getByRole("button", { name: /^Смешать$/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Кто главный и чего хочет: взять из «Архив»" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Что ему мешает: взять из «Барьер»" }));
+    const blend = screen.getByRole("button", { name: /Собрать из выбранного/ });
+    expect(blend).toBeEnabled();
+
+    // parent removed card "b" and re-rendered with a shorter pitches array
+    p.rerender({ pitches: PITCHES.filter((pitchItem) => pitchItem.id !== "b") });
+
+    expect(screen.getByRole("button", { name: /Собрать из выбранного/ })).toBeDisabled();
+
+    // picking a live card back up to two distinct sources re-enables the gate,
+    // and the removed pitch's id never reaches onBlend
+    await userEvent.click(screen.getByRole("radio", { name: "Что ему мешает: взять из «Волна»" }));
+    const blendAgain = screen.getByRole("button", { name: /Собрать из выбранного/ });
+    expect(blendAgain).toBeEnabled();
+    await userEvent.click(blendAgain);
+    expect(p.onBlend).toHaveBeenCalledWith({ protagonist: "a", conflict: "c" });
   });
 
   it("answers a clarifying question", async () => {
