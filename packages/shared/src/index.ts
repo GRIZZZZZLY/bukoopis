@@ -16,3 +16,4 @@ export * from "./canon-facts.js";
 export * from "./episodic-notes.js";
 export * from "./book-note.js";
 export * from "./prose-rules.js";
+export * from "./intake.js";
