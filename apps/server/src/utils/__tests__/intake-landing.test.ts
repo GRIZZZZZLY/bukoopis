@@ -29,6 +29,12 @@ describe("intakeRequestKey", () => {
     const b = [{ filename: "a.md", content: "один и ещё" }];
     expect(intakeRequestKey(a)).not.toBe(intakeRequestKey(b));
   });
+
+  it("does not collide when the field boundary shifts between filename and content", () => {
+    const a = [{ filename: "notes.md", content: "hello world" }];
+    const b = [{ filename: "notes.md hello", content: "world" }];
+    expect(intakeRequestKey(a)).not.toBe(intakeRequestKey(b));
+  });
 });
 
 describe("landFragments", () => {

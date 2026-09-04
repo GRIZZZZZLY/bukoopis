@@ -26,16 +26,16 @@ function emptyStage(): StageState {
 }
 
 /** Один и тот же набор файлов даёт один и тот же ключ независимо от порядка,
- *  поэтому повторное перетаскивание той же папки не создаёт дублей. */
+ *  поэтому повторное перетаскивание той же папки не создаёт дублей. Каждая
+ *  запись хешируется как JSON-массив — граница между именем файла и
+ *  содержимым однозначна, а не просто разделена пробелом, который в имени
+ *  файла ничем не отличается от пробела в тексте. */
 export function intakeRequestKey(
   files: Array<{ filename: string; content: string }>,
 ): string {
   const h = createHash("sha256");
   for (const f of [...files].sort((a, b) => a.filename.localeCompare(b.filename))) {
-    h.update(f.filename);
-    h.update(" ");
-    h.update(f.content);
-    h.update(" ");
+    h.update(JSON.stringify([f.filename, f.content]));
   }
   return h.digest("hex").slice(0, 32);
 }
