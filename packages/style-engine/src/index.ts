@@ -10,6 +10,17 @@ export {
 } from "./parsers.js";
 export { detectFatigueWords } from "./fatigue.js";
 export {
+  measureStructuralTells,
+  renderStructuralTells,
+  splitScenesForCadence,
+  STRUCTURAL_TELL_IDS,
+  STRUCTURAL_TELL_LABELS_RU,
+  type StructuralTellId,
+  type StructuralTellsReport,
+  type SceneCadence,
+  type MeasureTellsOptions,
+} from "./tells.js";
+export {
   computeCorpusMetrics,
   computeSentenceLengths,
   computeDialogueShare,
