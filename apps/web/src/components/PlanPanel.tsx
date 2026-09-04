@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
-import type {
-  Chapter,
-  ChapterBeatSheetVariant,
-  ChapterPlan,
+import {
+  renderChapterClosing,
+  type Chapter,
+  type ChapterBeatSheetVariant,
+  type ChapterPlan,
 } from "@book-forge/shared";
 
 interface Props {
@@ -159,6 +160,11 @@ function BeatSheetCard({
       <p className="text-sm">
         <strong>Эмоциональная цель:</strong> {variant.emotionalGoal}
       </p>
+      {variant.closing && (
+        <p className="text-sm">
+          <strong>Финал главы:</strong> {renderChapterClosing(variant.closing)}
+        </p>
+      )}
       <p className="text-sm text-[var(--color-muted-foreground)]">
         ~{variant.estimatedWords} слов · {variant.beats.length} beats
       </p>

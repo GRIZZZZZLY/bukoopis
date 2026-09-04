@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
-import type { Book, BookOutline, BookOutlineVariant } from "@book-forge/shared";
+import {
+  narrativeArchitectureLines,
+  type Book,
+  type BookOutline,
+  type BookOutlineVariant,
+} from "@book-forge/shared";
 
 interface Props {
   book: Book;
@@ -188,6 +193,16 @@ function VariantCard({
               ))}
             </ul>
           </div>
+          {variant.architecture && (
+            <div className="flex flex-col gap-0.5">
+              <strong>Архитектура:</strong>
+              {narrativeArchitectureLines(variant.architecture).map(({ label, value }) => (
+                <p key={label} className="text-xs">
+                  <strong>{label}:</strong> {value}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <Button

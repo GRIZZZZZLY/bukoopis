@@ -8,6 +8,8 @@ import {
 import {
   bookOutlineVariantSchema,
   chapterBeatSheetVariantSchema,
+  chapterClosingSchema,
+  narrativeArchitectureSchema,
   type BookOutlineVariant,
   type ChapterBeatSheetVariant,
   type GenerationConfig,
@@ -15,33 +17,59 @@ import {
 
 export type UsageHandler = (usage: StructuredUsage) => void;
 
-const bookOutlineToolSchema = z.object({
-  variants: z.array(bookOutlineVariantSchema).min(1).max(5),
+// Stored schemas keep architecture/closing optional for old rows; the agent
+// must fill them on every fresh generation.
+export const bookOutlineToolSchema = z.object({
+  variants: z
+    .array(bookOutlineVariantSchema.extend({ architecture: narrativeArchitectureSchema }))
+    .min(1)
+    .max(5),
 });
 type BookOutlineToolResult = z.infer<typeof bookOutlineToolSchema>;
 
-const chapterBeatSheetToolSchema = z.object({
-  variants: z.array(chapterBeatSheetVariantSchema).min(1).max(5),
+export const chapterBeatSheetToolSchema = z.object({
+  variants: z
+    .array(chapterBeatSheetVariantSchema.extend({ closing: chapterClosingSchema }))
+    .min(1)
+    .max(5),
 });
 type ChapterBeatSheetToolResult = z.infer<typeof chapterBeatSheetToolSchema>;
 
-const SYSTEM_BOOK_OUTLINE = `Ты — Plot Agent, специалист по структуре художественной литературы. Работаешь на русском языке.
+export const SYSTEM_BOOK_OUTLINE = `Ты — Plot Agent, специалист по структуре художественной литературы. Работаешь на русском языке.
 
 Твоя задача: из премисы книги породить N вариантов high-level outline. Каждый вариант — это самодостаточная концепция, отличающаяся от других существенно (тон, угол атаки, протагонист, центральный конфликт).
 
-Каждый вариант содержит: label (короткое имя, например "тёмный", "оптимистичный"), logline (1-2 предложения), synopsis (3-6 абзацев), темы (2-5), протагониста, антагониста (если есть), сеттинг, арки (минимум 2 — обычно protagonist arc + main plot arc + subplot arc), оценку количества глав.
+Каждый вариант содержит: label (короткое имя, например "тёмный", "оптимистичный"), logline (1-2 предложения), synopsis (3-6 абзацев), темы (2-5), протагониста, антагониста (если есть), сеттинг, арки (минимум 2 — обычно protagonist arc + main plot arc + subplot arc), оценку количества глав, архитектурный лист (architecture).
 
 В synopsis обязаны быть названы четыре опорные точки, иначе структура нежизнеспособна: инцидент-завязка, поворот середины (событие, которое меняет постановку задачи, а не просто повышает ставки), низшая точка героя, кульминация. Не отделывайся связкой «затем события нарастают».
 
+Архитектурный лист (architecture) — решения о строении истории, принятые ДО синопсиса; синопсис обязан им соответствовать. Ориентиры взяты из измерений человеческой и машинной прозы: машинный текст объясняет тему словами нарратора, держит одну тугую причинную цепь, раскрывает карты рано, решает финал выбором героя и его внутренним принятием. Человеческие значения умеренные — цель полоса, не противоположный полюс.
+— themeHandling: stated / implied / withheld. По умолчанию implied: события несут тему, нарратор не формулирует урок.
+— subplot: none / parallel / contrasting / independent. В большинстве вариантов подсюжет есть; contrasting или independent ценнее parallel.
+— resolutionDriver: protagonist_choice / mixed / external. Примерно в половине вариантов исход решают случай, другие люди или обстоятельства, не выбор героя.
+— endingMode: external_act / internal_acceptance / partial / open / catastrophic. Связка «выбор героя + внутреннее принятие + рост» — самый сильный машинный отпечаток финала. Не бери её по умолчанию; internal_acceptance допустим не более чем в одном варианте и только если премиса его требует.
+— timeStructure: linear / moderate_anachrony / braided. Целевая полоса moderate_anachrony; braided только если премиса о времени.
+— revelationPacing: front_loaded / even / back_loaded. Предпочтительно back_loaded: главные откровения во второй половине книги.
+— emotionMode: explicit_led / behavior_led / embodied_led / mixed. Предпочтительно behavior_led: эмоции через поступки и прямое называние; телесные ощущения только на пиках.
+— rarityMove: одно структурное решение, нетипичное для этой премисы. Ровно одно.
+— humanMoves: 3–5 «человеческих» ходов под эту премису — какие из решений выше и почему. Не больше пяти: все ходы сразу дают новый отпечаток.
+Варианты должны различаться и архитектурой, не только тоном.
+
 Не дублируй варианты. Не пиши абстракции уровня "герой проходит путь". Каждый вариант должен быть достаточно конкретным, чтобы можно было сразу начать писать первую главу.`;
 
-const SYSTEM_CHAPTER_PLAN = `Ты — Plot Agent. Работаешь на русском языке.
+export const SYSTEM_CHAPTER_PLAN = `Ты — Plot Agent. Работаешь на русском языке.
 
 Задача: из намерения автора по главе и контекста книги породить N вариантов beat-sheet'а главы. Каждый вариант — связная последовательность beats (3-15 штук) с типом, кратким описанием, целью, конфликтом и исходом.
 
-Варианты должны отличаться: подходом к структуре (нарастающий темп vs шок-открытие в середине), POV-фокусом, эмоциональной траекторией, выбором кульминации.
+Варианты должны отличаться: подходом к структуре (нарастающий темп vs шок-открытие в середине), POV-фокусом, эмоциональной траекторией, выбором кульминации, финалом (closing.mode).
 
-Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats.`;
+Финал главы (closing) обязателен: mode — external_act / open / partial / internal_acceptance / catastrophic / cut_mid_action; note — одна фраза о том, чем именно глава заканчивается: действие, реплика, образ.
+— По умолчанию глава заканчивается действием, репликой или обрывом, не осмыслением. Связка «герой всё понял, принял и решился» (internal_acceptance, внутреннее принятие) — машинный отпечаток; допустима не более чем в одном варианте и только если намерение автора её требует.
+— Рефлексия не последний beat. Если beat осмысления нужен, ставь его перед финальным действием, один, не серию.
+— В средней трети хотя бы один beat, которого начало главы не предсказывает: событие, а не рост ставок.
+— Меняй плотность между соседними beats: диалоговый рядом с описательным, быстрый после медленного.
+
+Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats, closing.`;
 
 // ─────────── Outline ───────────
 
