@@ -2145,4 +2145,3 @@ html.atm-off::view-transition-new(root) {
 .pitch-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
 .pitch-questions { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-bottom: 12px; border-left: 3px solid var(--color-brass-soft); background: var(--color-brass-tint); border-radius: 6px; }
 .concept-lines { display: grid; gap: 12px; }
-.concept-line-label { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }

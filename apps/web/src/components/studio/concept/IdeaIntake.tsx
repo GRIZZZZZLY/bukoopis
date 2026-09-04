@@ -12,7 +12,7 @@ export const IDEA_MIN_LENGTH = 10;
 export function IdeaIntake({ idea, onIdeaChange, onGenerate, busy, error }: Props) {
   const ready = idea.trim().length >= IDEA_MIN_LENGTH;
   return (
-    <section className="concept-intake" aria-label="Задумка книги">
+    <section aria-label="Задумка книги">
       <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
         Напиши своими словами, о чём книга: одной фразой или сбивчиво, как думается.
         Жанр, герой и конфликт появятся в питчах, их не нужно придумывать сейчас.

@@ -178,7 +178,7 @@ export function StudioPage() {
   function handleConceptChange(next: BookConcept) {
     setConcept(next);
     // Locking renames the book and moves the recommendation; both live outside the concept.
-    if (api.getBook) void api.getBook(bookId).then(setBook).catch(() => {});
+    void api.getBook(bookId).then(setBook).catch(() => {});
     void api.getStudioWarnings(bookId).then(setWarnings).catch(() => {});
   }
 
