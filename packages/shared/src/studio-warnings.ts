@@ -39,7 +39,7 @@ const STAGE_ORDER: readonly StageId[] = STAGE_IDS;
 
 /** Stage names as the author sees them; the ids are internal. */
 const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Концепт",
+  concept: "Замысел",
   world: "Мир",
   lore: "Лор",
   characters: "Персонажи",

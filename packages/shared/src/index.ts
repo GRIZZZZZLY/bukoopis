@@ -9,7 +9,6 @@ export * from "./style.js";
 export * from "./pricing.js";
 export * from "./studio-state.js";
 export * from "./concept.js";
-export * from "./genre-registry.js";
 export * from "./studio-invariants.js";
 export * from "./studio-warnings.js";
 export * from "./canon-facts.js";

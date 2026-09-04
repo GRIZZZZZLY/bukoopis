@@ -21,7 +21,7 @@ import {
 } from "@/components/studio/aspect-engine/llmGenerators";
 
 const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Концепт",
+  concept: "Замысел",
   world: "Мир",
   lore: "Лор",
   characters: "Персонажи",
