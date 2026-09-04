@@ -150,6 +150,17 @@ describe("POST /api/books/:id/concept/pitches/blend", () => {
     expect(call?.picks).toEqual({ protagonist: a, conflict: b });
     expect(call?.note).toBe("камернее");
   });
+
+  it("500 when the agent throws", async () => {
+    const { id, ids } = await bookWithPitches();
+    vi.mocked(runPitchBlender).mockRejectedValue(new Error("LLM failure"));
+    const [a, b] = ids;
+    const r = await send(t.app, `/api/books/${id}/concept/pitches/blend`, "POST", {
+      picks: { protagonist: a, conflict: b },
+    });
+    expect(r.status).toBe(500);
+    expect(((await r.json()) as { error: string }).error).toBe("pitch_blend_failed");
+  });
 });
 
 describe("POST /api/books/:id/concept/lock and /unlock", () => {

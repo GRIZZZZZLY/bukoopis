@@ -365,14 +365,20 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
     if (idea.length < 10) {
       return badRequest(c, "idea is too short: write what the book is about first");
     }
+    let out;
     try {
-      const out = await runPitchGenerator({
+      out = await runPitchGenerator({
         idea,
         ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
         ...(parsed.data.count !== undefined ? { count: parsed.data.count } : {}),
         avoid: concept.pitches.map((p) => ({ workingTitle: p.workingTitle, logline: p.logline })),
       });
-      const fresh = toPitches(out.pitches, () => randomUUID());
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
+    }
+    const fresh = toPitches(out.pitches, () => randomUUID());
+    try {
       const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, ...fresh] });
       return c.json({
         concept: next,
@@ -380,8 +386,8 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
         newPitchIds: fresh.map((p) => p.id),
       });
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
     }
   });
 
@@ -401,20 +407,31 @@ export function createStudioRoute(sqlite: DatabaseType): Hono {
       const p = byId.get(pid);
       return p ? [p] : [];
     });
+    let draft;
     try {
-      const draft = await runPitchBlender({
+      draft = await runPitchBlender({
         idea: (concept.idea ?? "").trim(),
         sources,
         picks: parsed.data.picks,
         ...(parsed.data.note ? { note: parsed.data.note } : {}),
       });
-      const blended = toPitches([draft], () => randomUUID())[0];
-      if (!blended) throw new Error("blender returned no pitch");
-      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, blended] });
-      return c.json({ concept: next, pitchId: blended.id });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_blend_failed", details: { message } }, 500);
+    }
+    const blended = toPitches([draft], () => randomUUID())[0];
+    if (!blended) {
+      return c.json(
+        { error: "pitch_blend_failed", details: { message: "blender returned no pitch" } },
+        500,
+      );
+    }
+    try {
+      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, blended] });
+      return c.json({ concept: next, pitchId: blended.id });
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
     }
   });
 
