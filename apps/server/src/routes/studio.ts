@@ -47,7 +47,7 @@ import {
   intakeRequestKey,
   landFragments,
 } from "../utils/intake-landing.js";
-import { insertChapters } from "./import-export.js";
+import { insertChapters, type InsertedChapter } from "./import-export.js";
 import { summarizeIntake, type IntakeLanded } from "@book-forge/shared";
 
 const patchStudioStateBodySchema = z.object({
@@ -601,19 +601,41 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       }
     }
 
-    const chapters = chapterFragments.length
-      ? await insertChapters(
+    // Studio-state aspects are already durably committed above (if landed.length
+    // > 0). From here on a thrown error must not escape as an uncaught 500: that
+    // would skip the journal write below, and a retry would re-classify every
+    // file and append the same aspects a second time via mergeAspectsIntoStage.
+    // So the tail follows the same philosophy as the per-file loop — report a
+    // failure and carry on, so the response (and the replay cache) describes
+    // what actually landed.
+    let chapters: InsertedChapter[] = [];
+    if (chapterFragments.length > 0) {
+      try {
+        chapters = await insertChapters(
           sqlite,
           hasVec,
           id,
           chapterFragments.map((f) => ({ title: f.title, body: f.body })),
-        )
-      : [];
+        );
+      } catch (e) {
+        failures.push({
+          filename: "Главы",
+          message: `Не удалось сохранить главы (${chapterFragments.map((f) => f.title).join(", ")}): ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    }
 
     let ideaSet = false;
     if (idea.length === 0 && foundIdea !== undefined) {
-      repo.patchConcept(id, { ...concept, idea: foundIdea });
-      ideaSet = true;
+      try {
+        repo.patchConcept(id, { ...concept, idea: foundIdea });
+        ideaSet = true;
+      } catch (e) {
+        failures.push({
+          filename: "Задумка",
+          message: `Не удалось сохранить замысел: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
     }
 
     const allLanded: IntakeLanded[] = [

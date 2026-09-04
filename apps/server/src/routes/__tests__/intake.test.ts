@@ -5,7 +5,16 @@ vi.mock("@book-forge/agents/intake/classifier", () => ({
   runMaterialClassifier: vi.fn(),
 }));
 
+// Same reason: studio.ts imports insertChapters from this module at load time.
+// Wrap it (not replace it) so every other test keeps the real insert/index
+// path — only the one test that needs a mid-tail failure overrides it.
+vi.mock("../import-export.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../import-export.js")>();
+  return { ...actual, insertChapters: vi.fn(actual.insertChapters) };
+});
+
 import { runMaterialClassifier } from "@book-forge/agents/intake/classifier";
+import { insertChapters } from "../import-export.js";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 import type { BookConcept, StudioState } from "@book-forge/shared";
 
@@ -166,5 +175,40 @@ describe("POST /api/books/:id/intake", () => {
     expect(out.failures).toHaveLength(1);
     expect(out.failures[0]!.filename).toBe("Гигант.md");
     expect(out.failures[0]!.message).toMatch(/слишком/i);
+  });
+
+  it("a crash after aspects land still journals the response, so a retry replays instead of duplicating", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [
+        { target: "world", title: "Карта", body: "Барьер делит два мира." },
+        { target: "chapters", title: "Глава 01", body: "Текст главы." },
+      ],
+    });
+    vi.mocked(insertChapters).mockRejectedValueOnce(new Error("insert failed"));
+    const id = await createBook();
+    const out = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
+      files: [WORLD_FILE],
+    });
+
+    // The aspect that already landed in studio_state is not lost just because
+    // the chapter insert blew up afterwards.
+    expect(out.summary.map((r) => r.target)).toEqual(["world"]);
+    expect(out.chapters).toEqual([]);
+    expect(out.failures).toEqual([
+      { filename: "Главы", message: expect.stringContaining("insert failed") },
+    ]);
+
+    const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    expect(state.stages.world!.aspects).toHaveLength(1);
+
+    // A retry with the same files must replay the journaled response, not
+    // re-classify and append a second copy of the aspect that already landed.
+    const again = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
+      files: [WORLD_FILE],
+    });
+    expect(again).toEqual(out);
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
+    const state2 = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    expect(state2.stages.world!.aspects).toHaveLength(1);
   });
 });
