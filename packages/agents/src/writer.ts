@@ -1,6 +1,9 @@
 import { streamText, streamTextOllama, type SystemBlock } from "@book-forge/llm";
 import {
+  extractNarrativeArchitecture,
+  renderChapterClosing,
   renderClicheRule,
+  renderNarrativeArchitecture,
   RU_DIALOGUE_RULE,
   STYLE_PRECEDENCE_RULE,
   type ChapterBeatSheetVariant,
@@ -13,11 +16,15 @@ const SYSTEM_WRITER = `Ты — Writer Agent. Пишешь художестве�
 
 Получаешь: контекст книги + beat-sheet главы + (опционально) краткое содержание предыдущих глав.
 
-Твоя задача: написать связный текст главы, точно следуя последовательности beats. Каждый beat = логический блок прозы, обычно 1-4 абзаца.
+Твоя задача: написать связный текст главы, следуя последовательности beats. Каждый beat = логический блок прозы, обычно 1-4 абзаца.
 
 Требования:
-— Не пересказывай beats — превращай их в живую сцену с диалогами, действием, описаниями.
+— Не пересказывай beats — превращай их в живую сцену с диалогами, действием, описаниями. Beats — каркас, не сценарий: не переноси их формулировки в текст дословно; отдельная деталь может прийти не по порядку или остаться за кадром, если исход beat'а сохранён.
 — Соблюдай POV из beat-sheet. Объективный канон мира используй для непротиворечивости, но НЕ вкладывай в мысли/речь POV-персонажа то, чего он ещё не знает. В его сознании допустимо лишь то, что перечислено в блоке «Известно POV-персонажу» (если он есть).
+— Не объясняй тему и иронию словами нарратора: смысл несут события. Нарратор не подводит итог, герой не формулирует, что он понял и чему научился.
+— Регистр меняется от сцены к сцене: длина предложений, плотность описаний и доля диалога в сцене покоя и в сцене ужаса не должны совпадать. Одна каденция на всю главу — машинный признак.
+— Финал главы задан в блоке «Финал главы»; держи его. После кульминации не более одного абзаца рефлексии, последний абзац — действие, реплика или образ, не осмысление. Если финал не задан, заканчивай действием.
+— Оставляй слабину: не каждое предложение должно работать. Обычная фраза, необъяснённая деталь, незакрытый хвост допустимы. Не заканчивай каждый абзац ударной короткой фразой.
 — Стиль по умолчанию: ясный, без избыточных метафор.
 ${renderClicheRule()}
 ${RU_DIALOGUE_RULE}
@@ -61,6 +68,32 @@ export interface WriteChapterInput {
 }
 
 /**
+ * Volatile half of the Writer prompt — everything that changes per chapter or
+ * per beat-sheet variant, so it sits outside the cache_control prefix.
+ */
+export function buildWriterVolatilePrompt(input: WriteChapterInput): string {
+  const beatsBlock = input.beatSheet.beats
+    .map(
+      (b) =>
+        `${b.index + 1}. [${b.type}] ${b.summary}\n   Цель: ${b.goal}\n   Конфликт: ${b.conflict}\n   Исход: ${b.outcome}`,
+    )
+    .join("\n\n");
+
+  const parts = [
+    `Глава: "${input.chapterTitle}"`,
+    `POV: ${input.beatSheet.pov}`,
+    `Эмоциональная цель: ${input.beatSheet.emotionalGoal}`,
+    `Целевой объём: ~${input.beatSheet.estimatedWords} слов`,
+    `Beats:\n${beatsBlock}`,
+  ];
+  if (input.beatSheet.closing) {
+    parts.push(`Финал главы: ${renderChapterClosing(input.beatSheet.closing)}`);
+  }
+  parts.push("Напиши главу.");
+  return parts.join("\n\n");
+}
+
+/**
  * Stable half of the Writer system prompt — book context, memory layers, style.
  * Identical across many calls for the same chapter, so it carries the single
  * `cache_control` block. Extracted so prompt composition is directly testable.
@@ -72,6 +105,14 @@ export function buildWriterStableSystem(input: WriteChapterInput): string {
   ];
   if (input.bookOutline) {
     stableParts.push(`Outline книги:\n${input.bookOutline}`);
+    // The outline arrives as the variant's JSON, where the sheet is a set of
+    // English enum keys; rendered in Russian it becomes an instruction.
+    const architecture = extractNarrativeArchitecture(input.bookOutline);
+    if (architecture) {
+      stableParts.push(
+        `Архитектура книги (решения Plot Agent, держи их в каждой главе):\n${renderNarrativeArchitecture(architecture)}`,
+      );
+    }
   }
   if (input.studioContext) {
     stableParts.push(`Контекст studio:\n${input.studioContext}`);
@@ -117,26 +158,11 @@ export async function* writeChapter(
   },
   void
 > {
-  const beatsBlock = input.beatSheet.beats
-    .map(
-      (b) =>
-        `${b.index + 1}. [${b.type}] ${b.summary}\n   Цель: ${b.goal}\n   Конфликт: ${b.conflict}\n   Исход: ${b.outcome}`,
-    )
-    .join("\n\n");
-
   const stableSystem = buildWriterStableSystem(input);
   const system: SystemBlock[] = [
     { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
   ];
-
-  const volatileParts = [
-    `Глава: "${input.chapterTitle}"`,
-    `POV: ${input.beatSheet.pov}`,
-    `Эмоциональная цель: ${input.beatSheet.emotionalGoal}`,
-    `Целевой объём: ~${input.beatSheet.estimatedWords} слов`,
-    `Beats:\n${beatsBlock}`,
-    "Напиши главу.",
-  ];
+  const volatilePrompt = buildWriterVolatilePrompt(input);
 
   const provider: WriterProvider = input.provider ?? "anthropic";
   const gen =
@@ -149,7 +175,7 @@ export async function* writeChapter(
             ? { baseUrl: input.localBaseUrl }
             : {}),
           system,
-          prompt: volatileParts.join("\n\n"),
+          prompt: volatilePrompt,
           ...(input.config?.temperature !== undefined
             ? { temperature: input.config.temperature }
             : {}),
@@ -159,7 +185,7 @@ export async function* writeChapter(
           agentName: "writer",
           model: input.config?.model ?? "opus",
           system,
-          prompt: volatileParts.join("\n\n"),
+          prompt: volatilePrompt,
           ...(input.config?.temperature !== undefined
             ? { temperature: input.config.temperature }
             : {}),

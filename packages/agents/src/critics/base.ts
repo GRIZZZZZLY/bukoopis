@@ -29,9 +29,27 @@ export interface CriticInput {
    * as a defect.
    */
   styleContext?: string | null;
+  /**
+   * Measured structural LLM tells for this chapter (renderStructuralTells in
+   * style-engine): counts per 1000 words with quoted examples. Only the style
+   * critic uses it — evidence instead of impression.
+   */
+  structuralTellsContext?: string | null;
   config?: GenerationConfig;
   onUsage?: (usage: StructuredUsage & { critic: CriticType }) => void;
 }
+
+/**
+ * Shared calibration for the prose critics. Distilled from the sepia review
+ * protocol and Wikipedia's "Signs of AI writing" ineffective-indicators list:
+ * a single hit is not a verdict, a quote is mandatory, and several things that
+ * look like tells in English are ordinary in Russian prose.
+ */
+export const CRITIC_CALIBRATION_RULE = `Калибровка:
+— Сигнал только с цитатой. Нет цитаты — нет замечания.
+— Один маркер не вердикт. Отмечай кластеры и повторяемость; единичное попадание — максимум nit.
+— Не считай дефектом: тире в диалоге и в пунктуации (норма русского текста); длинные периоды и плотную метафорику, если их предписывает блок «Стиль»; безупречную грамматику; формальный регистр; переходные слова сами по себе.
+— Не требуй противоположного полюса: цель — умеренность, а не вычистить все сравнения или раздробить все предложения. Если текст уже на пределе (фрагменты, стаккато, обрывы), отмечай перегиб отдельно как over-correction, не как ИИ-признак.`;
 
 const criticOutputSchema = criticReportSchema.omit({ critic: true });
 

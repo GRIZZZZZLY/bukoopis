@@ -17,6 +17,11 @@ const SYSTEM_REVISER = `Ты — Reviser. Перерабатываешь гот�
 — Не «улучшаешь» места которые критики не отмечали. Не вписывай новые сцены/реплики, не добавляй персонажей.
 — Не теряй выразительные находки оригинала, если их не критиковали.
 — Длина итогового текста — близко к оригиналу (±20%).
+— Не объясняй тему и иронию словами нарратора и не добавляй герою итогового понимания. Если такое объяснение есть в оригинале и его отметили — убирай, не переписывай другими словами.
+— Не добавляй рефлексию: после кульминации не более одного абзаца осмысления, последний абзац — действие, реплика или образ. Правка не должна удлинять финал.
+— Финал главы (если он назван в блоке beat-sheet) сохраняй по форме: обрыв остаётся обрывом, открытый финал не закрывается, внешнее действие не заменяется внутренним принятием.
+— Сохраняй разницу регистров между сценами: не выравнивай длину предложений и плотность описаний по всей главе.
+— Оставляй слабину: обычные фразы, необъяснённые детали и незакрытые хвосты — не дефекты. Не доводи каждое предложение до ударного и не превращай каждый абзац в короткую точную концовку.
 ${renderClicheRule()}
 ${RU_DIALOGUE_RULE}
 
@@ -31,6 +36,12 @@ export interface ReviseChapterInput {
   emotionalGoal: string;
   /** Rendered accepted beat-sheet (optional) — beats the revision must preserve. */
   beatSheet?: string | null;
+  /**
+   * Rendered narrative architecture sheet of the selected outline. Repair is
+   * the last pass over the prose, so it is the last place a structural
+   * decision (partial ending, withheld theme) can be quietly undone.
+   */
+  architectureContext?: string | null;
   characterContext: string | null;
   loreContext: string | null;
   styleContext: string | null;
@@ -70,6 +81,54 @@ function formatCriticIssues(
   return lines.join("\n");
 }
 
+/**
+ * Stable half of the Reviser system prompt — rules, book context, memory
+ * layers, style. Extracted so prompt composition is directly testable.
+ */
+export function buildReviserStableSystem(input: ReviseChapterInput): string {
+  const stableParts: string[] = [`Контекст книги:\n${input.bookContext}`];
+  if (input.architectureContext) {
+    stableParts.push(
+      `Архитектура книги (решения Plot Agent, правка не должна их менять):\n${input.architectureContext}`,
+    );
+  }
+  if (input.previousChaptersSummary) {
+    stableParts.push(
+      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
+    );
+  }
+  if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.loreContext) stableParts.push(input.loreContext);
+  if (input.styleContext) stableParts.push(input.styleContext);
+  if (input.fatigueWords.length > 0) {
+    stableParts.push(
+      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
+    );
+  }
+  return `${SYSTEM_REVISER}\n\n---\n\n${stableParts.join("\n\n")}`;
+}
+
+/** Volatile half — chapter, critic issues, original text, task. */
+export function buildReviserVolatilePrompt(input: ReviseChapterInput): string {
+  const severityFilter = input.severityFilter ?? [
+    "blocking",
+    "suggestion",
+    "nit",
+  ];
+  return [
+    `Глава: "${input.chapterTitle}"`,
+    `POV: ${input.pov}`,
+    `Эмоциональная цель: ${input.emotionalGoal}`,
+    ...(input.beatSheet
+      ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
+      : []),
+    `Итерация repair: ${input.iteration}`,
+    `Замечания критиков (приоритет blocking → suggestion → nit):\n${formatCriticIssues(input.critics, severityFilter)}`,
+    `Оригинальная глава для переработки:\n\n${input.originalText}`,
+    "Задача: перепиши главу, устранив указанные замечания. Выводи только прозу.",
+  ].join("\n\n");
+}
+
 export async function* reviseChapter(
   input: ReviseChapterInput,
 ): AsyncGenerator<
@@ -86,55 +145,19 @@ export async function* reviseChapter(
   },
   void
 > {
-  const severityFilter = input.severityFilter ?? [
-    "blocking",
-    "suggestion",
-    "nit",
-  ];
-  const issuesBlock = formatCriticIssues(input.critics, severityFilter);
-
-  // Stable system: SYSTEM_REVISER + book context + previous summary +
-  // characters + lore + style + fatigue. Volatile: chapter title/POV/goal +
-  // critic issues + original text + task.
-  const stableParts: string[] = [
-    `Контекст книги:\n${input.bookContext}`,
-  ];
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
-  if (input.characterContext) stableParts.push(input.characterContext);
-  if (input.loreContext) stableParts.push(input.loreContext);
-  if (input.styleContext) stableParts.push(input.styleContext);
-  if (input.fatigueWords.length > 0) {
-    stableParts.push(
-      `Слова и обороты с повышенной частотой — не злоупотребляй ими. Единичное употребление допустимо, если оно естественно и не создаёт повтора рядом:\n- ${input.fatigueWords.join("\n- ")}`,
-    );
-  }
-  const stableSystem = `${SYSTEM_REVISER}\n\n---\n\n${stableParts.join("\n\n")}`;
   const system: SystemBlock[] = [
-    { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
-  ];
-
-  const volatileParts: string[] = [
-    `Глава: "${input.chapterTitle}"`,
-    `POV: ${input.pov}`,
-    `Эмоциональная цель: ${input.emotionalGoal}`,
-    ...(input.beatSheet
-      ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
-      : []),
-    `Итерация repair: ${input.iteration}`,
-    `Замечания критиков (приоритет blocking → suggestion → nit):\n${issuesBlock}`,
-    `Оригинальная глава для переработки:\n\n${input.originalText}`,
-    "Задача: перепиши главу, устранив указанные замечания. Выводи только прозу.",
+    {
+      type: "text",
+      text: buildReviserStableSystem(input),
+      cache_control: { type: "ephemeral" },
+    },
   ];
 
   const gen = streamText({
     agentName: "editor",
     model: input.config?.model ?? "opus",
     system,
-    prompt: volatileParts.join("\n\n"),
+    prompt: buildReviserVolatilePrompt(input),
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),

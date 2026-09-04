@@ -6,9 +6,9 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, type CriticInput } from "./base.js";
 
-const SYSTEM = `Ты — Reader-Experience критик. Твоя задача — представить себя обычным читателем и оценить эмоциональный отклик на текст.
+export const READER_CRITIC_SYSTEM = `Ты — Reader-Experience критик. Твоя задача — представить себя обычным читателем и оценить эмоциональный отклик на текст.
 
 Ты не редактируешь стиль и не сверяешь канон. Ты говоришь: что чувствую как читатель, где скучаю, где не верю, где захвачен.
 
@@ -20,13 +20,19 @@ const SYSTEM = `Ты — Reader-Experience критик. Твоя задача �
 - Сопереживание герою (или равнодушие)
 - Достоверность: верю ли я в эту реакцию/диалог/решение?
 - Желание продолжать чтение в конце главы
+- Финал через осмысление: последние абзацы отвечают на «что это значит» и «что герой теперь чувствует», а не показывают действие
+- Предсказуемая середина: в средней части не происходит ничего, чего я не ждал по началу; ставки растут, событий нет
+- Одна плотность на всю главу: сцена покоя и сцена ужаса читаются в одном темпе
+- Нарратор объясняет тему словами вместо того, чтобы дать мне понять её по событиям
 
 Severity:
 - "blocking": глава не вызывает заявленной эмоции; читатель отключается.
 - "suggestion": эмоциональные провалы в нескольких местах.
 - "nit": единичная неубедительность.
 
-Пиши от первого лица читателя: "я не верю", "я скучал", "захватило". Цитируй где именно.`;
+Пиши от первого лица читателя: "я не верю", "я скучал", "захватило". Цитируй где именно.
+
+${CRITIC_CALIBRATION_RULE}`;
 
 const TASK = `Прочитай главу как читатель. Где я отключился? Где сопереживал? Достигнута ли заявленная эмоциональная цель? Объясни конкретно, со ссылками на фрагменты.`;
 
@@ -57,7 +63,7 @@ function buildReaderPrompt(input: CriticInput): string {
 const readerCriticContract: AgentStructuredContract<CriticInput, ReaderCriticOutput> = {
   agentName: "critic_reader",
   getOutputSchema: () => readerOutputSchema,
-  systemPrompt: SYSTEM,
+  systemPrompt: READER_CRITIC_SYSTEM,
   buildPrompt: buildReaderPrompt,
   defaultMode: "mcp_submit_tool",
   mcp: {
