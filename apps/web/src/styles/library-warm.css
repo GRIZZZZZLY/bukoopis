@@ -2130,3 +2130,19 @@ html.atm-off::view-transition-new(root) {
   background: var(--color-surface-2);
   border-color: var(--color-border-soft);
 }
+
+/* ── Замысел: задумка, питчи, карточка замысла ─────────────────────────── */
+.pitch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 12px; }
+.pitch-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-2); }
+.pitch-card.is-new { border-color: var(--color-brass-soft); box-shadow: 0 0 0 1px var(--color-brass-tint) inset; }
+.pitch-title { margin: 0; font-size: 17px; font-weight: 600; color: var(--color-text-strong); }
+.pitch-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pitch-row { display: grid; gap: 2px; }
+.pitch-label { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
+.pitch-value { font-size: 14px; line-height: 1.45; color: var(--color-text); }
+.pitch-verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 8px; border-top: 1px dashed var(--color-border); }
+.pitch-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; }
+.pitch-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.pitch-questions { display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-bottom: 12px; border-left: 3px solid var(--color-brass-soft); background: var(--color-brass-tint); border-radius: 6px; }
+.concept-lines { display: grid; gap: 12px; }
+.concept-line-label { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
