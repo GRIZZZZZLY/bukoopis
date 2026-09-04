@@ -3,6 +3,14 @@ import { z } from "zod";
 export const audienceSchema = z.enum(["ya", "adult", "all_ages", "mg"]);
 export type Audience = z.infer<typeof audienceSchema>;
 
+/** Как аудитория называется для автора и в промптах. */
+export const AUDIENCE_LABELS: Record<Audience, string> = {
+  ya: "подростки и молодые взрослые",
+  adult: "взрослые",
+  all_ages: "для всех возрастов",
+  mg: "дети 9–12",
+};
+
 export const premiseSchema = z.object({
   protagonist: z.string().optional(),
   conflict: z.string().optional(),
@@ -11,35 +19,149 @@ export const premiseSchema = z.object({
 });
 export type Premise = z.infer<typeof premiseSchema>;
 
+/** Питч — одно целостное предложение книги. Всё, что автор читает на карточке.
+ *  Ни одно поле не бывает пустым: пустоту заполняет модель, не автор. */
+export const pitchSchema = z.object({
+  id: z.string().min(1),
+  workingTitle: z.string().min(1).max(120),
+  logline: z.string().min(1).max(600),
+  protagonist: z.string().min(1).max(2000),
+  conflict: z.string().min(1).max(2000),
+  stakes: z.string().min(1).max(2000),
+  hook: z.string().min(1).max(600),
+  genre: z.string().min(1).max(200),
+  tone: z.string().min(1).max(200),
+  audience: audienceSchema,
+  strength: z.string().min(1).max(600),
+  risk: z.string().min(1).max(600),
+});
+export type Pitch = z.infer<typeof pitchSchema>;
+
+/** Поля, которые можно взять из разных питчей при смешивании. */
+export const PITCH_MIX_FIELDS = [
+  "workingTitle",
+  "logline",
+  "protagonist",
+  "conflict",
+  "stakes",
+  "hook",
+  "genre",
+  "tone",
+] as const;
+export type PitchMixField = (typeof PITCH_MIX_FIELDS)[number];
+
+/** Подписи строк питча и замысла. Единственный источник для интерфейса:
+ *  «логлайн», «протагонист», «ставки» автору не показываются. */
+export const PITCH_FIELD_LABELS: Record<PitchMixField, string> = {
+  workingTitle: "Рабочее название",
+  logline: "О чём книга, одной фразой",
+  protagonist: "Кто главный и чего хочет",
+  conflict: "Что ему мешает",
+  stakes: "Что он потеряет",
+  hook: "Крючок",
+  genre: "Жанр",
+  tone: "Тон",
+};
+
 export const bookConceptSchema = z.object({
   schemaVersion: z.literal(1),
-  /** The author's own words about the book, before any structure. Additive and
-   *  optional on purpose: bumping schemaVersion would make every stored v1
-   *  concept fail to parse, and this field earns no such price. */
+  /** Задумка автора своими словами. Единственный текст, который он печатает сам. */
   idea: z.string().max(8000).optional(),
+  /** Все сгенерированные и смешанные питчи; автор удаляет ненужные вручную. */
+  pitches: z.array(pitchSchema).default([]),
+  selectedPitchId: z.string().optional(),
+  /** ISO-дата утверждения. Наличие поля = этап «Замысел» готов. */
+  lockedAt: z.string().optional(),
+  /** Свободный текст из питча, не словарь. */
+  genre: z.string().max(200).optional(),
+  tone: z.string().max(200).optional(),
+  hook: z.string().max(600).optional(),
+  audience: audienceSchema,
+  premise: premiseSchema,
+  /** Наследие пикеров. Сворачиваются в genre/tone в normalizeConcept; Task 8
+   *  делает их опциональными, Task 9 убирает каталог. */
   genres: z.array(z.string()),
   customGenres: z.array(z.string()).optional(),
   tones: z.array(z.string()),
   customTones: z.array(z.string()).optional(),
-  audience: audienceSchema,
-  premise: premiseSchema,
 });
 export type BookConcept = z.infer<typeof bookConceptSchema>;
 
-/** The concept stage keeps no record in `studio_state`, so its progress is read
- *  off the concept itself. The logline is the gate because it is the one premise
- *  field every aspect agent reads and the outline agent requires; genres and the
- *  rest only soften the prompts (see studio-warnings). */
+/** Этап «Замысел» готов только после явного «Утвердить замысел». Логлайн сам по
+ *  себе больше ничего не завершает: неявная готовность и была причиной того,
+ *  что рекомендатор уходил дальше по недоделанному входу. */
 export function isConceptComplete(concept: BookConcept): boolean {
-  return (concept.premise.logline ?? "").trim().length > 0;
+  return typeof concept.lockedAt === "string" && concept.lockedAt.length > 0;
 }
 
 export function emptyBookConcept(): BookConcept {
   return {
     schemaVersion: 1,
+    pitches: [],
     genres: [],
     tones: [],
     audience: "adult",
     premise: {},
   };
+}
+
+function joinLabels(
+  ...lists: Array<readonly string[] | undefined>
+): string | undefined {
+  const seen: string[] = [];
+  for (const list of lists) {
+    for (const raw of list ?? []) {
+      const v = raw.trim();
+      if (v.length > 0 && !seen.includes(v)) seen.push(v);
+    }
+  }
+  return seen.length > 0 ? seen.join(", ") : undefined;
+}
+
+/** Приводит запись любой давности к текущему виду: гарантирует `pitches`,
+ *  выводит `genre`/`tone` из старых массивов, если явных строк нет. Вызывается
+ *  при каждом чтении из БД, поэтому миграция данных не нужна. */
+export function normalizeConcept(input: BookConcept): BookConcept {
+  const genre =
+    (input.genre ?? "").trim() || joinLabels(input.genres, input.customGenres);
+  const tone =
+    (input.tone ?? "").trim() || joinLabels(input.tones, input.customTones);
+  return {
+    ...input,
+    pitches: input.pitches ?? [],
+    ...(genre !== undefined ? { genre } : {}),
+    ...(tone !== undefined ? { tone } : {}),
+  };
+}
+
+/** «Утвердить замысел»: выбранный питч становится замыслом книги. */
+export function lockConceptToPitch(
+  concept: BookConcept,
+  pitchId: string,
+  lockedAt: string,
+): BookConcept {
+  const pitch = concept.pitches.find((p) => p.id === pitchId);
+  if (!pitch) throw new Error(`pitch ${pitchId} not found in concept`);
+  return {
+    ...concept,
+    selectedPitchId: pitch.id,
+    lockedAt,
+    genre: pitch.genre,
+    tone: pitch.tone,
+    hook: pitch.hook,
+    audience: pitch.audience,
+    premise: {
+      protagonist: pitch.protagonist,
+      conflict: pitch.conflict,
+      stakes: pitch.stakes,
+      logline: pitch.logline,
+    },
+  };
+}
+
+/** «Изменить замысел»: снимает утверждение, ничего не стирая. */
+export function unlockConcept(concept: BookConcept): BookConcept {
+  const next: BookConcept = { ...concept };
+  delete next.lockedAt;
+  return next;
 }

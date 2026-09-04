@@ -52,6 +52,7 @@ const REWRITE_MODEL: "sonnet" | "opus" =
 // ─── Concept (contest pivot — combo #1+#4+#8: соляной архив + биомные импланты + солёный лёд) ───
 const CONCEPT: BookConcept = {
   schemaVersion: 1,
+  pitches: [],
   genres: ["научная фантастика", "технологический экшен"],
   tones: ["тёмный", "инженерный", "психологический"],
   audience: "adult",

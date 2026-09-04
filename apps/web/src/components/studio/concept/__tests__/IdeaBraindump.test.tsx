@@ -6,6 +6,7 @@ import { emptyBookConcept, type BookConcept } from "@book-forge/shared";
 
 const EXPANDED: BookConcept = {
   schemaVersion: 1,
+  pitches: [],
   genres: ["fantasy"],
   tones: ["melancholic"],
   audience: "ya",

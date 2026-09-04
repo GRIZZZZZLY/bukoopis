@@ -191,6 +191,7 @@ describe("studioContextToPrompt", () => {
     const out = studioContextToPrompt({
       concept: {
         schemaVersion: 1,
+        pitches: [],
         genres: ["fantasy"],
         tones: ["dark"],
         audience: "adult",
@@ -218,6 +219,7 @@ describe("studioContextToPrompt", () => {
     const out = studioContextToPrompt({
       concept: {
         schemaVersion: 1,
+        pitches: [],
         genres: ["thriller"],
         tones: ["tense"],
         audience: "ya",
@@ -238,6 +240,7 @@ describe("studioContextToPrompt", () => {
 describe("derivePremiseFromConcept", () => {
   const base = {
     schemaVersion: 1 as const,
+    pitches: [],
     genres: [],
     tones: [],
     audience: "adult" as const,

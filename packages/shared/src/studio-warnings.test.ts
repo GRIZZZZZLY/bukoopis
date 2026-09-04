@@ -167,7 +167,11 @@ describe("computeRecommendedNextStage", () => {
   });
 
   it("stays on chapters while the book is unwritten or unfinished", () => {
-    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const concept = {
+      ...emptyBookConcept(),
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "Л" },
+    };
     const state = emptyStudioState();
     for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
       state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
@@ -185,7 +189,11 @@ describe("computeRecommendedNextStage", () => {
   });
 
   it("has nothing left to recommend once every chapter is final", () => {
-    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const concept = {
+      ...emptyBookConcept(),
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "Л" },
+    };
     const state = emptyStudioState();
     for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
       state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
@@ -200,7 +208,11 @@ describe("computeRecommendedNextStage", () => {
   });
 
   it("an empty book is not a finished book", () => {
-    const concept = { ...emptyBookConcept(), premise: { logline: "Л" } };
+    const concept = {
+      ...emptyBookConcept(),
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "Л" },
+    };
     const state = emptyStudioState();
     for (const s of ["world", "lore", "characters", "items", "plot"] as const) {
       state.stages[s] = { status: "complete", playbookGenerated: false, aspects: [] };
@@ -214,8 +226,12 @@ describe("computeRecommendedNextStage", () => {
     ).toBe("chapters");
   });
 
-  it("moves past concept as soon as the logline is filled in", () => {
-    const concept = { ...emptyBookConcept(), premise: { logline: "Картограф ищет остров." } };
+  it("moves past concept once it is locked, not on the logline alone", () => {
+    const concept = {
+      ...emptyBookConcept(),
+      lockedAt: "2026-09-04T10:00:00.000Z",
+      premise: { logline: "Картограф ищет остров." },
+    };
     expect(
       computeRecommendedNextStage({ concept, studioState: emptyStudioState() }),
     ).toBe("world");
@@ -244,14 +260,24 @@ describe("computeRecommendedNextStage", () => {
 describe("effectiveStageStatus", () => {
   const withLogline = { ...emptyBookConcept(), premise: { logline: "Л" } };
 
-  it("shows concept as complete on the logline alone", () => {
+  it("shows concept as complete only once locked, not on the logline alone", () => {
     expect(
       effectiveStageStatus(withLogline, emptyStudioState(), "concept"),
+    ).toBe("in_progress");
+    const locked = {
+      ...withLogline,
+      lockedAt: "2026-09-04T10:00:00.000Z",
+    };
+    expect(
+      effectiveStageStatus(locked, emptyStudioState(), "concept"),
     ).toBe("complete");
   });
 
   it("shows a half-filled concept as in progress", () => {
-    const partial = { ...emptyBookConcept(), genres: ["fantasy"] };
+    const partial = {
+      ...emptyBookConcept(),
+      premise: { protagonist: "Нейла, проводница каравана." },
+    };
     expect(effectiveStageStatus(partial, emptyStudioState(), "concept")).toBe(
       "in_progress",
     );
@@ -298,5 +324,15 @@ describe("effectiveStageStatus", () => {
         finalized: 3,
       }),
     ).toBe("skipped");
+  });
+
+  it("concept stage is in_progress once pitches exist and complete only when locked", () => {
+    const withPitches = { ...emptyBookConcept(), idea: "Девочка находит карту города, которого нет." };
+    expect(effectiveStageStatus(withPitches, emptyStudioState(), "concept")).toBe("in_progress");
+    const locked = { ...withPitches, lockedAt: "2026-09-04T10:00:00.000Z" };
+    expect(effectiveStageStatus(locked, emptyStudioState(), "concept")).toBe("complete");
+    expect(
+      computeRecommendedNextStage({ concept: locked, studioState: emptyStudioState() }),
+    ).toBe("world");
   });
 });

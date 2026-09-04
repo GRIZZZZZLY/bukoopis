@@ -187,8 +187,8 @@ export function effectiveStageStatus(
   if (id === "chapters" && (chapters?.total ?? 0) > 0) return "in_progress";
   if (id === "concept" && !isConceptComplete(concept)) {
     const touched =
-      concept.genres.length > 0 ||
-      (concept.customGenres ?? []).length > 0 ||
+      concept.pitches.length > 0 ||
+      (concept.idea ?? "").trim().length > 0 ||
       Object.values(concept.premise).some((v) => (v ?? "").trim().length > 0);
     return touched ? "in_progress" : stored;
   }

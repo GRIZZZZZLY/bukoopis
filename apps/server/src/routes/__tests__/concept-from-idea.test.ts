@@ -28,6 +28,7 @@ async function createBook(): Promise<number> {
 
 const EXPANDED: BookConcept = {
   schemaVersion: 1,
+  pitches: [],
   genres: ["fantasy"],
   tones: ["melancholic"],
   audience: "ya",

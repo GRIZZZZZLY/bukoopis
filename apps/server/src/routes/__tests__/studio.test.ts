@@ -220,6 +220,8 @@ describe("studio routes", () => {
 
     await send(t.app, `/api/books/${id}/concept`, "PATCH", {
       schemaVersion: 1,
+      pitches: [],
+      lockedAt: "2026-09-04T10:00:00.000Z",
       genres: [],
       tones: [],
       audience: "adult",
