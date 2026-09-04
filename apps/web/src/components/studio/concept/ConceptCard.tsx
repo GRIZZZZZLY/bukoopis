@@ -80,6 +80,7 @@ export function ConceptCard({ concept, onSave, onRefine, onUnlock, busy }: Props
           onChange={(v) => setPremise(field, v)}
           onRefine={onRefine}
           useTextarea={textarea}
+          disabled={disabled}
         />
       ))}
 

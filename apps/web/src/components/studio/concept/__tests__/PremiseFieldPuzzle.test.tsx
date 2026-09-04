@@ -113,4 +113,21 @@ describe("PremiseFieldPuzzle", () => {
       screen.getByRole("button", { name: /Другие формулировки/ }),
     ).toBeEnabled();
   });
+
+  it("disabled prop blocks a re-phrase while the parent card is saving or unlocking", async () => {
+    render(
+      <PremiseFieldPuzzle
+        label="Логлайн"
+        field="logline"
+        value="черновик"
+        onChange={() => {}}
+        onRefine={fakeRefine}
+        disabled
+      />,
+    );
+    const button = screen.getByRole("button", { name: /Другие формулировки/ });
+    expect(button).toBeDisabled();
+    await userEvent.click(button);
+    expect(fakeRefine).not.toHaveBeenCalled();
+  });
 });

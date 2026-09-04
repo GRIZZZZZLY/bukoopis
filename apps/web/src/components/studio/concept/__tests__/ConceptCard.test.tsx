@@ -70,4 +70,19 @@ describe("ConceptCard", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/offline/));
     expect(unlockButton).toBeEnabled();
   });
+
+  it("disables the re-phrase rows while a save is in flight, so they can't fire concurrently", async () => {
+    let resolveSave: () => void = () => {};
+    const onSave = vi.fn().mockImplementation(
+      () => new Promise<void>((resolve) => (resolveSave = resolve)),
+    );
+    render(<ConceptCard concept={LOCKED} onSave={onSave} onRefine={vi.fn()} onUnlock={vi.fn()} busy={false} />);
+    await userEvent.type(screen.getByLabelText("Крючок"), " Ещё.");
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить правки/ }));
+    for (const button of screen.getAllByRole("button", { name: /Другие формулировки/ })) {
+      expect(button).toBeDisabled();
+    }
+    resolveSave();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  });
 });

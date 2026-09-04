@@ -10,7 +10,9 @@ interface Props {
   questions: string[];
   busy: boolean;
   error: string | null;
-  onMore: (direction: string) => Promise<void>;
+  /** Resolves true when the batch actually landed — the input is only cleared
+   *  then, so a failed request doesn't lose what the author typed. */
+  onMore: (direction: string) => Promise<boolean>;
   onBlend: (picks: Picks) => Promise<void>;
   onChoose: (pitchId: string) => Promise<void>;
   onRemove: (pitchId: string) => Promise<void>;
@@ -60,6 +62,11 @@ export function PitchBoard({
     await onBlend(livePicks(picks, pitches));
     setPicks({});
     setMixMode(false);
+  }
+
+  async function more() {
+    const ok = await onMore(direction.trim());
+    if (ok) setDirection("");
   }
 
   return (
@@ -130,7 +137,7 @@ export function PitchBoard({
           type="button"
           className="btn btn-ghost"
           disabled={busy}
-          onClick={() => void onMore(direction.trim())}
+          onClick={() => void more()}
         >
           {busy ? "Думаем…" : "Ещё варианты"}
         </button>

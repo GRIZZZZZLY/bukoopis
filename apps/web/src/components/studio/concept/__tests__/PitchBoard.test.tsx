@@ -136,4 +136,21 @@ describe("PitchBoard", () => {
     await userEvent.click(screen.getByRole("button", { name: /Изменить задумку/ }));
     expect(p.onBackToIdea).toHaveBeenCalled();
   });
+
+  it("clears the direction input once a new batch actually lands", async () => {
+    renderBoard({ onMore: vi.fn().mockResolvedValue(true) });
+    const input = screen.getByLabelText("Куда сместить");
+    await userEvent.type(input, "мрачнее");
+    await userEvent.click(screen.getByRole("button", { name: /Ещё варианты/ }));
+    await screen.findByDisplayValue("");
+    expect(input).toHaveValue("");
+  });
+
+  it("keeps the typed direction when the batch request fails", async () => {
+    renderBoard({ onMore: vi.fn().mockResolvedValue(false) });
+    const input = screen.getByLabelText("Куда сместить");
+    await userEvent.type(input, "камернее");
+    await userEvent.click(screen.getByRole("button", { name: /Ещё варианты/ }));
+    expect(input).toHaveValue("камернее");
+  });
 });

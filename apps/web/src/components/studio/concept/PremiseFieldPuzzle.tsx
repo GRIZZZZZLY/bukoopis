@@ -20,6 +20,9 @@ interface Props {
   onRefine: (field: PremiseField, draft?: string) => Promise<RefineResponse>;
   /** When true, render a multi-line textarea instead of a single-line input. */
   useTextarea?: boolean;
+  /** True while the parent card is saving or unlocking — a re-phrase must not
+   *  fire concurrently with either. */
+  disabled?: boolean;
 }
 
 export function PremiseFieldPuzzle({
@@ -29,6 +32,7 @@ export function PremiseFieldPuzzle({
   onChange,
   onRefine,
   useTextarea = false,
+  disabled = false,
 }: Props) {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [busy, setBusy] = useState(false);
@@ -63,6 +67,7 @@ export function PremiseFieldPuzzle({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             rows={2}
+            disabled={disabled}
             className="border border-[var(--color-border)] rounded px-2 py-1"
           />
         ) : (
@@ -70,6 +75,7 @@ export function PremiseFieldPuzzle({
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
             className="border border-[var(--color-border)] rounded px-2 py-1"
           />
         )}
@@ -79,10 +85,10 @@ export function PremiseFieldPuzzle({
         <button
           type="button"
           onClick={handleRefine}
-          disabled={busy}
+          disabled={busy || disabled}
           className={
             "text-xs border rounded-md px-2 py-1 " +
-            (busy
+            (busy || disabled
               ? "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] cursor-not-allowed"
               : "border-[var(--color-border)] hover:bg-[var(--color-muted)]")
           }
