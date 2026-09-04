@@ -17,6 +17,7 @@ vi.mock("@/api/client", () => ({
     blendPitch: vi.fn(),
     lockConcept: vi.fn(),
     unlockConcept: vi.fn(),
+    intake: vi.fn(),
   },
 }));
 

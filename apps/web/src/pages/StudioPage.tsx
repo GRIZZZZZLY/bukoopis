@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowRight, BookOpen, Cog } from "lucide-react";
 import { api } from "@/api/client";
@@ -19,6 +19,7 @@ import type {
 import { StageCard } from "@/components/studio/StageCard";
 import { ConceptStage } from "@/components/studio/concept/ConceptStage";
 import { StageStepper } from "@/components/studio/StageStepper";
+import { IntakePanel } from "@/components/studio/intake/IntakePanel";
 import { stageRoute } from "@/lib/studio-routes";
 
 const STAGE_LABELS: Record<StageId, string> = {
@@ -93,50 +94,60 @@ export function StudioPage() {
   const [chapters, setChapters] = useState<ChapterProgress | undefined>();
   const [error, setError] = useState<string | null>(null);
 
+  // Guards state updates after unmount; a plain effect-local flag can't do
+  // that once reload() is also called from outside its own effect (the
+  // intake panel calls it directly on success).
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  async function reload() {
+    try {
+      // Book fetch is optional — fall back if mock missing.
+      let b: Book | null = null;
+      try {
+        b = api.getBook ? await api.getBook(bookId) : null;
+      } catch {
+        b = null;
+      }
+      // The chapters stage is the one whose progress lives outside studio_state.
+      let ch: ChapterProgress | undefined;
+      try {
+        const list = api.listChapters ? await api.listChapters(bookId) : null;
+        if (list) {
+          ch = {
+            total: list.length,
+            finalized: list.filter((x) => x.status === "final").length,
+          };
+        }
+      } catch {
+        ch = undefined;
+      }
+      const [c, s, w] = await Promise.all([
+        api.getConcept(bookId),
+        api.getStudioState(bookId),
+        api.getStudioWarnings(bookId),
+      ]);
+      if (!aliveRef.current) return;
+      setBook(b);
+      setConcept(c);
+      setStudio(s);
+      setWarnings(w);
+      setChapters(ch);
+    } catch (e) {
+      if (!aliveRef.current) return;
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   useEffect(() => {
     if (!Number.isFinite(bookId)) return;
-    let alive = true;
-    (async () => {
-      try {
-        // Book fetch is optional — fall back if mock missing.
-        let b: Book | null = null;
-        try {
-          b = api.getBook ? await api.getBook(bookId) : null;
-        } catch {
-          b = null;
-        }
-        // The chapters stage is the one whose progress lives outside studio_state.
-        let ch: ChapterProgress | undefined;
-        try {
-          const list = api.listChapters ? await api.listChapters(bookId) : null;
-          if (list) {
-            ch = {
-              total: list.length,
-              finalized: list.filter((x) => x.status === "final").length,
-            };
-          }
-        } catch {
-          ch = undefined;
-        }
-        const [c, s, w] = await Promise.all([
-          api.getConcept(bookId),
-          api.getStudioState(bookId),
-          api.getStudioWarnings(bookId),
-        ]);
-        if (!alive) return;
-        setBook(b);
-        setConcept(c);
-        setStudio(s);
-        setWarnings(w);
-        setChapters(ch);
-      } catch (e) {
-        if (!alive) return;
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
 
   if (error) {
@@ -257,6 +268,8 @@ export function StudioPage() {
             </Link>
           </div>
         </div>
+
+        <IntakePanel bookId={bookId} onIntake={() => void reload()} />
 
         <WarningsFeed warnings={warnings} />
 
