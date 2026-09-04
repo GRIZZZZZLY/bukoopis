@@ -61,4 +61,13 @@ describe("ConceptCard", () => {
     await userEvent.click(screen.getByRole("button", { name: /Изменить замысел/ }));
     expect(onUnlock).toHaveBeenCalled();
   });
+
+  it("shows an error and recovers when unlock fails", async () => {
+    const onUnlock = vi.fn().mockRejectedValue(new Error("offline"));
+    render(<ConceptCard concept={LOCKED} onSave={vi.fn()} onRefine={vi.fn()} onUnlock={onUnlock} busy={false} />);
+    const unlockButton = screen.getByRole("button", { name: /Изменить замысел/ });
+    await userEvent.click(unlockButton);
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/offline/));
+    expect(unlockButton).toBeEnabled();
+  });
 });

@@ -32,6 +32,7 @@ const PREMISE_ROWS: Array<{ field: PremiseField; textarea: boolean }> = [
 export function ConceptCard({ concept, onSave, onRefine, onUnlock, busy }: Props) {
   const [draft, setDraft] = useState<BookConcept>(concept);
   const [saving, setSaving] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setDraft(concept), [concept]);
@@ -54,7 +55,19 @@ export function ConceptCard({ concept, onSave, onRefine, onUnlock, busy }: Props
     }
   }
 
-  const disabled = busy || saving;
+  async function unlock() {
+    setUnlocking(true);
+    setError(null);
+    try {
+      await onUnlock();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
+  const disabled = busy || saving || unlocking;
 
   return (
     <section className="concept-lines" aria-label="Замысел книги">
@@ -132,8 +145,8 @@ export function ConceptCard({ concept, onSave, onRefine, onUnlock, busy }: Props
         <button type="button" className="btn btn-primary" disabled={disabled || !dirty} onClick={() => void save()}>
           {saving ? "Сохраняем…" : "Сохранить правки"}
         </button>
-        <button type="button" className="btn btn-ghost" disabled={disabled} onClick={() => void onUnlock()}>
-          Изменить замысел
+        <button type="button" className="btn btn-ghost" disabled={disabled} onClick={() => void unlock()}>
+          {unlocking ? "Снимаем…" : "Изменить замысел"}
         </button>
       </div>
     </section>
