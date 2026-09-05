@@ -318,6 +318,7 @@ export function createCritiqueRoute(
       let outputTokens = 0;
       let cacheCreationTokens = 0;
       let cacheReadTokens = 0;
+      let finalized = false;
       const proposalId = createProposal(sqlite, {
         bookId: ch.book_id,
         chapterId: ch.id,
@@ -388,6 +389,7 @@ export function createCritiqueRoute(
           modelId,
           backend: "anthropic",
         });
+        finalized = true;
 
         logUsage(sqlite, {
           route: "reviser.repair",
@@ -417,11 +419,17 @@ export function createCritiqueRoute(
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        finishProposal(sqlite, proposalId, {
-          status: "failed",
-          errorMessage: message,
-          stopReason,
-        });
+        // Уже дописанный кандидат не понижаем: если logUsage или финальная
+        // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
+        // и правильный статус — перезаписывать его в failed значило бы
+        // потерять принимаемый прогон только из-за сбоя после генерации.
+        if (!finalized) {
+          finishProposal(sqlite, proposalId, {
+            status: "failed",
+            errorMessage: message,
+            stopReason,
+          });
+        }
         await stream.writeSSE({
           event: "error",
           data: JSON.stringify({ message }),

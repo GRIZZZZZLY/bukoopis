@@ -457,6 +457,7 @@ export function createPlotRoute(
       let cacheReadTokens = 0;
       let modelId = "";
       let stopReason: string | null = null;
+      let finalized = false;
 
       // Кандидат заводится до первого токена: он же — то, что отменяют, и то,
       // что остаётся в базе, если процесс умрёт на середине.
@@ -466,15 +467,16 @@ export function createPlotRoute(
         kind: "write",
         baseVersionId: ch.current_version_id,
       });
-      await stream.writeSSE({
-        event: "proposal",
-        data: JSON.stringify({
-          proposalId,
-          baseVersionId: ch.current_version_id,
-        }),
-      });
 
       try {
+        await stream.writeSSE({
+          event: "proposal",
+          data: JSON.stringify({
+            proposalId,
+            baseVersionId: ch.current_version_id,
+          }),
+        });
+
         const gen = runChapterWriter({
           bookTitle: ctx.title,
           bookPremise: ctx.premise,
@@ -527,6 +529,7 @@ export function createPlotRoute(
           modelId,
           backend: ctx.writerProvider,
         });
+        finalized = true;
 
         logUsage(sqlite, {
           route: "writer.chapter",
@@ -555,11 +558,17 @@ export function createPlotRoute(
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        finishProposal(sqlite, proposalId, {
-          status: "failed",
-          errorMessage: message,
-          stopReason,
-        });
+        // Уже дописанный кандидат не понижаем: если logUsage или финальная
+        // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
+        // и правильный статус — перезаписывать его в failed значило бы
+        // потерять принимаемый прогон только из-за сбоя после генерации.
+        if (!finalized) {
+          finishProposal(sqlite, proposalId, {
+            status: "failed",
+            errorMessage: message,
+            stopReason,
+          });
+        }
         await stream.writeSSE({
           event: "error",
           data: JSON.stringify({ message, proposalId }),

@@ -10,12 +10,21 @@ vi.mock("@book-forge/retrieval", async (orig) => ({
   ...(await orig<typeof import("@book-forge/retrieval")>()),
   hybridSearch: vi.fn(async () => []),
 }));
+// Регрессия: даёт возможность уронить logUsage ПОСЛЕ того, как кандидат уже
+// дописан, не трогая остальную логику усечения usage. По умолчанию — no-op,
+// так же безопасно для прочих тестов файла, как настоящий вызов.
+vi.mock("../../utils/usageLogger.js", async (orig) => ({
+  ...(await orig<typeof import("../../utils/usageLogger.js")>()),
+  logUsage: vi.fn(),
+}));
 
 import { runChapterWriter } from "@book-forge/agents";
+import { logUsage } from "../../utils/usageLogger.js";
 import Database from "better-sqlite3";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
 const runChapterWriterMock = vi.mocked(runChapterWriter);
+const logUsageMock = vi.mocked(logUsage);
 
 interface BookJson { id: number }
 interface ChapterJson { id: number }
@@ -78,6 +87,7 @@ beforeEach(async () => {
   t = makeTestApp();
   delete process.env.ANTHROPIC_API_KEY;
   runChapterWriterMock.mockReset();
+  logUsageMock.mockReset();
   const b = await sendJson<BookJson>(t.app, "/api/books", "POST", {
     title: "Кандидат",
     premise: "p",
@@ -172,5 +182,27 @@ describe("POST /api/chapters/:id/write", () => {
     db.close();
     expect(row.status).toBe("failed");
     expect(row.error_message).toContain("бэкенд недоступен");
+  });
+
+  it("сбой logUsage после генерации не понижает уже готового кандидата (regression)", async () => {
+    mockWriter("Готовый текст.", "end_turn");
+    logUsageMock.mockImplementationOnce(() => {
+      throw new Error("usage logger недоступен");
+    });
+
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    const events = await readSse(res);
+    // Кандидат уже дописан к моменту сбоя — событие "done" уйти не могло, но
+    // и понижать до failed то, что уже готово, нельзя.
+    expect(events.find((e) => e.event === "error")).toBeDefined();
+    expect(events.find((e) => e.event === "done")).toBeUndefined();
+
+    const db = new Database(`${t.dbDir}/test.sqlite`);
+    const row = db
+      .prepare("SELECT status, model_id FROM prose_proposals ORDER BY id DESC LIMIT 1")
+      .get() as { status: string; model_id: string | null };
+    db.close();
+    expect(row.status).toBe("ready");
+    expect(row.model_id).toBe("test-model");
   });
 });
