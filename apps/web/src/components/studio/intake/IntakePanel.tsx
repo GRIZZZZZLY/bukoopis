@@ -38,15 +38,37 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const payload = await Promise.all(
-        files.map(async (f) =>
-          f.name.toLowerCase().endsWith(".docx")
-            ? { filename: f.name, contentBase64: await fileToBase64(f) }
-            : { filename: f.name, content: await f.text() },
-        ),
-      );
+      // По одному файлу, а не Promise.all: одна нечитаемая запись отбивала
+      // весь пакет, и автор терял всё перетаскивание. Сервер и так живёт
+      // по-файлово — клиент должен вести себя так же.
+      const payload: Array<{ filename: string; content?: string; contentBase64?: string }> = [];
+      const unread: Array<{ filename: string; message: string }> = [];
+      for (const f of files) {
+        try {
+          payload.push(
+            f.name.toLowerCase().endsWith(".docx")
+              ? { filename: f.name, contentBase64: await fileToBase64(f) }
+              : { filename: f.name, content: await f.text() },
+          );
+        } catch (e) {
+          unread.push({
+            filename: f.name,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
+      if (payload.length === 0) {
+        // Звать сервер не с чем — но автору всё равно надо сказать, что именно
+        // не прочиталось, теми же словами, что и про отказы сервера.
+        setResult({ summary: [], ideaSet: false, chapters: [], failures: unread, revision: 0 });
+        return;
+      }
+
       const out = await api.intake(bookId, payload);
-      setResult(out);
+      // Нечитаемые файлы встают рядом с тем, о чём отчитался сервер: для автора
+      // это один и тот же вопрос — что из брошенного не дошло.
+      setResult({ ...out, failures: [...unread, ...out.failures] });
       onIntake();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

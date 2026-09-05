@@ -686,13 +686,20 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       revision,
     };
 
-    repo.events.log({
-      bookId: id,
-      eventType: "import_merge",
-      payload: { note: requestKey, after: response },
-      revisionBefore: state.revision,
-      revisionAfter: revision,
-    });
+    // Журналим только прогон, который чего-то добился. Иначе прогон, где всё
+    // упало (сломался ключ к API — и вот все файлы в failures), кешируется
+    // навсегда: то же перетаскивание той же папки бесконечно проигрывает те же
+    // отказы, ни разу не попробовав заново, — а сводка при этом обещает автору
+    // «Их можно перетащить ещё раз». Ничего не добившийся прогон повторяем.
+    if (landed.length > 0 || chapters.length > 0 || ideaSet) {
+      repo.events.log({
+        bookId: id,
+        eventType: "import_merge",
+        payload: { note: requestKey, after: response },
+        revisionBefore: state.revision,
+        revisionAfter: revision,
+      });
+    }
 
     return c.json(response);
   });

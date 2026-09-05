@@ -214,6 +214,40 @@ describe("POST /api/books/:id/intake", () => {
     expect(state.stages.world!.aspects).toHaveLength(1);
   });
 
+  it("does not cache a run that achieved nothing, so the same folder can be retried", async () => {
+    // Every file failed — the API key was down, say. Journaling that response
+    // pinned the failure forever: re-dropping the folder replayed the same
+    // failures without ever retrying, while the summary told the author
+    // «Их можно перетащить ещё раз».
+    vi.mocked(runMaterialClassifier).mockRejectedValueOnce(new Error("LLM down"));
+    const id = await createBook();
+    const first = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
+      files: [WORLD_FILE],
+    });
+    expect(first.summary).toEqual([]);
+    expect(first.failures).toEqual([{ filename: "Карта.md", message: "LLM down" }]);
+
+    vi.mocked(runMaterialClassifier).mockResolvedValueOnce({
+      fragments: [{ target: "world", title: "Карта", body: "Барьер делит два мира." }],
+    });
+    const again = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
+      files: [WORLD_FILE],
+    });
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(2);
+    expect(again.summary.map((r) => r.target)).toEqual(["world"]);
+  });
+
+  it("still caches a run whose only result was the idea", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [],
+      bookIdea: "Шестеро героев из двух миров.",
+    });
+    const id = await createBook();
+    await send(t.app, `/api/books/${id}/intake`, "POST", { files: [WORLD_FILE] });
+    await send(t.app, `/api/books/${id}/intake`, "POST", { files: [WORLD_FILE] });
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
+  });
+
   it("reports an oversized file as a failure and still lands the rest", async () => {
     vi.mocked(runMaterialClassifier).mockResolvedValue({
       fragments: [{ target: "world", title: "Карта", body: "Барьер делит два мира." }],

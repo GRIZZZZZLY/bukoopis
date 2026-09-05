@@ -74,6 +74,30 @@ describe("IntakePanel", () => {
     expect(screen.getByLabelText("Перетащите файлы с материалами")).toBeInTheDocument();
   });
 
+  it("keeps the files it could read when one of them fails to read", async () => {
+    // Promise.all rejected the whole batch on one unreadable file and the
+    // author lost the drop. The server's whole idiom is per-file failure.
+    m.intake.mockResolvedValue(OK as never);
+    renderPanel();
+    const bad = file("Битый.md", "");
+    vi.spyOn(bad, "text").mockRejectedValue(new Error("файл недоступен"));
+    drop([file("Карта.md", "Барьер делит два мира."), bad]);
+    await waitFor(() => expect(m.intake).toHaveBeenCalledTimes(1));
+    expect(m.intake.mock.calls[0]![1]).toEqual([
+      { filename: "Карта.md", content: "Барьер делит два мира." },
+    ]);
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Битый.md"));
+  });
+
+  it("does not call the server when not one file could be read", async () => {
+    renderPanel();
+    const bad = file("Битый.md", "");
+    vi.spyOn(bad, "text").mockRejectedValue(new Error("файл недоступен"));
+    drop([bad]);
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Битый.md"));
+    expect(m.intake).not.toHaveBeenCalled();
+  });
+
   it("sends a .docx as base64 rather than as text", async () => {
     m.intake.mockResolvedValue(OK as never);
     renderPanel();
