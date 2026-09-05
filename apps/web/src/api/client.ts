@@ -109,24 +109,36 @@ class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** `details.reason` сервера, если он его назвал. 409 при принятии
+     *  кандидата их различает: version, draft, status, unconfirmed, stale — и
+     *  каждой полагается свой выход, а не общее «что-то изменилось». */
+    public reason?: string,
   ) {
     super(message);
   }
 }
 
-/** Тело ошибки сервера — `{error, details:{message}}`; в UI полезен текст,
- *  а не сырой JSON. Не-JSON тела отдаём как есть. */
+/** Тело ошибки сервера — `{error, details:{message, reason}}`; в UI полезен
+ *  текст, а не сырой JSON. Не-JSON тела отдаём как есть. */
 function errorSummary(body: string): string {
+  return parseError(body).summary;
+}
+
+function parseError(body: string): { summary: string; reason?: string } {
   try {
     const parsed = JSON.parse(body) as {
       error?: string;
-      details?: { message?: string };
+      details?: { message?: string; reason?: string };
     };
     const detail = parsed.details?.message;
-    if (parsed.error && detail) return `${parsed.error} — ${detail}`;
-    return detail ?? parsed.error ?? body;
+    const reason = parsed.details?.reason;
+    const summary =
+      parsed.error && detail
+        ? `${parsed.error} — ${detail}`
+        : (detail ?? parsed.error ?? body);
+    return reason !== undefined ? { summary, reason } : { summary };
   } catch {
-    return body;
+    return { summary: body };
   }
 }
 
@@ -140,7 +152,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new ApiError(res.status, `HTTP ${res.status}: ${errorSummary(text)}`);
+    const { summary, reason } = parseError(text);
+    throw new ApiError(res.status, `HTTP ${res.status}: ${summary}`, reason);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -189,8 +202,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ contentJson }),
     }),
+  /** `revision` — монотонный CAS-токен черновика. Его возвращает сервер на
+   *  каждом автосохранении, и он же требуется при принятии кандидата: без
+   *  него вкладка после первого же автосейва отвечала 409 на любое принятие. */
   saveDraft: (chapterId: number, contentJson: unknown) =>
-    req<{ chapterId: number; wordCount: number; updatedAt: string }>(
+    req<{
+      chapterId: number;
+      wordCount: number;
+      revision: number;
+      updatedAt: string;
+    }>(
       `/api/chapters/${chapterId}/draft`,
       { method: "PUT", body: JSON.stringify({ contentJson }) },
     ),

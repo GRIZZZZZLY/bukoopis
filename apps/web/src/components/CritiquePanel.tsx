@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, streamRepair } from "@/api/client";
-import { ProposalPanel } from "@/components/chapter/ProposalPanel";
+import {
+  ProposalPanel,
+  type ProposalReread,
+} from "@/components/chapter/ProposalPanel";
 import {
   ALL_CRITIC_TYPES,
   CRITIC_LABELS,
@@ -25,6 +28,9 @@ interface Props {
    *  действительно нет. Раньше здесь всегда передавался `null`, из-за чего
    *  принятие self-repair отваливалось 409-м у любого автора с автосейвом. */
   expectedDraftRevision: number | null;
+  /** Перечитать главу после 409 и вернуть свежие ожидания. Панель критики
+   *  главы не знает, поэтому перечитывает её `ChapterPage`. */
+  onRereadProposal?: (proposalId: number) => Promise<ProposalReread>;
   onRepairDone?: () => void | Promise<void>;
 }
 
@@ -52,6 +58,7 @@ export function CritiquePanel({
   versionId,
   expectedVersionId,
   expectedDraftRevision,
+  onRereadProposal,
   onRepairDone,
 }: Props) {
   const [report, setReport] = useState<CritiqueReport | null>(null);
@@ -339,6 +346,17 @@ export function CritiquePanel({
                 changes={repairProposalChanges}
                 expectedVersionId={expectedVersionId}
                 expectedDraftRevision={expectedDraftRevision}
+                {...(onRereadProposal
+                  ? {
+                      onReread: async () => {
+                        const fresh = await onRereadProposal(
+                          repairProposal.id,
+                        );
+                        setRepairProposalChanges(fresh.changes);
+                        return fresh;
+                      },
+                    }
+                  : {})}
                 onAccepted={async () => {
                   setRepairProposal(null);
                   setRepairProposalChanges([]);

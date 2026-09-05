@@ -35,7 +35,10 @@ import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
-import { ProposalPanel } from "@/components/chapter/ProposalPanel";
+import {
+  ProposalPanel,
+  type ProposalReread,
+} from "@/components/chapter/ProposalPanel";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
@@ -48,6 +51,7 @@ import {
 } from "@/components/memory/MemoryStatus";
 import type { ChapterMemoryInfo, ChapterWithMemory } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
+import { useRestoredProposal } from "@/lib/useRestoredProposal";
 import type {
   Book,
   ChapterBeatSheetVariant,
@@ -134,7 +138,28 @@ export function ChapterPage() {
       try {
         // ADR 0002 (Step 6): autosave UPSERTs the working draft — no
         // immutable version, no memory jobs. Commit happens on Ctrl+S.
-        await api.saveDraft(id, json);
+        const saved = await api.saveDraft(id, json);
+        // Ревизия черновика — CAS-токен принятия кандидата. Выбрасывать её
+        // и ждать следующего load() значило, что после первого же автосейва
+        // любое принятие отвечало 409: страница называла серверу ревизию,
+        // которой уже нет. Именно этот случай — автор печатает, пока модель
+        // пишет — вся ветка и обслуживает.
+        setChapter((prev) =>
+          prev
+            ? {
+                ...prev,
+                draft: {
+                  chapterId: id,
+                  contentJson: JSON.stringify(json),
+                  contentText: prev.draft?.contentText ?? "",
+                  wordCount: saved.wordCount,
+                  baseVersionId: prev.currentVersionId ?? null,
+                  revision: saved.revision,
+                  updatedAt: saved.updatedAt,
+                },
+              }
+            : prev,
+        );
         setMemory((m) =>
           m && m.state === "fresh" ? { ...m, state: "none" } : m,
         );
@@ -288,6 +313,37 @@ export function ChapterPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, editor]);
+
+  /** Перечитать главу после 409 и вернуть панели свежие ожидания. Редактор
+   *  намеренно не трогаем: `load()` затёр бы то, что автор успел напечатать,
+   *  а кандидат должен пережить перечитывание — иначе выхода из конфликта
+   *  просто нет. */
+  const rereadForProposal = useCallback(
+    async (proposalId: number): Promise<ProposalReread> => {
+      const [ch, res] = await Promise.all([
+        api.getChapter(id),
+        api.getProposalChanges(proposalId),
+      ]);
+      setChapter(ch);
+      return {
+        expectedVersionId: ch.currentVersionId ?? null,
+        expectedDraftRevision: ch.draft?.revision ?? null,
+        changes: res.changes,
+      };
+    },
+    [id],
+  );
+
+  // Кандидат, оставшийся в базе с прошлой загрузки страницы: предлагаем его
+  // снова, но только если из потока не пришёл более свежий.
+  const restoredProposal = useRestoredProposal(id);
+  useEffect(() => {
+    if (!restoredProposal) return;
+    setProposal((prev) => prev ?? restoredProposal.proposal);
+    setProposalChanges((prev) =>
+      prev.length > 0 ? prev : restoredProposal.changes,
+    );
+  }, [restoredProposal]);
 
   const isPreview = previewVersionId !== null;
   const previewVersion = useMemo(
@@ -754,6 +810,11 @@ export function ChapterPage() {
                 changes={proposalChanges}
                 expectedVersionId={chapter?.currentVersionId ?? null}
                 expectedDraftRevision={chapter?.draft?.revision ?? null}
+                onReread={async () => {
+                  const fresh = await rereadForProposal(proposal.id);
+                  setProposalChanges(fresh.changes);
+                  return fresh;
+                }}
                 onAccepted={async () => {
                   setProposal(null);
                   setProposalChanges([]);
@@ -863,6 +924,7 @@ export function ChapterPage() {
               versionId={chapter.currentVersionId}
               expectedVersionId={chapter.currentVersionId}
               expectedDraftRevision={chapter.draft?.revision ?? null}
+              onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />
             {sidebar}
@@ -887,6 +949,7 @@ export function ChapterPage() {
               versionId={chapter.currentVersionId}
               expectedVersionId={chapter.currentVersionId}
               expectedDraftRevision={chapter.draft?.revision ?? null}
+              onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />
           )}
