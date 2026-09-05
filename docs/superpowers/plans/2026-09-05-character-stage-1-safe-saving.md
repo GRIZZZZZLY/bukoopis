@@ -54,6 +54,7 @@
 | `packages/llm/src/stream.ts` | `signal` и `stopReason` в контракте потоковой генерации |
 | `packages/llm/src/clients/subscription.ts` | Проброс `signal` в SDK |
 | `packages/agents/src/writer.ts`, `reviser.ts` | Возврат `stopReason`, приём `signal` |
+| `packages/agents/src/graphs/critique.ts` | Отчёт несёт `requestedCritics`/`failedCritics`; перечень критиков по умолчанию берётся из `shared` |
 | `apps/server/src/db/schema.ts` | `proseProposals`, `chapterDrafts.revision`, CHECK критики |
 | `apps/server/src/routes/chapters.ts` | Ревизия черновика при автосохранении, отдача её в `GET /:id` |
 | `apps/server/src/routes/plot.ts` | `POST /chapters/:id/write` создаёт предложение вместо версии |
@@ -477,7 +478,7 @@ export * from "./prose-diff.js";
 - [ ] **Step 5: Запустить тесты и типы**
 
 Выполнить: `pnpm --filter @book-forge/shared test -- src/prose-diff.test.ts`
-Ожидаемо: PASS, 16 тестов.
+Ожидаемо: PASS, 18 тестов.
 
 Выполнить: `pnpm --filter @book-forge/shared typecheck`
 Ожидаемо: код возврата 0.
@@ -824,7 +825,7 @@ git commit -m "feat(shared): the prose proposal contract"
   });
 ```
 
-Если в файле нет переменной `chapterId`, взять имя, под которым глава создаётся в его `beforeEach`, и использовать его.
+Переменная `chapterId` в этом файле уже есть (объявлена на строке 54, присваивается в `beforeEach`). Если какой-то из существующих тестов сравнивает тело ответа `PUT /draft` целиком через `toEqual`, добавить в его ожидание поле `revision` — ответ теперь несёт четыре поля, а не три.
 
 - [ ] **Step 3: Запустить тест и убедиться, что он падает**
 
@@ -1175,6 +1176,18 @@ export function isConfirmedCompletion(stopReason: string | null): boolean {
 
 В `packages/llm/src/ollama.ts` в возвращаемом объекте добавить `stopReason: null` с тем же обоснованием. В `packages/llm/src/hybrid.ts`, если компилятор укажет на него, пробросить `stopReason: proseFinal.stopReason`.
 
+Экспортировать функцию из пакета — сервер импортирует её как `@book-forge/llm`, а не по пути к файлу. В `packages/llm/src/index.ts` строку
+
+```ts
+export { streamText, buildSystemParam } from "./stream.js";
+```
+
+заменить на
+
+```ts
+export { streamText, buildSystemParam, isConfirmedCompletion } from "./stream.js";
+```
+
 - [ ] **Step 6: Вернуть причину из Writer и Reviser**
 
 В `packages/agents/src/writer.ts` в объявление локального `result` добавить `stopReason: null as string | null`, а в финальный `return` — поле:
@@ -1255,6 +1268,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   runChapterWriter: vi.fn(),
+}));
+// Маршрут генерации зовёт retrieval; без мока он полез бы в ONNX-эмбеддинги —
+// медленно и не про этот тест. Ошибки там глушатся, но ждать их незачем.
+vi.mock("@book-forge/retrieval", async (orig) => ({
+  ...(await orig<typeof import("@book-forge/retrieval")>()),
+  hybridSearch: vi.fn(async () => []),
 }));
 
 import { runChapterWriter } from "@book-forge/agents";
@@ -1768,7 +1787,7 @@ import { isConfirmedCompletion } from "@book-forge/llm";
     });
 ```
 
-Обратить внимание: вызов `triggerCanonExtractionAfterWriter` и вставка версии из старого кода **удаляются отсюда** — они переезжают в принятие (задача 8). `logUsage` остаётся здесь и теряет `versionId`: версии на этот момент ещё нет.
+Обратить внимание: вызов `triggerCanonExtractionAfterWriter` и вставка версии из старого кода **удаляются отсюда** — извлечение канона переезжает в маршрут принятия (задача 8, шаг 6). Вместе с ними из `plot.ts` уходят ставшие ненужными импорты: `triggerCanonExtractionAfterWriter`, `enqueueMemoryJobs`, `COMMIT_JOB_KINDS`, `markMemoryStaleOnCommit`, `toVersion`, `ChapterVersionRow` — оставить только то, что ещё используется в файле (маршруты плана выше по файлу тоже импортируют из `rows.js`, поэтому смотреть по факту, а не удалять весь импорт). `logUsage` остаётся здесь и теряет `versionId` (поле у него необязательное): версии на этот момент ещё нет. В колонке `backend` лежит метка провайдера (`anthropic`/`ollama`) — она нужна только чтобы автор понимал, откуда пришёл текст.
 
 - [ ] **Step 5: Запустить тесты**
 
@@ -1908,14 +1927,27 @@ import {
 import { isConfirmedCompletion } from "@book-forge/llm";
 ```
 
-Внутри `streamSSE` обработчика repair сразу после события `iteration` завести кандидата:
+Внутри `streamSSE` обработчика repair завести кандидата **до `try`** — `catch` должен его видеть, — а событие о нём послать сразу после `iteration`:
 
 ```ts
-        const proposalId = createProposal(sqlite, {
-          bookId: ch.book_id,
-          chapterId: ch.id,
-          kind: "repair",
-          baseVersionId: v.id,
+    return streamSSE(c, async (stream) => {
+      let fullText = "";
+      let modelId = "";
+      let stopReason: string | null = null;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let cacheCreationTokens = 0;
+      let cacheReadTokens = 0;
+      const proposalId = createProposal(sqlite, {
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        kind: "repair",
+        baseVersionId: v.id,
+      });
+      try {
+        await stream.writeSSE({
+          event: "iteration",
+          data: JSON.stringify({ current: nextIteration, max: REPAIR_MAX_ITERATIONS }),
         });
         await stream.writeSSE({
           event: "proposal",
@@ -1966,7 +1998,7 @@ import { isConfirmedCompletion } from "@book-forge/llm";
           });
 ```
 
-Объявить `let stopReason: string | null = null;` рядом с `let modelId = "";` и присвоить его из `next.value.stopReason` в цикле. В `catch` добавить `finishProposal(sqlite, proposalId, { status: "failed", errorMessage: message, stopReason })`, для чего объявление `proposalId` вынести перед `try`.
+В цикле чтения генератора присвоить `stopReason = next.value.stopReason` рядом с `modelId`. В `catch` добавить `finishProposal(sqlite, proposalId, { status: "failed", errorMessage: message, stopReason })` перед отправкой события `error`. Ставшие ненужными импорты `enqueueMemoryJobs`, `COMMIT_JOB_KINDS`, `markMemoryStaleOnCommit`, `toVersion` из `critique.ts` убрать, если больше ничем в файле не используются.
 
 Ветвь `repair-N` создаётся не здесь, а при принятии: имя ветви зависит от того, что автор принял, и до принятия версии не существует. Счётчик итераций (`countRepairAncestors`) продолжает считать по принятым версиям — предложение итерацию не тратит.
 
@@ -2175,23 +2207,22 @@ export function createProposalsRoute(
   app.route("/api", createProposalsRoute(sqlite, proposalCancels));
 ```
 
-Передать реестр в `createPlotRoute(sqlite, hasVec, memoryWorker, proposalCancels)` и `createCritiqueRoute(sqlite, memoryWorker, proposalCancels)`, добавив параметр в обе функции.
+Передать реестр в `createPlotRoute(sqlite, hasVec, memoryWorker, cancels)` и `createCritiqueRoute(sqlite, memoryWorker, cancels)`, добавив в обе функции параметр `cancels: ProposalCancelRegistry` (в `app.ts` в него идёт `proposalCancels`).
 
-В обоих маршрутах после создания кандидата зарегистрировать запуск и передать сигнал агенту:
+В обоих маршрутах сразу после `createProposal` зарегистрировать запуск:
 
 ```ts
       cancels.begin(proposalId);
+      const signal = cancels.signal(proposalId);
 ```
 
-в вызов агента добавить:
+в вызов агента добавить сигнал:
 
 ```ts
-          ...(cancels.signal(proposalId) !== undefined
-            ? { signal: cancels.signal(proposalId)! }
-            : {}),
+          ...(signal !== undefined ? { signal } : {}),
 ```
 
-после завершения потока, перед `finishProposal`, поставить второй рубеж:
+после завершения цикла чтения генератора, перед `finishProposal`, поставить второй рубеж:
 
 ```ts
         // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
@@ -2208,13 +2239,37 @@ export function createProposalsRoute(
         }
 ```
 
-и в `finally` всего обработчика:
+`catch` переписать так, чтобы обрыв по сигналу **не** перекрывал статус `cancelled` статусом `failed`. На прямом API прерванный вызов бросает исключение — и без этой проверки автор увидел бы «ошибку» там, где сам нажал «Остановить»:
 
 ```ts
+      } catch (e) {
+        if (cancels.shouldStop(proposalId)) {
+          // Это не сбой, это наша же отмена: SDK бросает при аборте сигнала.
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
+        }
+        const message = e instanceof Error ? e.message : String(e);
+        finishProposal(sqlite, proposalId, {
+          status: "failed",
+          errorMessage: message,
+          stopReason,
+        });
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ message, proposalId }),
+        });
       } finally {
         cancels.end(proposalId);
       }
 ```
+
+Оба ранних `return` проходят через `finally`, так что запись в реестре не остаётся висеть. В отменённом прогоне `logUsage` не вызывается — расход есть, но версии и кандидата, к которым его привязать, нет; это осознанная потеря учёта, а не пропуск.
 
 - [ ] **Step 6: Написать тест отмены через маршруты**
 
@@ -2240,7 +2295,10 @@ export function createProposalsRoute(
       } as never,
     );
 
-    const running = send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    // Ответ с потоком приходит сразу после заголовков; сам обработчик ещё идёт
+    // и ждёт gate внутри мока.
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+
     // Ждём, пока кандидат появится в базе: он заводится до первого токена.
     let proposalId = 0;
     for (let i = 0; i < 50 && proposalId === 0; i++) {
@@ -2262,8 +2320,15 @@ export function createProposalsRoute(
     );
     expect(cancelled.stopping).toBe(true);
 
+    // Отпускаем «поздний ответ» и ДОЧИТЫВАЕМ поток до конца: только так тест
+    // знает, что обработчик отработал. Без этого проверка ниже проходила бы,
+    // даже если поздний ответ перезаписал статус секундой позже.
     release!();
-    await running;
+    const events = await readSse(res);
+    const done = events.find((e) => e.event === "done");
+    expect(done).toBeDefined();
+    expect((done!.data as { cancelled?: boolean }).cancelled).toBe(true);
+    expect(events.find((e) => e.event === "error")).toBeUndefined();
 
     const final = await sendJson<{ status: string; contentText: string }>(
       t.app,
@@ -2414,8 +2479,13 @@ describe("acceptProposal", () => {
       .get(chapterId) as { c: number };
     expect(ch.c).toBe(out.versionId);
 
+    // Считаем только задания коммита: воркер памяти в тестовом приложении
+    // настоящий и после summary доцепляет rollup — его в счёт не берём.
     const jobs = db
-      .prepare("SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id = ?")
+      .prepare(
+        `SELECT COUNT(*) c FROM memory_jobs
+         WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
+      )
       .get(out.versionId) as { c: number };
     expect(jobs.c).toBe(4);
 
@@ -2443,7 +2513,11 @@ describe("acceptProposal", () => {
       .prepare("SELECT COUNT(*) c FROM chapter_versions WHERE chapter_id = ?")
       .get(chapterId) as { c: number };
     expect(versions.c).toBe(1);
-    const jobs = db.prepare("SELECT COUNT(*) c FROM memory_jobs").get() as { c: number };
+    const jobs = db
+      .prepare(
+        "SELECT COUNT(*) c FROM memory_jobs WHERE kind IN ('index','summary','facts','notes')",
+      )
+      .get() as { c: number };
     expect(jobs.c).toBe(4);
   });
 
@@ -2739,14 +2813,19 @@ export function acceptProposal(
     let contentJson = proposal.contentJson;
     let contentText = proposal.contentText;
     if (input.selectedChangeIds !== undefined) {
-      const baseDoc = ch.current_version_id
-        ? (
-            sqlite
-              .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
-              .get(ch.current_version_id) as { content_json: string }
-          ).content_json
-        : '{"type":"doc","content":[{"type":"paragraph"}]}';
-      const baseBlocks = docToBlocks(JSON.parse(baseDoc));
+      // Пустая глава — пустой список абзацев, а не один пустой абзац: иначе
+      // сравнение показало бы автору фантомную правку «убрано ничего».
+      const baseBlocks = ch.current_version_id
+        ? docToBlocks(
+            JSON.parse(
+              (
+                sqlite
+                  .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+                  .get(ch.current_version_id) as { content_json: string }
+              ).content_json,
+            ),
+          )
+        : [];
       const candidateBlocks = docToBlocks(JSON.parse(proposal.contentJson));
       const changes = diffProseBlocks(baseBlocks, candidateBlocks);
       const merged = applyProseChanges(baseBlocks, changes, input.selectedChangeIds);
@@ -2973,17 +3052,25 @@ describe("маршруты предложений", () => {
 
 - [ ] **Step 6: Дописать маршруты**
 
-В `apps/server/src/routes/proposals.ts` добавить импорты и два обработчика:
+В `apps/server/src/routes/proposals.ts` расширить уже существующие импорты (не дублировать строки из задачи 7) и добавить два обработчика:
 
 ```ts
 import {
   acceptProseProposalInputSchema,
   rejectProseProposalInputSchema,
 } from "@book-forge/shared";
-import { acceptProposal, rejectProposal, ProposalConflictError } from "../utils/prose-proposals.js";
+import {
+  acceptProposal,
+  finishProposal,
+  listProposals,
+  loadProposal,
+  rejectProposal,
+  ProposalConflictError,
+} from "../utils/prose-proposals.js";
 import { toVersion, type ChapterVersionRow } from "../db/rows.js";
 import { notFound, badRequest, validationFailed } from "../utils/errors.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
+import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
 ```
 
 Сигнатуру расширить до `createProposalsRoute(sqlite, cancels, memoryWorker?: Pick<MemoryWorker, "kick">)` и добавить:
@@ -2994,7 +3081,8 @@ import type { MemoryWorker } from "../utils/memory-worker.js";
     const body = await c.req.json().catch(() => null);
     const parsed = acceptProseProposalInputSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
-    if (!loadProposal(sqlite, id)) return notFound(c, "prose_proposal");
+    const before = loadProposal(sqlite, id);
+    if (!before) return notFound(c, "prose_proposal");
 
     let outcome;
     try {
@@ -3009,6 +3097,12 @@ import type { MemoryWorker } from "../utils/memory-worker.js";
       throw e;
     }
     memoryWorker?.kick();
+    // Извлечение канона раньше запускалось из маршрута генерации сразу после
+    // автокоммита. Теперь коммит — это принятие, и запускать его надо здесь,
+    // один раз на настоящее принятие, а не на повтор по тому же requestId.
+    if (before.kind === "write" && !outcome.replayed) {
+      void triggerCanonExtractionAfterWriter(sqlite, before.chapterId);
+    }
     const v = sqlite
       .prepare("SELECT * FROM chapter_versions WHERE id = ?")
       .get(outcome.versionId) as ChapterVersionRow;
@@ -3024,6 +3118,9 @@ import type { MemoryWorker } from "../utils/memory-worker.js";
     if (!proposal) return notFound(c, "prose_proposal");
     if (proposal.status === "accepted") {
       return badRequest(c, "предложение уже принято");
+    }
+    if (proposal.status === "streaming") {
+      return badRequest(c, "предложение ещё пишется: сначала остановите генерацию");
     }
     rejectProposal(sqlite, id);
     return c.json(loadProposal(sqlite, id));
@@ -3095,10 +3192,6 @@ describe("частичное принятие", () => {
     const book = db
       .prepare("SELECT book_id b FROM chapters WHERE id = ?")
       .get(chapterId) as { b: number };
-    const fp = db
-      .prepare("SELECT context_fingerprint f FROM prose_proposals WHERE id = ?")
-      .get(proposalId) as { f: string };
-    void fp;
     const info = db
       .prepare(
         `INSERT INTO prose_proposals
@@ -3165,18 +3258,25 @@ describe("частичное принятие", () => {
     expect(accepted.version.contentText).not.toContain("Второй.");
     expect(accepted.version.contentText).toContain("Четыре.");
 
+    // Задания памяти стоят на принятой (слитой) версии. У базовой версии свои
+    // задания есть с момента её коммита в seedBaseAndCandidate — это нормально;
+    // чего быть не должно, так это заданий на что-либо ещё: полный кандидат в
+    // очередь не попадает.
     const db = new Database(`${t.dbDir}/test.sqlite`);
-    const jobs = db
-      .prepare("SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id = ?")
-      .get(accepted.version.id) as { c: number };
-    const candidateJobs = db
+    const mergedJobs = db
       .prepare(
-        "SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id != ?",
+        `SELECT COUNT(*) c FROM memory_jobs
+         WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
       )
       .get(accepted.version.id) as { c: number };
+    const strayJobs = db
+      .prepare(
+        "SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id NOT IN (?, ?)",
+      )
+      .get(versionId, accepted.version.id) as { c: number };
     db.close();
-    expect(jobs.c).toBe(4);
-    expect(candidateJobs.c).toBe(0);
+    expect(mergedJobs.c).toBe(4);
+    expect(strayJobs.c).toBe(0);
   });
 
   it("неизвестный идентификатор правки — 400, а не молча принятый кандидат", async () => {
@@ -3220,18 +3320,19 @@ import { diffProseBlocks, docToBlocks } from "@book-forge/shared";
       .prepare("SELECT current_version_id FROM chapters WHERE id = ?")
       .get(proposal.chapterId) as { current_version_id: number | null } | undefined;
     const baseVersionId = ch?.current_version_id ?? null;
-    const baseJson = baseVersionId
-      ? (
-          sqlite
-            .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
-            .get(baseVersionId) as { content_json: string }
-        ).content_json
-      : '{"type":"doc","content":[{"type":"paragraph"}]}';
 
+    // Та же логика, что в acceptProposal: пустая глава — пустой список
+    // абзацев. Расхождение здесь дало бы автору набор правок, который
+    // принятие потом не узнало бы.
     let baseBlocks: string[] = [];
     let candidateBlocks: string[] = [];
     try {
-      baseBlocks = docToBlocks(JSON.parse(baseJson));
+      if (baseVersionId !== null) {
+        const row = sqlite
+          .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+          .get(baseVersionId) as { content_json: string };
+        baseBlocks = docToBlocks(JSON.parse(row.content_json));
+      }
       candidateBlocks = docToBlocks(JSON.parse(proposal.contentJson));
     } catch {
       // Битый JSON версии не должен ронять экран: отдаём пустое сравнение,
@@ -3292,6 +3393,7 @@ AC-27. Сегодня статус считается как `errors.length === 
 **Files:**
 - Create: `apps/server/drizzle/0021_critique_partial.sql` (создаётся скриптом)
 - Modify: `packages/shared/src/critique.ts`
+- Modify: `packages/agents/src/graphs/critique.ts:14-20, 78-100`
 - Modify: `apps/server/src/db/schema.ts:295-315`
 - Modify: `apps/server/src/routes/critique.ts:215-257`
 - Test: `apps/server/src/routes/__tests__/critique.test.ts`
@@ -3386,41 +3488,61 @@ CREATE INDEX `idx_critique_version` ON `critique_reports` (`chapter_version_id`)
   failedCritics: z.array(criticTypeSchema).default([]),
 ```
 
-`default([])` обязателен: старые строки `report_json` этих полей не содержат и должны продолжать разбираться.
+`default([])` обязателен: старые строки `report_json` этих полей не содержат и должны продолжать разбираться. У выведенного типа `FullCritiqueReport` поля при этом **обязательные** — значит, тот, кто собирает отчёт, должен их заполнять, и компилятор укажет на него сам.
 
-- [ ] **Step 6: Починить агрегацию**
+- [ ] **Step 6: Заполнить поля там, где отчёт собирается**
+
+Отчёт собирает узел агрегации графа критики — `aggregateNode` в `packages/agents/src/graphs/critique.ts` (строки 78-100). У него есть и список запрошенных (`state.enabledCritics`), и список упавших (`state.errors`). В возвращаемый объект `aggregated` добавить два поля:
+
+```ts
+  return {
+    aggregated: {
+      critics: reports,
+      requestedCritics: state.enabledCritics,
+      failedCritics: state.errors.map((e) => e.critic),
+      blockingCount: blocking,
+      suggestionCount: suggestion,
+      nitCount: nit,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+```
+
+(остальные поля — как в текущем коде узла; менять их не нужно). Список по умолчанию в объявлении состояния (строка 18) заменить на `default: () => [...ALL_CRITIC_TYPES]`.
+
+- [ ] **Step 7: Починить агрегацию статуса**
 
 В `apps/server/src/routes/critique.ts` заменить вычисление статуса (строки 227-241) на:
 
 ```ts
-        const requested = parsed.data.critics ?? ALL_CRITIC_TYPES;
-        const failed = result.errors.map((e) => e.critic);
-        const succeeded = result.report.critics.length;
-        const status =
-          succeeded === 0 ? "error" : failed.length > 0 ? "partial" : "done";
-        const reportJson = JSON.stringify({
-          ...result.report,
-          requestedCritics: requested,
-          failedCritics: failed,
-        });
+        // Статус — от того, кого просили и кто выжил, а не от длины списка
+        // успешных: прежняя формула на четырёх падениях из четырёх давала done.
+        const status: CritiqueReportStatus =
+          result.report.critics.length === 0
+            ? "error"
+            : result.report.failedCritics.length > 0
+              ? "partial"
+              : "done";
         sqlite
           .prepare(
             `UPDATE critique_reports
              SET status = ?, report_json = ?, error_message = ?, completed_at = ?
              WHERE id = ?`,
           )
-          .run(status, reportJson, errorMessage, completedAt, reportRowId);
+          .run(status, JSON.stringify(result.report), errorMessage, completedAt, reportRowId);
 ```
 
-Список запрошенных по умолчанию взять там же, где его берёт граф критики, и не хардкодить второй раз: в начале файла
+Список запрошенных по умолчанию не хардкодить второй раз. Такой константы в `packages/shared` сейчас нет — перечень живёт в `packages/agents/src/graphs/critique.ts:18` как `default: () => ["canon", "style", "editor", "reader"]` и ещё раз в `apps/web/src/components/CritiquePanel.tsx:19` как `ALL_CRITICS`. Завести одну в `packages/shared/src/critique.ts` рядом с `criticTypeSchema`:
 
 ```ts
-import { ALL_CRITIC_TYPES } from "@book-forge/shared";
+/** Все критики по умолчанию. Единственный перечень: от него считается статус
+ *  разбора, его же использует граф критики и панель в редакторе. */
+export const ALL_CRITIC_TYPES = ["canon", "style", "editor", "reader"] as const satisfies readonly CriticType[];
 ```
 
-Если такой константы в `packages/shared` нет, завести её там рядом с `criticTypeSchema` (`export const ALL_CRITIC_TYPES = ["canon", "style", "editor", "reader"] as const;`) и использовать в графе критики вместо локального списка — двух копий перечня быть не должно.
+и подставить её в оба места (в граф — шаг 6 выше; в панель — задача 11). В `critique.ts` маршрута импорт `CritiqueReportStatus` уже есть (строка 11), новых импортов не нужно.
 
-- [ ] **Step 7: Обновить schema.ts**
+- [ ] **Step 8: Обновить schema.ts**
 
 В `apps/server/src/db/schema.ts` в `critiqueReports` заменить CHECK:
 
@@ -3431,21 +3553,24 @@ import { ALL_CRITIC_TYPES } from "@book-forge/shared";
     ),
 ```
 
-- [ ] **Step 8: Запустить тесты и миграцию**
+- [ ] **Step 9: Запустить тесты и миграцию**
+
+Выполнить: `pnpm typecheck`
+Ожидаемо: код возврата 0 — в частности, `packages/agents` собирается с новыми обязательными полями отчёта.
 
 Выполнить: `pnpm --filter @book-forge/server test -- src/routes/__tests__/critique.test.ts`
 Ожидаемо: PASS.
 
-Выполнить: `pnpm --filter @book-forge/shared test && pnpm --filter @book-forge/server test`
+Выполнить: `pnpm --filter @book-forge/shared test && pnpm --filter @book-forge/agents test && pnpm --filter @book-forge/server test`
 Ожидаемо: PASS.
 
 Выполнить: `pnpm migrate`
 Ожидаемо: `✅ migrated`.
 
-- [ ] **Step 9: Коммит**
+- [ ] **Step 10: Коммит**
 
 ```bash
-git add apps/server/drizzle/0021_critique_partial.sql apps/server/drizzle/meta/_journal.json packages/shared/src/critique.ts apps/server/src/db/schema.ts apps/server/src/routes/critique.ts apps/server/src/routes/__tests__/critique.test.ts
+git add apps/server/drizzle/0021_critique_partial.sql apps/server/drizzle/meta/_journal.json packages/shared/src/critique.ts packages/agents/src/graphs/critique.ts apps/server/src/db/schema.ts apps/server/src/routes/critique.ts apps/server/src/routes/__tests__/critique.test.ts
 git commit -m "fix(critique): four failures out of four are not a green report
 
 The status compared the number of errors with the length of the successful
@@ -3471,8 +3596,8 @@ failed says so instead of hiding the gap."
 - Consumes: маршруты задач 7–9; типы `ProseProposal`, `ProseChange`.
 - Produces:
   - `api.getProposal`, `api.getProposalChanges`, `api.acceptProposal`, `api.rejectProposal`, `api.cancelProposal`
-  - `WriterStreamHandlers.onProposal?: (proposalId: number) => void`, `onDone` получает `{ proposal, cancelled? }`
-  - `<ProposalPanel proposal changes chapter onAccepted onRejected onCancelled />`
+  - `WriterStreamHandlers.onProposal?: (proposalId: number) => void`, `onDone` получает `{ proposal, cancelled?, tokens? }`
+  - `<ProposalPanel proposal changes expectedVersionId expectedDraftRevision onAccepted onRejected />`
 
 - [ ] **Step 1: Написать падающий тест панели**
 
@@ -3925,7 +4050,7 @@ export function ProposalPanel({
             )}
 ```
 
-Импортировать `ProposalPanel`, типы `ProseProposal`, `ProseChange` и убедиться, что `ChapterWithMemory` в клиенте несёт `draft.revision` (добавлено в задаче 3).
+Импортировать `ProposalPanel` и типы `ProseProposal`, `ProseChange`. В `apps/web/src/api/client.ts` у типа `ChapterWithMemory` в описание `draft` добавить `revision: number` — сервер отдаёт его с задачи 3, а `chapter?.draft?.revision` без этого не типизируется. Интерфейс `WriterDonePayload` и функция `formatCostToast` в `ChapterPage.tsx` больше ничем не используются — удалить, а не оставлять мёртвым кодом. Локальный `ALL_CRITICS` в `CritiquePanel.tsx` заменить на `ALL_CRITIC_TYPES` из `@book-forge/shared` (задача 10).
 
 - [ ] **Step 6: Подключить панель к правке**
 
@@ -3998,18 +4123,22 @@ is a retry, not a second acceptance."
 
 - [ ] **Step 4: Проверить миграцию на копии рабочей базы**
 
-```bash
-cp data/db.sqlite /tmp/stage1-check.sqlite
-DB_PATH=/tmp/stage1-check.sqlite pnpm migrate
-```
-
-Ожидаемо: `✅ migrated`. Затем убедиться, что данные на месте:
+Снять счётчики **до** миграции, на копии, чтобы было с чем сравнивать (запускать из `apps/server`, там резолвится `better-sqlite3`):
 
 ```bash
-node -e "const D=require('better-sqlite3');const d=new D('/tmp/stage1-check.sqlite',{readonly:true});for(const t of ['books','chapters','chapter_versions','chapter_drafts','characters','critique_reports','prose_proposals'])console.log(t, d.prepare('SELECT COUNT(*) c FROM '+t).get().c);"
+cp data/db.sqlite data/stage1-check.sqlite
+cd apps/server && node -e "const D=require('better-sqlite3');const d=new D('../../data/stage1-check.sqlite',{readonly:true});for(const t of ['books','chapters','chapter_versions','chapter_drafts','characters','critique_reports'])console.log(t, d.prepare('SELECT COUNT(*) c FROM '+t).get().c);" && cd ../..
 ```
 
-Ожидаемо: счётчики книг, глав, версий и персонажей совпадают с тем, что было до миграции; `prose_proposals` пуста; `critique_reports` сохранила все строки после перестройки таблицы.
+Применить миграции к копии (сервер читает путь из `DB_PATH`):
+
+```bash
+DB_PATH=data/stage1-check.sqlite pnpm migrate
+```
+
+Ожидаемо: `✅ migrated`. Снять счётчики ещё раз той же командой, добавив в список `prose_proposals`.
+
+Ожидаемо: счётчики книг, глав, версий, черновиков и персонажей совпадают с снятыми до миграции; `prose_proposals` — 0; `critique_reports` сохранила все строки после перестройки таблицы; у `chapter_drafts` появилась колонка `revision` со значением 0 у старых строк. После проверки копию удалить: `rm data/stage1-check.sqlite`.
 
 - [ ] **Step 5: Коммит**
 
@@ -4042,3 +4171,9 @@ git commit -m "docs: the prose proposal lifecycle"
 - **Заглушек нет.** Каждый шаг несёт настоящий код или настоящую команду.
 - **Согласованность имён.** `ProseChange`, `diffProseBlocks`, `applyProseChanges`, `docToBlocks`, `blocksToDoc` из задачи 1 используются под теми же именами в задачах 8, 9 и 11. `createProposal`, `finishProposal`, `loadProposal`, `listProposals`, `acceptProposal`, `rejectProposal`, `contextFingerprint`, `ProposalConflictError` объявлены в задачах 5 и 8 и вызываются под теми же именами в задачах 6, 7, 8, 9. `isConfirmedCompletion` объявлена в задаче 4 и вызывается в задачах 5 и 6. Поля `expectedVersionId`, `expectedDraftRevision`, `selectedChangeIds`, `acknowledgeStale`, `requestId` совпадают между схемой (задача 2), сервером (задача 8) и клиентом (задача 11).
 - **Известный риск.** Задача 4 меняет обязательное поле общего типа `StreamCallResult`; список мест, которые придётся дополнить, даёт компилятор, и шаг 5 этой задачи прямо на него опирается вместо угадывания.
+- **Воркер памяти в тестах настоящий.** `createApp` поднимает его, и после `summary` он доцепляет `rollup` к той же версии. Поэтому все проверки числа заданий фильтруют `kind IN ('index','summary','facts','notes')` или исключают известные версии, а не считают строки таблицы целиком. Тест, который забудет об этом, будет мигать.
+- **Сигнал отмены на прямом API бросает исключение.** Это не сбой, а наша же отмена; `catch` в маршрутах генерации и правки сперва спрашивает реестр и только потом решает, что перед ним ошибка. Без этого «Остановить» показывало бы автору красную ошибку.
+
+## Проверка после чтения целиком (2026-09-05)
+
+Исправлено по итогам сверки плана с кодом: число тестов задачи 1 (18, не 16); экспорт `isConfirmedCompletion` из пакета `@book-forge/llm`, без которого серверный импорт не собрался бы; мок `hybridSearch` в тесте генерации; перечень импортов, которые уходят из `plot.ts` и `critique.ts`; порядок создания кандидата относительно `try` в repair; обработка аборта по сигналу в `catch`; тест отмены дочитывает поток, а не проверяет базу вслепую; фильтр по видам заданий памяти во всех счётчиках; пустая глава как пустой список абзацев в обоих местах сравнения; извлечение канона переезжает в маршрут принятия; отклонение идущего запуска — 400; проверка AC-18 считает лишние задания правильно; константа `ALL_CRITIC_TYPES` заводится в `shared` и заменяет две копии перечня; пропсы панели в описании интерфейса; удаление мёртвого `WriterDonePayload`; проверка миграции на копии базы внутри `data/`, а не в `/tmp`, со счётчиками до и после.
