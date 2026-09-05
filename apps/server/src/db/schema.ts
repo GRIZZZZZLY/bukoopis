@@ -5,6 +5,7 @@ import {
   text,
   real,
   index,
+  uniqueIndex,
   check,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
@@ -648,7 +649,9 @@ export const proseProposals = sqliteTable(
     baseDraftRevision: integer("base_draft_revision"),
     contextFingerprint: text("context_fingerprint").notNull(),
     contentText: text("content_text").notNull().default(""),
-    contentJson: text("content_json").notNull(),
+    contentJson: text("content_json")
+      .notNull()
+      .default('{"type":"doc","content":[{"type":"paragraph"}]}'),
     wordCount: integer("word_count").notNull().default(0),
     completion: text("completion").notNull().default("unconfirmed"),
     stopReason: text("stop_reason"),
@@ -665,6 +668,11 @@ export const proseProposals = sqliteTable(
   },
   (t) => [
     index("idx_prose_proposals_chapter").on(t.chapterId, t.createdAt),
+    // Частичный уникальный индекс: accept_request_id — NULL у всех
+    // непринятых предложений, уникальность требуется только когда он задан.
+    uniqueIndex("uq_prose_proposals_accept_request")
+      .on(t.acceptRequestId)
+      .where(sql`${t.acceptRequestId} IS NOT NULL`),
     check("prose_proposals_kind_check", sql`${t.kind} IN ('write','repair')`),
     check(
       "prose_proposals_status_check",
