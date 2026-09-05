@@ -205,4 +205,82 @@ describe("POST /api/chapters/:id/write", () => {
     expect(row.status).toBe("ready");
     expect(row.model_id).toBe("test-model");
   });
+
+  it("отменённое предложение не переходит в ready поздним ответом (AC-20)", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    runChapterWriterMock.mockImplementation(
+      // eslint-disable-next-line require-yield
+      async function* () {
+        yield "нач";
+        await gate;
+        return {
+          text: "Поздний полный текст.",
+          modelId: "test-model",
+          stopReason: "end_turn",
+          tokens: { input: 1, output: 2, cacheCreation: 0, cacheRead: 0 },
+        };
+      } as never,
+    );
+
+    // Ответ с потоком приходит сразу после заголовков; сам обработчик ещё идёт
+    // и ждёт gate внутри мока.
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+
+    // Ждём, пока кандидат появится в базе: он заводится до первого токена.
+    let proposalId = 0;
+    for (let i = 0; i < 50 && proposalId === 0; i++) {
+      const db = new Database(`${t.dbDir}/test.sqlite`);
+      const row = db
+        .prepare("SELECT id FROM prose_proposals ORDER BY id DESC LIMIT 1")
+        .get() as { id: number } | undefined;
+      db.close();
+      if (row) proposalId = row.id;
+      else await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(proposalId).toBeGreaterThan(0);
+
+    const cancelled = await sendJson<{ stopping: boolean }>(
+      t.app,
+      `/api/prose-proposals/${proposalId}/cancel`,
+      "POST",
+      {},
+    );
+    expect(cancelled.stopping).toBe(true);
+
+    // Отпускаем «поздний ответ» и ДОЧИТЫВАЕМ поток до конца: только так тест
+    // знает, что обработчик отработал. Без этого проверка ниже проходила бы,
+    // даже если поздний ответ перезаписал статус секундой позже.
+    release!();
+    const events = await readSse(res);
+    const done = events.find((e) => e.event === "done");
+    expect(done).toBeDefined();
+    expect((done!.data as { cancelled?: boolean }).cancelled).toBe(true);
+    expect(events.find((e) => e.event === "error")).toBeUndefined();
+
+    const final = await sendJson<{ status: string; contentText: string }>(
+      t.app,
+      `/api/prose-proposals/${proposalId}`,
+      "GET",
+    );
+    expect(final.status).toBe("cancelled");
+    expect(final.contentText).not.toContain("Поздний полный текст");
+  });
+
+  it("остановить можно только идущий запуск", async () => {
+    mockWriter("Текст.", "end_turn");
+    // Дочитываем поток до конца: без этого генерация ещё в процессе, кандидат
+    // остаётся в streaming, и отмена ниже (ошибочно) удалась бы.
+    const res0 = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    await readSse(res0);
+    const db = new Database(`${t.dbDir}/test.sqlite`);
+    const row = db
+      .prepare("SELECT id FROM prose_proposals ORDER BY id DESC LIMIT 1")
+      .get() as { id: number };
+    db.close();
+    const res = await send(t.app, `/api/prose-proposals/${row.id}/cancel`, "POST", {});
+    expect(res.status).toBe(400);
+  });
 });

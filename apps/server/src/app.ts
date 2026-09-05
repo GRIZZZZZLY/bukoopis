@@ -14,7 +14,9 @@ import { createUsageRoute } from "./routes/usage.js";
 import { createWritingProgressRoute } from "./routes/writing-progress.js";
 import { createCanonExtractionRoute } from "./routes/canon-extraction.js";
 import { createStudioRoute } from "./routes/studio.js";
+import { createProposalsRoute } from "./routes/proposals.js";
 import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
+import { createProposalCancelRegistry } from "./utils/proposal-cancel.js";
 
 export interface AppHandle {
   app: Hono;
@@ -26,6 +28,9 @@ export interface AppHandle {
 export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   const { sqlite, hasVec } = createDb(dbPath);
   const memoryWorker = startMemoryWorker(sqlite, hasVec);
+  // Один реестр на процесс: его смотрит генерация и правка, а маршрут отмены
+  // в него пишет.
+  const proposalCancels = createProposalCancelRegistry();
   const app = new Hono();
 
   app.use("*", async (c, next) => {
@@ -57,16 +62,17 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createStudioRoute(sqlite, hasVec));
   app.route("/api/books", createBooksRoute(sqlite, memoryWorker));
   app.route("/api/chapters", createChaptersRoute(sqlite, memoryWorker));
-  app.route("/api", createPlotRoute(sqlite, hasVec, memoryWorker));
+  app.route("/api", createPlotRoute(sqlite, hasVec, memoryWorker, proposalCancels));
   app.route("/api", createRetrievalRoute(sqlite, hasVec));
   app.route("/api", createImportExportRoute(sqlite, hasVec));
   app.route("/api", createEntitiesRoute(sqlite));
-  app.route("/api", createCritiqueRoute(sqlite, memoryWorker));
+  app.route("/api", createCritiqueRoute(sqlite, memoryWorker, proposalCancels));
   app.route("/api", createInlineRoute(sqlite));
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));
   app.route("/api", createWritingProgressRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
+  app.route("/api", createProposalsRoute(sqlite, proposalCancels));
 
   return {
     app,

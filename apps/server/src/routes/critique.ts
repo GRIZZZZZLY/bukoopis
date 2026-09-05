@@ -24,6 +24,10 @@ import {
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
+import {
+  createProposalCancelRegistry,
+  type ProposalCancelRegistry,
+} from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 import { loadStyleContext } from "../utils/style-context.js";
 import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
@@ -116,6 +120,9 @@ void extractText; // keep import alive if unused
 export function createCritiqueRoute(
   sqlite: DatabaseType,
   memoryWorker?: Pick<MemoryWorker, "kick">,
+  // Идёт после опционального memoryWorker, поэтому нужен дефолт — но
+  // единственный вызывающий (app.ts) всегда передаёт настоящий реестр.
+  cancels: ProposalCancelRegistry = createProposalCancelRegistry(),
 ): Hono {
   const r = new Hono();
 
@@ -325,6 +332,8 @@ export function createCritiqueRoute(
         kind: "repair",
         baseVersionId: v.id,
       });
+      cancels.begin(proposalId);
+      const signal = cancels.signal(proposalId);
       try {
         await stream.writeSSE({
           event: "iteration",
@@ -356,6 +365,7 @@ export function createCritiqueRoute(
           severityFilter: parsed.data.severities,
           iteration: nextIteration,
           config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
+          ...(signal !== undefined ? { signal } : {}),
         });
 
         while (true) {
@@ -374,6 +384,19 @@ export function createCritiqueRoute(
             event: "chunk",
             data: JSON.stringify({ text: next.value }),
           });
+        }
+
+        // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
+        // приходит уже после отмены. Он не имеет права ничего записать.
+        if (cancels.shouldStop(proposalId)) {
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
         }
 
         // Кандидат, не версия: ветка repair-N и коммит в чаптер появятся при
@@ -418,6 +441,17 @@ export function createCritiqueRoute(
           }),
         });
       } catch (e) {
+        if (cancels.shouldStop(proposalId)) {
+          // Это не сбой, это наша же отмена: SDK бросает при аборте сигнала.
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
+        }
         const message = e instanceof Error ? e.message : String(e);
         // Уже дописанный кандидат не понижаем: если logUsage или финальная
         // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
@@ -434,6 +468,8 @@ export function createCritiqueRoute(
           event: "error",
           data: JSON.stringify({ message }),
         });
+      } finally {
+        cancels.end(proposalId);
       }
     });
   });

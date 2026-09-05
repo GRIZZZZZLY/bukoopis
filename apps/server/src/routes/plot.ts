@@ -60,6 +60,10 @@ import {
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
+import {
+  createProposalCancelRegistry,
+  type ProposalCancelRegistry,
+} from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 interface BookContext {
@@ -129,6 +133,9 @@ export function createPlotRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
   memoryWorker?: Pick<MemoryWorker, "kick">,
+  // Идёт после опционального memoryWorker, поэтому нужен дефолт — но
+  // единственный вызывающий (app.ts) всегда передаёт настоящий реестр.
+  cancels: ProposalCancelRegistry = createProposalCancelRegistry(),
 ): Hono {
   const r = new Hono();
 
@@ -467,6 +474,8 @@ export function createPlotRoute(
         kind: "write",
         baseVersionId: ch.current_version_id,
       });
+      cancels.begin(proposalId);
+      const signal = cancels.signal(proposalId);
 
       try {
         await stream.writeSSE({
@@ -499,6 +508,7 @@ export function createPlotRoute(
           },
           provider: ctx.writerProvider,
           ...(ctx.writerLocalModel ? { localModelTag: ctx.writerLocalModel } : {}),
+          ...(signal !== undefined ? { signal } : {}),
         });
         while (true) {
           const next = await gen.next();
@@ -516,6 +526,19 @@ export function createPlotRoute(
             event: "chunk",
             data: JSON.stringify({ text: next.value }),
           });
+        }
+
+        // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
+        // приходит уже после отмены. Он не имеет права ничего записать.
+        if (cancels.shouldStop(proposalId)) {
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
         }
 
         const confirmed = isConfirmedCompletion(stopReason);
@@ -557,6 +580,17 @@ export function createPlotRoute(
           }),
         });
       } catch (e) {
+        if (cancels.shouldStop(proposalId)) {
+          // Это не сбой, это наша же отмена: SDK бросает при аборте сигнала.
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
+        }
         const message = e instanceof Error ? e.message : String(e);
         // Уже дописанный кандидат не понижаем: если logUsage или финальная
         // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
@@ -573,6 +607,8 @@ export function createPlotRoute(
           event: "error",
           data: JSON.stringify({ message, proposalId }),
         });
+      } finally {
+        cancels.end(proposalId);
       }
     });
   });
