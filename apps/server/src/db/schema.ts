@@ -595,6 +595,8 @@ export const chapterDrafts = sqliteTable("chapter_drafts", {
     (): AnySQLiteColumn => chapterVersions.id,
     { onDelete: "set null" },
   ),
+  /** Монотонный CAS-токен автосохранения: растёт на каждый UPSERT. */
+  revision: integer("revision").notNull().default(0),
   updatedAt: text("updated_at").notNull(),
 });
 
@@ -623,6 +625,54 @@ export const studioEvents = sqliteTable(
         'import_merge','cross_book_copy','stage_skip',
         'playbook_generate','aspect_create_manual','aspect_delete'
       )`,
+    ),
+  ],
+);
+
+export const proseProposals = sqliteTable(
+  "prose_proposals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterId: integer("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("streaming"),
+    baseVersionId: integer("base_version_id").references(
+      (): AnySQLiteColumn => chapterVersions.id,
+      { onDelete: "set null" },
+    ),
+    baseDraftRevision: integer("base_draft_revision"),
+    contextFingerprint: text("context_fingerprint").notNull(),
+    contentText: text("content_text").notNull().default(""),
+    contentJson: text("content_json").notNull(),
+    wordCount: integer("word_count").notNull().default(0),
+    completion: text("completion").notNull().default("unconfirmed"),
+    stopReason: text("stop_reason"),
+    modelId: text("model_id"),
+    backend: text("backend"),
+    acceptedVersionId: integer("accepted_version_id").references(
+      (): AnySQLiteColumn => chapterVersions.id,
+      { onDelete: "set null" },
+    ),
+    acceptRequestId: text("accept_request_id"),
+    errorMessage: text("error_message"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_prose_proposals_chapter").on(t.chapterId, t.createdAt),
+    check("prose_proposals_kind_check", sql`${t.kind} IN ('write','repair')`),
+    check(
+      "prose_proposals_status_check",
+      sql`${t.status} IN ('streaming','ready','incomplete','cancelled','failed','accepted','rejected','superseded')`,
+    ),
+    check(
+      "prose_proposals_completion_check",
+      sql`${t.completion} IN ('confirmed','unconfirmed')`,
     ),
   ],
 );
