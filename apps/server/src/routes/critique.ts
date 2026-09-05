@@ -24,10 +24,7 @@ import {
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
-import {
-  createProposalCancelRegistry,
-  type ProposalCancelRegistry,
-} from "../utils/proposal-cancel.js";
+import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 import { loadStyleContext } from "../utils/style-context.js";
 import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
@@ -119,10 +116,8 @@ void extractText; // keep import alive if unused
 
 export function createCritiqueRoute(
   sqlite: DatabaseType,
+  cancels: ProposalCancelRegistry,
   memoryWorker?: Pick<MemoryWorker, "kick">,
-  // Идёт после опционального memoryWorker, поэтому нужен дефолт — но
-  // единственный вызывающий (app.ts) всегда передаёт настоящий реестр.
-  cancels: ProposalCancelRegistry = createProposalCancelRegistry(),
 ): Hono {
   const r = new Hono();
 

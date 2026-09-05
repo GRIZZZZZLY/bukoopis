@@ -62,11 +62,11 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createStudioRoute(sqlite, hasVec));
   app.route("/api/books", createBooksRoute(sqlite, memoryWorker));
   app.route("/api/chapters", createChaptersRoute(sqlite, memoryWorker));
-  app.route("/api", createPlotRoute(sqlite, hasVec, memoryWorker, proposalCancels));
+  app.route("/api", createPlotRoute(sqlite, hasVec, proposalCancels, memoryWorker));
   app.route("/api", createRetrievalRoute(sqlite, hasVec));
   app.route("/api", createImportExportRoute(sqlite, hasVec));
   app.route("/api", createEntitiesRoute(sqlite));
-  app.route("/api", createCritiqueRoute(sqlite, memoryWorker, proposalCancels));
+  app.route("/api", createCritiqueRoute(sqlite, proposalCancels, memoryWorker));
   app.route("/api", createInlineRoute(sqlite));
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));

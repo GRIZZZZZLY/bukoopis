@@ -60,10 +60,7 @@ import {
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
-import {
-  createProposalCancelRegistry,
-  type ProposalCancelRegistry,
-} from "../utils/proposal-cancel.js";
+import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 interface BookContext {
@@ -132,10 +129,8 @@ const MAX_WRITER_CONTEXT_TOKENS = 80_000;
 export function createPlotRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
+  cancels: ProposalCancelRegistry,
   memoryWorker?: Pick<MemoryWorker, "kick">,
-  // Идёт после опционального memoryWorker, поэтому нужен дефолт — но
-  // единственный вызывающий (app.ts) всегда передаёт настоящий реестр.
-  cancels: ProposalCancelRegistry = createProposalCancelRegistry(),
 ): Hono {
   const r = new Hono();
 
