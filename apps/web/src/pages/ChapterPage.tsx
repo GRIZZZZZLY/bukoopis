@@ -35,6 +35,7 @@ import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
+import { ProposalPanel } from "@/components/chapter/ProposalPanel";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
@@ -45,33 +46,16 @@ import {
   MemoryStaleBanner,
   MemoryLagWarning,
 } from "@/components/memory/MemoryStatus";
-import type { ChapterMemoryInfo } from "@/api/client";
+import type { ChapterMemoryInfo, ChapterWithMemory } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
 import type {
   Book,
   ChapterBeatSheetVariant,
   ChapterVersion,
-  ChapterWithCurrentVersion,
+  ProseChange,
+  ProseProposal,
 } from "@book-forge/shared";
 import { EMPTY_DOC, calculateCost, MODEL_IDS } from "@book-forge/shared";
-
-interface WriterDonePayload {
-  version: ChapterVersion;
-  tokens: {
-    input: number;
-    output: number;
-    cacheCreation?: number;
-    cacheRead?: number;
-  };
-}
-
-function formatCostToast(p: WriterDonePayload): string {
-  const cacheBits =
-    (p.tokens.cacheRead ?? 0) > 0 || (p.tokens.cacheCreation ?? 0) > 0
-      ? ` · cache R${p.tokens.cacheRead ?? 0}/W${p.tokens.cacheCreation ?? 0}`
-      : "";
-  return `${p.tokens.input} in / ${p.tokens.output} out${cacheBits}`;
-}
 
 function emptyDoc(): unknown {
   return JSON.parse(JSON.stringify(EMPTY_DOC));
@@ -97,7 +81,7 @@ export function ChapterPage() {
   }>();
   const id = Number(chapterId);
 
-  const [chapter, setChapter] = useState<ChapterWithCurrentVersion | null>(
+  const [chapter, setChapter] = useState<ChapterWithMemory | null>(
     null,
   );
   const [book, setBook] = useState<Book | null>(null);
@@ -113,6 +97,9 @@ export function ChapterPage() {
   );
   const [writing, setWriting] = useState(false);
   const [writerBuffer, setWriterBuffer] = useState("");
+  const [proposal, setProposal] = useState<ProseProposal | null>(null);
+  const [proposalChanges, setProposalChanges] = useState<ProseChange[]>([]);
+  const [runningProposalId, setRunningProposalId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editorTick, setEditorTick] = useState(0);
@@ -450,9 +437,10 @@ export function ChapterPage() {
   }
 
   function onCancelWriter() {
-    const ctrl = writerAbortRef.current;
-    if (!ctrl) return;
-    ctrl.abort();
+    if (runningProposalId !== null) {
+      void api.cancelProposal(runningProposalId).catch(() => undefined);
+    }
+    writerAbortRef.current?.abort();
     writerAbortRef.current = null;
   }
 
@@ -471,15 +459,20 @@ export function ChapterPage() {
           onChunk: (text) => {
             setWriterBuffer((b) => b + text);
           },
+          onProposal: (proposalId) => setRunningProposalId(proposalId),
           onDone: async (payload) => {
             setWriting(false);
             writerAbortRef.current = null;
-            toast.success("Глава сохранена", {
-              description: formatCostToast(payload as WriterDonePayload),
-            });
-            // Trigger Canon panel to refresh / start polling.
-            setCanonRunningSignal((s) => s + 1);
-            await load();
+            setRunningProposalId(null);
+            if (payload.cancelled) {
+              toast.info("Генерация остановлена");
+              return;
+            }
+            setProposal(payload.proposal);
+            const { changes } = await api.getProposalChanges(payload.proposal.id);
+            setProposalChanges(changes);
+            // Глава намеренно не перезагружается: текущая версия не менялась,
+            // а load() затёр бы несохранённые правки автора.
           },
           onError: (msg) => {
             toast.error("Ошибка Writer", {
@@ -753,6 +746,28 @@ export function ChapterPage() {
                   {writerBuffer}
                 </pre>
               </div>
+            )}
+
+            {proposal && (
+              <ProposalPanel
+                proposal={proposal}
+                changes={proposalChanges}
+                expectedVersionId={chapter?.currentVersionId ?? null}
+                expectedDraftRevision={chapter?.draft?.revision ?? null}
+                onAccepted={async () => {
+                  setProposal(null);
+                  setProposalChanges([]);
+                  setWriterBuffer("");
+                  setCanonRunningSignal((s) => s + 1);
+                  await load();
+                  toast.success("Глава принята");
+                }}
+                onRejected={() => {
+                  setProposal(null);
+                  setProposalChanges([]);
+                  setWriterBuffer("");
+                }}
+              />
             )}
           </div>
 

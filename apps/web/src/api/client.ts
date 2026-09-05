@@ -52,7 +52,7 @@ export interface ChapterMemoryInfo {
 }
 export type ChapterWithMemory = ChapterWithCurrentVersion & {
   memory?: ChapterMemoryInfo;
-  draft?: ChapterDraft | null;
+  draft?: (ChapterDraft & { revision: number }) | null;
 };
 
 // ── Intake (Приём материала) ──
@@ -349,6 +349,37 @@ export const api = {
     }),
   deleteHook: (id: number) =>
     req<void>(`/api/hooks/${id}`, { method: "DELETE" }),
+
+  // ── Предложения прозы ──
+  getProposal: (id: number) =>
+    req<import("@book-forge/shared").ProseProposal>(`/api/prose-proposals/${id}`),
+  getProposalChanges: (id: number) =>
+    req<{
+      baseVersionId: number | null;
+      changes: import("@book-forge/shared").ProseChange[];
+    }>(`/api/prose-proposals/${id}/changes`),
+  acceptProposal: (
+    id: number,
+    body: import("@book-forge/shared").AcceptProseProposalInput,
+  ) =>
+    req<{ version: ChapterVersion; replayed: boolean }>(
+      `/api/prose-proposals/${id}/accept`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  rejectProposal: (id: number) =>
+    req<import("@book-forge/shared").ProseProposal>(
+      `/api/prose-proposals/${id}/reject`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  cancelProposal: (id: number) =>
+    req<{ stopping: boolean }>(`/api/prose-proposals/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  listProposals: (chapterId: number) =>
+    req<import("@book-forge/shared").ProseProposal[]>(
+      `/api/chapters/${chapterId}/proposals`,
+    ),
 
   // ── Critique ──
   getCritique: (versionId: number) =>
@@ -1024,11 +1055,12 @@ export function streamStagePlaybook(
 // ── SSE repair streaming ──
 export interface RepairStreamHandlers {
   onIteration?: (current: number, max: number) => void;
+  onProposal?: (proposalId: number) => void;
   onChunk: (text: string) => void;
   onDone: (payload: {
-    version: ChapterVersion | null;
-    iteration: number;
-    tokens: { input: number; output: number };
+    proposal: import("@book-forge/shared").ProseProposal;
+    cancelled?: boolean;
+    tokens?: { input: number; output: number };
   }) => void;
   onError: (message: string) => void;
 }
@@ -1070,6 +1102,7 @@ export async function streamRepair(
         const data = JSON.parse(dataMatch[1]!);
         if (ev === "iteration")
           handlers.onIteration?.(data.current as number, data.max as number);
+        else if (ev === "proposal") handlers.onProposal?.(data.proposalId as number);
         else if (ev === "chunk") handlers.onChunk(data.text as string);
         else if (ev === "done") handlers.onDone(data);
         else if (ev === "error") handlers.onError(data.message as string);
@@ -1082,10 +1115,12 @@ export async function streamRepair(
 
 // ── SSE writer streaming ──
 export interface WriterStreamHandlers {
+  onProposal?: (proposalId: number) => void;
   onChunk: (text: string) => void;
   onDone: (payload: {
-    version: ChapterVersion;
-    tokens: { input: number; output: number };
+    proposal: import("@book-forge/shared").ProseProposal;
+    cancelled?: boolean;
+    tokens?: { input: number; output: number };
   }) => void;
   onError: (message: string) => void;
   onAbort?: () => void;
@@ -1136,7 +1171,8 @@ export async function streamWriteChapter(
         const ev = evMatch?.[1] ?? "message";
         try {
           const data = JSON.parse(dataMatch[1]!);
-          if (ev === "chunk") handlers.onChunk(data.text as string);
+          if (ev === "proposal") handlers.onProposal?.(data.proposalId as number);
+          else if (ev === "chunk") handlers.onChunk(data.text as string);
           else if (ev === "done") handlers.onDone(data);
           else if (ev === "error") handlers.onError(data.message as string);
         } catch {

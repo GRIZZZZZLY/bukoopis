@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, streamRepair } from "@/api/client";
+import { ProposalPanel } from "@/components/chapter/ProposalPanel";
 import {
+  ALL_CRITIC_TYPES,
   CRITIC_LABELS,
   SEVERITY_LABELS,
   REPAIR_MAX_ITERATIONS,
@@ -9,14 +11,13 @@ import {
   type CriticReport,
   type CriticType,
   type IssueSeverity,
+  type ProseProposal,
 } from "@book-forge/shared";
 
 interface Props {
   versionId: number | null;
   onRepairDone?: () => void | Promise<void>;
 }
-
-const ALL_CRITICS: CriticType[] = ["canon", "style", "editor", "reader"];
 
 const SEVERITY_DOT: Record<IssueSeverity, string> = {
   blocking: "sev-red",
@@ -29,7 +30,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [enabled, setEnabled] = useState<Set<CriticType>>(
-    new Set(ALL_CRITICS),
+    new Set(ALL_CRITIC_TYPES),
   );
   const [error, setError] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
@@ -39,6 +40,12 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
     max: number;
   } | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
+  const [repairProposal, setRepairProposal] = useState<ProseProposal | null>(
+    null,
+  );
+  const [repairProposalId, setRepairProposalId] = useState<number | null>(
+    null,
+  );
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
     new Set<IssueSeverity>(["blocking", "suggestion"]),
   );
@@ -105,16 +112,19 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
     setRepairBuffer("");
     setRepairError(null);
     setRepairIteration(null);
+    setRepairProposal(null);
+    setRepairProposalId(null);
     try {
       const severities =
         severityFilter.size === 3 ? undefined : [...severityFilter];
       await streamRepair(versionId, severities, {
         onIteration: (current, max) =>
           setRepairIteration({ current, max }),
+        onProposal: (proposalId) => setRepairProposalId(proposalId),
         onChunk: (text) => setRepairBuffer((b) => b + text),
-        onDone: async () => {
+        onDone: async (payload) => {
           setRepairing(false);
-          if (onRepairDone) await onRepairDone();
+          setRepairProposal(payload.proposal);
         },
         onError: (msg) => {
           setRepairError(msg);
@@ -140,7 +150,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-semibold">Критика версии</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          {ALL_CRITICS.map((c) => (
+          {ALL_CRITIC_TYPES.map((c) => (
             <label key={c} className="text-xs flex items-center gap-1">
               <input
                 type="checkbox"
@@ -225,6 +235,25 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
                   {repairBuffer}
                 </pre>
               </div>
+            )}
+            {repairProposal && (
+              <ProposalPanel
+                proposal={repairProposal}
+                changes={[]}
+                expectedVersionId={versionId}
+                expectedDraftRevision={null}
+                onAccepted={async () => {
+                  setRepairProposal(null);
+                  setRepairProposalId(null);
+                  setRepairBuffer("");
+                  if (onRepairDone) await onRepairDone();
+                }}
+                onRejected={() => {
+                  setRepairProposal(null);
+                  setRepairProposalId(null);
+                  setRepairBuffer("");
+                }}
+              />
             )}
           </div>
         )}
