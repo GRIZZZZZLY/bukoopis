@@ -567,6 +567,18 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
             onBegin: (e) => {
               currentKey = e.requestKey;
               intakeCancels.begin(id, e.requestKey);
+              // intakeCancels keys on book + requestKey, so two runs never
+              // collide there. This map is keyed on the book alone (that's
+              // the whole point — GET /intake/inflight has no requestKey to
+              // ask with), so a second overlapping run for the same book
+              // would silently steal the slot. Not supposed to happen in a
+              // single-user tool, but if it ever does, say so instead of
+              // quietly overwriting.
+              if (intakeInFlight.has(id)) {
+                console.warn(
+                  `[intake] book ${id}: a second run (${e.requestKey}) started while ${intakeInFlight.get(id)} was still in flight — overwriting`,
+                );
+              }
               intakeInFlight.set(id, e.requestKey);
               queue("begin", e);
             },
@@ -605,7 +617,13 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         // более поздний запрос на остановку того же ключа находит призрак.
         if (currentKey !== undefined) {
           intakeCancels.end(id, currentKey);
-          intakeInFlight.delete(id);
+          // Compare-and-delete: only clear the slot if it is still ours. If
+          // a second run for this book ever overlapped and overwrote it (see
+          // the warning above), this run finishing first must not delete the
+          // other run's live entry out from under it.
+          if (intakeInFlight.get(id) === currentKey) {
+            intakeInFlight.delete(id);
+          }
         }
       }
     });

@@ -45,6 +45,46 @@ const world = (title: string) => ({
   fragments: [{ target: "world" as const, title, body: `тело ${title}` }],
 });
 
+/** Читает поток по кускам, пока накопленный текст не содержит `needle`.
+ *
+ *  В отличие от `readEvents` (которая ждёт `res.text()`, то есть конца всего
+ *  потока), это доказывает, что байты доходят до читателя раньше, чем весь
+ *  разбор завершился — а не только то, что порядок событий в готовом теле
+ *  правильный. Реализация, которая копит события и отдаёт их одним куском в
+ *  конце, здесь просто зависнет до таймаута: пока `needle` не появится в
+ *  буфере (а он не появится, пока не завершится весь запрос), `reader.read()`
+ *  не отдаст управление раньше времени. */
+async function readUntilIncludes(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  needle: string,
+  timeoutMs = 2000,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const deadline = Date.now() + timeoutMs;
+  while (!buffer.includes(needle)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(
+        `timed out waiting for ${JSON.stringify(needle)} in the stream — events were not delivered incrementally`,
+      );
+    }
+    const result = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("read timed out")), remaining),
+      ),
+    ]);
+    if (result.done) {
+      throw new Error(
+        `stream ended before ${JSON.stringify(needle)} appeared — events were buffered until the run finished, not streamed as they happened`,
+      );
+    }
+    buffer += decoder.decode(result.value, { stream: true });
+  }
+  return buffer;
+}
+
 describe("POST /api/books/:id/intake-stream", () => {
   it("404 for an unknown book", async () => {
     const r = await send(t.app, "/api/books/9999/intake-stream", "POST", { files: [file("а.md")] });
@@ -94,6 +134,44 @@ describe("POST /api/books/:id/intake-stream", () => {
     const failedAt = events.indexOf(failed!);
     const secondStarted = events.findIndex((e) => e.event === "file" && e.data.index === 1);
     expect(failedAt).toBeLessThan(secondStarted);
+  });
+
+  it("delivers the first file's done event before the second file's classifier call even resolves", async () => {
+    // Второй файл разбирается только после того, как тест сам отпустит
+    // ворота — до тех пор его классификатор висит. Если сервер копит события
+    // и пишет их одним куском в конце (порядок в готовом теле был бы тем же
+    // самым, что и у буферизующей реализации — предыдущие тесты этого не
+    // ловят), чтение зависнет здесь до таймаута, потому что «конец» ещё не
+    // наступил.
+    let releaseSecond!: () => void;
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    vi.mocked(runMaterialClassifier)
+      .mockResolvedValueOnce(world("Карта"))
+      .mockImplementationOnce(async () => {
+        await secondGate;
+        return world("Кухня");
+      });
+    const id = await createBook();
+    const res = await t.app.request(
+      jsonReq(`/api/books/${id}/intake-stream`, "POST", { files: [file("а.md"), file("б.md")] }),
+    );
+    const reader = res.body!.getReader();
+    try {
+      const buffered = await readUntilIncludes(reader, '"status":"done"');
+      expect(buffered).toContain('"index":0');
+      // Итоговое событие всего разбора попасть сюда ещё не могло — второй
+      // файл всё ещё не разобран, ворота не отпущены.
+      expect(buffered).not.toContain('"cancelled"');
+    } finally {
+      releaseSecond();
+      // Осушаем остаток потока, чтобы не оставлять висящий reader.
+      let drained = false;
+      while (!drained) {
+        drained = (await reader.read()).done;
+      }
+    }
   });
 });
 
