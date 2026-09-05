@@ -125,16 +125,24 @@ export function buildImportedEntityAspect(
 
 /** Дописывает импортированные аспекты в конец этапа, продолжая нумерацию.
  *  Статус этапа не понижается: уже завершённый этап остаётся завершённым,
- *  нетронутый переходит в работу. */
+ *  нетронутый переходит в работу.
+ *
+ *  Явно пропущенный этап тоже открывается заново — и это не отмена решения
+ *  автора, а его же новое решение: `deriveStageStatus` никогда не снимает
+ *  «пропущен» сам, поэтому иначе брошенные на такой этап черновики остались бы
+ *  невидимыми навсегда. */
 export function mergeAspectsIntoStage(
   stage: StageState,
   fresh: StageAspect[],
   now: string,
 ): StageState {
+  if (fresh.length === 0) return stage;
   const base = stage.aspects.length;
+  const { skippedReason: _dropped, ...rest } = stage;
+  const reopened = stage.status === "not_started" || stage.status === "skipped";
   return {
-    ...stage,
-    status: stage.status === "not_started" ? "in_progress" : stage.status,
+    ...rest,
+    status: reopened ? "in_progress" : stage.status,
     aspects: [
       ...stage.aspects,
       ...fresh.map((a, i) => ({ ...a, order: base + i })),

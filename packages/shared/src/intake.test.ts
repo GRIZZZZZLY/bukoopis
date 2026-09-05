@@ -160,6 +160,34 @@ describe("mergeAspectsIntoStage", () => {
     expect(next.aspects[0]!.order).toBe(0);
   });
 
+  it("reopens a stage the author had skipped when their own material lands on it", () => {
+    // `deriveStageStatus` treats an explicit skip as the author's word and never
+    // overrides it — so unless the merge reopens the stage here, drafts dropped
+    // onto a skipped stage stay invisible forever.
+    const next = mergeAspectsIntoStage(
+      {
+        status: "skipped",
+        skippedReason: "Пропущен автором",
+        playbookGenerated: false,
+        aspects: [],
+      },
+      [buildImportedMarkdownAspect(WORLD, 0, NOW)],
+      NOW,
+    );
+    expect(next.status).toBe("in_progress");
+    expect(next.skippedReason).toBeUndefined();
+  });
+
+  it("leaves the stage alone when there is nothing fresh to add", () => {
+    const stage = {
+      status: "skipped" as const,
+      skippedReason: "Пропущен автором",
+      playbookGenerated: false,
+      aspects: [],
+    };
+    expect(mergeAspectsIntoStage(stage, [], NOW)).toEqual(stage);
+  });
+
   it("produces a state the studio invariants accept", () => {
     const state = emptyStudioState();
     state.stages.world = mergeAspectsIntoStage(

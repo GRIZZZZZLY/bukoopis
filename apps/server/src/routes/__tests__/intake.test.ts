@@ -76,6 +76,61 @@ describe("POST /api/books/:id/intake", () => {
     expect(state.revision).toBe(out.revision);
   });
 
+  it("leaves every touched stage reachable, not skipped, after the drop", async () => {
+    // The write path re-derives stage status from the aspects. Imported drafts
+    // are optional and `reviewing`, so a stage full of them must read as work in
+    // progress — «skipped» is what the stage pages refuse to render.
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [
+        { target: "world", title: "Карта", body: "Барьер делит два мира." },
+        { target: "lore", title: "Барьер", body: "Барьер поставили древние." },
+        {
+          target: "characters",
+          title: "Нейла",
+          body: "Проводница.",
+          entities: [{ name: "Нейла", summary: "Проводница через барьер." }],
+        },
+      ],
+    });
+    const id = await createBook();
+    await send(t.app, `/api/books/${id}/intake`, "POST", { files: [WORLD_FILE] });
+
+    const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    for (const stageId of ["world", "lore", "characters"] as const) {
+      const stage = state.stages[stageId]!;
+      expect(stage.status).toBe("in_progress");
+      expect(stage.aspects).toHaveLength(1);
+    }
+  });
+
+  it("reopens a stage the author had skipped when their material lands on it", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "world", title: "Карта", body: "Барьер делит два мира." }],
+    });
+    const id = await createBook();
+    const before = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    await send(t.app, `/api/books/${id}/studio-state`, "PATCH", {
+      expectedRevision: before.revision,
+      next: {
+        ...before,
+        stages: {
+          ...before.stages,
+          world: {
+            status: "skipped",
+            skippedReason: "Пропущен автором",
+            playbookGenerated: false,
+            aspects: [],
+          },
+        },
+      },
+    });
+
+    await send(t.app, `/api/books/${id}/intake`, "POST", { files: [WORLD_FILE] });
+    const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    expect(state.stages.world!.status).toBe("in_progress");
+    expect(state.stages.world!.aspects).toHaveLength(1);
+  });
+
   it("calls the classifier once per file and passes the book's idea along", async () => {
     vi.mocked(runMaterialClassifier).mockResolvedValue({ fragments: [] });
     const id = await createBook();
