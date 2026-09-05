@@ -41,6 +41,7 @@ function readyProposal(text: string): number {
 
 beforeEach(async () => {
   t = makeTestApp();
+  delete process.env.ANTHROPIC_API_KEY;
   const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
     title: "Принятие",
     premise: "p",
@@ -273,5 +274,20 @@ describe("acceptProposal", () => {
       .get(out.versionId) as { b: string | null; p: number | null };
     expect(v.b).toBe("repair-1");
     expect(v.p).toBe(base.versionId);
+  });
+
+  it("принятие одного кандидата помечает других живых кандидатов той же главы superseded", () => {
+    const acceptedId = readyProposal("Первый вариант.");
+    const otherId = readyProposal("Второй вариант.");
+
+    acceptProposal(db, acceptedId, {
+      requestId: "r1",
+      expectedVersionId: null,
+      expectedDraftRevision: null,
+      acknowledgeStale: false,
+    });
+
+    expect(loadProposal(db, acceptedId)?.status).toBe("accepted");
+    expect(loadProposal(db, otherId)?.status).toBe("superseded");
   });
 });
