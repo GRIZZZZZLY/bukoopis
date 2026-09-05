@@ -40,6 +40,18 @@ export function intakeRequestKey(
   return h.digest("hex").slice(0, 32);
 }
 
+/** Ключ одного файла внутри перетаскивания: журнал помнит, какие файлы прогон
+ *  реально разобрал, чтобы повтор после остановки дочитал только остальные.
+ *  Считается так же, как и ключ всей папки, — от пары «имя + содержимое», а не
+ *  от одного имени: в папке с подпапками два разных файла легко зовутся
+ *  одинаково. */
+export function intakeFileKey(file: { filename: string; content: string }): string {
+  return createHash("sha256")
+    .update(JSON.stringify([file.filename, file.content]))
+    .digest("hex")
+    .slice(0, 32);
+}
+
 export interface LandFragmentsResult {
   next: StudioState;
   landed: IntakeLanded[];
