@@ -129,6 +129,111 @@ const importInputSchema = z.object({
   content: z.string().min(1),
 });
 
+export interface InsertedChapter {
+  chapterId: number;
+  title: string;
+  words: number;
+}
+
+/** Вставка разобранных глав в конец книги. Транзакция охватывает только записи
+ *  в БД; индексация чанков идёт после неё и намеренно best-effort — сбой
+ *  поиска не должен отменять уже сохранённый текст автора. */
+export async function insertChapters(
+  sqlite: DatabaseType,
+  hasVec: boolean,
+  bookId: number,
+  chapters: ParsedChapter[],
+): Promise<InsertedChapter[]> {
+  const max = sqlite
+    .prepare("SELECT MAX(order_index) as m FROM chapters WHERE book_id = ?")
+    .get(bookId) as { m: number | null };
+  let nextOrder = (max.m ?? 0) + 10;
+
+  const now = new Date().toISOString();
+  const insertChapter = sqlite.prepare(
+    `INSERT INTO chapters (book_id, order_index, title, status, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?)`,
+  );
+  const insertVersion = sqlite.prepare(
+    `INSERT INTO chapter_versions
+     (chapter_id, parent_version_id, content_json, content_text, word_count, source, created_at)
+     VALUES (?, NULL, ?, ?, ?, 'manual', ?)`,
+  );
+  const updateChapter = sqlite.prepare(
+    "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
+  );
+  const bumpBook = sqlite.prepare(
+    "UPDATE books SET updated_at = ? WHERE id = ?",
+  );
+
+  const created: {
+    chapterId: number;
+    title: string;
+    words: number;
+    versionId: number;
+    orderIndex: number;
+    body: string;
+  }[] = [];
+
+  const tx = sqlite.transaction(() => {
+    for (const ch of chapters) {
+      const info = insertChapter.run(bookId, nextOrder, ch.title, now, now);
+      const chapterId = Number(info.lastInsertRowid);
+      const wordCount = countWords(ch.body);
+      const contentJson = JSON.stringify(plainTextToProseMirror(ch.body));
+      const vinfo = insertVersion.run(
+        chapterId,
+        contentJson,
+        ch.body,
+        wordCount,
+        now,
+      );
+      const versionId = Number(vinfo.lastInsertRowid);
+      updateChapter.run(versionId, now, chapterId);
+      created.push({
+        chapterId,
+        title: ch.title,
+        words: wordCount,
+        versionId,
+        orderIndex: nextOrder,
+        body: ch.body,
+      });
+      nextOrder += 10;
+    }
+    bumpBook.run(now, bookId);
+  });
+  tx();
+
+  // Index chunks outside transaction (async + best-effort). Import keeps
+  // the cheap synchronous path (no LLM extractors for bulk import); once a
+  // chapter's chunks land we point memory_version_id at the imported
+  // version so retrieval (which reads by memory_version_id, ADR 0002 I2)
+  // sees it immediately.
+  for (const item of created) {
+    try {
+      await indexChapterVersion(sqlite, hasVec, {
+        bookId,
+        chapterId: item.chapterId,
+        chapterOrder: item.orderIndex,
+        versionId: item.versionId,
+        language: "ru",
+        text: item.body,
+      });
+      sqlite
+        .prepare("UPDATE chapters SET memory_version_id = ? WHERE id = ?")
+        .run(item.versionId, item.chapterId);
+    } catch (e) {
+      console.warn("[import] indexing failed for chapter", item.chapterId, e);
+    }
+  }
+
+  return created.map(({ chapterId, title, words }) => ({
+    chapterId,
+    title,
+    words,
+  }));
+}
+
 export function createImportExportRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
@@ -158,96 +263,8 @@ export function createImportExportRoute(
     const chapters = parseChapters(parsed.data.content, stem);
     if (chapters.length === 0) return badRequest(c, "no chapters detected");
 
-    const max = sqlite
-      .prepare("SELECT MAX(order_index) as m FROM chapters WHERE book_id = ?")
-      .get(id) as { m: number | null };
-    let nextOrder = (max.m ?? 0) + 10;
-
-    const now = new Date().toISOString();
-    const insertChapter = sqlite.prepare(
-      `INSERT INTO chapters (book_id, order_index, title, status, created_at, updated_at)
-       VALUES (?, ?, ?, 'draft', ?, ?)`,
-    );
-    const insertVersion = sqlite.prepare(
-      `INSERT INTO chapter_versions
-       (chapter_id, parent_version_id, content_json, content_text, word_count, source, created_at)
-       VALUES (?, NULL, ?, ?, ?, 'manual', ?)`,
-    );
-    const updateChapter = sqlite.prepare(
-      "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
-    );
-    const bumpBook = sqlite.prepare(
-      "UPDATE books SET updated_at = ? WHERE id = ?",
-    );
-
-    const created: {
-      chapterId: number;
-      title: string;
-      words: number;
-      versionId: number;
-      orderIndex: number;
-      body: string;
-    }[] = [];
-
-    const tx = sqlite.transaction(() => {
-      for (const ch of chapters) {
-        const info = insertChapter.run(id, nextOrder, ch.title, now, now);
-        const chapterId = Number(info.lastInsertRowid);
-        const wordCount = countWords(ch.body);
-        const contentJson = JSON.stringify(plainTextToProseMirror(ch.body));
-        const vinfo = insertVersion.run(
-          chapterId,
-          contentJson,
-          ch.body,
-          wordCount,
-          now,
-        );
-        const versionId = Number(vinfo.lastInsertRowid);
-        updateChapter.run(versionId, now, chapterId);
-        created.push({
-          chapterId,
-          title: ch.title,
-          words: wordCount,
-          versionId,
-          orderIndex: nextOrder,
-          body: ch.body,
-        });
-        nextOrder += 10;
-      }
-      bumpBook.run(now, id);
-    });
-    tx();
-
-    // Index chunks outside transaction (async + best-effort). Import keeps
-    // the cheap synchronous path (no LLM extractors for bulk import); once a
-    // chapter's chunks land we point memory_version_id at the imported
-    // version so retrieval (which reads by memory_version_id, ADR 0002 I2)
-    // sees it immediately.
-    for (const item of created) {
-      try {
-        await indexChapterVersion(sqlite, hasVec, {
-          bookId: id,
-          chapterId: item.chapterId,
-          chapterOrder: item.orderIndex,
-          versionId: item.versionId,
-          language: "ru",
-          text: item.body,
-        });
-        sqlite
-          .prepare("UPDATE chapters SET memory_version_id = ? WHERE id = ?")
-          .run(item.versionId, item.chapterId);
-      } catch (e) {
-        console.warn("[import] indexing failed for chapter", item.chapterId, e);
-      }
-    }
-
-    return c.json({
-      created: created.map(({ chapterId, title, words }) => ({
-        chapterId,
-        title,
-        words,
-      })),
-    });
+    const created = await insertChapters(sqlite, hasVec, id, chapters);
+    return c.json({ created });
   });
 
   // ─────── Export .md ───────

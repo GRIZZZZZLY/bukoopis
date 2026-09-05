@@ -17,6 +17,7 @@ import { registerAspectPlaybookContract } from "./aspects/playbook.js";
 import { registerAspectVariantsContract } from "./aspects/variants.js";
 import { registerAspectRefineContract } from "./aspects/refine.js";
 import { registerAspectEntityVariantsContract } from "./aspects/entity-variants.js";
+import { registerMaterialClassifierContract } from "./intake/classifier.js";
 
 /**
  * Registers all agent structured-output contracts. Must be called once at
@@ -30,6 +31,7 @@ import { registerAspectEntityVariantsContract } from "./aspects/entity-variants.
  * Phase B2 (Studio): concept_refiner.
  * Phase C2 (Studio): aspect_playbook, aspect_variants, aspect_refine.
  * Замысел: pitch_generator, pitch_blender.
+ * Приём материала: material_classifier.
  */
 export function registerAllAgentContracts(): void {
   registerCanonCriticContract();
@@ -49,4 +51,5 @@ export function registerAllAgentContracts(): void {
   registerAspectVariantsContract();
   registerAspectRefineContract();
   registerAspectEntityVariantsContract();
+  registerMaterialClassifierContract();
 }

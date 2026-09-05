@@ -205,6 +205,41 @@ describe("deriveStageStatus", () => {
     expect(deriveStageStatus(s)).toBe("skipped");
   });
 
+  it("is in_progress while an optional aspect still awaits a decision", () => {
+    // Drafts from the author's own material land exactly here: optional,
+    // `reviewing`, nothing accepted yet. Reading that as "skipped" hides the
+    // whole stage behind «Этап пропущен» and the material becomes unreachable.
+    const s = stage({
+      aspects: [
+        aspect({ status: "reviewing", required: false, source: "import" }),
+        aspect({ order: 1, status: "reviewing", required: false, source: "import" }),
+      ],
+    });
+    expect(deriveStageStatus(s)).toBe("in_progress");
+  });
+
+  it("does not demote a finished stage that has fresh drafts on it", () => {
+    const s = stage({
+      status: "complete",
+      playbookGenerated: true,
+      aspects: [
+        aspect({ status: "accepted", finalPayload: "x" }),
+        aspect({ order: 1, status: "reviewing", required: false, source: "import" }),
+      ],
+    });
+    expect(deriveStageStatus(s)).toBe("complete");
+  });
+
+  it("is in_progress, not skipped, when a stage marked complete gains drafts", () => {
+    // A stage the importer marked complete outright carries no accepted aspect
+    // to vouch for it. Once drafts land it is honest work-in-progress.
+    const s = stage({
+      status: "complete",
+      aspects: [aspect({ status: "reviewing", required: false, source: "import" })],
+    });
+    expect(deriveStageStatus(s)).toBe("in_progress");
+  });
+
   it("never downgrades an explicitly skipped stage", () => {
     const s = stage({
       status: "skipped",

@@ -21,6 +21,7 @@ import type {
   CreateRelationshipInput,
   GenerationConfig,
   Hook,
+  IntakeSummaryRow,
   Item,
   Location,
   PitchMixField,
@@ -52,6 +53,15 @@ export type ChapterWithMemory = ChapterWithCurrentVersion & {
   memory?: ChapterMemoryInfo;
   draft?: ChapterDraft | null;
 };
+
+// ── Intake (Приём материала) ──
+export interface IntakeResponse {
+  summary: IntakeSummaryRow[];
+  ideaSet: boolean;
+  chapters: Array<{ chapterId: number; title: string; words: number }>;
+  failures: Array<{ filename: string; message: string }>;
+  revision: number;
+}
 
 class ApiError extends Error {
   constructor(
@@ -648,6 +658,18 @@ export const api = {
     }>(`/api/books/${bookId}/aspects/${aspectId}/materialize`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+
+  /** Файлы уже прочитаны в текст на стороне браузера (кроме .docx, который
+   *  браузер прочитать как текст не может — тот едет как base64, и сервер сам
+   *  превращает его в текст); сервер решает, что куда положить. */
+  intake: (
+    bookId: number,
+    files: Array<{ filename: string; content?: string; contentBase64?: string }>,
+  ) =>
+    req<IntakeResponse>(`/api/books/${bookId}/intake`, {
+      method: "POST",
+      body: JSON.stringify({ files }),
     }),
 };
 

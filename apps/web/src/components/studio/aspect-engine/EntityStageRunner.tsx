@@ -26,6 +26,19 @@ interface EntitySetPayload {
   }>;
 }
 
+/** Полезная нагрузка не той формы — не повод ронять приложение. Единственная
+ *  граница ошибок живёт в main.tsx, поэтому брошенное здесь исключение уводит
+ *  на экран ошибки всю программу, а не портит одну карточку. Раньше сюда
+ *  приезжал markdown-черновик, положенный интейком на этап сущностей. */
+function UnreadablePayload() {
+  return (
+    <p className="text-xs text-[var(--color-ink-amber-fg)]">
+      Не удалось показать это карточками — черновик сохранён в другом виде.
+      Текст цел: перегенерируйте раздел или поищите его на этапе «Лор».
+    </p>
+  );
+}
+
 interface MaterializeResult {
   aspectId: string;
   createdEntityIds: number[];
@@ -133,6 +146,20 @@ export function EntityStageRunner({
   onMaterialize,
 }: Props) {
   const adapter = createEntityAdapter(stageId);
+
+  /** Единственная дверь к рендерерам адаптера: всё, что не прошло схему,
+   *  показывается сообщением, а не падает во время рендера. */
+  function renderPayload(
+    payload: unknown,
+    how: "variant" | "final",
+  ): React.ReactNode {
+    const parsed = adapter.payloadSchema.safeParse(payload);
+    if (!parsed.success) return <UnreadablePayload />;
+    return how === "variant"
+      ? adapter.renderVariant(parsed.data)
+      : adapter.renderFinal(parsed.data);
+  }
+
   const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>(
     {},
@@ -556,7 +583,7 @@ export function EntityStageRunner({
                         Принять
                       </button>
                     </div>
-                    {adapter.renderVariant(v.payload as EntitySetPayload)}
+                    {renderPayload(v.payload, "variant")}
                   </div>
                 ))}
                 <button
@@ -670,7 +697,7 @@ export function EntityStageRunner({
 
             {aspect.status === "accepted" &&
               aspect.finalPayload !== undefined && (
-                <div>{adapter.renderFinal(aspect.finalPayload as EntitySetPayload)}</div>
+                <div>{renderPayload(aspect.finalPayload, "final")}</div>
               )}
 
             {aspect.status === "skipped" && (

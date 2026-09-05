@@ -472,6 +472,9 @@ export function AspectRunner<TPayload>({
                     (обязательно)
                   </span>
                 )}
+                {aspect.source === "import" && (
+                  <span className="pill pill-brass">из ваших материалов</span>
+                )}
               </div>
               <span
                 aria-label={`status-${aspect.status}`}

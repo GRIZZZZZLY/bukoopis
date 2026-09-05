@@ -281,4 +281,62 @@ describe("EntityStageRunner", () => {
     expect(next.aspects[0]!.status).toBe("accepted");
     expect(next.aspects[0]!.emits?.entityIds).toEqual([42]);
   });
+
+  it("survives a variant payload that is not an entity set", () => {
+    // The renderer used to read `.candidates` off whatever was there. A payload
+    // of the wrong shape threw during render, and the only error boundary sits
+    // at the app root — one bad producer took the whole app to its error screen.
+    const broken = makeAspect({
+      id: "broken",
+      name: "Связи",
+      status: "reviewing",
+      variants: [
+        {
+          id: "v1",
+          label: "из ваших материалов",
+          payloadKind: "markdown",
+          payload: "Нейла водит людей через барьер.",
+          status: "generated",
+          editSource: "manual",
+          generatedAt: "2026-09-05T10:00:00.000Z",
+        },
+      ],
+    });
+    expect(() =>
+      render(
+        <EntityStageRunner
+          stage={makeStage([broken])}
+          revision={0}
+          stageId="characters"
+          generator={generator as never}
+          onPatch={vi.fn()}
+          onMaterialize={materialize}
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getByText("Связи")).toBeInTheDocument();
+    expect(screen.getByText(/не удалось показать/i)).toBeInTheDocument();
+  });
+
+  it("survives a finalPayload that is not an entity set", () => {
+    const broken = makeAspect({
+      id: "broken-final",
+      name: "Реликвии",
+      status: "accepted",
+      finalPayload: "Три реликвии, ни одна не названа.",
+    });
+    expect(() =>
+      render(
+        <EntityStageRunner
+          stage={makeStage([broken])}
+          revision={0}
+          stageId="items"
+          generator={generator as never}
+          onPatch={vi.fn()}
+          onMaterialize={materialize}
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getByText(/не удалось показать/i)).toBeInTheDocument();
+  });
 });

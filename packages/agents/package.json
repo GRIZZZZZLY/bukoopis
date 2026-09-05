@@ -11,6 +11,7 @@
     "./concept/refiner": "./src/concept/refiner.ts",
     "./concept/pitches": "./src/concept/pitches.ts",
     "./concept/pitch-blend": "./src/concept/pitch-blend.ts",
+    "./intake/classifier": "./src/intake/classifier.ts",
     "./aspects/playbook": "./src/aspects/playbook.ts",
     "./aspects/variants": "./src/aspects/variants.ts",
     "./aspects/refine": "./src/aspects/refine.ts",

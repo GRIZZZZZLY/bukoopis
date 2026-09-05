@@ -26,6 +26,13 @@ afterEach(() => {
   t.cleanup();
 });
 
+async function createBook(): Promise<number> {
+  const r = await sendJson<BookJson>(t.app, "/api/books", "POST", {
+    title: "Test",
+  });
+  return r.id;
+}
+
 describe("parseChapters", () => {
   it("splits markdown by H1", () => {
     const md = `# Глава первая\n\nТекст первой главы.\n\n# Глава вторая\n\nТекст второй главы.`;
@@ -80,6 +87,24 @@ describe("import endpoint", () => {
       content: "# X\n\ntext",
     });
     expect(res.status).toBe(404);
+  });
+
+  it("importing twice appends chapters instead of renumbering from scratch", async () => {
+    const id = await createBook();
+    await sendJson(t.app, `/api/books/${id}/import`, "POST", {
+      filename: "часть1.md",
+      content: "# Глава A\nтекст A\n\n# Глава B\nтекст B",
+    });
+    const second = await sendJson<{ created: Array<{ title: string }> }>(
+      t.app, `/api/books/${id}/import`, "POST",
+      { filename: "часть2.md", content: "# Глава C\nтекст C" },
+    );
+    expect(second.created.map((c) => c.title)).toEqual(["Глава C"]);
+    const chapters = await sendJson<Array<{ title: string; orderIndex: number }>>(
+      t.app, `/api/books/${id}/chapters`, "GET",
+    );
+    expect(chapters.map((c) => c.title)).toEqual(["Глава A", "Глава B", "Глава C"]);
+    expect(chapters.map((c) => c.orderIndex)).toEqual([10, 20, 30]);
   });
 });
 

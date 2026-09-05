@@ -229,10 +229,20 @@ export function deriveStageStatus(stage: StageState): StageStatus {
     a.status === "accepted" || a.status === "skipped";
   const requiredSettled = stage.aspects.every((a) => !a.required || settled(a));
   if (!requiredSettled) return "in_progress";
-  // Nothing accepted anywhere means the author walked past every aspect. Calling
-  // that "complete" would overstate it, but it must still unblock the flow.
-  if (!stage.aspects.some((a) => a.status === "accepted")) return "skipped";
-  return "complete";
+  // Optional aspects never gate completion: a playbook happily proposes sections
+  // the author is free to leave pending forever, and holding the stage open for
+  // them would mean no stage ever closes.
+  if (stage.aspects.some((a) => a.status === "accepted")) return "complete";
+  // Nothing accepted. Two different situations wear that shape, and the old rule
+  // collapsed them into one:
+  //   · every aspect is settled and none was accepted — the author walked past
+  //     the whole stage, so "skipped" is the honest word;
+  //   · aspects are still waiting for a decision — which is where every draft
+  //     from the author's own material lands (optional, `reviewing`, unaccepted).
+  // Calling the second one "skipped" made the stage pages refuse to render it,
+  // so imported material was in the database and unreachable from the interface.
+  if (stage.aspects.some((a) => !settled(a))) return "in_progress";
+  return "skipped";
 }
 
 /** Applies {@link deriveStageStatus} to every stage. Called on the write path so
