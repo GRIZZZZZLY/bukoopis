@@ -141,6 +141,20 @@
       "when": 1785542464153,
       "tag": "0019_style_blend",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1788623932291,
+      "tag": "0020_prose_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1788631807051,
+      "tag": "0021_critique_partial",
+      "breakpoints": true
     }
   ]
 }

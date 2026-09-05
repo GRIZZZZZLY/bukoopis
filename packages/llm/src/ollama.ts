@@ -119,5 +119,8 @@ export async function* streamTextOllama(
     outputTokens,
     cacheCreationInputTokens: 0,
     cacheReadInputTokens: 0,
+    // Ollama /api/chat причину остановки не отдаёт. Врать «end_turn» нельзя:
+    // тогда обрубок по лимиту вывода стал бы «готовой главой».
+    stopReason: null,
   };
 }

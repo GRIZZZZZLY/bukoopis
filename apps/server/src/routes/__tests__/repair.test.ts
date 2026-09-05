@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("@book-forge/agents", async (orig) => ({
+  ...(await orig<typeof import("@book-forge/agents")>()),
+  reviseChapter: vi.fn(),
+}));
+
 import {
   makeTestApp,
   send,
@@ -136,5 +142,74 @@ describe("repair endpoint", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string; details: { message: string } };
     expect(body.details.message).toContain("repair iteration cap");
+  });
+
+  it("repair кладёт кандидата и не двигает текущую версию (AC-16)", async () => {
+    const { reviseChapter } = await import("@book-forge/agents");
+    vi.mocked(reviseChapter).mockImplementation(
+      // eslint-disable-next-line require-yield
+      async function* () {
+        yield "Исправ";
+        return {
+          text: "Исправленный текст.",
+          modelId: "test-model",
+          stopReason: "end_turn",
+          tokens: { input: 1, output: 2, cacheCreation: 0, cacheRead: 0 },
+        };
+      } as never,
+    );
+
+    const Database = (await import("better-sqlite3")).default;
+    const path = `${t.dbDir}/test.sqlite`;
+    const db = new Database(path);
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO critique_reports (chapter_version_id, status, report_json, created_at, completed_at)
+       VALUES (?, 'done', ?, ?, ?)`,
+    ).run(
+      versionId,
+      JSON.stringify({
+        critics: [],
+        blockingCount: 0,
+        suggestionCount: 0,
+        nitCount: 0,
+        generatedAt: now,
+      }),
+      now,
+      now,
+    );
+    const before = db
+      .prepare(
+        "SELECT current_version_id c FROM chapters WHERE id = (SELECT chapter_id FROM chapter_versions WHERE id = ?)",
+      )
+      .get(versionId) as { c: number };
+    db.close();
+
+    const res = await send(
+      t.app,
+      `/api/chapter-versions/${versionId}/repair`,
+      "POST",
+      {},
+    );
+    const raw = await res.text();
+    expect(raw).toContain("event: proposal");
+
+    const db2 = new Database(path);
+    const after = db2
+      .prepare(
+        "SELECT current_version_id c FROM chapters WHERE id = (SELECT chapter_id FROM chapter_versions WHERE id = ?)",
+      )
+      .get(versionId) as { c: number };
+    const proposal = db2
+      .prepare("SELECT kind, status FROM prose_proposals ORDER BY id DESC LIMIT 1")
+      .get() as { kind: string; status: string };
+    const jobs = db2
+      .prepare("SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id != ?")
+      .get(versionId) as { c: number };
+    db2.close();
+
+    expect(after.c).toBe(before.c);
+    expect(proposal).toMatchObject({ kind: "repair", status: "ready" });
+    expect(jobs.c).toBe(0);
   });
 });

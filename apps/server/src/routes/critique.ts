@@ -18,13 +18,14 @@ import {
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
-import {
-  enqueueMemoryJobs,
-  COMMIT_JOB_KINDS,
-} from "../utils/memory-queue.js";
-import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
-import { toVersion } from "../db/rows.js";
+import {
+  createProposal,
+  finishProposal,
+  loadProposal,
+} from "../utils/prose-proposals.js";
+import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
+import { isConfirmedCompletion } from "@book-forge/llm";
 import { loadStyleContext } from "../utils/style-context.js";
 import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
 import { logUsage } from "../utils/usageLogger.js";
@@ -115,6 +116,7 @@ void extractText; // keep import alive if unused
 
 export function createCritiqueRoute(
   sqlite: DatabaseType,
+  cancels: ProposalCancelRegistry,
   memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
   const r = new Hono();
@@ -224,21 +226,21 @@ export function createCritiqueRoute(
               .map((e) => `[${e.critic}] ${e.message}`)
               .join(" | ")
           : null;
+      // Статус — от того, кого просили и кто выжил, а не от длины списка
+      // успешных: прежняя формула на четырёх падениях из четырёх давала done.
+      const status: CritiqueReportStatus =
+        result.report.critics.length === 0
+          ? "error"
+          : result.report.failedCritics.length > 0
+            ? "partial"
+            : "done";
       sqlite
         .prepare(
           `UPDATE critique_reports
            SET status = ?, report_json = ?, error_message = ?, completed_at = ?
            WHERE id = ?`,
         )
-        .run(
-          result.errors.length === result.report.critics.length
-            ? "error"
-            : "done",
-          JSON.stringify(result.report),
-          errorMessage,
-          completedAt,
-          reportRowId,
-        );
+        .run(status, JSON.stringify(result.report), errorMessage, completedAt, reportRowId);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       sqlite
@@ -313,10 +315,20 @@ export function createCritiqueRoute(
     return streamSSE(c, async (stream) => {
       let fullText = "";
       let modelId = "";
+      let stopReason: string | null = null;
       let inputTokens = 0;
       let outputTokens = 0;
       let cacheCreationTokens = 0;
       let cacheReadTokens = 0;
+      let finalized = false;
+      const proposalId = createProposal(sqlite, {
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        kind: "repair",
+        baseVersionId: v.id,
+      });
+      cancels.begin(proposalId);
+      const signal = cancels.signal(proposalId);
       try {
         await stream.writeSSE({
           event: "iteration",
@@ -324,6 +336,10 @@ export function createCritiqueRoute(
             current: nextIteration,
             max: REPAIR_MAX_ITERATIONS,
           }),
+        });
+        await stream.writeSSE({
+          event: "proposal",
+          data: JSON.stringify({ proposalId, baseVersionId: v.id }),
         });
 
         const styleCtx = loadStyleContext(sqlite, book.style_profile_id);
@@ -344,6 +360,7 @@ export function createCritiqueRoute(
           severityFilter: parsed.data.severities,
           iteration: nextIteration,
           config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
+          ...(signal !== undefined ? { signal } : {}),
         });
 
         while (true) {
@@ -351,6 +368,7 @@ export function createCritiqueRoute(
           if (next.done) {
             fullText = next.value.text;
             modelId = next.value.modelId;
+            stopReason = next.value.stopReason;
             inputTokens = next.value.tokens.input;
             outputTokens = next.value.tokens.output;
             cacheCreationTokens = next.value.tokens.cacheCreation;
@@ -363,60 +381,33 @@ export function createCritiqueRoute(
           });
         }
 
-        // Persist as new version: parent = original, branch = repair-N
-        const contentJson = JSON.stringify(prosePlainTextToProseMirror(fullText));
-        const wordCount = countWords(fullText);
-        const branchLabel = `${REPAIR_BRANCH_PREFIX}${nextIteration}`;
-        const now = new Date().toISOString();
-
-        const tx = sqlite.transaction(() => {
-          const info = sqlite
-            .prepare(
-              `INSERT INTO chapter_versions
-               (chapter_id, parent_version_id, content_json, content_text, word_count, source, branch_label, created_at)
-               VALUES (?, ?, ?, ?, ?, 'agent', ?, ?)`,
-            )
-            .run(
-              v.chapter_id,
-              v.id,
-              contentJson,
-              fullText,
-              wordCount,
-              branchLabel,
-              now,
-            );
-          const newVersionId = Number(info.lastInsertRowid);
-          sqlite
-            .prepare(
-              "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
-            )
-            .run(newVersionId, now, v.chapter_id);
-          sqlite
-            .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
-            .run(now, ch.book_id);
-          // ADR 0002: a repaired chapter is a deliberate commit — enqueue the
-          // full memory pipeline atomically with the version row.
-          enqueueMemoryJobs(sqlite, {
-            bookId: ch.book_id,
-            chapterId: ch.id,
-            chapterVersionId: newVersionId,
-            kinds: COMMIT_JOB_KINDS,
+        // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
+        // приходит уже после отмены. Он не имеет права ничего записать.
+        if (cancels.shouldStop(proposalId)) {
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
           });
-          markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
-          // The revised text replaces the editor content — drop the stale draft.
-          sqlite
-            .prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?")
-            .run(ch.id);
-          return newVersionId;
-        });
-        const newVersionId = tx();
-        memoryWorker?.kick();
+          return;
+        }
 
-        const newRow = sqlite
-          .prepare("SELECT * FROM chapter_versions WHERE id = ?")
-          .get(newVersionId) as
-          | ChapterVersionRow
-          | undefined;
+        // Кандидат, не версия: ветка repair-N и коммит в чаптер появятся при
+        // принятии — до тех пор ни версии, ни памяти, ни удаления черновика.
+        const confirmed = isConfirmedCompletion(stopReason);
+        finishProposal(sqlite, proposalId, {
+          status: confirmed ? "ready" : "incomplete",
+          contentText: fullText,
+          contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
+          wordCount: countWords(fullText),
+          completion: confirmed ? "confirmed" : "unconfirmed",
+          stopReason,
+          modelId,
+          backend: "anthropic",
+        });
+        finalized = true;
 
         logUsage(sqlite, {
           route: "reviser.repair",
@@ -429,13 +420,12 @@ export function createCritiqueRoute(
           },
           bookId: ch.book_id,
           chapterId: ch.id,
-          versionId: newVersionId,
         });
 
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
-            version: newRow ? toVersion(newRow) : null,
+            proposal: loadProposal(sqlite, proposalId),
             iteration: nextIteration,
             tokens: {
               input: inputTokens,
@@ -446,12 +436,35 @@ export function createCritiqueRoute(
           }),
         });
       } catch (e) {
+        if (cancels.shouldStop(proposalId)) {
+          // Это не сбой, это наша же отмена: SDK бросает при аборте сигнала.
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
+        }
+        const message = e instanceof Error ? e.message : String(e);
+        // Уже дописанный кандидат не понижаем: если logUsage или финальная
+        // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
+        // и правильный статус — перезаписывать его в failed значило бы
+        // потерять принимаемый прогон только из-за сбоя после генерации.
+        if (!finalized) {
+          finishProposal(sqlite, proposalId, {
+            status: "failed",
+            errorMessage: message,
+            stopReason,
+          });
+        }
         await stream.writeSSE({
           event: "error",
-          data: JSON.stringify({
-            message: e instanceof Error ? e.message : String(e),
-          }),
+          data: JSON.stringify({ message }),
         });
+      } finally {
+        cancels.end(proposalId);
       }
     });
   });

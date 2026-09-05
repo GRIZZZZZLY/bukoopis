@@ -56,6 +56,7 @@ export async function* runChapterWriter(
   {
     text: string;
     modelId: string;
+    stopReason: string | null;
     tokens: {
       input: number;
       output: number;

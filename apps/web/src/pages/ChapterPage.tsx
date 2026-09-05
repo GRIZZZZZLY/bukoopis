@@ -35,6 +35,10 @@ import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
+import {
+  ProposalPanel,
+  type ProposalReread,
+} from "@/components/chapter/ProposalPanel";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
@@ -45,33 +49,17 @@ import {
   MemoryStaleBanner,
   MemoryLagWarning,
 } from "@/components/memory/MemoryStatus";
-import type { ChapterMemoryInfo } from "@/api/client";
+import type { ChapterMemoryInfo, ChapterWithMemory } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
+import { useRestoredProposal } from "@/lib/useRestoredProposal";
 import type {
   Book,
   ChapterBeatSheetVariant,
   ChapterVersion,
-  ChapterWithCurrentVersion,
+  ProseChange,
+  ProseProposal,
 } from "@book-forge/shared";
 import { EMPTY_DOC, calculateCost, MODEL_IDS } from "@book-forge/shared";
-
-interface WriterDonePayload {
-  version: ChapterVersion;
-  tokens: {
-    input: number;
-    output: number;
-    cacheCreation?: number;
-    cacheRead?: number;
-  };
-}
-
-function formatCostToast(p: WriterDonePayload): string {
-  const cacheBits =
-    (p.tokens.cacheRead ?? 0) > 0 || (p.tokens.cacheCreation ?? 0) > 0
-      ? ` · cache R${p.tokens.cacheRead ?? 0}/W${p.tokens.cacheCreation ?? 0}`
-      : "";
-  return `${p.tokens.input} in / ${p.tokens.output} out${cacheBits}`;
-}
 
 function emptyDoc(): unknown {
   return JSON.parse(JSON.stringify(EMPTY_DOC));
@@ -97,7 +85,7 @@ export function ChapterPage() {
   }>();
   const id = Number(chapterId);
 
-  const [chapter, setChapter] = useState<ChapterWithCurrentVersion | null>(
+  const [chapter, setChapter] = useState<ChapterWithMemory | null>(
     null,
   );
   const [book, setBook] = useState<Book | null>(null);
@@ -113,6 +101,9 @@ export function ChapterPage() {
   );
   const [writing, setWriting] = useState(false);
   const [writerBuffer, setWriterBuffer] = useState("");
+  const [proposal, setProposal] = useState<ProseProposal | null>(null);
+  const [proposalChanges, setProposalChanges] = useState<ProseChange[]>([]);
+  const [runningProposalId, setRunningProposalId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editorTick, setEditorTick] = useState(0);
@@ -147,7 +138,28 @@ export function ChapterPage() {
       try {
         // ADR 0002 (Step 6): autosave UPSERTs the working draft — no
         // immutable version, no memory jobs. Commit happens on Ctrl+S.
-        await api.saveDraft(id, json);
+        const saved = await api.saveDraft(id, json);
+        // Ревизия черновика — CAS-токен принятия кандидата. Выбрасывать её
+        // и ждать следующего load() значило, что после первого же автосейва
+        // любое принятие отвечало 409: страница называла серверу ревизию,
+        // которой уже нет. Именно этот случай — автор печатает, пока модель
+        // пишет — вся ветка и обслуживает.
+        setChapter((prev) =>
+          prev
+            ? {
+                ...prev,
+                draft: {
+                  chapterId: id,
+                  contentJson: JSON.stringify(json),
+                  contentText: prev.draft?.contentText ?? "",
+                  wordCount: saved.wordCount,
+                  baseVersionId: prev.currentVersionId ?? null,
+                  revision: saved.revision,
+                  updatedAt: saved.updatedAt,
+                },
+              }
+            : prev,
+        );
         setMemory((m) =>
           m && m.state === "fresh" ? { ...m, state: "none" } : m,
         );
@@ -302,6 +314,37 @@ export function ChapterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, editor]);
 
+  /** Перечитать главу после 409 и вернуть панели свежие ожидания. Редактор
+   *  намеренно не трогаем: `load()` затёр бы то, что автор успел напечатать,
+   *  а кандидат должен пережить перечитывание — иначе выхода из конфликта
+   *  просто нет. */
+  const rereadForProposal = useCallback(
+    async (proposalId: number): Promise<ProposalReread> => {
+      const [ch, res] = await Promise.all([
+        api.getChapter(id),
+        api.getProposalChanges(proposalId),
+      ]);
+      setChapter(ch);
+      return {
+        expectedVersionId: ch.currentVersionId ?? null,
+        expectedDraftRevision: ch.draft?.revision ?? null,
+        changes: res.changes,
+      };
+    },
+    [id],
+  );
+
+  // Кандидат, оставшийся в базе с прошлой загрузки страницы: предлагаем его
+  // снова, но только если из потока не пришёл более свежий.
+  const restoredProposal = useRestoredProposal(id);
+  useEffect(() => {
+    if (!restoredProposal) return;
+    setProposal((prev) => prev ?? restoredProposal.proposal);
+    setProposalChanges((prev) =>
+      prev.length > 0 ? prev : restoredProposal.changes,
+    );
+  }, [restoredProposal]);
+
   const isPreview = previewVersionId !== null;
   const previewVersion = useMemo(
     () => versions?.find((v) => v.id === previewVersionId) ?? null,
@@ -450,9 +493,10 @@ export function ChapterPage() {
   }
 
   function onCancelWriter() {
-    const ctrl = writerAbortRef.current;
-    if (!ctrl) return;
-    ctrl.abort();
+    if (runningProposalId !== null) {
+      void api.cancelProposal(runningProposalId).catch(() => undefined);
+    }
+    writerAbortRef.current?.abort();
     writerAbortRef.current = null;
   }
 
@@ -471,15 +515,20 @@ export function ChapterPage() {
           onChunk: (text) => {
             setWriterBuffer((b) => b + text);
           },
+          onProposal: (proposalId) => setRunningProposalId(proposalId),
           onDone: async (payload) => {
             setWriting(false);
             writerAbortRef.current = null;
-            toast.success("Глава сохранена", {
-              description: formatCostToast(payload as WriterDonePayload),
-            });
-            // Trigger Canon panel to refresh / start polling.
-            setCanonRunningSignal((s) => s + 1);
-            await load();
+            setRunningProposalId(null);
+            if (payload.cancelled) {
+              toast.info("Генерация остановлена");
+              return;
+            }
+            setProposal(payload.proposal);
+            const { changes } = await api.getProposalChanges(payload.proposal.id);
+            setProposalChanges(changes);
+            // Глава намеренно не перезагружается: текущая версия не менялась,
+            // а load() затёр бы несохранённые правки автора.
           },
           onError: (msg) => {
             toast.error("Ошибка Writer", {
@@ -754,6 +803,33 @@ export function ChapterPage() {
                 </pre>
               </div>
             )}
+
+            {proposal && (
+              <ProposalPanel
+                proposal={proposal}
+                changes={proposalChanges}
+                expectedVersionId={chapter?.currentVersionId ?? null}
+                expectedDraftRevision={chapter?.draft?.revision ?? null}
+                onReread={async () => {
+                  const fresh = await rereadForProposal(proposal.id);
+                  setProposalChanges(fresh.changes);
+                  return fresh;
+                }}
+                onAccepted={async () => {
+                  setProposal(null);
+                  setProposalChanges([]);
+                  setWriterBuffer("");
+                  setCanonRunningSignal((s) => s + 1);
+                  await load();
+                  toast.success("Глава принята");
+                }}
+                onRejected={() => {
+                  setProposal(null);
+                  setProposalChanges([]);
+                  setWriterBuffer("");
+                }}
+              />
+            )}
           </div>
 
           <div className="ms-wrap">
@@ -846,6 +922,9 @@ export function ChapterPage() {
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
             <CritiquePanel
               versionId={chapter.currentVersionId}
+              expectedVersionId={chapter.currentVersionId}
+              expectedDraftRevision={chapter.draft?.revision ?? null}
+              onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />
             {sidebar}
@@ -868,6 +947,9 @@ export function ChapterPage() {
           {mobilePanelsOpen && (
             <CritiquePanel
               versionId={chapter.currentVersionId}
+              expectedVersionId={chapter.currentVersionId}
+              expectedDraftRevision={chapter.draft?.revision ?? null}
+              onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />
           )}

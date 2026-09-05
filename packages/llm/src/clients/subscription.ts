@@ -215,6 +215,9 @@ export class SubscriptionBackendClient {
       outputTokens: final.outputTokens,
       cacheCreationInputTokens: final.cacheCreation,
       cacheReadInputTokens: final.cacheRead,
+      // SDK подписки причину остановки не отдаёт. Врать «end_turn» нельзя:
+      // тогда обрубок по лимиту вывода стал бы «готовой главой».
+      stopReason: null,
     };
   }
 

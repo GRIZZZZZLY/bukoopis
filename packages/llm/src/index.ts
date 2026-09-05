@@ -1,7 +1,7 @@
 export { resolveModelId, MODEL_IDS } from "./models.js";
 export { callStructured, LLMValidationError } from "./structured.js";
 export type { StructuredCallOptions, StructuredUsage } from "./structured.js";
-export { streamText, buildSystemParam } from "./stream.js";
+export { streamText, buildSystemParam, isConfirmedCompletion } from "./stream.js";
 export type { StreamCallOptions, StreamCallResult, SystemBlock } from "./stream.js";
 export { streamTextOllama } from "./ollama.js";
 export type { OllamaStreamOptions } from "./ollama.js";

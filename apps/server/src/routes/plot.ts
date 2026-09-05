@@ -45,24 +45,23 @@ import {
   renderOpenNotesPrompt,
 } from "../utils/book-notes.js";
 import { logUsage } from "../utils/usageLogger.js";
-import { triggerCanonExtractionAfterWriter } from "./canon-extraction.js";
-import {
-  enqueueMemoryJobs,
-  COMMIT_JOB_KINDS,
-} from "../utils/memory-queue.js";
-import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   toBook,
   toChapter,
-  toVersion,
   type BookRow,
   type ChapterRow,
-  type ChapterVersionRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { EMPTY_DOC } from "@book-forge/shared";
+import {
+  createProposal,
+  finishProposal,
+  loadProposal,
+} from "../utils/prose-proposals.js";
+import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
+import { isConfirmedCompletion } from "@book-forge/llm";
 
 interface BookContext {
   title: string;
@@ -130,6 +129,7 @@ const MAX_WRITER_CONTEXT_TOKENS = 80_000;
 export function createPlotRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
+  cancels: ProposalCancelRegistry,
   memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
   const r = new Hono();
@@ -458,7 +458,29 @@ export function createPlotRoute(
       let cacheCreationTokens = 0;
       let cacheReadTokens = 0;
       let modelId = "";
+      let stopReason: string | null = null;
+      let finalized = false;
+
+      // Кандидат заводится до первого токена: он же — то, что отменяют, и то,
+      // что остаётся в базе, если процесс умрёт на середине.
+      const proposalId = createProposal(sqlite, {
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        kind: "write",
+        baseVersionId: ch.current_version_id,
+      });
+      cancels.begin(proposalId);
+      const signal = cancels.signal(proposalId);
+
       try {
+        await stream.writeSSE({
+          event: "proposal",
+          data: JSON.stringify({
+            proposalId,
+            baseVersionId: ch.current_version_id,
+          }),
+        });
+
         const gen = runChapterWriter({
           bookTitle: ctx.title,
           bookPremise: ctx.premise,
@@ -472,21 +494,23 @@ export function createPlotRoute(
           loreContext: inc.has("lore") ? loreContext : null,
           styleContext: inc.has("style") ? styleCtx.prompt : null,
           studioContext: inc.has("studio") ? studioCtx : null,
-          retrievedContext: inc.has("retrieval")
-            ? writerRetrieved.promptBlock
-            : null,
+          retrievedContext: inc.has("retrieval") ? writerRetrieved.promptBlock : null,
           fatigueWords: styleCtx.fatigueBlacklist,
-          config: { variants: 1, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.writerModel },
+          config: {
+            variants: 1,
+            ...parsed.data.config,
+            model: parsed.data.config?.model ?? ctx.writerModel,
+          },
           provider: ctx.writerProvider,
-          ...(ctx.writerLocalModel
-            ? { localModelTag: ctx.writerLocalModel }
-            : {}),
+          ...(ctx.writerLocalModel ? { localModelTag: ctx.writerLocalModel } : {}),
+          ...(signal !== undefined ? { signal } : {}),
         });
         while (true) {
           const next = await gen.next();
           if (next.done) {
             fullText = next.value.text;
             modelId = next.value.modelId;
+            stopReason = next.value.stopReason;
             inputTokens = next.value.tokens.input;
             outputTokens = next.value.tokens.output;
             cacheCreationTokens = next.value.tokens.cacheCreation;
@@ -499,49 +523,31 @@ export function createPlotRoute(
           });
         }
 
-        // Persist version
-        const contentJson = JSON.stringify(prosePlainTextToProseMirror(fullText));
-        const wordCount = countWords(fullText);
-        const now = new Date().toISOString();
-        const parentVersionId = ch.current_version_id;
-        const tx = sqlite.transaction(() => {
-          const info = sqlite
-            .prepare(
-              `INSERT INTO chapter_versions
-               (chapter_id, parent_version_id, content_json, content_text, word_count, source, created_at)
-               VALUES (?, ?, ?, ?, ?, 'agent', ?)`,
-            )
-            .run(id, parentVersionId, contentJson, fullText, wordCount, now);
-          const versionId = Number(info.lastInsertRowid);
-          sqlite
-            .prepare(
-              "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
-            )
-            .run(versionId, now, id);
-          sqlite
-            .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
-            .run(now, ch.book_id);
-          // ADR 0002: writer output is a deliberate commit — version row and
-          // memory jobs are created atomically; the durable worker handles
-          // index/summary/facts/notes asynchronously.
-          enqueueMemoryJobs(sqlite, {
-            bookId: ch.book_id,
-            chapterId: ch.id,
-            chapterVersionId: versionId,
-            kinds: COMMIT_JOB_KINDS,
+        // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
+        // приходит уже после отмены. Он не имеет права ничего записать.
+        if (cancels.shouldStop(proposalId)) {
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
           });
-          markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
-          // Writer output replaces the editor content — drop the stale draft.
-          sqlite
-            .prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?")
-            .run(ch.id);
-          return versionId;
+          return;
+        }
+
+        const confirmed = isConfirmedCompletion(stopReason);
+        finishProposal(sqlite, proposalId, {
+          status: confirmed ? "ready" : "incomplete",
+          contentText: fullText,
+          contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
+          wordCount: countWords(fullText),
+          completion: confirmed ? "confirmed" : "unconfirmed",
+          stopReason,
+          modelId,
+          backend: ctx.writerProvider,
         });
-        const versionId = tx();
-        const v = sqlite
-          .prepare("SELECT * FROM chapter_versions WHERE id = ?")
-          .get(versionId) as ChapterVersionRow;
-        memoryWorker?.kick();
+        finalized = true;
 
         logUsage(sqlite, {
           route: "writer.chapter",
@@ -554,13 +560,12 @@ export function createPlotRoute(
           },
           bookId: ch.book_id,
           chapterId: ch.id,
-          versionId,
         });
 
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
-            version: toVersion(v),
+            proposal: loadProposal(sqlite, proposalId),
             tokens: {
               input: inputTokens,
               output: outputTokens,
@@ -569,18 +574,36 @@ export function createPlotRoute(
             },
           }),
         });
-
-        // Fire-and-forget canon extraction. Frontend polls for the snapshot.
-        // (Separate UI feature — memory summary/facts/notes now flow through
-        // the durable memory_jobs queue enqueued in the commit tx above.)
-        void triggerCanonExtractionAfterWriter(sqlite, ch.id);
       } catch (e) {
+        if (cancels.shouldStop(proposalId)) {
+          // Это не сбой, это наша же отмена: SDK бросает при аборте сигнала.
+          await stream.writeSSE({
+            event: "done",
+            data: JSON.stringify({
+              proposal: loadProposal(sqlite, proposalId),
+              cancelled: true,
+            }),
+          });
+          return;
+        }
+        const message = e instanceof Error ? e.message : String(e);
+        // Уже дописанный кандидат не понижаем: если logUsage или финальная
+        // отправка упали ПОСЛЕ finishProposal, строка уже несёт готовый текст
+        // и правильный статус — перезаписывать его в failed значило бы
+        // потерять принимаемый прогон только из-за сбоя после генерации.
+        if (!finalized) {
+          finishProposal(sqlite, proposalId, {
+            status: "failed",
+            errorMessage: message,
+            stopReason,
+          });
+        }
         await stream.writeSSE({
           event: "error",
-          data: JSON.stringify({
-            message: e instanceof Error ? e.message : String(e),
-          }),
+          data: JSON.stringify({ message, proposalId }),
         });
+      } finally {
+        cancels.end(proposalId);
       }
     });
   });

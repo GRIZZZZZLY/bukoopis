@@ -66,7 +66,7 @@ export function createChaptersRoute(
     // committed version — the client loads it into the editor.
     const draftRow = sqlite
       .prepare(
-        `SELECT chapter_id, content_json, content_text, word_count, base_version_id, updated_at
+        `SELECT chapter_id, content_json, content_text, word_count, base_version_id, revision, updated_at
          FROM chapter_drafts WHERE chapter_id = ?`,
       )
       .get(id) as
@@ -76,6 +76,7 @@ export function createChaptersRoute(
           content_text: string;
           word_count: number;
           base_version_id: number | null;
+          revision: number;
           updated_at: string;
         }
       | undefined;
@@ -86,6 +87,7 @@ export function createChaptersRoute(
           contentText: draftRow.content_text,
           wordCount: draftRow.word_count,
           baseVersionId: draftRow.base_version_id,
+          revision: draftRow.revision,
           updatedAt: draftRow.updated_at,
         }
       : null;
@@ -153,21 +155,25 @@ export function createChaptersRoute(
         .get(ch.current_version_id) as { word_count: number } | undefined;
       prevCount = v?.word_count;
     }
-    sqlite
+    const saved = sqlite
       .prepare(
         `INSERT INTO chapter_drafts
-           (chapter_id, content_json, content_text, word_count, base_version_id, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (chapter_id, content_json, content_text, word_count, base_version_id, revision, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?)
          ON CONFLICT(chapter_id) DO UPDATE SET
            content_json = excluded.content_json,
            content_text = excluded.content_text,
            word_count = excluded.word_count,
            base_version_id = excluded.base_version_id,
-           updated_at = excluded.updated_at`,
+           revision = chapter_drafts.revision + 1,
+           updated_at = excluded.updated_at
+         RETURNING revision`,
       )
-      .run(id, contentJson, contentText, wordCount, ch.current_version_id, now);
+      .get(id, contentJson, contentText, wordCount, ch.current_version_id, now) as {
+      revision: number;
+    };
     recordWritingDelta(sqlite, wordCount - (prevCount ?? 0));
-    return c.json({ chapterId: id, wordCount, updatedAt: now });
+    return c.json({ chapterId: id, wordCount, revision: saved.revision, updatedAt: now });
   });
 
   // ADR 0002: re-enqueue failed memory jobs for the chapter's current

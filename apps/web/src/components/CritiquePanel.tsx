@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, streamRepair } from "@/api/client";
 import {
+  ProposalPanel,
+  type ProposalReread,
+} from "@/components/chapter/ProposalPanel";
+import {
+  ALL_CRITIC_TYPES,
   CRITIC_LABELS,
   SEVERITY_LABELS,
   REPAIR_MAX_ITERATIONS,
@@ -9,14 +14,25 @@ import {
   type CriticReport,
   type CriticType,
   type IssueSeverity,
+  type ProseChange,
+  type ProseProposal,
 } from "@book-forge/shared";
 
 interface Props {
   versionId: number | null;
+  /** Что вкладка считает текущей версией главы — сверяется сервером при
+   *  принятии кандидата self-repair'а. `CritiquePanel` не знает главу целиком,
+   *  поэтому это приходит от `ChapterPage`. */
+  expectedVersionId: number | null;
+  /** Что вкладка считает ревизией черновика; `null` только если черновика
+   *  действительно нет. Раньше здесь всегда передавался `null`, из-за чего
+   *  принятие self-repair отваливалось 409-м у любого автора с автосейвом. */
+  expectedDraftRevision: number | null;
+  /** Перечитать главу после 409 и вернуть свежие ожидания. Панель критики
+   *  главы не знает, поэтому перечитывает её `ChapterPage`. */
+  onRereadProposal?: (proposalId: number) => Promise<ProposalReread>;
   onRepairDone?: () => void | Promise<void>;
 }
-
-const ALL_CRITICS: CriticType[] = ["canon", "style", "editor", "reader"];
 
 const SEVERITY_DOT: Record<IssueSeverity, string> = {
   blocking: "sev-red",
@@ -24,12 +40,32 @@ const SEVERITY_DOT: Record<IssueSeverity, string> = {
   nit: "sev-blue",
 };
 
-export function CritiquePanel({ versionId, onRepairDone }: Props) {
+function criticNames(critics: readonly CriticType[]): string {
+  return critics.map((c) => CRITIC_LABELS[c]).join(", ");
+}
+
+/** Кого просили проверить. Старые отчёты (до появления поля) списка не несут —
+ *  тогда молчим, а не врём про «все четыре». */
+function requestedList(report: CritiqueReport): string {
+  return report.report ? criticNames(report.report.requestedCritics) : "";
+}
+
+function failedList(report: CritiqueReport): string {
+  return report.report ? criticNames(report.report.failedCritics) : "";
+}
+
+export function CritiquePanel({
+  versionId,
+  expectedVersionId,
+  expectedDraftRevision,
+  onRereadProposal,
+  onRepairDone,
+}: Props) {
   const [report, setReport] = useState<CritiqueReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [enabled, setEnabled] = useState<Set<CriticType>>(
-    new Set(ALL_CRITICS),
+    new Set(ALL_CRITIC_TYPES),
   );
   const [error, setError] = useState<string | null>(null);
   const [repairing, setRepairing] = useState(false);
@@ -39,6 +75,16 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
     max: number;
   } | null>(null);
   const [repairError, setRepairError] = useState<string | null>(null);
+  const [repairProposal, setRepairProposal] = useState<ProseProposal | null>(
+    null,
+  );
+  const [repairProposalChanges, setRepairProposalChanges] = useState<
+    ProseChange[]
+  >([]);
+  const [repairProposalId, setRepairProposalId] = useState<number | null>(
+    null,
+  );
+  const [repairStopping, setRepairStopping] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
     new Set<IssueSeverity>(["blocking", "suggestion"]),
   );
@@ -99,31 +145,61 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
     });
   }
 
+  /** Остановить идущий self-repair. Сервер умеет это с той минуты, как repair
+   *  стал заводить кандидата до первого токена: отмена помечает кандидата и
+   *  просит поток прекратиться. Кнопки не было, и остановить было нечем. */
+  async function onStopRepair() {
+    if (repairProposalId === null) return;
+    setRepairStopping(true);
+    try {
+      await api.cancelProposal(repairProposalId);
+    } catch (e) {
+      setRepairError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function onRepair() {
     if (versionId === null) return;
     setRepairing(true);
     setRepairBuffer("");
     setRepairError(null);
     setRepairIteration(null);
+    setRepairProposal(null);
+    setRepairProposalChanges([]);
+    setRepairProposalId(null);
+    setRepairStopping(false);
     try {
       const severities =
         severityFilter.size === 3 ? undefined : [...severityFilter];
       await streamRepair(versionId, severities, {
         onIteration: (current, max) =>
           setRepairIteration({ current, max }),
+        onProposal: (proposalId) => setRepairProposalId(proposalId),
         onChunk: (text) => setRepairBuffer((b) => b + text),
-        onDone: async () => {
+        onDone: async (payload) => {
           setRepairing(false);
-          if (onRepairDone) await onRepairDone();
+          setRepairStopping(false);
+          // Остановленный кандидат принять нельзя (сервер откажет по
+          // статусу), поэтому предлагать его к принятию — обман.
+          if (payload.cancelled) {
+            setRepairProposalId(null);
+            setRepairError("Self-repair остановлен. Глава не изменилась.");
+            return;
+          }
+          setRepairProposal(payload.proposal);
+          const { changes } = await api.getProposalChanges(payload.proposal.id);
+          setRepairProposalChanges(changes);
         },
         onError: (msg) => {
           setRepairError(msg);
           setRepairing(false);
+          setRepairStopping(false);
         },
       });
     } catch (e) {
       setRepairError(e instanceof Error ? e.message : String(e));
       setRepairing(false);
+      setRepairStopping(false);
     }
   }
 
@@ -140,7 +216,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-semibold">Критика версии</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          {ALL_CRITICS.map((c) => (
+          {ALL_CRITIC_TYPES.map((c) => (
             <label key={c} className="text-xs flex items-center gap-1">
               <input
                 type="checkbox"
@@ -165,17 +241,44 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
         </p>
       )}
 
-      {report && report.status === "error" && !report.report && (
-        <p className="text-sm text-[var(--color-ink-red-fg)]">
-          Все критики упали: {report.errorMessage}
-        </p>
+      {report && report.status === "error" && (
+        <div className="border border-[var(--color-ink-red-fg)] rounded-md p-3 flex flex-col gap-1">
+          <p className="text-sm text-[var(--color-ink-red-fg)]">
+            Критика не удалась: ни один критик не ответил.
+            {requestedList(report) && ` Просили: ${requestedList(report)}.`}
+          </p>
+          {report.errorMessage && (
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              {report.errorMessage}
+            </p>
+          )}
+          <p className="text-xs text-[var(--color-muted-foreground)]">
+            Замечаний нет не потому, что их нет, а потому, что разбора не было.
+            Запустите критику ещё раз.
+          </p>
+        </div>
       )}
 
-      {report && report.report && (
+      {report && report.status === "partial" && (
+        <div className="border border-[var(--color-ink-amber-fg)] rounded-md p-3 flex flex-col gap-1">
+          <p className="text-sm text-[var(--color-ink-amber-fg)]">
+            Разбор неполный: не ответили {failedList(report)}. Ниже — только
+            то, что успели сказать остальные.
+          </p>
+          {report.errorMessage && (
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              {report.errorMessage}
+            </p>
+          )}
+        </div>
+      )}
+
+      {report && report.status !== "error" && report.report && (
         <CritiqueResults report={report} />
       )}
 
       {report &&
+        report.status !== "error" &&
         report.report &&
         (report.report.blockingCount + report.report.suggestionCount > 0 ||
           repairing ||
@@ -201,11 +304,21 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
                 <Button onClick={onRepair} disabled={repairing}>
                   {repairing ? "Reviser пишет…" : "Запустить self-repair"}
                 </Button>
+                {repairing && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void onStopRepair()}
+                    disabled={repairProposalId === null || repairStopping}
+                  >
+                    {repairStopping ? "Останавливаю…" : "Остановить"}
+                  </Button>
+                )}
               </div>
             </div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Reviser перепишет главу с приоритетом по выбранным severity.
-              Создаст новую версию-ветку (parent = текущая, branch_label = repair-N).
+              Результат придёт кандидатом ниже — его нужно принять (целиком
+              или частично) или отклонить, глава сама не изменится.
               Лимит итераций: {REPAIR_MAX_ITERATIONS}.
             </p>
             {repairIteration && (
@@ -219,12 +332,45 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
             {repairing && repairBuffer && (
               <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] max-h-[300px] overflow-auto">
                 <div className="text-xs text-[var(--color-muted-foreground)] mb-2">
-                  Live stream (Reviser пишет, после завершения сохранится как новая версия):
+                  Live stream (Reviser пишет; по готовности текст ляжет
+                  кандидатом ниже — его ещё нужно принять):
                 </div>
                 <pre className="whitespace-pre-wrap text-sm font-sans">
                   {repairBuffer}
                 </pre>
               </div>
+            )}
+            {repairProposal && (
+              <ProposalPanel
+                proposal={repairProposal}
+                changes={repairProposalChanges}
+                expectedVersionId={expectedVersionId}
+                expectedDraftRevision={expectedDraftRevision}
+                {...(onRereadProposal
+                  ? {
+                      onReread: async () => {
+                        const fresh = await onRereadProposal(
+                          repairProposal.id,
+                        );
+                        setRepairProposalChanges(fresh.changes);
+                        return fresh;
+                      },
+                    }
+                  : {})}
+                onAccepted={async () => {
+                  setRepairProposal(null);
+                  setRepairProposalChanges([]);
+                  setRepairProposalId(null);
+                  setRepairBuffer("");
+                  if (onRepairDone) await onRepairDone();
+                }}
+                onRejected={() => {
+                  setRepairProposal(null);
+                  setRepairProposalChanges([]);
+                  setRepairProposalId(null);
+                  setRepairBuffer("");
+                }}
+              />
             )}
           </div>
         )}
@@ -251,9 +397,10 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
           сгенерировано: {new Date(r.generatedAt).toLocaleString("ru-RU")}
         </span>
       </div>
-      {report.errorMessage && (
-        <p className="text-xs text-[var(--color-ink-amber-fg)]">
-          Частичные ошибки: {report.errorMessage}
+      {r.requestedCritics.length > 0 && (
+        <p className="text-xs text-[var(--color-muted-foreground)]">
+          Ответили {r.critics.length} из {r.requestedCritics.length}. Просили:{" "}
+          {criticNames(r.requestedCritics)}.
         </p>
       )}
       <div className="flex flex-col gap-3">

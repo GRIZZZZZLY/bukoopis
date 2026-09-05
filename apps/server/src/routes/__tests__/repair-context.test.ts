@@ -50,6 +50,8 @@ const REPORT = {
       ],
     },
   ],
+  requestedCritics: ["style"],
+  failedCritics: [],
   blockingCount: 0,
   suggestionCount: 1,
   nitCount: 0,

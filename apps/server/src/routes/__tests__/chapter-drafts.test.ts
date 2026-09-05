@@ -227,4 +227,43 @@ describe("chapter drafts (ADR 0002, Step 6)", () => {
     expect(ch.currentVersionId).toBe(v1.id);
     expect(ch.draft).toBeNull();
   });
+
+  it("ревизия черновика растёт на каждое автосохранение", async () => {
+    const doc = (text: string) => ({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    });
+
+    const first = await sendJson<{ revision: number }>(
+      t.app,
+      `/api/chapters/${chapterId}/draft`,
+      "PUT",
+      { contentJson: doc("Первый вариант.") },
+    );
+    expect(first.revision).toBe(1);
+
+    const second = await sendJson<{ revision: number }>(
+      t.app,
+      `/api/chapters/${chapterId}/draft`,
+      "PUT",
+      { contentJson: doc("Второй вариант.") },
+    );
+    expect(second.revision).toBe(2);
+
+    const ch = await sendJson<{ draft: { revision: number } | null }>(
+      t.app,
+      `/api/chapters/${chapterId}`,
+      "GET",
+    );
+    expect(ch.draft?.revision).toBe(2);
+  });
+
+  it("до первого автосохранения черновика нет вовсе", async () => {
+    const ch = await sendJson<{ draft: unknown }>(
+      t.app,
+      `/api/chapters/${chapterId}`,
+      "GET",
+    );
+    expect(ch.draft).toBeNull();
+  });
 });
