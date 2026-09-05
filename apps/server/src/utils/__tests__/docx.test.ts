@@ -42,4 +42,44 @@ describe("docxToPlainText", () => {
     const bytes = await zip.generateAsync({ type: "uint8array" });
     await expect(docxToPlainText(bytes)).rejects.toThrow(/word\/document\.xml/);
   });
+
+  it("keeps a manual line break as a separator between runs", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Привет</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>мир</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(await docxToPlainText(bytes)).toBe("Привет\nмир");
+  });
+
+  it("keeps a tab as a separator between runs", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Имя</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>Фамилия</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(await docxToPlainText(bytes)).toBe("Имя\tФамилия");
+  });
+
+  it("also handles the paired <w:br></w:br> and <w:tab></w:tab> forms", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>А</w:t></w:r><w:r><w:br></w:br></w:r><w:r><w:t>Б</w:t></w:r><w:r><w:tab></w:tab></w:r><w:r><w:t>В</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(await docxToPlainText(bytes)).toBe("А\nБ\tВ");
+  });
+
+  it("treats a <w:br> carrying attributes the same as a bare one", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Раз</w:t></w:r><w:r><w:br w:type="page"/></w:r><w:r><w:t>Два</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(await docxToPlainText(bytes)).toBe("Раз\nДва");
+  });
 });
