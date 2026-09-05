@@ -68,7 +68,8 @@ describe("acceptProposal", () => {
       requestId: "r1",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     expect(out.versionId).toBeGreaterThan(0);
     expect(out.replayed).toBe(false);
@@ -97,13 +98,15 @@ describe("acceptProposal", () => {
       requestId: "r-same",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     const second = acceptProposal(db, id, {
       requestId: "r-same",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     expect(second.versionId).toBe(first.versionId);
     expect(second.replayed).toBe(true);
@@ -126,14 +129,16 @@ describe("acceptProposal", () => {
       requestId: "r1",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     expect(() =>
       acceptProposal(db, id, {
         requestId: "r2",
         expectedVersionId: null,
         expectedDraftRevision: null,
-        acknowledgeStale: false,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
       }),
     ).toThrow(ProposalConflictError);
   });
@@ -145,7 +150,8 @@ describe("acceptProposal", () => {
         requestId: "r1",
         expectedVersionId: 999,
         expectedDraftRevision: null,
-        acknowledgeStale: false,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
       }),
     ).toThrow(/version/);
   });
@@ -164,7 +170,8 @@ describe("acceptProposal", () => {
         requestId: "r1",
         expectedVersionId: null,
         expectedDraftRevision: null,
-        acknowledgeStale: false,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
       }),
     ).toThrow(/draft/);
 
@@ -188,7 +195,8 @@ describe("acceptProposal", () => {
       requestId: "r1",
       expectedVersionId: null,
       expectedDraftRevision: 3,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     const draft = db
       .prepare("SELECT COUNT(*) c FROM chapter_drafts WHERE chapter_id = ?")
@@ -216,17 +224,78 @@ describe("acceptProposal", () => {
         requestId: "r1",
         expectedVersionId: null,
         expectedDraftRevision: null,
-        acknowledgeStale: false,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
       }),
-    ).toThrow(/stale|incomplete/);
+    ).toThrow(/unconfirmed/);
 
+    // Согласие ровно на свой вопрос — и ни на какой другой.
     const out = acceptProposal(db, id, {
       requestId: "r2",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: true,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: false,
     });
     expect(out.versionId).toBeGreaterThan(0);
+  });
+
+  it("согласие на уехавший контекст не пропускает неподтверждённое завершение", () => {
+    const id = createProposal(db, {
+      bookId,
+      chapterId,
+      kind: "write",
+      baseVersionId: null,
+    });
+    finishProposal(db, id, {
+      status: "incomplete",
+      contentText: "Обрубок",
+      contentJson: docJson("Обрубок"),
+      wordCount: 1,
+      completion: "unconfirmed",
+      stopReason: "max_tokens",
+    });
+    expect(() =>
+      acceptProposal(db, id, {
+        requestId: "r1",
+        expectedVersionId: null,
+        expectedDraftRevision: null,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: true,
+      }),
+    ).toThrow(/unconfirmed/);
+  });
+
+  it("неподтверждённое завершение больше не проглатывает проверку контекста", () => {
+    const id = createProposal(db, {
+      bookId,
+      chapterId,
+      kind: "write",
+      baseVersionId: null,
+    });
+    finishProposal(db, id, {
+      status: "incomplete",
+      contentText: "Обрубок",
+      contentJson: docJson("Обрубок"),
+      wordCount: 1,
+      completion: "unconfirmed",
+      stopReason: "max_tokens",
+    });
+    db.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run(
+      "другое намерение",
+      chapterId,
+    );
+    // Одним флагом на два вопроса это принималось молча: автор соглашался с
+    // обрывом и заодно, сам того не зная, с уехавшим планом главы.
+    expect(() =>
+      acceptProposal(db, id, {
+        requestId: "r1",
+        expectedVersionId: null,
+        expectedDraftRevision: null,
+        acknowledgeUnconfirmed: true,
+        acknowledgeContextDrift: false,
+      }),
+    ).toThrow(/stale/);
   });
 
   it("уехавший контекст требует осознанного принятия", () => {
@@ -237,9 +306,21 @@ describe("acceptProposal", () => {
         requestId: "r1",
         expectedVersionId: null,
         expectedDraftRevision: null,
-        acknowledgeStale: false,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
       }),
     ).toThrow(/stale/);
+
+    // Подтверждённого кандидата с уехавшей базой раньше было не принять
+    // вовсе: единственный флаг заодно означал «завершение не подтверждено».
+    const out = acceptProposal(db, id, {
+      requestId: "r2",
+      expectedVersionId: null,
+      expectedDraftRevision: null,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: true,
+    });
+    expect(out.versionId).toBeGreaterThan(0);
   });
 
   it("кандидат repair принимается ветвью repair-N", () => {
@@ -247,7 +328,8 @@ describe("acceptProposal", () => {
       requestId: "r0",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     const repairId = createProposal(db, {
       bookId,
@@ -267,7 +349,8 @@ describe("acceptProposal", () => {
       requestId: "r1",
       expectedVersionId: base.versionId,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
     const v = db
       .prepare("SELECT branch_label b, parent_version_id p FROM chapter_versions WHERE id = ?")
@@ -284,10 +367,137 @@ describe("acceptProposal", () => {
       requestId: "r1",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: false,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
     });
 
     expect(loadProposal(db, acceptedId)?.status).toBe("accepted");
     expect(loadProposal(db, otherId)?.status).toBe("superseded");
+  });
+});
+
+/** Документ автора с разметкой: заголовок, жирный прогон и пункт списка.
+ *  Сравнение по строкам их не видит — частичное принятие обязано сохранить. */
+const RICH_DOC = {
+  type: "doc",
+  content: [
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Глава вторая" }],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Он сказал " },
+        { type: "text", marks: [{ type: "bold" }], text: "нет" },
+        { type: "text", text: "." },
+      ],
+    },
+    { type: "paragraph", content: [{ type: "text", text: "Старый абзац." }] },
+    {
+      type: "bulletList",
+      content: [
+        {
+          type: "listItem",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Пункт списка." }],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const PLAIN_CANDIDATE_JSON = JSON.stringify({
+  type: "doc",
+  content: ["Глава вторая", "Он сказал нет.", "Новый абзац.", "Пункт списка."].map(
+    (text) => ({ type: "paragraph", content: [{ type: "text", text }] }),
+  ),
+});
+
+describe("частичное принятие сохраняет разметку автора", () => {
+  function seedRichVersion(): number {
+    const now = new Date().toISOString();
+    const info = db
+      .prepare(
+        `INSERT INTO chapter_versions
+           (chapter_id, parent_version_id, content_json, content_text, word_count, source, created_at)
+         VALUES (?, NULL, ?, ?, 6, 'manual', ?)`,
+      )
+      .run(chapterId, JSON.stringify(RICH_DOC), "Глава вторая Он сказал нет. Старый абзац. Пункт списка.", now);
+    const versionId = Number(info.lastInsertRowid);
+    db.prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?").run(
+      versionId,
+      chapterId,
+    );
+    return versionId;
+  }
+
+  function plainCandidate(baseVersionId: number): number {
+    const id = createProposal(db, {
+      bookId,
+      chapterId,
+      kind: "write",
+      baseVersionId,
+    });
+    finishProposal(db, id, {
+      status: "ready",
+      contentText: "Глава вторая Он сказал нет. Новый абзац. Пункт списка.",
+      contentJson: PLAIN_CANDIDATE_JSON,
+      wordCount: 6,
+      completion: "confirmed",
+      stopReason: "end_turn",
+    });
+    return id;
+  }
+
+  it("принятие одного абзаца не сносит жирное, заголовок и список из остальных", () => {
+    const versionId = seedRichVersion();
+    const proposalId = plainCandidate(versionId);
+
+    const out = acceptProposal(db, proposalId, {
+      requestId: "r1",
+      expectedVersionId: versionId,
+      expectedDraftRevision: null,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
+      selectedChangeIds: ["c0"],
+    });
+
+    const row = db
+      .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+      .get(out.versionId) as { content_json: string };
+    const doc = JSON.parse(row.content_json) as { content: unknown[] };
+
+    expect(doc.content).toHaveLength(4);
+    expect(doc.content[0]).toEqual(RICH_DOC.content[0]);
+    expect(doc.content[1]).toEqual(RICH_DOC.content[1]);
+    expect(doc.content[3]).toEqual(RICH_DOC.content[3]);
+    // Принятый абзац взят у кандидата.
+    expect(doc.content[2]).toEqual({
+      type: "paragraph",
+      content: [{ type: "text", text: "Новый абзац." }],
+    });
+  });
+
+  it("принятие целиком по-прежнему кладёт JSON кандидата нетронутым", () => {
+    const versionId = seedRichVersion();
+    const proposalId = plainCandidate(versionId);
+
+    const out = acceptProposal(db, proposalId, {
+      requestId: "r1",
+      expectedVersionId: versionId,
+      expectedDraftRevision: null,
+      acknowledgeUnconfirmed: false,
+      acknowledgeContextDrift: false,
+    });
+    const row = db
+      .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+      .get(out.versionId) as { content_json: string };
+    expect(row.content_json).toBe(PLAIN_CANDIDATE_JSON);
   });
 });

@@ -80,7 +80,9 @@ describe("acceptProseProposalInputSchema", () => {
       expectedDraftRevision: null,
     });
     expect(parsed.selectedChangeIds).toBeUndefined();
-    expect(parsed.acknowledgeStale).toBe(false);
+    // Два независимых согласия, оба по умолчанию не даны.
+    expect(parsed.acknowledgeUnconfirmed).toBe(false);
+    expect(parsed.acknowledgeContextDrift).toBe(false);
   });
 
   it("принимает выбранные правки", () => {

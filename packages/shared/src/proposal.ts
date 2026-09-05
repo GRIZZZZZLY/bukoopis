@@ -73,8 +73,16 @@ export const acceptProseProposalInputSchema = z.object({
   expectedDraftRevision: z.number().int().nonnegative().nullable(),
   /** Не задано — принять кандидата целиком. Задано — только эти правки. */
   selectedChangeIds: z.array(z.string().min(1)).min(1).optional(),
-  /** Осознанное принятие предложения, у которого уехала база контекста. */
-  acknowledgeStale: z.boolean().default(false),
+  /** Осознанное принятие текста, чьё завершение не подтверждено: упёрлись в
+   *  лимит вывода, оборвалось соединение или бэкенд молчит о причине. */
+  acknowledgeUnconfirmed: z.boolean().default(false),
+  /** Осознанное принятие кандидата, у которого уехала база контекста: план,
+   *  текущая версия или материалы книги изменились, пока модель писала.
+   *
+   *  Два флага, а не один: это два независимых вопроса, и одна галочка на них
+   *  обоих означала, что неподтверждённый кандидат молча проскакивал проверку
+   *  контекста, а подтверждённый с уехавшим контекстом было не принять вовсе. */
+  acknowledgeContextDrift: z.boolean().default(false),
 });
 export type AcceptProseProposalInput = z.infer<typeof acceptProseProposalInputSchema>;
 

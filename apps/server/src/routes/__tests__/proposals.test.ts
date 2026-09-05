@@ -51,7 +51,8 @@ describe("маршруты предложений", () => {
       requestId: "req-1",
       expectedVersionId: null,
       expectedDraftRevision: null,
-      acknowledgeStale: true,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: true,
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { version: { id: number }; replayed: boolean };
@@ -71,7 +72,8 @@ describe("маршруты предложений", () => {
       requestId: "req-1",
       expectedVersionId: 4242,
       expectedDraftRevision: null,
-      acknowledgeStale: true,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: true,
     });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; details: { reason: string } };
@@ -80,7 +82,13 @@ describe("маршруты предложений", () => {
   });
 
   it("повтор принятия после сетевого сбоя возвращает ту же версию (AC-19)", async () => {
-    const body = { requestId: "req-same", expectedVersionId: null, expectedDraftRevision: null, acknowledgeStale: true };
+    const body = {
+      requestId: "req-same",
+      expectedVersionId: null,
+      expectedDraftRevision: null,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: true,
+    };
     const first = (await sendJson<{ version: { id: number } }>(
       t.app,
       `/api/prose-proposals/${proposalId}/accept`,
@@ -216,7 +224,8 @@ describe("частичное принятие", () => {
         expectedVersionId: versionId,
         expectedDraftRevision: null,
         selectedChangeIds: [insertOnly.id],
-        acknowledgeStale: true,
+        acknowledgeUnconfirmed: true,
+        acknowledgeContextDrift: true,
       },
     );
 
@@ -253,7 +262,8 @@ describe("частичное принятие", () => {
       expectedVersionId: versionId,
       expectedDraftRevision: null,
       selectedChangeIds: ["нет-такой"],
-      acknowledgeStale: true,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: true,
     });
     expect(res.status).toBe(400);
   });

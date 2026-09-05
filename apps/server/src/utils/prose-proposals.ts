@@ -5,10 +5,11 @@ import {
   type ProposalKind,
   type ProseProposal,
   type ProseProposalStatus,
-  applyProseChanges,
-  blocksToDoc,
+  applyProseChangesToNodes,
   diffProseBlocks,
-  docToBlocks,
+  docToNodes,
+  nodesToBlocks,
+  nodesToDoc,
   REPAIR_BRANCH_PREFIX,
   type AcceptProseProposalInput,
 } from "@book-forge/shared";
@@ -208,7 +209,15 @@ export function listProposals(
   return rows.map(toProposal);
 }
 
-export type ProposalConflictReason = "version" | "draft" | "status" | "stale";
+/** `unconfirmed` — модель не подтвердила, что дописала; `stale` — уехала база
+ *  контекста. Два разных вопроса к автору, и потому две разных причины: с
+ *  одной он не понимал, что именно ему предлагают переступить. */
+export type ProposalConflictReason =
+  | "version"
+  | "draft"
+  | "status"
+  | "unconfirmed"
+  | "stale";
 
 export class ProposalConflictError extends Error {
   constructor(
@@ -273,9 +282,9 @@ export function acceptProposal(
     }
     // Незавершённый текст можно посмотреть, но нельзя принять как готовую
     // главу молча: обрыв, лимит вывода и молчащий бэкенд — не «дописано».
-    if (proposal.completion === "unconfirmed" && !input.acknowledgeStale) {
+    if (proposal.completion === "unconfirmed" && !input.acknowledgeUnconfirmed) {
       throw new ProposalConflictError(
-        "stale",
+        "unconfirmed",
         "завершение не подтверждено: примите осознанно или перезапустите",
       );
     }
@@ -305,9 +314,12 @@ export function acceptProposal(
       throw new ProposalConflictError("draft", "черновик изменился, пока шла генерация");
     }
 
+    // Отдельная проверка и отдельное согласие: неподтверждённый кандидат
+    // раньше проскакивал её молча, а подтверждённый с уехавшей базой было
+    // не принять вообще — оба перекоса от одного флага на два вопроса.
     if (
       contextFingerprint(sqlite, proposal.chapterId) !== proposal.contextFingerprint &&
-      !input.acknowledgeStale
+      !input.acknowledgeContextDrift
     ) {
       throw new ProposalConflictError("stale", "база контекста изменилась с начала генерации");
     }
@@ -320,8 +332,8 @@ export function acceptProposal(
     if (input.selectedChangeIds !== undefined) {
       // Пустая глава — пустой список абзацев, а не один пустой абзац: иначе
       // сравнение показало бы автору фантомную правку «убрано ничего».
-      const baseBlocks = ch.current_version_id
-        ? docToBlocks(
+      const baseNodes = ch.current_version_id
+        ? docToNodes(
             JSON.parse(
               (
                 sqlite
@@ -331,10 +343,20 @@ export function acceptProposal(
             ),
           )
         : [];
-      const candidateBlocks = docToBlocks(JSON.parse(proposal.contentJson));
-      const changes = diffProseBlocks(baseBlocks, candidateBlocks);
-      const merged = applyProseChanges(baseBlocks, changes, input.selectedChangeIds);
-      const mergedDoc = blocksToDoc(merged);
+      const candidateNodes = docToNodes(JSON.parse(proposal.contentJson));
+      // Выбирают по тексту, сливают по узлам: иначе принятие одного абзаца
+      // сносило бы жирное, заголовки и списки во всей остальной главе.
+      const changes = diffProseBlocks(
+        nodesToBlocks(baseNodes),
+        nodesToBlocks(candidateNodes),
+      );
+      const mergedNodes = applyProseChangesToNodes(
+        baseNodes,
+        candidateNodes,
+        changes,
+        input.selectedChangeIds,
+      );
+      const mergedDoc = nodesToDoc(mergedNodes);
       contentJson = JSON.stringify(mergedDoc);
       contentText = extractText(mergedDoc);
     }
