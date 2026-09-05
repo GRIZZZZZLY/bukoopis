@@ -38,6 +38,7 @@ export function IntakePanel({ bookId, onIntake }: Props) {
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [requestKey, setRequestKey] = useState<string | undefined>(undefined);
   const [total, setTotal] = useState(0);
   const [rows, setRows] = useState<IntakeProgressRow[]>([]);
@@ -50,6 +51,7 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     setRows([]);
     setTotal(0);
     setStopping(false);
+    setStopError(null);
     setRequestKey(undefined);
     try {
       // По одному файлу, а не Promise.all: одна нечитаемая запись отбивала
@@ -117,14 +119,6 @@ export function IntakePanel({ bookId, onIntake }: Props) {
           });
         },
       });
-      // Пауза перед сводкой: последнее событие файла и общий ответ потока
-      // могут прийти практически одним и тем же тактом (сервер шлёт `done`
-      // сразу за последним `file`). Без паузы React успевал бы применить оба
-      // обновления одним рендером, и автор ни разу не увидел бы, что
-      // последний файл вообще был обработан — сводка перекрыла бы его молча.
-      // 50 мс не заметны на фоне 8–15 минут всего разбора, зато гарантируют
-      // отдельный кадр на «файл обработан» перед переходом к «всё готово».
-      await new Promise((r) => setTimeout(r, 50));
       // Нечитаемые файлы встают рядом с тем, о чём отчитался сервер: для автора
       // это один и тот же вопрос — что из брошенного не дошло. Флаги
       // busy/streaming/stopping/requestKey намеренно не сбрасываются здесь:
@@ -144,11 +138,16 @@ export function IntakePanel({ bookId, onIntake }: Props) {
   async function handleStop() {
     if (!requestKey) return;
     setStopping(true);
+    setStopError(null);
     try {
       await api.cancelIntake(bookId, requestKey);
     } catch {
-      // Разбор не остановлен по нашей просьбе — но он и так продолжится и
-      // закончится сам; ничего не сломано, просто автор не сэкономил время.
+      // Отмена не дошла — оставлять кнопку «Останавливаем…» навечно было бы
+      // враньём (разбор идёт как ни в чём не бывало). Возвращаем кнопку в
+      // рабочее состояние и говорим прямо, что попытка не удалась и её можно
+      // повторить.
+      setStopping(false);
+      setStopError("Не удалось остановить разбор — попробуйте ещё раз.");
     }
   }
 
@@ -162,6 +161,7 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     setBusy(false);
     setStreaming(false);
     setStopping(false);
+    setStopError(null);
     setRequestKey(undefined);
   }
 
@@ -181,12 +181,19 @@ export function IntakePanel({ bookId, onIntake }: Props) {
   return (
     <div className="card" aria-label="Приём материалов">
       {streaming ? (
-        <IntakeProgress
-          total={total}
-          rows={rows}
-          stopping={stopping}
-          onStop={() => void handleStop()}
-        />
+        <>
+          <IntakeProgress
+            total={total}
+            rows={rows}
+            stopping={stopping}
+            onStop={() => void handleStop()}
+          />
+          {stopError && (
+            <p role="alert" style={{ color: "var(--color-ink-red)", fontSize: 12, marginTop: 6 }}>
+              {stopError}
+            </p>
+          )}
+        </>
       ) : (
         <DropZone onFiles={(f) => void handleFiles(f)} busy={busy} />
       )}

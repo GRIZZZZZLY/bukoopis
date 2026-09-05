@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { IntakePanel } from "../IntakePanel";
@@ -20,6 +20,16 @@ const OK = {
 
 function file(name: string, text: string): File {
   return new File([text], name, { type: "text/markdown" });
+}
+
+/** A promise this test resolves on its own schedule, instead of a same-tick
+ *  `setTimeout(0)` racing against `waitFor`'s own internal timers. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 function drop(files: File[]) {
@@ -138,37 +148,74 @@ describe("IntakePanel", () => {
 
   it("shows live progress while the stream runs and the summary when it ends", async () => {
     let emit!: (e: { index: number; total: number; filename: string; status: string }) => void;
+    const stream = deferred<typeof OK & { cancelled: boolean }>();
     m.intakeStream.mockImplementation(
       ((_id: number, _files: unknown, h: { onFile?: (e: unknown) => void }) => {
         emit = h.onFile!;
-        return new Promise((resolve) => {
-          setTimeout(() => resolve({ ...OK, cancelled: false }), 0);
-        });
+        return stream.promise;
       }) as never,
     );
     renderPanel();
     drop([file("Карта.md", "текст")]);
     await waitFor(() => expect(m.intakeStream).toHaveBeenCalled());
-    emit({ index: 0, total: 1, filename: "Карта.md", status: "started" });
+    act(() => emit({ index: 0, total: 1, filename: "Карта.md", status: "started" }));
     expect(await screen.findByText("Карта.md")).toBeInTheDocument();
+    // The stream hasn't resolved yet — the row must still be the only thing
+    // on screen, not a summary that got there some other way.
+    expect(screen.queryByText("Материалы разобраны")).toBeNull();
+    act(() => stream.resolve({ ...OK, cancelled: false }));
     await waitFor(() => screen.getByText("Материалы разобраны"));
   });
 
   it("asks the server to stop and reports it stopped", async () => {
     let begin!: (e: { requestKey: string; total: number }) => void;
+    const stream = deferred<typeof OK & { cancelled: boolean }>();
     m.intakeStream.mockImplementation(
       ((_id: number, _f: unknown, h: { onBegin?: (e: unknown) => void }) => {
         begin = h.onBegin!;
-        return new Promise((resolve) => setTimeout(() => resolve({ ...OK, cancelled: true }), 0));
+        return stream.promise;
       }) as never,
     );
     m.cancelIntake.mockResolvedValue(undefined as never);
     renderPanel();
     drop([file("Карта.md", "текст")]);
     await waitFor(() => expect(m.intakeStream).toHaveBeenCalled());
-    begin({ requestKey: "k1", total: 1 });
+    act(() => begin({ requestKey: "k1", total: 1 }));
     await userEvent.click(await screen.findByRole("button", { name: /Остановить/ }));
     expect(m.cancelIntake).toHaveBeenCalledWith(3, "k1");
+    act(() => stream.resolve({ ...OK, cancelled: true }));
+    await waitFor(() => expect(screen.getByText(/Разбор остановлен/)).toBeInTheDocument());
+  });
+
+  it("lets the author retry after a failed stop request", async () => {
+    let begin!: (e: { requestKey: string; total: number }) => void;
+    const stream = deferred<typeof OK & { cancelled: boolean }>();
+    m.intakeStream.mockImplementation(
+      ((_id: number, _f: unknown, h: { onBegin?: (e: unknown) => void }) => {
+        begin = h.onBegin!;
+        return stream.promise;
+      }) as never,
+    );
+    m.cancelIntake.mockRejectedValueOnce(new Error("offline"));
+    renderPanel();
+    drop([file("Карта.md", "текст")]);
+    await waitFor(() => expect(m.intakeStream).toHaveBeenCalled());
+    act(() => begin({ requestKey: "k1", total: 1 }));
+
+    await userEvent.click(await screen.findByRole("button", { name: /Остановить/ }));
+    // The failed request must not leave the button stuck on "stopping": the
+    // author needs a way to try again, and to know the first click did
+    // nothing.
+    const retryButton = await screen.findByRole("button", { name: /Остановить/ });
+    expect(retryButton).not.toBeDisabled();
+    expect(screen.getByText(/не удалось/i)).toBeInTheDocument();
+
+    m.cancelIntake.mockResolvedValueOnce(undefined as never);
+    await userEvent.click(retryButton);
+    expect(m.cancelIntake).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: /Останавливаем/ })).toBeDisabled();
+
+    act(() => stream.resolve({ ...OK, cancelled: true }));
     await waitFor(() => expect(screen.getByText(/Разбор остановлен/)).toBeInTheDocument());
   });
 });
