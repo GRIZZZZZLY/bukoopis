@@ -3,6 +3,8 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   acceptProseProposalInputSchema,
   rejectProseProposalInputSchema,
+  diffProseBlocks,
+  docToBlocks,
 } from "@book-forge/shared";
 import {
   acceptProposal,
@@ -41,6 +43,42 @@ export function createProposalsRoute(
     return c.json(proposal);
   });
 
+  /** Что именно предлагается изменить: сравнение считается на сервере, чтобы
+   *  вкладка и принятие видели один и тот же набор идентификаторов правок. */
+  r.get("/prose-proposals/:id/changes", (c) => {
+    const id = Number(c.req.param("id"));
+    const proposal = loadProposal(sqlite, id);
+    if (!proposal) return notFound(c, "prose_proposal");
+
+    const ch = sqlite
+      .prepare("SELECT current_version_id FROM chapters WHERE id = ?")
+      .get(proposal.chapterId) as { current_version_id: number | null } | undefined;
+    const baseVersionId = ch?.current_version_id ?? null;
+
+    // Та же логика, что в acceptProposal: пустая глава — пустой список
+    // абзацев. Расхождение здесь дало бы автору набор правок, который
+    // принятие потом не узнало бы.
+    let baseBlocks: string[] = [];
+    let candidateBlocks: string[] = [];
+    try {
+      if (baseVersionId !== null) {
+        const row = sqlite
+          .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+          .get(baseVersionId) as { content_json: string };
+        baseBlocks = docToBlocks(JSON.parse(row.content_json));
+      }
+      candidateBlocks = docToBlocks(JSON.parse(proposal.contentJson));
+    } catch {
+      // Битый JSON версии не должен ронять экран: отдаём пустое сравнение,
+      // автор всё ещё может принять кандидата целиком.
+      return c.json({ baseVersionId, changes: [] });
+    }
+    return c.json({
+      baseVersionId,
+      changes: diffProseBlocks(baseBlocks, candidateBlocks),
+    });
+  });
+
   r.post("/prose-proposals/:id/cancel", (c) => {
     const id = Number(c.req.param("id"));
     const proposal = loadProposal(sqlite, id);
@@ -72,6 +110,9 @@ export function createProposalsRoute(
           { error: "proposal_conflict", details: { reason: e.reason, message: e.message } },
           409,
         );
+      }
+      if (e instanceof Error && e.message.startsWith("unknown change")) {
+        return badRequest(c, `неизвестная правка: ${e.message.slice("unknown change: ".length)}`);
       }
       throw e;
     }

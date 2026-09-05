@@ -135,3 +135,126 @@ describe("маршруты предложений", () => {
     expect(list[0]?.id).toBe(proposalId);
   });
 });
+
+describe("частичное принятие", () => {
+  /** Глава с текстом из трёх абзацев и кандидат, который меняет средний и
+   *  дописывает четвёртый: две независимые правки, из которых автор берёт одну. */
+  async function seedBaseAndCandidate(): Promise<{ versionId: number; proposalId: number }> {
+    const doc = (...paragraphs: string[]) => ({
+      type: "doc",
+      content: paragraphs.map((p) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: p }],
+      })),
+    });
+    const version = await sendJson<{ id: number }>(
+      t.app,
+      `/api/chapters/${chapterId}/versions`,
+      "POST",
+      { contentJson: doc("Раз.", "Два.", "Три.") },
+    );
+
+    const db = new Database(`${t.dbDir}/test.sqlite`);
+    const now = new Date().toISOString();
+    const book = db
+      .prepare("SELECT book_id b FROM chapters WHERE id = ?")
+      .get(chapterId) as { b: number };
+    const info = db
+      .prepare(
+        `INSERT INTO prose_proposals
+           (book_id, chapter_id, kind, status, base_version_id, base_draft_revision,
+            context_fingerprint, content_text, content_json, word_count, completion,
+            stop_reason, created_at, updated_at)
+         VALUES (?, ?, 'write', 'ready', ?, NULL, 'fp', ?, ?, 4, 'confirmed', 'end_turn', ?, ?)`,
+      )
+      .run(
+        book.b,
+        chapterId,
+        version.id,
+        "Раз.\n\nВторой.\n\nТри.\n\nЧетыре.",
+        JSON.stringify(doc("Раз.", "Второй.", "Три.", "Четыре.")),
+        now,
+        now,
+      );
+    db.close();
+    return { versionId: version.id, proposalId: Number(info.lastInsertRowid) };
+  }
+
+  it("отдаёт список правок с текстом базы и кандидата", async () => {
+    const { proposalId: pid } = await seedBaseAndCandidate();
+    const body = await sendJson<{
+      baseVersionId: number | null;
+      changes: Array<{ id: string; kind: string; baseText: string[]; candidateText: string[] }>;
+    }>(t.app, `/api/prose-proposals/${pid}/changes`, "GET");
+
+    expect(body.changes).toHaveLength(2);
+    expect(body.changes[0]).toMatchObject({
+      kind: "replace",
+      baseText: ["Два."],
+      candidateText: ["Второй."],
+    });
+    expect(body.changes[1]).toMatchObject({ kind: "insert", candidateText: ["Четыре."] });
+  });
+
+  it("принимает только выбранную правку, а память берёт из итога (AC-18)", async () => {
+    const { versionId, proposalId: pid } = await seedBaseAndCandidate();
+    const changes = (
+      await sendJson<{ changes: Array<{ id: string; kind: string }> }>(
+        t.app,
+        `/api/prose-proposals/${pid}/changes`,
+        "GET",
+      )
+    ).changes;
+    const insertOnly = changes.find((ch) => ch.kind === "insert")!;
+
+    const accepted = await sendJson<{ version: { id: number; contentText: string } }>(
+      t.app,
+      `/api/prose-proposals/${pid}/accept`,
+      "POST",
+      {
+        requestId: "req-partial",
+        expectedVersionId: versionId,
+        expectedDraftRevision: null,
+        selectedChangeIds: [insertOnly.id],
+        acknowledgeStale: true,
+      },
+    );
+
+    // Взята только вставка: средний абзац остался прежним.
+    expect(accepted.version.contentText).toContain("Два.");
+    expect(accepted.version.contentText).not.toContain("Второй.");
+    expect(accepted.version.contentText).toContain("Четыре.");
+
+    // Задания памяти стоят на принятой (слитой) версии. У базовой версии свои
+    // задания есть с момента её коммита в seedBaseAndCandidate — это нормально;
+    // чего быть не должно, так это заданий на что-либо ещё: полный кандидат в
+    // очередь не попадает.
+    const db = new Database(`${t.dbDir}/test.sqlite`);
+    const mergedJobs = db
+      .prepare(
+        `SELECT COUNT(*) c FROM memory_jobs
+         WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
+      )
+      .get(accepted.version.id) as { c: number };
+    const strayJobs = db
+      .prepare(
+        "SELECT COUNT(*) c FROM memory_jobs WHERE chapter_version_id NOT IN (?, ?)",
+      )
+      .get(versionId, accepted.version.id) as { c: number };
+    db.close();
+    expect(mergedJobs.c).toBe(4);
+    expect(strayJobs.c).toBe(0);
+  });
+
+  it("неизвестный идентификатор правки — 400, а не молча принятый кандидат", async () => {
+    const { versionId, proposalId: pid } = await seedBaseAndCandidate();
+    const res = await send(t.app, `/api/prose-proposals/${pid}/accept`, "POST", {
+      requestId: "req-bad",
+      expectedVersionId: versionId,
+      expectedDraftRevision: null,
+      selectedChangeIds: ["нет-такой"],
+      acknowledgeStale: true,
+    });
+    expect(res.status).toBe(400);
+  });
+});
