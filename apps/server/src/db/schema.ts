@@ -310,7 +310,7 @@ export const critiqueReports = sqliteTable(
     index("idx_critique_version").on(t.chapterVersionId),
     check(
       "critique_status_check",
-      sql`${t.status} IN ('pending','done','error')`,
+      sql`${t.status} IN ('pending','done','partial','error')`,
     ),
   ],
 );

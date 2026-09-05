@@ -33,12 +33,22 @@ export type CriticReport = z.infer<typeof criticReportSchema>;
 export const critiqueReportStatusSchema = z.enum([
   "pending",
   "done",
+  "partial",
   "error",
 ]);
 export type CritiqueReportStatus = z.infer<typeof critiqueReportStatusSchema>;
 
+/** Все критики по умолчанию. Единственный перечень: от него считается статус
+ *  разбора, его же использует граф критики и панель в редакторе. */
+export const ALL_CRITIC_TYPES = ["canon", "style", "editor", "reader"] as const satisfies readonly CriticType[];
+
 export const fullCritiqueReportSchema = z.object({
   critics: z.array(criticReportSchema),
+  /** Кого просили проверить. Статус прогона считается от этого списка, а не
+   *  от длины списка успешных отчётов: четыре падения из четырёх когда-то
+   *  давали «всё хорошо». */
+  requestedCritics: z.array(criticTypeSchema).default([]),
+  failedCritics: z.array(criticTypeSchema).default([]),
   blockingCount: z.number().int().nonnegative(),
   suggestionCount: z.number().int().nonnegative(),
   nitCount: z.number().int().nonnegative(),

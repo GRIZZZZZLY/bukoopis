@@ -88,6 +88,31 @@ describe("critique endpoints", () => {
     }
   });
 
+  it("все критики упали — статус error, а не done (AC-27)", async () => {
+    // ANTHROPIC_API_KEY удалён в beforeEach: каждый критик падает на старте.
+    const r = await sendJson<{
+      status: string;
+      errorMessage: string | null;
+      report: { requestedCritics: string[]; failedCritics: string[] } | null;
+    }>(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {});
+
+    expect(r.status).toBe("error");
+    expect(r.errorMessage).toBeTruthy();
+    expect(r.report?.failedCritics).toHaveLength(4);
+    expect(r.report?.requestedCritics).toHaveLength(4);
+  });
+
+  it("статус считается от числа запрошенных критиков, а не от длины списка успешных", async () => {
+    const r = await sendJson<{
+      status: string;
+      report: { requestedCritics: string[]; failedCritics: string[] } | null;
+    }>(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {
+      critics: ["style"],
+    });
+    expect(r.report?.requestedCritics).toEqual(["style"]);
+    expect(r.status).toBe("error");
+  });
+
   it("POST validates `critics` field", async () => {
     const res = await send(
       t.app,

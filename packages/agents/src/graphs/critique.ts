@@ -6,17 +6,18 @@ import {
   runReaderExperienceAgent,
   type CriticInput,
 } from "../critics/index.js";
-import type {
-  CriticReport,
-  CriticType,
-  FullCritiqueReport,
+import {
+  ALL_CRITIC_TYPES,
+  type CriticReport,
+  type CriticType,
+  type FullCritiqueReport,
 } from "@book-forge/shared";
 
 const CritiqueState = Annotation.Root({
   input: Annotation<CriticInput>(),
   enabledCritics: Annotation<CriticType[]>({
     reducer: (_, n) => n,
-    default: () => ["canon", "style", "editor", "reader"],
+    default: () => [...ALL_CRITIC_TYPES],
   }),
   canonReport: Annotation<CriticReport | null>({
     reducer: (_, n) => n,
@@ -97,6 +98,8 @@ async function aggregateNode(state: StateT): Promise<Partial<StateT>> {
   return {
     aggregated: {
       critics: reports,
+      requestedCritics: state.enabledCritics,
+      failedCritics: state.errors.map((e) => e.critic),
       blockingCount: blocking,
       suggestionCount: suggestion,
       nitCount: nit,

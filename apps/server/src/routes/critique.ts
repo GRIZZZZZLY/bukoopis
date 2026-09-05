@@ -226,21 +226,21 @@ export function createCritiqueRoute(
               .map((e) => `[${e.critic}] ${e.message}`)
               .join(" | ")
           : null;
+      // Статус — от того, кого просили и кто выжил, а не от длины списка
+      // успешных: прежняя формула на четырёх падениях из четырёх давала done.
+      const status: CritiqueReportStatus =
+        result.report.critics.length === 0
+          ? "error"
+          : result.report.failedCritics.length > 0
+            ? "partial"
+            : "done";
       sqlite
         .prepare(
           `UPDATE critique_reports
            SET status = ?, report_json = ?, error_message = ?, completed_at = ?
            WHERE id = ?`,
         )
-        .run(
-          result.errors.length === result.report.critics.length
-            ? "error"
-            : "done",
-          JSON.stringify(result.report),
-          errorMessage,
-          completedAt,
-          reportRowId,
-        );
+        .run(status, JSON.stringify(result.report), errorMessage, completedAt, reportRowId);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       sqlite
