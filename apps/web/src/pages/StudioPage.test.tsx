@@ -19,6 +19,8 @@ vi.mock("@/api/client", () => ({
     lockConcept: vi.fn(),
     unlockConcept: vi.fn(),
     intake: vi.fn(),
+    intakeStream: vi.fn(),
+    cancelIntake: vi.fn(),
   },
 }));
 
@@ -151,7 +153,7 @@ describe("StudioPage progress", () => {
         { id: "fresh", severity: "info", message: "Свежее предупреждение" },
       ]); // second intake — fast
     });
-    m.intake.mockResolvedValue(OK_INTAKE as never);
+    m.intakeStream.mockResolvedValue({ ...OK_INTAKE, cancelled: false } as never);
 
     renderAt();
     await waitFor(() => screen.getByText(/Готово 0\/7/));

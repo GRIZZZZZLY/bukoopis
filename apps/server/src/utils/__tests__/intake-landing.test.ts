@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  intakeFileKey,
   intakeRequestKey,
   landFragments,
   describeExistingStages,
@@ -34,6 +35,16 @@ describe("intakeRequestKey", () => {
     const a = [{ filename: "notes.md", content: "hello world" }];
     const b = [{ filename: "notes.md hello", content: "world" }];
     expect(intakeRequestKey(a)).not.toBe(intakeRequestKey(b));
+  });
+});
+
+describe("intakeFileKey", () => {
+  it("is the same for the same file and different for the same name with other text", () => {
+    const a = { filename: "Связи.md", content: "один" };
+    expect(intakeFileKey(a)).toBe(intakeFileKey({ ...a }));
+    // Одинаковые имена в разных подпапках — обычное дело для брошенной папки:
+    // по имени их различать нельзя, поэтому ключ считается и по содержимому.
+    expect(intakeFileKey(a)).not.toBe(intakeFileKey({ ...a, content: "другой текст" }));
   });
 });
 

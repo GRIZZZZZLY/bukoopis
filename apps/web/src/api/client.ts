@@ -22,6 +22,7 @@ import type {
   GenerationConfig,
   Hook,
   IntakeSummaryRow,
+  IntakeTarget,
   Item,
   Location,
   PitchMixField,
@@ -55,12 +56,38 @@ export type ChapterWithMemory = ChapterWithCurrentVersion & {
 };
 
 // ── Intake (Приём материала) ──
+/** Файл уже прочитан в текст на стороне браузера (кроме .docx, который едет
+ *  как base64 и распаковывается сервером). Общая форма для `intake` и
+ *  `intakeStream`, чтобы сигнатуры не разъезжались. */
+export interface IntakeFile {
+  filename: string;
+  content?: string;
+  contentBase64?: string;
+}
+
 export interface IntakeResponse {
   summary: IntakeSummaryRow[];
   ideaSet: boolean;
   chapters: Array<{ chapterId: number; title: string; words: number }>;
   failures: Array<{ filename: string; message: string }>;
   revision: number;
+}
+
+/** Одно из двух событий `file` на файл: `started` перед вызовом классификатора,
+ *  `done`/`failed` после. `targets` только на `done`, `message` только на
+ *  `failed` — см. `apps/server/src/utils/intake-run.ts`. */
+export interface IntakeFileEvent {
+  index: number;
+  total: number;
+  filename: string;
+  status: "started" | "done" | "failed";
+  targets?: IntakeTarget[];
+  message?: string;
+}
+
+export interface IntakeStreamHandlers {
+  onBegin?: (e: { requestKey: string; total: number }) => void;
+  onFile?: (e: IntakeFileEvent) => void;
 }
 
 class ApiError extends Error {
@@ -660,16 +687,78 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** Файлы уже прочитаны в текст на стороне браузера (кроме .docx, который
-   *  браузер прочитать как текст не может — тот едет как base64, и сервер сам
-   *  превращает его в текст); сервер решает, что куда положить. */
-  intake: (
-    bookId: number,
-    files: Array<{ filename: string; content?: string; contentBase64?: string }>,
-  ) =>
+  /** Сервер решает, что куда положить. Блокирующий вариант — держится, пока
+   *  не разберётся всё; `intakeStream` ниже показывает прогресс по файлам. */
+  intake: (bookId: number, files: IntakeFile[]) =>
     req<IntakeResponse>(`/api/books/${bookId}/intake`, {
       method: "POST",
       body: JSON.stringify({ files }),
+    }),
+
+  /** Тот же приём материалов, но по SSE: `begin` один раз, затем пара
+   *  `started`/`done` (или `started`/`failed`) на файл, и одно `done` с
+   *  итогом. Собирается тем же способом, что и остальные SSE-потребители в
+   *  этом файле (`res.body.getReader()` + `TextDecoder`, блоки по `\n\n`). */
+  intakeStream: async (
+    bookId: number,
+    files: IntakeFile[],
+    handlers: IntakeStreamHandlers,
+  ): Promise<IntakeResponse & { cancelled: boolean }> => {
+    const res = await fetch(`${API_BASE}/api/books/${bookId}/intake-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files }),
+    });
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new ApiError(res.status, `HTTP ${res.status}: ${errorSummary(text)}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: (IntakeResponse & { cancelled: boolean }) | undefined;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sepIdx;
+      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+        const raw = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+        const evMatch = raw.match(/^event: (.+)$/m);
+        const dataMatch = raw.match(/^data: (.+)$/m);
+        if (!dataMatch) continue;
+        const ev = evMatch?.[1] ?? "message";
+        try {
+          const data = JSON.parse(dataMatch[1]!);
+          if (ev === "begin") handlers.onBegin?.(data);
+          else if (ev === "file") handlers.onFile?.(data);
+          else if (ev === "done") result = data;
+          else if (ev === "error") {
+            throw new ApiError(
+              res.status,
+              `HTTP ${res.status}: ${errorSummary(JSON.stringify(data))}`,
+            );
+          }
+        } catch (e) {
+          if (e instanceof ApiError) throw e;
+          /* ignore malformed event */
+        }
+      }
+    }
+    if (!result) {
+      throw new ApiError(res.status, "Поток разбора оборвался без результата");
+    }
+    return result;
+  },
+
+  /** Останавливает разбор перед следующим файлом; файл, который уже читается,
+   *  дочитывается — сервер не умеет прерывать вызов LLM на середине. 404,
+   *  если прогон с таким ключом уже не в реестре (успел закончиться сам). */
+  cancelIntake: (bookId: number, requestKey: string) =>
+    req<void>(`/api/books/${bookId}/intake/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ requestKey }),
     }),
 };
 

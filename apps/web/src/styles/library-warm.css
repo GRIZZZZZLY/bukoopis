@@ -2154,3 +2154,11 @@ html.atm-off::view-transition-new(root) {
 .intake-summary-list { display: grid; gap: 10px; margin: 12px 0; padding: 0; list-style: none; }
 .intake-summary-list li { display: grid; gap: 2px; padding-left: 10px; border-left: 2px solid var(--color-brass-soft); }
 .intake-summary-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+
+.intake-progress-list { display: grid; gap: 6px; margin: 10px 0; padding: 0; list-style: none; }
+.intake-progress-row { display: grid; grid-template-columns: 16px 1fr; gap: 8px; align-items: baseline; font-size: 13px; }
+.intake-progress-row .mark { font-size: 12px; color: var(--color-text-muted); }
+.intake-progress-row.is-failed .mark { color: var(--color-ink-red); }
+.intake-progress-row.is-done .mark { color: var(--color-ink-green); }
+.intake-progress-where { color: var(--color-text-muted); }
+.intake-progress-why { color: var(--color-ink-red); }
