@@ -34,6 +34,20 @@ const SEVERITY_DOT: Record<IssueSeverity, string> = {
   nit: "sev-blue",
 };
 
+function criticNames(critics: readonly CriticType[]): string {
+  return critics.map((c) => CRITIC_LABELS[c]).join(", ");
+}
+
+/** Кого просили проверить. Старые отчёты (до появления поля) списка не несут —
+ *  тогда молчим, а не врём про «все четыре». */
+function requestedList(report: CritiqueReport): string {
+  return report.report ? criticNames(report.report.requestedCritics) : "";
+}
+
+function failedList(report: CritiqueReport): string {
+  return report.report ? criticNames(report.report.failedCritics) : "";
+}
+
 export function CritiquePanel({
   versionId,
   expectedVersionId,
@@ -63,6 +77,7 @@ export function CritiquePanel({
   const [repairProposalId, setRepairProposalId] = useState<number | null>(
     null,
   );
+  const [repairStopping, setRepairStopping] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
     new Set<IssueSeverity>(["blocking", "suggestion"]),
   );
@@ -123,6 +138,19 @@ export function CritiquePanel({
     });
   }
 
+  /** Остановить идущий self-repair. Сервер умеет это с той минуты, как repair
+   *  стал заводить кандидата до первого токена: отмена помечает кандидата и
+   *  просит поток прекратиться. Кнопки не было, и остановить было нечем. */
+  async function onStopRepair() {
+    if (repairProposalId === null) return;
+    setRepairStopping(true);
+    try {
+      await api.cancelProposal(repairProposalId);
+    } catch (e) {
+      setRepairError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function onRepair() {
     if (versionId === null) return;
     setRepairing(true);
@@ -132,6 +160,7 @@ export function CritiquePanel({
     setRepairProposal(null);
     setRepairProposalChanges([]);
     setRepairProposalId(null);
+    setRepairStopping(false);
     try {
       const severities =
         severityFilter.size === 3 ? undefined : [...severityFilter];
@@ -142,6 +171,14 @@ export function CritiquePanel({
         onChunk: (text) => setRepairBuffer((b) => b + text),
         onDone: async (payload) => {
           setRepairing(false);
+          setRepairStopping(false);
+          // Остановленный кандидат принять нельзя (сервер откажет по
+          // статусу), поэтому предлагать его к принятию — обман.
+          if (payload.cancelled) {
+            setRepairProposalId(null);
+            setRepairError("Self-repair остановлен. Глава не изменилась.");
+            return;
+          }
           setRepairProposal(payload.proposal);
           const { changes } = await api.getProposalChanges(payload.proposal.id);
           setRepairProposalChanges(changes);
@@ -149,11 +186,13 @@ export function CritiquePanel({
         onError: (msg) => {
           setRepairError(msg);
           setRepairing(false);
+          setRepairStopping(false);
         },
       });
     } catch (e) {
       setRepairError(e instanceof Error ? e.message : String(e));
       setRepairing(false);
+      setRepairStopping(false);
     }
   }
 
@@ -195,17 +234,44 @@ export function CritiquePanel({
         </p>
       )}
 
-      {report && report.status === "error" && !report.report && (
-        <p className="text-sm text-[var(--color-ink-red-fg)]">
-          Все критики упали: {report.errorMessage}
-        </p>
+      {report && report.status === "error" && (
+        <div className="border border-[var(--color-ink-red-fg)] rounded-md p-3 flex flex-col gap-1">
+          <p className="text-sm text-[var(--color-ink-red-fg)]">
+            Критика не удалась: ни один критик не ответил.
+            {requestedList(report) && ` Просили: ${requestedList(report)}.`}
+          </p>
+          {report.errorMessage && (
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              {report.errorMessage}
+            </p>
+          )}
+          <p className="text-xs text-[var(--color-muted-foreground)]">
+            Замечаний нет не потому, что их нет, а потому, что разбора не было.
+            Запустите критику ещё раз.
+          </p>
+        </div>
       )}
 
-      {report && report.report && (
+      {report && report.status === "partial" && (
+        <div className="border border-[var(--color-ink-amber-fg)] rounded-md p-3 flex flex-col gap-1">
+          <p className="text-sm text-[var(--color-ink-amber-fg)]">
+            Разбор неполный: не ответили {failedList(report)}. Ниже — только
+            то, что успели сказать остальные.
+          </p>
+          {report.errorMessage && (
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              {report.errorMessage}
+            </p>
+          )}
+        </div>
+      )}
+
+      {report && report.status !== "error" && report.report && (
         <CritiqueResults report={report} />
       )}
 
       {report &&
+        report.status !== "error" &&
         report.report &&
         (report.report.blockingCount + report.report.suggestionCount > 0 ||
           repairing ||
@@ -231,6 +297,15 @@ export function CritiquePanel({
                 <Button onClick={onRepair} disabled={repairing}>
                   {repairing ? "Reviser пишет…" : "Запустить self-repair"}
                 </Button>
+                {repairing && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void onStopRepair()}
+                    disabled={repairProposalId === null || repairStopping}
+                  >
+                    {repairStopping ? "Останавливаю…" : "Остановить"}
+                  </Button>
+                )}
               </div>
             </div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
@@ -304,9 +379,10 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
           сгенерировано: {new Date(r.generatedAt).toLocaleString("ru-RU")}
         </span>
       </div>
-      {report.errorMessage && (
-        <p className="text-xs text-[var(--color-ink-amber-fg)]">
-          Частичные ошибки: {report.errorMessage}
+      {r.requestedCritics.length > 0 && (
+        <p className="text-xs text-[var(--color-muted-foreground)]">
+          Ответили {r.critics.length} из {r.requestedCritics.length}. Просили:{" "}
+          {criticNames(r.requestedCritics)}.
         </p>
       )}
       <div className="flex flex-col gap-3">

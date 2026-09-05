@@ -133,3 +133,128 @@ describe("CritiquePanel — self-repair proposal wiring", () => {
     );
   });
 });
+
+const ERROR_REPORT: CritiqueReport = {
+  id: 2,
+  chapterVersionId: 10,
+  status: "error",
+  // Отчёт пишется всегда, даже когда не ответил никто: раньше панель гасила
+  // сообщение об отказе по `!report.report` и рисовала зелёный отчёт из нуля
+  // критиков.
+  report: {
+    critics: [],
+    requestedCritics: ["canon", "style", "editor", "reader"],
+    failedCritics: ["canon", "style", "editor", "reader"],
+    blockingCount: 0,
+    suggestionCount: 0,
+    nitCount: 0,
+    generatedAt: "2026-09-05T10:00:00.000Z",
+  },
+  errorMessage: "[canon] таймаут | [style] таймаут | [editor] таймаут | [reader] таймаут",
+  createdAt: "2026-09-05T10:00:00.000Z",
+  completedAt: "2026-09-05T10:00:00.000Z",
+};
+
+const PARTIAL_REPORT: CritiqueReport = {
+  id: 3,
+  chapterVersionId: 10,
+  status: "partial",
+  report: {
+    critics: [{ critic: "canon", overallNotes: "ок", issues: [] }],
+    requestedCritics: ["canon", "style"],
+    failedCritics: ["style"],
+    blockingCount: 0,
+    suggestionCount: 0,
+    nitCount: 0,
+    generatedAt: "2026-09-05T10:00:00.000Z",
+  },
+  errorMessage: "[style] таймаут",
+  createdAt: "2026-09-05T10:00:00.000Z",
+  completedAt: "2026-09-05T10:00:00.000Z",
+};
+
+function renderPanel() {
+  render(
+    <CritiquePanel
+      versionId={10}
+      expectedVersionId={10}
+      expectedDraftRevision={7}
+      onRepairDone={vi.fn()}
+    />,
+  );
+}
+
+describe("CritiquePanel — честный статус разбора", () => {
+  it("четыре падения из четырёх не выглядят зелёным отчётом", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue(ERROR_REPORT);
+    renderPanel();
+
+    expect(
+      await screen.findByText(/ни один критик не ответил/i),
+    ).toBeInTheDocument();
+    // Кого просили — названо поимённо.
+    expect(screen.getByText(/Canon Guard, Style, Editor, Reader/)).toBeInTheDocument();
+    expect(screen.getByText(/\[canon\] таймаут/)).toBeInTheDocument();
+    // Ни счётчиков «blocking: 0», ни блока self-repair над пустым отчётом.
+    expect(screen.queryByText(/blocking:/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Запустить self-repair" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("частичный разбор назван частичным, с именем отвалившегося критика", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue(PARTIAL_REPORT);
+    renderPanel();
+
+    expect(await screen.findByText(/Разбор неполный/i)).toBeInTheDocument();
+    expect(screen.getByText(/не ответили Style/)).toBeInTheDocument();
+    expect(screen.getByText(/Ответили 1 из 2/)).toBeInTheDocument();
+    // То, что успело ответить, всё-таки показано.
+    expect(screen.getByText(/Canon Guard · 0 замечаний/)).toBeInTheDocument();
+  });
+
+  it("полный разбор не поминает ни отказов, ни неполноты", async () => {
+    renderPanel();
+    expect(await screen.findByText(/blocking: 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/Разбор неполный/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ни один критик не ответил/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Ответили 1 из 4/)).toBeInTheDocument();
+  });
+});
+
+describe("CritiquePanel — остановка self-repair", () => {
+  it("идущий self-repair можно остановить по кнопке", async () => {
+    vi.mocked(api.cancelProposal).mockReset().mockResolvedValue({ stopping: true });
+    // Поток, который сообщает id кандидата и дальше молчит, — это и есть
+    // «Reviser пишет»: именно в этот момент нужна кнопка.
+    let finish: (() => void) | undefined;
+    vi.mocked(streamRepair).mockImplementation(
+      async (_versionId, _severities, handlers) => {
+        handlers.onProposal?.(42);
+        await new Promise<void>((resolve) => {
+          finish = () => {
+            handlers.onDone({ proposal: REPAIR_PROPOSAL, cancelled: true });
+            resolve();
+          };
+        });
+      },
+    );
+    renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Запустить self-repair" }),
+    );
+    const stop = await screen.findByRole("button", { name: "Остановить" });
+    await userEvent.click(stop);
+    expect(api.cancelProposal).toHaveBeenCalledWith(42);
+
+    finish?.();
+    expect(
+      await screen.findByText(/Self-repair остановлен/i),
+    ).toBeInTheDocument();
+    // Остановленного кандидата принять нельзя — его и не предлагают.
+    expect(
+      screen.queryByRole("button", { name: "Принять целиком" }),
+    ).not.toBeInTheDocument();
+  });
+});
