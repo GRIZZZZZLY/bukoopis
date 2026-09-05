@@ -18,13 +18,13 @@ import {
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
-import {
-  enqueueMemoryJobs,
-  COMMIT_JOB_KINDS,
-} from "../utils/memory-queue.js";
-import { markMemoryStaleOnCommit } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
-import { toVersion } from "../db/rows.js";
+import {
+  createProposal,
+  finishProposal,
+  loadProposal,
+} from "../utils/prose-proposals.js";
+import { isConfirmedCompletion } from "@book-forge/llm";
 import { loadStyleContext } from "../utils/style-context.js";
 import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
 import { logUsage } from "../utils/usageLogger.js";
@@ -313,10 +313,17 @@ export function createCritiqueRoute(
     return streamSSE(c, async (stream) => {
       let fullText = "";
       let modelId = "";
+      let stopReason: string | null = null;
       let inputTokens = 0;
       let outputTokens = 0;
       let cacheCreationTokens = 0;
       let cacheReadTokens = 0;
+      const proposalId = createProposal(sqlite, {
+        bookId: ch.book_id,
+        chapterId: ch.id,
+        kind: "repair",
+        baseVersionId: v.id,
+      });
       try {
         await stream.writeSSE({
           event: "iteration",
@@ -324,6 +331,10 @@ export function createCritiqueRoute(
             current: nextIteration,
             max: REPAIR_MAX_ITERATIONS,
           }),
+        });
+        await stream.writeSSE({
+          event: "proposal",
+          data: JSON.stringify({ proposalId, baseVersionId: v.id }),
         });
 
         const styleCtx = loadStyleContext(sqlite, book.style_profile_id);
@@ -351,6 +362,7 @@ export function createCritiqueRoute(
           if (next.done) {
             fullText = next.value.text;
             modelId = next.value.modelId;
+            stopReason = next.value.stopReason;
             inputTokens = next.value.tokens.input;
             outputTokens = next.value.tokens.output;
             cacheCreationTokens = next.value.tokens.cacheCreation;
@@ -363,60 +375,19 @@ export function createCritiqueRoute(
           });
         }
 
-        // Persist as new version: parent = original, branch = repair-N
-        const contentJson = JSON.stringify(prosePlainTextToProseMirror(fullText));
-        const wordCount = countWords(fullText);
-        const branchLabel = `${REPAIR_BRANCH_PREFIX}${nextIteration}`;
-        const now = new Date().toISOString();
-
-        const tx = sqlite.transaction(() => {
-          const info = sqlite
-            .prepare(
-              `INSERT INTO chapter_versions
-               (chapter_id, parent_version_id, content_json, content_text, word_count, source, branch_label, created_at)
-               VALUES (?, ?, ?, ?, ?, 'agent', ?, ?)`,
-            )
-            .run(
-              v.chapter_id,
-              v.id,
-              contentJson,
-              fullText,
-              wordCount,
-              branchLabel,
-              now,
-            );
-          const newVersionId = Number(info.lastInsertRowid);
-          sqlite
-            .prepare(
-              "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
-            )
-            .run(newVersionId, now, v.chapter_id);
-          sqlite
-            .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
-            .run(now, ch.book_id);
-          // ADR 0002: a repaired chapter is a deliberate commit — enqueue the
-          // full memory pipeline atomically with the version row.
-          enqueueMemoryJobs(sqlite, {
-            bookId: ch.book_id,
-            chapterId: ch.id,
-            chapterVersionId: newVersionId,
-            kinds: COMMIT_JOB_KINDS,
-          });
-          markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
-          // The revised text replaces the editor content — drop the stale draft.
-          sqlite
-            .prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?")
-            .run(ch.id);
-          return newVersionId;
+        // Кандидат, не версия: ветка repair-N и коммит в чаптер появятся при
+        // принятии — до тех пор ни версии, ни памяти, ни удаления черновика.
+        const confirmed = isConfirmedCompletion(stopReason);
+        finishProposal(sqlite, proposalId, {
+          status: confirmed ? "ready" : "incomplete",
+          contentText: fullText,
+          contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
+          wordCount: countWords(fullText),
+          completion: confirmed ? "confirmed" : "unconfirmed",
+          stopReason,
+          modelId,
+          backend: "anthropic",
         });
-        const newVersionId = tx();
-        memoryWorker?.kick();
-
-        const newRow = sqlite
-          .prepare("SELECT * FROM chapter_versions WHERE id = ?")
-          .get(newVersionId) as
-          | ChapterVersionRow
-          | undefined;
 
         logUsage(sqlite, {
           route: "reviser.repair",
@@ -429,13 +400,12 @@ export function createCritiqueRoute(
           },
           bookId: ch.book_id,
           chapterId: ch.id,
-          versionId: newVersionId,
         });
 
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
-            version: newRow ? toVersion(newRow) : null,
+            proposal: loadProposal(sqlite, proposalId),
             iteration: nextIteration,
             tokens: {
               input: inputTokens,
@@ -446,11 +416,15 @@ export function createCritiqueRoute(
           }),
         });
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        finishProposal(sqlite, proposalId, {
+          status: "failed",
+          errorMessage: message,
+          stopReason,
+        });
         await stream.writeSSE({
           event: "error",
-          data: JSON.stringify({
-            message: e instanceof Error ? e.message : String(e),
-          }),
+          data: JSON.stringify({ message }),
         });
       }
     });
