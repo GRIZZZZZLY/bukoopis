@@ -41,7 +41,9 @@ import { stageIdSchema } from "@book-forge/shared";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { ESTIMATE_MS } from "../utils/generation-progress.js";
 import { streamAgentProgress } from "../utils/sse-progress.js";
+import { streamSSE } from "hono/streaming";
 import { runIntake, IntakeBookNotFoundError } from "../utils/intake-run.js";
+import { createIntakeCancelRegistry } from "../utils/intake-cancel.js";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -132,6 +134,10 @@ const intakeBodySchema = z.object({
   files: z.array(intakeFileSchema).min(1).max(50),
 });
 
+const intakeCancelBodySchema = z.object({
+  requestKey: z.string().min(1),
+});
+
 const ENTITY_STAGES = new Set(["characters", "items"] as const);
 
 const entityProfileSchema = z.record(z.string(), z.unknown());
@@ -214,6 +220,11 @@ function loadChapterProgress(
 export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
+  const intakeCancels = createIntakeCancelRegistry();
+  // Ключ разбора, идущего сейчас для книги — для GET .../intake/inflight.
+  // Отдельно от intakeCancels: тот хранит только «остановить или нет», не
+  // «какой ключ сейчас активен для этой книги».
+  const intakeInFlight = new Map<number, string>();
 
   r.get("/books/recommended", (c) => {
     const rows = sqlite
@@ -520,6 +531,102 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       }
       throw e;
     }
+  });
+
+  r.post("/books/:id/intake-stream", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = intakeBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    // Книгу проверяем до открытия потока: неизвестный id должен остаться
+    // обычным 404, а не событием `error` внутри уже открытого 200-потока.
+    const concept = loadConceptOr404(c, id);
+    if (concept instanceof Response) return concept;
+
+    return streamSSE(c, async (stream) => {
+      // onFile синхронный, а stream.writeSSE — асинхронный запись; без
+      // цепочки промисов события файлов и begin/done перемешались бы.
+      let pending: Promise<void> = Promise.resolve();
+      const queue = (event: string, data: unknown): void => {
+        pending = pending
+          .then(() => stream.writeSSE({ event, data: JSON.stringify(data) }))
+          .catch(() => {});
+      };
+
+      // requestKey нужен и реестру отмены, и событию `begin`. Он приходит
+      // из onBegin раннера — единственного места, где ключ вычисляется, —
+      // чтобы маршрут никогда не считал его заново и не мог разойтись с тем,
+      // что видит `runIntake`.
+      let currentKey: string | undefined;
+      try {
+        const result = await runIntake(
+          { sqlite, hasVec, repo, bookId: id },
+          {
+            files: parsed.data.files,
+            onBegin: (e) => {
+              currentKey = e.requestKey;
+              intakeCancels.begin(id, e.requestKey);
+              intakeInFlight.set(id, e.requestKey);
+              queue("begin", e);
+            },
+            onFile: (e) => queue("file", e),
+            shouldStop: () => (currentKey !== undefined ? intakeCancels.shouldStop(id, currentKey) : false),
+          },
+        );
+        await pending;
+        const { summary, ideaSet, chapters, failures, revision, cancelled } = result;
+        await stream.writeSSE({
+          event: "done",
+          data: JSON.stringify({ summary, ideaSet, chapters, failures, revision, cancelled }),
+        });
+      } catch (e) {
+        await pending;
+        if (e instanceof IntakeBookNotFoundError) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ error: "not_found", details: { resource: "book" } }),
+          });
+        } else if (e instanceof StudioConflictError) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ error: "revision_conflict", details: { expected: e.expected } }),
+          });
+        } else {
+          const message = e instanceof Error ? e.message : String(e);
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ error: "intake_failed", details: { message } }),
+          });
+        }
+      } finally {
+        // Снимаем регистрацию на любом исходе — успех, ошибка или отмена —
+        // иначе упавший или уже завершившийся разбор остаётся в реестре и
+        // более поздний запрос на остановку того же ключа находит призрак.
+        if (currentKey !== undefined) {
+          intakeCancels.end(id, currentKey);
+          intakeInFlight.delete(id);
+        }
+      }
+    });
+  });
+
+  r.get("/books/:id/intake/inflight", (c) => {
+    const id = Number(c.req.param("id"));
+    const requestKey = intakeInFlight.get(id);
+    if (requestKey === undefined) return notFound(c, "intake_run");
+    return c.json({ requestKey });
+  });
+
+  r.post("/books/:id/intake/cancel", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = intakeCancelBodySchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    const stopped = intakeCancels.requestStop(id, parsed.data.requestKey);
+    if (!stopped) return notFound(c, "intake_run");
+    return c.json({ stopping: true });
   });
 
   r.post("/books/:id/stages/:stageId/playbook", async (c) => {
