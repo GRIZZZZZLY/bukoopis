@@ -5,7 +5,16 @@ import {
   type ProposalKind,
   type ProseProposal,
   type ProseProposalStatus,
+  applyProseChanges,
+  blocksToDoc,
+  diffProseBlocks,
+  docToBlocks,
+  REPAIR_BRANCH_PREFIX,
+  type AcceptProseProposalInput,
 } from "@book-forge/shared";
+import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "./memory-queue.js";
+import { markMemoryStaleOnCommit } from "./memory-activation.js";
+import { extractText, countWords } from "./prosemirror.js";
 
 export interface ProseProposalRow {
   id: number;
@@ -197,4 +206,202 @@ export function listProposals(
     )
     .all(chapterId, limit) as ProseProposalRow[];
   return rows.map(toProposal);
+}
+
+export type ProposalConflictReason = "version" | "draft" | "status" | "stale";
+
+export class ProposalConflictError extends Error {
+  constructor(
+    public readonly reason: ProposalConflictReason,
+    message: string,
+  ) {
+    // Причина приписана тегом в конце: текст остаётся русским для автора, а
+    // код (и тесты) может опознать причину по message, не заглядывая в reason.
+    super(`${message} [${reason}]`);
+    this.name = "ProposalConflictError";
+  }
+}
+
+export interface AcceptOutcome {
+  versionId: number;
+  /** true — этот requestId уже принимали, версия та же самая. */
+  replayed: boolean;
+}
+
+/** Сколько принятых repair-версий уже есть в предках. Считается по версиям, а
+ *  не по предложениям: отклонённый кандидат итерацию не тратит. */
+function countRepairAncestors(sqlite: DatabaseType, versionId: number | null): number {
+  let count = 0;
+  let cursor = versionId;
+  const seen = new Set<number>();
+  while (cursor !== null && !seen.has(cursor)) {
+    seen.add(cursor);
+    const row = sqlite
+      .prepare("SELECT parent_version_id, branch_label FROM chapter_versions WHERE id = ?")
+      .get(cursor) as
+      | { parent_version_id: number | null; branch_label: string | null }
+      | undefined;
+    if (!row) break;
+    if (row.branch_label?.startsWith(REPAIR_BRANCH_PREFIX)) count++;
+    cursor = row.parent_version_id;
+  }
+  return count;
+}
+
+export function acceptProposal(
+  sqlite: DatabaseType,
+  proposalId: number,
+  input: AcceptProseProposalInput,
+): AcceptOutcome {
+  const tx = sqlite.transaction((): AcceptOutcome => {
+    const proposal = loadProposal(sqlite, proposalId);
+    if (!proposal) throw new ProposalConflictError("status", "предложение не найдено");
+
+    // Идемпотентность по requestId: повтор после сетевого сбоя возвращает уже
+    // созданную версию и не порождает второго обновления памяти.
+    if (proposal.status === "accepted") {
+      if (proposal.acceptRequestId === input.requestId && proposal.acceptedVersionId) {
+        return { versionId: proposal.acceptedVersionId, replayed: true };
+      }
+      throw new ProposalConflictError("status", "предложение уже принято");
+    }
+    if (proposal.status === "streaming") {
+      throw new ProposalConflictError("status", "предложение ещё пишется");
+    }
+    if (proposal.status !== "ready" && proposal.status !== "incomplete") {
+      throw new ProposalConflictError("status", `нельзя принять предложение в статусе ${proposal.status}`);
+    }
+    // Незавершённый текст можно посмотреть, но нельзя принять как готовую
+    // главу молча: обрыв, лимит вывода и молчащий бэкенд — не «дописано».
+    if (proposal.completion === "unconfirmed" && !input.acknowledgeStale) {
+      throw new ProposalConflictError(
+        "stale",
+        "завершение не подтверждено: примите осознанно или перезапустите",
+      );
+    }
+
+    const ch = sqlite
+      .prepare("SELECT id, book_id, order_index, current_version_id FROM chapters WHERE id = ?")
+      .get(proposal.chapterId) as
+      | { id: number; book_id: number; order_index: number; current_version_id: number | null }
+      | undefined;
+    if (!ch) throw new ProposalConflictError("status", "глава не найдена");
+    // INV-11: предложение и глава обязаны принадлежать одной книге.
+    if (ch.book_id !== proposal.bookId) {
+      throw new ProposalConflictError("status", "предложение из другой книги");
+    }
+
+    // CAS по тому, что видел автор. Сравниваем с ожиданиями клиента, а не с
+    // базой предложения: автор мог осознанно перечитать изменившуюся главу и
+    // принять поверх неё.
+    if ((ch.current_version_id ?? null) !== (input.expectedVersionId ?? null)) {
+      throw new ProposalConflictError("version", "текущая версия главы изменилась");
+    }
+    const draft = sqlite
+      .prepare("SELECT revision FROM chapter_drafts WHERE chapter_id = ?")
+      .get(proposal.chapterId) as { revision: number } | undefined;
+    const actualDraftRevision = draft ? draft.revision : null;
+    if (actualDraftRevision !== (input.expectedDraftRevision ?? null)) {
+      throw new ProposalConflictError("draft", "черновик изменился, пока шла генерация");
+    }
+
+    if (
+      contextFingerprint(sqlite, proposal.chapterId) !== proposal.contextFingerprint &&
+      !input.acknowledgeStale
+    ) {
+      throw new ProposalConflictError("stale", "база контекста изменилась с начала генерации");
+    }
+
+    // Что именно становится текстом версии: весь кандидат или база с
+    // выбранными правками. Слияние делает сервер — иначе принятая версия
+    // зависела бы от состояния вкладки.
+    let contentJson = proposal.contentJson;
+    let contentText = proposal.contentText;
+    if (input.selectedChangeIds !== undefined) {
+      // Пустая глава — пустой список абзацев, а не один пустой абзац: иначе
+      // сравнение показало бы автору фантомную правку «убрано ничего».
+      const baseBlocks = ch.current_version_id
+        ? docToBlocks(
+            JSON.parse(
+              (
+                sqlite
+                  .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
+                  .get(ch.current_version_id) as { content_json: string }
+              ).content_json,
+            ),
+          )
+        : [];
+      const candidateBlocks = docToBlocks(JSON.parse(proposal.contentJson));
+      const changes = diffProseBlocks(baseBlocks, candidateBlocks);
+      const merged = applyProseChanges(baseBlocks, changes, input.selectedChangeIds);
+      const mergedDoc = blocksToDoc(merged);
+      contentJson = JSON.stringify(mergedDoc);
+      contentText = extractText(mergedDoc);
+    }
+
+    const branchLabel =
+      proposal.kind === "repair"
+        ? `${REPAIR_BRANCH_PREFIX}${countRepairAncestors(sqlite, ch.current_version_id) + 1}`
+        : null;
+    const now = new Date().toISOString();
+    const info = sqlite
+      .prepare(
+        `INSERT INTO chapter_versions
+           (chapter_id, parent_version_id, content_json, content_text, word_count, source, branch_label, created_at)
+         VALUES (?, ?, ?, ?, ?, 'agent', ?, ?)`,
+      )
+      .run(
+        ch.id,
+        ch.current_version_id,
+        contentJson,
+        contentText,
+        countWords(contentText),
+        branchLabel,
+        now,
+      );
+    const versionId = Number(info.lastInsertRowid);
+
+    sqlite
+      .prepare("UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?")
+      .run(versionId, now, ch.id);
+    sqlite.prepare("UPDATE books SET updated_at = ? WHERE id = ?").run(now, ch.book_id);
+    // ADR 0002: принятие — это и есть осознанный коммит, поэтому задания
+    // памяти ставятся здесь и только на итоговый принятый текст.
+    enqueueMemoryJobs(sqlite, {
+      bookId: ch.book_id,
+      chapterId: ch.id,
+      chapterVersionId: versionId,
+      kinds: COMMIT_JOB_KINDS,
+    });
+    markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
+    sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(ch.id);
+
+    sqlite
+      .prepare(
+        `UPDATE prose_proposals
+         SET status = 'accepted', accepted_version_id = ?, accept_request_id = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(versionId, input.requestId, now, proposalId);
+    // Остальные живые кандидаты этой главы посчитаны от базы, которой больше
+    // нет: помечаем, а не оставляем автору выбор из устаревшего.
+    sqlite
+      .prepare(
+        `UPDATE prose_proposals SET status = 'superseded', updated_at = ?
+         WHERE chapter_id = ? AND id != ? AND status IN ('ready','incomplete')`,
+      )
+      .run(now, ch.id, proposalId);
+
+    return { versionId, replayed: false };
+  });
+  return tx.immediate();
+}
+
+export function rejectProposal(sqlite: DatabaseType, proposalId: number): void {
+  sqlite
+    .prepare(
+      `UPDATE prose_proposals SET status = 'rejected', updated_at = ?
+       WHERE id = ? AND status IN ('ready','incomplete','cancelled','failed')`,
+    )
+    .run(new Date().toISOString(), proposalId);
 }

@@ -72,7 +72,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createUsageRoute(sqlite));
   app.route("/api", createWritingProgressRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
-  app.route("/api", createProposalsRoute(sqlite, proposalCancels));
+  app.route("/api", createProposalsRoute(sqlite, proposalCancels, memoryWorker));
 
   return {
     app,
