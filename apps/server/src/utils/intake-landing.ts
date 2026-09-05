@@ -65,16 +65,26 @@ export function landFragments(
       continue;
     }
     if (!isAspectTarget(fragment.target)) continue; // concept и skip
-    const bucket = byStage.get(fragment.target) ?? [];
-    const isEntityStage =
-      fragment.target === "characters" || fragment.target === "items";
-    const aspect = isEntityStage
-      ? buildImportedEntityAspect(fragment, bucket.length, now) ??
-        buildImportedMarkdownAspect(fragment, bucket.length, now)
-      : buildImportedMarkdownAspect(fragment, bucket.length, now);
+
+    // Этап сущностей умеет показывать только набор карточек. Фрагмент, из
+    // которого классификатор не вытащил ни одного имени (файл про связи, где
+    // никто не назван прямо, — вполне обычный ответ), карточками не станет, а
+    // markdown на «Персонажах» рисовать нечем. Проза о людях — это лор:
+    // единственный этап, который держит такой текст и показывает его как есть.
+    let target: AspectTarget = fragment.target;
+    let aspect: StageAspect | undefined;
+    if (target === "characters" || target === "items") {
+      aspect = buildImportedEntityAspect(fragment, 0, now);
+      if (!aspect) target = "lore";
+    }
+
+    const bucket = byStage.get(target) ?? [];
+    // Порядок здесь предварительный: mergeAspectsIntoStage перенумерует всё
+    // от конца уже лежащих на этапе аспектов.
+    aspect ??= buildImportedMarkdownAspect(fragment, bucket.length, now);
     bucket.push(aspect);
-    byStage.set(fragment.target, bucket);
-    landed.push({ target: fragment.target, title: fragment.title, kind: "aspect" });
+    byStage.set(target, bucket);
+    landed.push({ target, title: fragment.title, kind: "aspect" });
   }
 
   const stages: StudioState["stages"] = { ...state.stages };

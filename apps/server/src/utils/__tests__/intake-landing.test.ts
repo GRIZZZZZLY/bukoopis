@@ -94,13 +94,40 @@ describe("landFragments", () => {
     expect(() => assertStudioStateInvariants(next)).not.toThrow();
   });
 
-  it("falls back to a markdown draft when an entity fragment carries no entities", () => {
-    const { next } = landFragments(
+  it("sends an entity-less fragment to lore instead of a stage that cannot render it", () => {
+    // A relationships file that names nobody cleanly is plausible classifier
+    // output. A markdown payload on `characters` used to be the fallback, and
+    // EntityStageRunner hands every variant payload to a renderer that reads
+    // `.candidates` — a string there took the whole app to its error screen.
+    // Prose about people belongs in lore, which renders markdown natively.
+    const { next, landed } = landFragments(
       emptyStudioState(),
       [frag({ target: "characters", title: "Связи", entities: [] })],
       NOW,
     );
-    expect(next.stages.characters!.aspects[0]!.payloadKind).toBe("markdown");
+    expect(next.stages.characters).toBeUndefined();
+    const aspect = next.stages.lore!.aspects[0]!;
+    expect(aspect.payloadKind).toBe("markdown");
+    expect(aspect.name).toBe("Связи");
+    // The summary must name where the material actually went, not where the
+    // classifier aimed it.
+    expect(landed).toEqual([{ target: "lore", title: "Связи", kind: "aspect" }]);
+    expect(() => assertStudioStateInvariants(next)).not.toThrow();
+  });
+
+  it("keeps the redirected fragment in order behind lore fragments of its own", () => {
+    const { next } = landFragments(
+      emptyStudioState(),
+      [
+        frag({ target: "lore", title: "Барьер" }),
+        frag({ target: "items", title: "Реликвии", entities: [] }),
+      ],
+      NOW,
+    );
+    expect(next.stages.lore!.aspects.map((a) => [a.name, a.order])).toEqual([
+      ["Барьер", 0],
+      ["Реликвии", 1],
+    ]);
   });
 
   it("hands chapter fragments back untouched instead of making aspects of them", () => {
