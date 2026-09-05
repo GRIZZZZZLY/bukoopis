@@ -65,6 +65,8 @@ export interface WriteChapterInput {
   localModelTag?: string;
   /** Optional override for OLLAMA_BASE_URL. */
   localBaseUrl?: string;
+  /** Отмена вызова (task 7 — остановка генерации). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -149,6 +151,7 @@ export async function* writeChapter(
   {
     text: string;
     modelId: string;
+    stopReason: string | null;
     tokens: {
       input: number;
       output: number;
@@ -195,6 +198,7 @@ export async function* writeChapter(
           // tokens; the rest is headroom for planning. Safe because this call
           // streams.
           maxTokens: 32000,
+          ...(input.signal !== undefined ? { signal: input.signal } : {}),
         });
 
   if (provider === "ollama" && !input.localModelTag) {
@@ -208,6 +212,7 @@ export async function* writeChapter(
     outputTokens: 0,
     cacheCreationInputTokens: 0,
     cacheReadInputTokens: 0,
+    stopReason: null as string | null,
   };
   while (true) {
     const next = await gen.next();
@@ -221,6 +226,7 @@ export async function* writeChapter(
   return {
     text: result.text,
     modelId: result.modelId,
+    stopReason: result.stopReason,
     tokens: {
       input: result.inputTokens,
       output: result.outputTokens,

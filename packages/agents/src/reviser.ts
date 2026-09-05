@@ -52,6 +52,8 @@ export interface ReviseChapterInput {
   severityFilter?: IssueSeverity[]; // default: all
   iteration: number; // 1, 2, 3
   config?: GenerationConfig;
+  /** Отмена вызова (task 7 — остановка генерации). */
+  signal?: AbortSignal;
 }
 
 function formatCriticIssues(
@@ -136,6 +138,7 @@ export async function* reviseChapter(
   {
     text: string;
     modelId: string;
+    stopReason: string | null;
     tokens: {
       input: number;
       output: number;
@@ -162,6 +165,7 @@ export async function* reviseChapter(
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 16384,
+    ...(input.signal !== undefined ? { signal: input.signal } : {}),
   });
 
   let result = {
@@ -171,6 +175,7 @@ export async function* reviseChapter(
     outputTokens: 0,
     cacheCreationInputTokens: 0,
     cacheReadInputTokens: 0,
+    stopReason: null as string | null,
   };
   while (true) {
     const next = await gen.next();
@@ -184,6 +189,7 @@ export async function* reviseChapter(
   return {
     text: result.text,
     modelId: result.modelId,
+    stopReason: result.stopReason,
     tokens: {
       input: result.inputTokens,
       output: result.outputTokens,

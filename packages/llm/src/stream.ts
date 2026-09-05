@@ -23,6 +23,8 @@ export interface StreamCallOptions {
   /** When true and `system` is a string, wraps it as a single ephemeral
    * cache_control block. Defaults to env `LLM_PROMPT_CACHE !== "0"`. */
   cacheableSystem?: boolean;
+  /** Отмена вызова. Бэкенд, который её не поддерживает, просто игнорирует. */
+  signal?: AbortSignal;
 }
 
 export interface StreamCallResult {
@@ -32,6 +34,15 @@ export interface StreamCallResult {
   outputTokens: number;
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
+  /** Почему модель остановилась. null — бэкенд этого не сообщает, и тогда
+   *  «дописал» от «упёрся в лимит» неотличимо: считаем неподтверждённым. */
+  stopReason: string | null;
+}
+
+/** Только явное завершение считается завершением. Молчание бэкенда — нет:
+ *  обрубок, принятый за готовую главу, стоит дороже лишнего вопроса автору. */
+export function isConfirmedCompletion(stopReason: string | null): boolean {
+  return stopReason === "end_turn" || stopReason === "stop_sequence";
 }
 
 function cachingEnabled(): boolean {
@@ -66,6 +77,7 @@ export async function* streamText(
       model: opts.model,
       system: opts.system,
       prompt: opts.prompt,
+      ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     });
     let final: StreamCallResult | undefined;
     while (true) {
@@ -103,7 +115,7 @@ export async function* streamText(
             : {}),
         },
         // withRetry owns retries — disable the SDK's internal ones.
-        { maxRetries: 0 },
+        { maxRetries: 0, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) },
       ),
     ),
   );
@@ -132,5 +144,6 @@ export async function* streamText(
     outputTokens: usage.output_tokens,
     cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
     cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+    stopReason: final.stop_reason ?? null,
   };
 }
