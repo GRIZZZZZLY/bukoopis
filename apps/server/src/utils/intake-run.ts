@@ -19,13 +19,7 @@ import {
   landFragments,
 } from "./intake-landing.js";
 import { insertChapters, type InsertedChapter } from "../routes/import-export.js";
-
-// The classifier echoes the author's text back verbatim inside a 32000-token
-// budget, and Russian runs roughly 2–2.5 characters per token, so a file much
-// past this size overflows the call outright rather than truncating. It is
-// rejected before the classifier ever sees it — as a per-file failure, not a
-// whole-request 400 — and the rest of the batch still lands.
-const MAX_INTAKE_FILE_CHARS = 40_000;
+import { splitIntakeFile } from "./intake-split.js";
 
 export interface IntakeFileEvent {
   index: number; // 0-based
@@ -202,8 +196,15 @@ export async function runIntake(
   // остановлен на третьем файле из одиннадцати, и тогда «проиграть» ответ
   // значит навсегда потерять оставшиеся восемь. Разбираем то, что до сих пор
   // не разобрано, и только то.
+  // Файл крупнее одного вызова классификатора режется на части по границам
+  // абзацев, и дальше часть живёт как самостоятельная единица разбора: своя
+  // строка прогресса, свой отказ, свой ключ дочитывания. Файл, влезающий
+  // целиком, проходит через сплиттер неизменным — вместе со своим именем, а
+  // значит и со своим ключом в журнале.
+  const units = readable.flatMap((f) => splitIntakeFile(f));
+
   const priorProcessed = new Set(prior?.processedFiles ?? []);
-  const queue = readable
+  const queue = units
     .map((f) => ({ file: f, key: intakeFileKey(f) }))
     .filter((entry) => !priorProcessed.has(entry.key));
   if (prior) {
@@ -231,9 +232,9 @@ export async function runIntake(
   /** Ключи файлов, которые классификатор прочитал в этом прогоне. */
   const processedNow: string[] = [];
 
-  // Последовательно, а не пачкой: один файл — один вызов, и падение одного
-  // не уносит остальные. shouldStop проверяется только перед началом
-  // очередного файла — прервать LLM-вызов на середине нечем.
+  // Последовательно, а не пачкой: одна единица разбора (файл или его часть) —
+  // один вызов, и падение одного не уносит остальные. shouldStop проверяется
+  // только перед началом очередной — прервать LLM-вызов на середине нечем.
   for (let index = 0; index < queue.length; index++) {
     const { file, key } = queue[index]!;
     if (shouldStop?.()) {
@@ -247,19 +248,6 @@ export async function runIntake(
       filename: file.filename,
       status: "started",
     });
-
-    if (file.content.length > MAX_INTAKE_FILE_CHARS) {
-      const message = `Файл «${file.filename}» слишком велик, чтобы прочитать за один раз (${file.content.length} символов, предел ${MAX_INTAKE_FILE_CHARS}). Разделите его на части поменьше и загрузите снова.`;
-      failures.push({ filename: file.filename, message });
-      emitFile(onFile, {
-        index,
-        total: queue.length,
-        filename: file.filename,
-        status: "failed",
-        message,
-      });
-      continue;
-    }
 
     try {
       const out = await runMaterialClassifier({

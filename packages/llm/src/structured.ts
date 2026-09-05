@@ -41,6 +41,8 @@ export interface StructuredCallInternal<I> {
   cacheableSystem?: boolean;
   temperature?: number;
   maxTokens?: number;
+  /** Свой предел ожидания вместо общего `LLM_TIMEOUT_MS`; 0 — без предела. */
+  timeoutMs?: number;
   onUsage?: (usage: StructuredUsage) => void;
   model: ModelChoice;
 }
@@ -73,7 +75,7 @@ export async function callViaAnthropicApi<I, O>(
   );
   const userPrompt = contract.buildPrompt(input.payload);
 
-  const timeoutMs = llmTimeoutMs();
+  const timeoutMs = input.timeoutMs ?? llmTimeoutMs();
   const res = await withRetry(() =>
     client.messages.create(
       {

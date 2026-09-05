@@ -39,6 +39,12 @@ export interface DispatchStructuredInput<I> {
   cacheableSystem?: boolean;
   temperature?: number;
   maxTokens?: number;
+  /** Свой предел ожидания для этого вызова, мс; 0 — без предела. По умолчанию
+   *  берётся общий `LLM_TIMEOUT_MS` (120 с). Нужен агентам, у которых длинный
+   *  ответ — норма, а не признак зависшего бэкенда: material_classifier
+   *  переносит текст автора дословно и на большом файле пишет минутами, и
+   *  общий предел рубил его посреди работы. */
+  timeoutMs?: number;
   /** Lightweight observability hook fired once after the call resolves. */
   onDiagnostics?: (d: StructuredDiagnostics) => void;
   /** Вехи выполнения для UI-прогресса. Best-effort, вызов не роняют. */
@@ -93,6 +99,7 @@ export async function dispatchStructured<I, O>(
         : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+      ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
       onUsage: (u) => {
         apiUsage = u;
       },
@@ -134,6 +141,7 @@ export async function dispatchStructured<I, O>(
   const sub = await callViaSdkMcpSubmitTool(contract, outputSchema as ZodType<O>, {
     payload: input.payload,
     model: input.model,
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
     ...(input.onProgress !== undefined ? { onProgress: emit } : {}),
   });
   const validated = outputSchema.safeParse(sub.raw);

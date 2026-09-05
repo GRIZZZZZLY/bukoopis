@@ -43,9 +43,12 @@ describe("IntakeSummary", () => {
     expect(screen.getByText(/ничего не утверждено/i)).toBeInTheDocument();
   });
 
-  it("names the files it could not read", () => {
+  it("names the files it could not read, with the reason the server gave", () => {
     renderSummary();
-    expect(screen.getByRole("alert")).toHaveTextContent("битый.md");
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("битый.md");
+    expect(alert).toHaveTextContent("LLM failure");
+    expect(alert).toHaveTextContent(/перетащить ещё раз/);
   });
 
   it("dismisses", async () => {

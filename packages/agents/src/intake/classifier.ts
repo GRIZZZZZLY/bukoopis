@@ -110,6 +110,14 @@ export interface RunMaterialClassifierOptions {
   temperature?: number;
 }
 
+/** Классификатор переносит текст автора дословно, поэтому его ответ соразмерен
+ *  входу: на куске в 40 000 символов это десятки тысяч токенов и несколько
+ *  минут письма. Общий `LLM_TIMEOUT_MS` (120 с) рубил такой вызов посреди
+ *  работы — по SDK это выглядело как «Claude Code process aborted by user», и
+ *  первая (самая большая) часть документа не разбиралась никогда. Предел
+ *  всё-таки нужен: без него зависший бэкенд держал бы разбор вечно. */
+const CLASSIFIER_TIMEOUT_MS = 600_000;
+
 export async function runMaterialClassifier(
   input: MaterialClassifierInput,
   options: RunMaterialClassifierOptions = {},
@@ -123,6 +131,7 @@ export async function runMaterialClassifier(
     model: options.model ?? "sonnet",
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     maxTokens: 32000,
+    timeoutMs: CLASSIFIER_TIMEOUT_MS,
   });
   return raw;
 }

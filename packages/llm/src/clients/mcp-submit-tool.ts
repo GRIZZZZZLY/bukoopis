@@ -35,6 +35,8 @@ export interface McpSubmitToolInput<I> {
   systemPromptOverride?: string;
   /** Override of contract.mcp.maxTurns for this call. */
   maxTurnsOverride?: number;
+  /** Свой предел ожидания вместо общего `LLM_TIMEOUT_MS`; 0 — без предела. */
+  timeoutMs?: number;
   /** Прогресс-хук; синхронный, ошибки внутри не должны ломать вызов. */
   onProgress?: (event: McpProgressEvent) => void;
 }
@@ -177,8 +179,9 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     env: subscriptionEnv,
   };
 
-  // Per-call timeout: abort the query if it stalls past LLM_TIMEOUT_MS.
-  const timeoutMs = llmTimeoutMs();
+  // Per-call timeout: abort the query if it stalls past LLM_TIMEOUT_MS (or the
+  // caller's own limit, for agents whose long answer is normal work).
+  const timeoutMs = input.timeoutMs ?? llmTimeoutMs();
   const controller = new AbortController();
   const timer =
     timeoutMs > 0
@@ -215,6 +218,17 @@ export async function callViaSdkMcpSubmitTool<I, O>(
       }
       if (msg.type === "result") resultMsg = msg;
     }
+  } catch (e) {
+    // Обрыв по нашему же таймеру SDK сообщает как «Claude Code process aborted
+    // by user» — читатель ищет, кто нажал отмену, вместо того чтобы увидеть
+    // предел ожидания. Называем вещь своим именем: это наш таймаут, и лечится
+    // он не повтором, а бо́льшим пределом (или меньшим куском работы).
+    if (controller.signal.aborted) {
+      throw new LLMError(
+        `[subscription/${modelId}] не уложился в ${timeoutMs} мс — вызов прерван по таймауту (LLM_TIMEOUT_MS или свой предел агента)`,
+      );
+    }
+    throw e;
   } finally {
     if (timer) clearTimeout(timer);
   }

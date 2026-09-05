@@ -6,7 +6,12 @@ import { IntakePanel } from "../IntakePanel";
 import { api } from "@/api/client";
 
 vi.mock("@/api/client", () => ({
-  api: { intake: vi.fn(), intakeStream: vi.fn(), cancelIntake: vi.fn() },
+  api: {
+    intake: vi.fn(),
+    intakeStream: vi.fn(),
+    cancelIntake: vi.fn(),
+    intakeInflight: vi.fn(),
+  },
 }));
 const m = vi.mocked(api);
 
@@ -239,5 +244,68 @@ describe("IntakePanel", () => {
 
     act(() => stream.resolve({ ...OK, cancelled: true }));
     await waitFor(() => expect(screen.getByText(/Разбор остановлен/)).toBeInTheDocument());
+  });
+
+  it("picks up a run that is already going on the server", async () => {
+    // Поток событий видит только вкладка, которая его открыла. После обновления
+    // страницы автор видел пустую зону перетаскивания и решал, что разбор не
+    // начинался, — хотя тот шёл на сервере.
+    m.intakeInflight.mockResolvedValue({
+      requestKey: "k9",
+      total: 3,
+      startedAt: new Date(Date.now() - 65_000).toISOString(),
+      rows: [
+        { filename: "а.md", status: "done", targets: ["world"] },
+        { filename: "б.md", status: "started" },
+      ],
+    } as never);
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByLabelText("Разбор материалов")).toBeInTheDocument());
+    expect(screen.getByText(/1 из 3/)).toBeInTheDocument();
+    expect(screen.getByText(/идёт 1 мин/)).toBeInTheDocument();
+    expect(screen.getByText("б.md")).toBeInTheDocument();
+    // Ключ пришёл с сервера — остановить подхваченный разбор можно сразу.
+    expect(screen.getByRole("button", { name: /Остановить/ })).not.toBeDisabled();
+  });
+
+  it("says the picked-up run finished once the server stops reporting it", async () => {
+    vi.useFakeTimers();
+    try {
+      m.intakeInflight.mockResolvedValueOnce({
+        requestKey: "k9",
+        total: 1,
+        startedAt: new Date().toISOString(),
+        rows: [{ filename: "а.md", status: "started" }],
+      } as never);
+      const onIntake = renderPanel();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByLabelText("Разбор материалов")).toBeInTheDocument();
+
+      m.intakeInflight.mockResolvedValue(null as never);
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByText("Разбор завершён")).toBeInTheDocument();
+      expect(onIntake).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not break when the in-flight check fails", async () => {
+    m.intakeInflight.mockRejectedValue(new Error("offline"));
+    renderPanel();
+    // Автор ничего не запускал в этой вкладке — неудачная проверка не повод
+    // показывать ему ошибку: зона перетаскивания просто остаётся на месте.
+    await waitFor(() =>
+      expect(screen.getByLabelText("Перетащите файлы с материалами")).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

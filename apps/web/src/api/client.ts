@@ -85,6 +85,21 @@ export interface IntakeFileEvent {
   message?: string;
 }
 
+/** Снимок идущего разбора: то же, что рисует прогресс, но взятое у сервера, а
+ *  не накопленное этой вкладкой. */
+export interface IntakeInflight {
+  requestKey: string;
+  total: number;
+  /** ISO-время начала — экран показывает, сколько разбор уже идёт. */
+  startedAt: string;
+  rows: Array<{
+    filename: string;
+    status: "started" | "done" | "failed";
+    targets?: IntakeTarget[];
+    message?: string;
+  }>;
+}
+
 export interface IntakeStreamHandlers {
   onBegin?: (e: { requestKey: string; total: number }) => void;
   onFile?: (e: IntakeFileEvent) => void;
@@ -750,6 +765,20 @@ export const api = {
       throw new ApiError(res.status, "Поток разбора оборвался без результата");
     }
     return result;
+  },
+
+  /** Что разбирается для книги прямо сейчас — или `null`, если ничего. SSE-поток
+   *  виден только той вкладке, которая его открыла, а разбор живёт в процессе
+   *  сервера и переживает обновление страницы; это единственный способ новой
+   *  вкладке узнать, что работа идёт, и показать тот же прогресс. 404 —
+   *  штатный ответ «ничего не идёт», а не сбой. */
+  intakeInflight: async (bookId: number): Promise<IntakeInflight | null> => {
+    try {
+      return await req<IntakeInflight>(`/api/books/${bookId}/intake/inflight`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
   },
 
   /** Останавливает разбор перед следующим файлом; файл, который уже читается,

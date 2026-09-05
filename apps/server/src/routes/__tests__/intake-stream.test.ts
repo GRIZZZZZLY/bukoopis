@@ -175,6 +175,54 @@ describe("POST /api/books/:id/intake-stream", () => {
   });
 });
 
+describe("GET /api/books/:id/intake/inflight", () => {
+  it("404 when nothing is being parsed for the book", async () => {
+    const id = await createBook();
+    const r = await t.app.request(`/api/books/${id}/intake/inflight`);
+    expect(r.status).toBe(404);
+  });
+
+  it("describes the running parse, so a reloaded page can show the same progress", async () => {
+    // Поток событий видит только та вкладка, которая его открыла. Без снимка
+    // обновление страницы оставляло автора перед пустой зоной перетаскивания,
+    // хотя разбор шёл.
+    const id = await createBook();
+    let snapshot: {
+      requestKey: string;
+      total: number;
+      startedAt: string;
+      rows: Array<{ filename: string; status: string; targets?: string[] }>;
+    } | null = null;
+    vi.mocked(runMaterialClassifier).mockImplementation(async (input) => {
+      if (input.filename === "б.md") {
+        snapshot = await sendJson(t.app, `/api/books/${id}/intake/inflight`, "GET");
+      }
+      return world("Карта");
+    });
+
+    const res = await t.app.request(
+      jsonReq(`/api/books/${id}/intake-stream`, "POST", { files: [file("а.md"), file("б.md")] }),
+    );
+    await readEvents(res);
+
+    expect(snapshot).not.toBeNull();
+    const seen = snapshot!;
+    expect(seen.total).toBe(2);
+    expect(seen.requestKey.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(seen.startedAt))).toBe(false);
+    // Первый файл уже разобран, второй читается прямо сейчас.
+    expect(seen.rows.map((r) => [r.filename, r.status])).toEqual([
+      ["а.md", "done"],
+      ["б.md", "started"],
+    ]);
+    expect(seen.rows[0]!.targets).toEqual(["world"]);
+
+    // Разбор закончился — реестр снова пуст, и вкладка узнаёт об этом по 404.
+    const after = await t.app.request(`/api/books/${id}/intake/inflight`);
+    expect(after.status).toBe(404);
+  });
+});
+
 describe("POST /api/books/:id/intake/cancel", () => {
   it("404 when no such run is in flight", async () => {
     const id = await createBook();

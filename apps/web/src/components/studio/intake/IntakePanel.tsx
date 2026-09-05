@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api, type IntakeFile, type IntakeResponse } from "@/api/client";
 import { DropZone } from "./DropZone";
@@ -44,6 +44,87 @@ export function IntakePanel({ bookId, onIntake }: Props) {
   const [rows, setRows] = useState<IntakeProgressRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IntakeResult | null>(null);
+  const [startedAt, setStartedAt] = useState<string | undefined>(undefined);
+  // Разбор идёт, но начала его не эта вкладка: она подхватила его у сервера
+  // после обновления страницы и теперь опрашивает состояние. Своего потока
+  // событий у неё нет — итог она узнает по тому, что разбор пропал из реестра.
+  const [adopted, setAdopted] = useState(false);
+  const [finishedElsewhere, setFinishedElsewhere] = useState(false);
+  // Опрос не должен пережить размонтирование панели и не должен запускаться
+  // дважды на один подхваченный прогон.
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function stopPolling() {
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }
+
+    function applySnapshot(run: NonNullable<Awaited<ReturnType<typeof api.intakeInflight>>>) {
+      setRequestKey(run.requestKey);
+      setTotal(run.total);
+      setStartedAt(run.startedAt);
+      setRows(
+        run.rows.map((row) => ({
+          filename: row.filename,
+          status: row.status === "started" ? ("running" as const) : row.status,
+          ...(row.targets !== undefined ? { targets: row.targets } : {}),
+          ...(row.message !== undefined ? { message: row.message } : {}),
+        })),
+      );
+      setAdopted(true);
+      setStreaming(true);
+    }
+
+    void (async () => {
+      let run;
+      try {
+        run = await api.intakeInflight(bookId);
+      } catch {
+        // Реестр не ответил — это не повод пугать автора: он ничего не
+        // запускал в этой вкладке. Просто не подхватываем.
+        return;
+      }
+      if (cancelled || !run) return;
+      applySnapshot(run);
+
+      pollRef.current = setInterval(() => {
+        void (async () => {
+          let next;
+          try {
+            next = await api.intakeInflight(bookId);
+          } catch {
+            return; // одна неудачная проверка — не конец разбора
+          }
+          if (cancelled) return;
+          if (!next) {
+            // Пропал из реестра — значит закончился. Итога у подхватившей
+            // вкладки нет (его получила та, что открывала поток), поэтому
+            // говорим прямо: разбор закончен, материал на этапах.
+            stopPolling();
+            setStreaming(false);
+            setAdopted(false);
+            setFinishedElsewhere(true);
+            onIntake();
+            return;
+          }
+          applySnapshot(next);
+        })();
+      }, 2000);
+    })();
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+    // onIntake пересоздаётся на каждый рендер страницы этапа — включать его в
+    // зависимости значило бы перезапускать опрос без причины.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]);
 
   async function handleFiles(files: File[]) {
     setBusy(true);
@@ -53,6 +134,9 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     setStopping(false);
     setStopError(null);
     setRequestKey(undefined);
+    setFinishedElsewhere(false);
+    setAdopted(false);
+    setStartedAt(new Date().toISOString());
     try {
       // По одному файлу, а не Promise.all: одна нечитаемая запись отбивала
       // весь пакет, и автор терял всё перетаскивание. Сервер и так живёт
@@ -163,6 +247,22 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     setStopping(false);
     setStopError(null);
     setRequestKey(undefined);
+    setStartedAt(undefined);
+  }
+
+  if (finishedElsewhere) {
+    return (
+      <div className="card" aria-label="Разбор завершён">
+        <h3>Разбор завершён</h3>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Он шёл на сервере и закончился. Всё легло черновиками — откройте этапы и примите то,
+          что подходит.
+        </p>
+        <button type="button" className="btn btn-primary" onClick={() => setFinishedElsewhere(false)}>
+          Понятно
+        </button>
+      </div>
+    );
   }
 
   if (result) {
@@ -185,6 +285,8 @@ export function IntakePanel({ bookId, onIntake }: Props) {
           <IntakeProgress
             total={total}
             rows={rows}
+            {...(startedAt !== undefined ? { startedAt } : {})}
+            adopted={adopted}
             stopping={stopping}
             canStop={requestKey !== undefined}
             onStop={() => void handleStop()}

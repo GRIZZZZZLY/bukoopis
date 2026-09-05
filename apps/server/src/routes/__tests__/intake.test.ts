@@ -248,22 +248,31 @@ describe("POST /api/books/:id/intake", () => {
     expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
   });
 
-  it("reports an oversized file as a failure and still lands the rest", async () => {
+  it("splits an oversized file into parts instead of refusing it", async () => {
     vi.mocked(runMaterialClassifier).mockResolvedValue({
       fragments: [{ target: "world", title: "Карта", body: "Барьер делит два мира." }],
     });
     const id = await createBook();
-    const hugeFile = { filename: "Гигант.md", content: "а".repeat(40_001) };
+    // Реальный материал такого размера — авторская «библия» одним документом,
+    // а не мусор: раньше она отбивалась целиком и автор оставался ни с чем.
+    const hugeFile = {
+      filename: "Гигант.md",
+      content: Array.from({ length: 2000 }, (_, i) => `абзац ${i} `.repeat(3)).join("\n"),
+    };
+    expect(hugeFile.content.length).toBeGreaterThan(40_000);
     const out = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
       files: [WORLD_FILE, hugeFile],
     });
-    // Only the small file reaches the classifier — the huge one is rejected before the call.
-    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(runMaterialClassifier).mock.calls[0]![0].filename).toBe("Карта.md");
+
+    const calls = vi.mocked(runMaterialClassifier).mock.calls;
+    expect(calls[0]![0].filename).toBe("Карта.md");
+    // Гигант дошёл до классификатора частями, и каждая влезает в один вызов.
+    const parts = calls.slice(1);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((c) => c[0].content.length <= 40_000)).toBe(true);
+    expect(parts[0]![0].filename).toBe(`Гигант.md (часть 1 из ${parts.length})`);
+    expect(out.failures).toEqual([]);
     expect(out.summary.map((r) => r.target)).toEqual(["world"]);
-    expect(out.failures).toHaveLength(1);
-    expect(out.failures[0]!.filename).toBe("Гигант.md");
-    expect(out.failures[0]!.message).toMatch(/слишком/i);
   });
 
   it("a crash after aspects land still journals the response, so a retry replays instead of duplicating", async () => {

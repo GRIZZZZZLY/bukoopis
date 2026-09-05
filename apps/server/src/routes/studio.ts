@@ -42,7 +42,11 @@ import { buildContextRef } from "../services/studio/contextHash.js";
 import { ESTIMATE_MS } from "../utils/generation-progress.js";
 import { streamAgentProgress } from "../utils/sse-progress.js";
 import { streamSSE } from "hono/streaming";
-import { runIntake, IntakeBookNotFoundError } from "../utils/intake-run.js";
+import {
+  runIntake,
+  IntakeBookNotFoundError,
+  type IntakeFileEvent,
+} from "../utils/intake-run.js";
 import { createIntakeCancelRegistry } from "../utils/intake-cancel.js";
 
 const patchStudioStateBodySchema = z.object({
@@ -217,14 +221,41 @@ function loadChapterProgress(
   return { total: row.total, finalized: row.finalized ?? 0 };
 }
 
+/** Строка снимка — то же, что строка прогресса на экране: файл (или его часть)
+ *  и что с ним стало. `started` значит «читается прямо сейчас». */
+interface IntakeInFlightRow {
+  filename: string;
+  status: "started" | "done" | "failed";
+  targets?: IntakeFileEvent["targets"];
+  message?: string;
+}
+
+interface IntakeInFlightRun {
+  requestKey: string;
+  total: number;
+  /** ISO-время начала: экран показывает, сколько разбор уже идёт. Долгий вызов
+   *  классификатора не даёт никаких событий минутами, и идущее время — то
+   *  единственное, что отличает работу от зависания. */
+  startedAt: string;
+  rows: IntakeInFlightRow[];
+}
+
 export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
   const intakeCancels = createIntakeCancelRegistry();
-  // Ключ разбора, идущего сейчас для книги — для GET .../intake/inflight.
-  // Отдельно от intakeCancels: тот хранит только «остановить или нет», не
-  // «какой ключ сейчас активен для этой книги».
-  const intakeInFlight = new Map<number, string>();
+  // Разбор, идущий сейчас для книги — для GET .../intake/inflight. Отдельно от
+  // intakeCancels: тот хранит только «остановить или нет», не «что сейчас
+  // происходит». Живёт в памяти процесса: перезапуск сервера его теряет, и это
+  // честно — переживший перезапуск прогон всё равно мёртв.
+  //
+  // Хранится не один ключ, а весь снимок прогресса. SSE-поток видит только та
+  // вкладка, которая его открыла: обновление страницы (или закрытие вкладки —
+  // разбор при этом продолжается, он живёт в процессе сервера, а не в
+  // соединении) оставляло автора перед пустой зоной перетаскивания, будто
+  // ничего и не начиналось. Снимок позволяет любой вкладке в любой момент
+  // спросить «что сейчас идёт» и нарисовать тот же прогресс.
+  const intakeInFlight = new Map<number, IntakeInFlightRun>();
 
   r.get("/books/recommended", (c) => {
     const rows = sqlite
@@ -559,6 +590,14 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       // чтобы маршрут никогда не считал его заново и не мог разойтись с тем,
       // что видит `runIntake`.
       let currentKey: string | undefined;
+
+      // Один вызов классификатора на большой части идёт минутами и не пишет в
+      // поток ни байта. Молчащее соединение вправе закрыть кто угодно между
+      // браузером и сервером, и тогда автор увидит обрыв на ровном месте —
+      // поэтому пустое событие раз в 20 секунд. Клиент неизвестные события
+      // игнорирует; это просто признак жизни соединения.
+      const keepalive = setInterval(() => queue("ping", { at: Date.now() }), 20_000);
+
       try {
         const result = await runIntake(
           { sqlite, hasVec, repo, bookId: id },
@@ -576,13 +615,34 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
               // quietly overwriting.
               if (intakeInFlight.has(id)) {
                 console.warn(
-                  `[intake] book ${id}: a second run (${e.requestKey}) started while ${intakeInFlight.get(id)} was still in flight — overwriting`,
+                  `[intake] book ${id}: a second run (${e.requestKey}) started while ${intakeInFlight.get(id)?.requestKey} was still in flight — overwriting`,
                 );
               }
-              intakeInFlight.set(id, e.requestKey);
+              intakeInFlight.set(id, {
+                requestKey: e.requestKey,
+                total: e.total,
+                startedAt: new Date().toISOString(),
+                rows: [],
+              });
               queue("begin", e);
             },
-            onFile: (e) => queue("file", e),
+            onFile: (e) => {
+              // Снимок обновляется теми же событиями, что и экран, и по тем же
+              // правилам: `started` добавляет строку, `done`/`failed` заменяет
+              // её по индексу. Иначе вкладка, подхватившая разбор после
+              // обновления страницы, показывала бы не то же, что вкладка,
+              // которая его начала.
+              const run = intakeInFlight.get(id);
+              if (run !== undefined && run.requestKey === currentKey) {
+                run.rows[e.index] = {
+                  filename: e.filename,
+                  status: e.status,
+                  ...(e.targets !== undefined ? { targets: e.targets } : {}),
+                  ...(e.message !== undefined ? { message: e.message } : {}),
+                };
+              }
+              queue("file", e);
+            },
             shouldStop: () => (currentKey !== undefined ? intakeCancels.shouldStop(id, currentKey) : false),
           },
         );
@@ -615,13 +675,14 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         // Снимаем регистрацию на любом исходе — успех, ошибка или отмена —
         // иначе упавший или уже завершившийся разбор остаётся в реестре и
         // более поздний запрос на остановку того же ключа находит призрак.
+        clearInterval(keepalive);
         if (currentKey !== undefined) {
           intakeCancels.end(id, currentKey);
           // Compare-and-delete: only clear the slot if it is still ours. If
           // a second run for this book ever overlapped and overwrote it (see
           // the warning above), this run finishing first must not delete the
           // other run's live entry out from under it.
-          if (intakeInFlight.get(id) === currentKey) {
+          if (intakeInFlight.get(id)?.requestKey === currentKey) {
             intakeInFlight.delete(id);
           }
         }
@@ -629,11 +690,19 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     });
   });
 
+  // «Что сейчас разбирается для этой книги». Отвечает 404, когда ничего не
+  // идёт, — это нормальный ответ, а не ошибка: так вкладка после обновления
+  // страницы отличает живой разбор от закончившегося.
   r.get("/books/:id/intake/inflight", (c) => {
     const id = Number(c.req.param("id"));
-    const requestKey = intakeInFlight.get(id);
-    if (requestKey === undefined) return notFound(c, "intake_run");
-    return c.json({ requestKey });
+    const run = intakeInFlight.get(id);
+    if (run === undefined) return notFound(c, "intake_run");
+    return c.json({
+      requestKey: run.requestKey,
+      total: run.total,
+      startedAt: run.startedAt,
+      rows: run.rows,
+    });
   });
 
   r.post("/books/:id/intake/cancel", async (c) => {

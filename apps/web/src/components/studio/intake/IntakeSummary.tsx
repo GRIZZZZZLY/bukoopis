@@ -45,10 +45,23 @@ export function IntakeSummary({ result, bookId, onDismiss }: Props) {
       )}
 
       {result.failures.length > 0 && (
-        <p role="alert" style={{ color: "var(--color-ink-red)", fontSize: 13 }}>
-          Не удалось разобрать: {result.failures.map((f) => f.filename).join(", ")}. Их можно
-          перетащить ещё раз.
-        </p>
+        // Причина отказа приходит с сервера по файлу и раньше выбрасывалась:
+        // автор видел одни имена и не мог узнать, чинить ему файл, повторять
+        // попытку или ждать. Показываем ровно то, что сервер сказал.
+        <div role="alert" className="intake-summary-failures">
+          <p>Не удалось разобрать:</p>
+          <ul>
+            {/* Ключ по номеру: в брошенной папке два файла из разных подпапок
+                легко зовутся одинаково. */}
+            {result.failures.map((f, index) => (
+              <li key={index}>
+                <span className="intake-summary-failed-name">{f.filename}</span>
+                {f.message ? ` — ${f.message}` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">Их можно перетащить ещё раз.</p>
+        </div>
       )}
 
       <button type="button" className="btn btn-primary" onClick={onDismiss}>

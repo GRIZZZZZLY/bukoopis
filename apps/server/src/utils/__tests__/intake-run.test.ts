@@ -310,6 +310,49 @@ describe("runIntake", () => {
     expect(calls).toEqual([]);
   });
 
+  it("splits a file too big for one classifier call into parts and classifies each", async () => {
+    // Авторская «библия» на 48 тысяч символов раньше отбивалась целиком — и
+    // автор видел «в файлах не нашлось ничего», не понимая почему.
+    const big = { filename: "библия.docx", content: Array.from({ length: 3000 }, (_, i) => `строка ${i} `.repeat(4)).join("\n") };
+    expect(big.content.length).toBeGreaterThan(40_000);
+    vi.mocked(runMaterialClassifier).mockResolvedValue(worldFragment("Карта"));
+    const events: IntakeFileEvent[] = [];
+    const out = await runIntake(deps(), { files: [big], onFile: (e) => events.push(e) });
+
+    const calls = vi.mocked(runMaterialClassifier).mock.calls;
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls.every((c) => c[0].content.length <= 40_000)).toBe(true);
+    expect(calls[0]![0].filename).toBe(`библия.docx (часть 1 из ${calls.length})`);
+    expect(out.failures).toEqual([]);
+    expect(out.summary.map((r) => r.target)).toEqual(["world"]);
+    // Каждая часть — своя строка прогресса, с тем же именем, что и в отказах.
+    expect(events.filter((e) => e.status === "started").map((e) => e.filename)).toEqual(
+      calls.map((c) => c[0].filename),
+    );
+  });
+
+  it("re-reads only the parts a stopped run never reached", async () => {
+    const big = { filename: "библия.docx", content: Array.from({ length: 3000 }, (_, i) => `строка ${i} `.repeat(4)).join("\n") };
+    vi.mocked(runMaterialClassifier).mockResolvedValue(worldFragment("Карта"));
+    let stop = false;
+    const first = await runIntake(deps(), {
+      files: [big],
+      onFile: (e) => {
+        if (e.index === 0 && e.status === "done") stop = true;
+      },
+      shouldStop: () => stop,
+    });
+    expect(first.cancelled).toBe(true);
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
+
+    vi.mocked(runMaterialClassifier).mockResolvedValue(worldFragment("Кухня"));
+    const events: IntakeFileEvent[] = [];
+    const again = await runIntake(deps(), { files: [big], onFile: (e) => events.push(e) });
+    expect(again.replayed).toBe(false);
+    expect(events.some((e) => e.filename.includes("часть 1 из"))).toBe(false);
+    expect(events[0]!.filename).toContain("часть 2 из");
+  });
+
   it("does not let a throwing onFile consumer break the run", async () => {
     vi.mocked(runMaterialClassifier).mockResolvedValue(worldFragment("Карта"));
     const out = await runIntake(deps(), {
