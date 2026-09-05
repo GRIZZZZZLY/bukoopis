@@ -186,6 +186,7 @@ export function IntakePanel({ bookId, onIntake }: Props) {
             total={total}
             rows={rows}
             stopping={stopping}
+            canStop={requestKey !== undefined}
             onStop={() => void handleStop()}
           />
           {stopError && (

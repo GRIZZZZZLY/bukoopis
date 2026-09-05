@@ -15,13 +15,16 @@ interface Props {
   /** Отмена запрошена: кнопка отработала, файл, который уже читается, всё
    *  равно дочитается — прервать вызов LLM на середине нечем. */
   stopping: boolean;
+  /** Прогон уже назвал свой ключ — есть что останавливать. До этого кнопка
+   *  живой быть не должна: клик по ней всё равно ничего бы не сделал. */
+  canStop: boolean;
   onStop: () => void;
 }
 
 /** Живой прогресс разбора: один файл — одна строка, статус меняется по мере
  *  событий сервера. «Остановить» не обещает мгновенной остановки — только
  *  то, что реально можно обещать: следующий файл не начнётся. */
-export function IntakeProgress({ total, rows, stopping, onStop }: Props) {
+export function IntakeProgress({ total, rows, stopping, canStop, onStop }: Props) {
   const finished = rows.filter((row) => row.status !== "running").length;
 
   return (
@@ -30,9 +33,12 @@ export function IntakeProgress({ total, rows, stopping, onStop }: Props) {
         Разбираем материалы… {finished} из {total}
       </p>
       <ul className="intake-progress-list">
-        {rows.map((row) => (
+        {/* Ключ по номеру строки, а не по имени: в брошенной папке два файла
+            из разных подпапок легко зовутся одинаково, и React ругался бы на
+            повторяющийся ключ. Порядок строк задаёт сервер и не меняется. */}
+        {rows.map((row, index) => (
           <li
-            key={row.filename}
+            key={index}
             className={
               "intake-progress-row" +
               (row.status === "done" ? " is-done" : "") +
@@ -56,7 +62,12 @@ export function IntakeProgress({ total, rows, stopping, onStop }: Props) {
           </li>
         ))}
       </ul>
-      <button type="button" className="btn btn-ghost" disabled={stopping} onClick={onStop}>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        disabled={stopping || !canStop}
+        onClick={onStop}
+      >
         {stopping ? "Останавливаем…" : "Остановить"}
       </button>
       {stopping && (

@@ -187,6 +187,28 @@ describe("IntakePanel", () => {
     await waitFor(() => expect(screen.getByText(/Разбор остановлен/)).toBeInTheDocument());
   });
 
+  it("does not offer a working stop button before the run has a key", async () => {
+    // До события `begin` останавливать нечего: раньше кнопка была живой и
+    // молча ничего не делала — автор жал её и не понимал, почему разбор идёт.
+    let begin!: (e: { requestKey: string; total: number }) => void;
+    const stream = deferred<typeof OK & { cancelled: boolean }>();
+    m.intakeStream.mockImplementation(
+      ((_id: number, _f: unknown, h: { onBegin?: (e: unknown) => void }) => {
+        begin = h.onBegin!;
+        return stream.promise;
+      }) as never,
+    );
+    renderPanel();
+    drop([file("Карта.md", "текст")]);
+    const button = await screen.findByRole("button", { name: /Остановить/ });
+    expect(button).toBeDisabled();
+
+    act(() => begin({ requestKey: "k1", total: 1 }));
+    expect(screen.getByRole("button", { name: /Остановить/ })).not.toBeDisabled();
+    act(() => stream.resolve({ ...OK, cancelled: false }));
+    await waitFor(() => screen.getByText("Материалы разобраны"));
+  });
+
   it("lets the author retry after a failed stop request", async () => {
     let begin!: (e: { requestKey: string; total: number }) => void;
     const stream = deferred<typeof OK & { cancelled: boolean }>();
