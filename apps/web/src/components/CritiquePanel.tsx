@@ -11,11 +11,20 @@ import {
   type CriticReport,
   type CriticType,
   type IssueSeverity,
+  type ProseChange,
   type ProseProposal,
 } from "@book-forge/shared";
 
 interface Props {
   versionId: number | null;
+  /** Что вкладка считает текущей версией главы — сверяется сервером при
+   *  принятии кандидата self-repair'а. `CritiquePanel` не знает главу целиком,
+   *  поэтому это приходит от `ChapterPage`. */
+  expectedVersionId: number | null;
+  /** Что вкладка считает ревизией черновика; `null` только если черновика
+   *  действительно нет. Раньше здесь всегда передавался `null`, из-за чего
+   *  принятие self-repair отваливалось 409-м у любого автора с автосейвом. */
+  expectedDraftRevision: number | null;
   onRepairDone?: () => void | Promise<void>;
 }
 
@@ -25,7 +34,12 @@ const SEVERITY_DOT: Record<IssueSeverity, string> = {
   nit: "sev-blue",
 };
 
-export function CritiquePanel({ versionId, onRepairDone }: Props) {
+export function CritiquePanel({
+  versionId,
+  expectedVersionId,
+  expectedDraftRevision,
+  onRepairDone,
+}: Props) {
   const [report, setReport] = useState<CritiqueReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -43,6 +57,9 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
   const [repairProposal, setRepairProposal] = useState<ProseProposal | null>(
     null,
   );
+  const [repairProposalChanges, setRepairProposalChanges] = useState<
+    ProseChange[]
+  >([]);
   const [repairProposalId, setRepairProposalId] = useState<number | null>(
     null,
   );
@@ -113,6 +130,7 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
     setRepairError(null);
     setRepairIteration(null);
     setRepairProposal(null);
+    setRepairProposalChanges([]);
     setRepairProposalId(null);
     try {
       const severities =
@@ -125,6 +143,8 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
         onDone: async (payload) => {
           setRepairing(false);
           setRepairProposal(payload.proposal);
+          const { changes } = await api.getProposalChanges(payload.proposal.id);
+          setRepairProposalChanges(changes);
         },
         onError: (msg) => {
           setRepairError(msg);
@@ -215,7 +235,8 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
             </div>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Reviser перепишет главу с приоритетом по выбранным severity.
-              Создаст новую версию-ветку (parent = текущая, branch_label = repair-N).
+              Результат придёт кандидатом ниже — его нужно принять (целиком
+              или частично) или отклонить, глава сама не изменится.
               Лимит итераций: {REPAIR_MAX_ITERATIONS}.
             </p>
             {repairIteration && (
@@ -229,7 +250,8 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
             {repairing && repairBuffer && (
               <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] max-h-[300px] overflow-auto">
                 <div className="text-xs text-[var(--color-muted-foreground)] mb-2">
-                  Live stream (Reviser пишет, после завершения сохранится как новая версия):
+                  Live stream (Reviser пишет; по готовности текст ляжет
+                  кандидатом ниже — его ещё нужно принять):
                 </div>
                 <pre className="whitespace-pre-wrap text-sm font-sans">
                   {repairBuffer}
@@ -239,17 +261,19 @@ export function CritiquePanel({ versionId, onRepairDone }: Props) {
             {repairProposal && (
               <ProposalPanel
                 proposal={repairProposal}
-                changes={[]}
-                expectedVersionId={versionId}
-                expectedDraftRevision={null}
+                changes={repairProposalChanges}
+                expectedVersionId={expectedVersionId}
+                expectedDraftRevision={expectedDraftRevision}
                 onAccepted={async () => {
                   setRepairProposal(null);
+                  setRepairProposalChanges([]);
                   setRepairProposalId(null);
                   setRepairBuffer("");
                   if (onRepairDone) await onRepairDone();
                 }}
                 onRejected={() => {
                   setRepairProposal(null);
+                  setRepairProposalChanges([]);
                   setRepairProposalId(null);
                   setRepairBuffer("");
                 }}

@@ -861,6 +861,8 @@ export function ChapterPage() {
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
             <CritiquePanel
               versionId={chapter.currentVersionId}
+              expectedVersionId={chapter.currentVersionId}
+              expectedDraftRevision={chapter.draft?.revision ?? null}
               onRepairDone={load}
             />
             {sidebar}
@@ -883,6 +885,8 @@ export function ChapterPage() {
           {mobilePanelsOpen && (
             <CritiquePanel
               versionId={chapter.currentVersionId}
+              expectedVersionId={chapter.currentVersionId}
+              expectedDraftRevision={chapter.draft?.revision ?? null}
               onRepairDone={load}
             />
           )}
