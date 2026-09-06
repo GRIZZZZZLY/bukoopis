@@ -53,6 +53,7 @@ import {
   type ChapterRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
+import { approvePlan, PlanApproveError } from "../utils/plan-approve.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { EMPTY_DOC } from "@book-forge/shared";
 import {
@@ -203,6 +204,34 @@ export function createPlotRoute(
       .prepare("SELECT * FROM books WHERE id = ?")
       .get(id) as BookRow;
     return c.json(toBook(book));
+  });
+
+  // Единственное место, где план становится главами. Раньше главы заводились
+  // печатанием названия в форме, а намерение жило только побочным эффектом
+  // генерации поглавного плана.
+  r.post("/books/:id/plan/approve", (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT id FROM books WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!book) return notFound(c, "book");
+    try {
+      const result = approvePlan(sqlite, id);
+      const chapters = sqlite
+        .prepare(
+          "SELECT * FROM chapters WHERE book_id = ? ORDER BY order_index ASC, id ASC",
+        )
+        .all(id) as ChapterRow[];
+      return c.json({ ...result, chapters: chapters.map(toChapter) });
+    } catch (e) {
+      if (e instanceof PlanApproveError) {
+        return c.json(
+          { error: "plan_not_approvable", details: { reason: e.reason, message: e.message } },
+          400,
+        );
+      }
+      throw e;
+    }
   });
 
   // ───────── Chapter plan ─────────
