@@ -84,7 +84,11 @@ beforeEach(async () => {
           {
             tempId: "c1",
             kind: "character" as const,
-            profile: { name: "Нейла", summary: "Проводница каравана." },
+            profile: {
+              name: "Нейла",
+              role: "проводница",
+              description: "Проводница каравана.",
+            },
           },
         ],
       },
