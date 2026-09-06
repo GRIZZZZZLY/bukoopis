@@ -21,6 +21,20 @@ import {
 import { insertChapters, type InsertedChapter } from "../routes/import-export.js";
 import { splitIntakeFile } from "./intake-split.js";
 
+/** Разбор идёт минутами и молча, а его решения («замысел не взят», «фрагмент
+ *  никуда не лёг») не видны ни в ответе, ни на экране — их видно только здесь.
+ *  Формат тот же, что у остального сервера: `[тег] текст` в консоль. */
+function log(message: string): void {
+  console.info(`[intake] ${message}`);
+}
+
+/** «world×3, plot×1» — куда классификатор разложил файл, одной строкой. */
+function countByTarget(fragments: Array<{ target: string }>): string {
+  const counts = new Map<string, number>();
+  for (const f of fragments) counts.set(f.target, (counts.get(f.target) ?? 0) + 1);
+  return [...counts].map(([t, n]) => `${t}×${n}`).join(", ") || "пусто";
+}
+
 export interface IntakeFileEvent {
   index: number; // 0-based
   total: number;
@@ -207,11 +221,20 @@ export async function runIntake(
   const queue = units
     .map((f) => ({ file: f, key: intakeFileKey(f) }))
     .filter((entry) => !priorProcessed.has(entry.key));
+  log(
+    `book ${bookId}: файлов ${readable.length} → единиц разбора ${units.length}, ключ ${requestKey}` +
+      (prior ? `, прошлый прогон найден (прочитано ${priorProcessed.size})` : "") +
+      (failures.length > 0 ? `, не прочитано ${failures.length}` : ""),
+  );
+
   if (prior) {
     // У события без processedFiles (записано до дочитывания) нет способа
     // узнать, что именно оно разобрало. Верим ему как раньше — целиком:
     // иначе повтор удвоил бы всё, что уже легло.
     if (prior.processedFiles === undefined || queue.length === 0) {
+      log(
+        `book ${bookId}: всё уже разобрано этим ключом — отвечаем из журнала, классификатор не зовём`,
+      );
       return replayOf(prior, requestKey);
     }
   }
@@ -249,6 +272,10 @@ export async function runIntake(
       status: "started",
     });
 
+    const startedAt = Date.now();
+    log(
+      `book ${bookId}: ${index + 1}/${queue.length} «${file.filename}» — ${file.content.length} символов, вызываем классификатор`,
+    );
     try {
       const out = await runMaterialClassifier({
         filename: file.filename,
@@ -261,6 +288,10 @@ export async function runIntake(
       if (foundIdea === undefined && out.bookIdea && out.bookIdea.trim().length > 0) {
         foundIdea = out.bookIdea.trim();
       }
+      log(
+        `book ${bookId}: ${index + 1}/${queue.length} «${file.filename}» готов за ${Math.round((Date.now() - startedAt) / 1000)} с — ` +
+          `фрагментов ${out.fragments.length} [${countByTarget(out.fragments)}], bookIdea ${out.bookIdea?.trim() ? `${out.bookIdea.trim().length} символов` : "нет"}`,
+      );
       emitFile(onFile, {
         index,
         total: queue.length,
@@ -271,6 +302,9 @@ export async function runIntake(
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       failures.push({ filename: file.filename, message });
+      log(
+        `book ${bookId}: ${index + 1}/${queue.length} «${file.filename}» упал за ${Math.round((Date.now() - startedAt) / 1000)} с — ${message}`,
+      );
       emitFile(onFile, {
         index,
         total: queue.length,
@@ -281,8 +315,32 @@ export async function runIntake(
     }
   }
 
+  // Классификатору велено класть формулировку замысла в отдельное поле
+  // bookIdea, но он с тем же основанием считает её фрагментом с целью
+  // `concept` — цель есть в каталоге, и в инструкции она описана. Такой
+  // фрагмент landFragments выбрасывает (в studio_state ему места нет), и
+  // замысел исчезал молча: ни в сводке, ни в отказах, нигде. Берём его как
+  // запасной источник — это ровно тот текст, который автор и ждёт увидеть в
+  // поле «Замысел книги».
+  const conceptFragments = fragments.filter((f) => f.target === "concept");
+  if (foundIdea === undefined && conceptFragments.length > 0) {
+    const body = conceptFragments[0]!.body.trim();
+    if (body.length > 0) {
+      // Схема замысла держит 8000 символов; длинный «концепт-раздел» режем, а
+      // не теряем целиком.
+      foundIdea = body.slice(0, 8000);
+      log(
+        `book ${bookId}: bookIdea классификатор не вернул — берём фрагмент concept «${conceptFragments[0]!.title}» (${body.length} символов)`,
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const { next, landed, chapterFragments } = landFragments(state, fragments, now);
+  log(
+    `book ${bookId}: фрагментов всего ${fragments.length} [${countByTarget(fragments)}] → аспектов ${landed.length}, глав ${chapterFragments.length}` +
+      (conceptFragments.length > 0 ? `, concept-фрагментов ${conceptFragments.length}` : ""),
+  );
 
   let revision = state.revision;
   if (landed.length > 0) {
@@ -317,10 +375,16 @@ export async function runIntake(
   }
 
   let ideaSet = false;
+  if (idea.length > 0) {
+    log(`book ${bookId}: замысел не трогаем — в концепте уже ${idea.length} символов`);
+  } else if (foundIdea === undefined) {
+    log(`book ${bookId}: замысел не заполнен — в материалах его формулировки не нашлось`);
+  }
   if (idea.length === 0 && foundIdea !== undefined) {
     try {
       repo.patchConcept(bookId, { ...concept, idea: foundIdea });
       ideaSet = true;
+      log(`book ${bookId}: замысел заполнен из материалов (${foundIdea.length} символов)`);
     } catch (e) {
       failures.push({
         filename: "Задумка",
@@ -382,6 +446,11 @@ export async function runIntake(
       revisionAfter: revision,
     });
   }
+
+  log(
+    `book ${bookId}: прогон закончен — прочитано ${processedNow.length}/${queue.length}, легло ${landedNow.length}, глав ${chapters.length}, ` +
+      `замысел ${ideaSet ? "заполнен" : "нет"}, отказов ${response.failures.length}${cancelled ? ", остановлен автором" : ""}`,
+  );
 
   return {
     ...response,

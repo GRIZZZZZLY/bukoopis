@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import {
   isConceptComplete,
@@ -26,6 +26,26 @@ export function ConceptStage({ bookId, concept, onConceptChange }: Props) {
   const [newPitchIds, setNewPitchIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Задумка может прийти извне: приём материалов заполняет `concept.idea` на
+  // сервере, страница перечитывает концепт — а поле продолжало показывать то,
+  // что было при монтировании (пустоту), и автор видел «замысел не
+  // импортировался», хотя он лежал в базе. Подхватываем новое значение, но
+  // никогда не затираем то, что автор печатает прямо сейчас.
+  const lastKnownIdea = useRef(concept.idea ?? "");
+  useEffect(() => {
+    const incoming = concept.idea ?? "";
+    const previous = lastKnownIdea.current;
+    if (incoming === previous) return;
+    lastKnownIdea.current = incoming;
+    if (editingIdea) return;
+    // Несохранённый набранный текст важнее пришедшего: перетираем поле только
+    // если автор его не трогал (оно совпадает с прошлым значением с сервера)
+    // или оставил пустым.
+    setIdea((current) =>
+      current === previous || current.trim().length === 0 ? incoming : current,
+    );
+  }, [concept.idea, editingIdea]);
 
   async function run<T>(
     fn: () => Promise<T>,

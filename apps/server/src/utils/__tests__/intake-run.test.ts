@@ -353,6 +353,43 @@ describe("runIntake", () => {
     expect(events[0]!.filename).toContain("часть 2 из");
   });
 
+  it("takes the idea from a concept fragment when the classifier fills no bookIdea", async () => {
+    // Классификатору велено класть замысел в поле bookIdea, но цель `concept`
+    // есть и в каталоге целей — он с тем же основанием возвращает фрагмент.
+    // landFragments такой фрагмент выбрасывает, и замысел исчезал молча: автор
+    // видел «ошибки нет», пустое поле и предупреждения про незаданный жанр.
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [
+        { target: "concept" as const, title: "Замысел", body: "Книга о городе за барьером." },
+        { target: "world" as const, title: "Карта", body: "тело" },
+      ],
+    });
+    const out = await runIntake(deps(), { files: [file("а.md")] });
+    expect(out.ideaSet).toBe(true);
+    expect(repo.loadConcept(bookId).idea).toBe("Книга о городе за барьером.");
+    // Сам фрагмент по-прежнему не становится аспектом — этапа под него нет.
+    expect(out.summary.map((r) => r.target)).toEqual(["concept", "world"]);
+  });
+
+  it("prefers the classifier's own bookIdea over a concept fragment", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "concept" as const, title: "Замысел", body: "Из фрагмента." }],
+      bookIdea: "Из поля.",
+    });
+    await runIntake(deps(), { files: [file("а.md")] });
+    expect(repo.loadConcept(bookId).idea).toBe("Из поля.");
+  });
+
+  it("never overwrites an idea the author already wrote", async () => {
+    repo.patchConcept(bookId, { ...repo.loadConcept(bookId), idea: "Моя задумка." });
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "concept" as const, title: "Замысел", body: "Чужая задумка." }],
+    });
+    const out = await runIntake(deps(), { files: [file("а.md")] });
+    expect(out.ideaSet).toBe(false);
+    expect(repo.loadConcept(bookId).idea).toBe("Моя задумка.");
+  });
+
   it("does not let a throwing onFile consumer break the run", async () => {
     vi.mocked(runMaterialClassifier).mockResolvedValue(worldFragment("Карта"));
     const out = await runIntake(deps(), {

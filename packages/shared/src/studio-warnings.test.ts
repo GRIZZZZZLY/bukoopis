@@ -4,7 +4,7 @@ import {
   computeRecommendedNextStage,
   effectiveStageStatus,
 } from "./studio-warnings.js";
-import { emptyBookConcept } from "./concept.js";
+import { emptyBookConcept, PITCH_FIELD_LABELS } from "./concept.js";
 import { emptyStudioState } from "./studio-state.js";
 
 const emptyCanon = { characterCount: 0, locationCount: 0, itemCount: 0 };
@@ -68,7 +68,12 @@ describe("computeStudioWarnings", () => {
       studioState: state,
       canon: emptyCanon,
     });
-    expect(w.find((x) => x.id === "plot_without_logline")).toBeDefined();
+    const warning = w.find((x) => x.id === "plot_without_logline");
+    expect(warning).toBeDefined();
+    // Внутренних имён полей автор в интерфейсе не видит — строку называют её
+    // подписью из PITCH_FIELD_LABELS.
+    expect(warning!.message).not.toMatch(/логлайн/i);
+    expect(warning!.message).toContain(PITCH_FIELD_LABELS.logline);
   });
 
   it("no warnings on a healthy minimal state", () => {

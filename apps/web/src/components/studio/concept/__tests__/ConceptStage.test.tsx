@@ -126,4 +126,41 @@ describe("ConceptStage", () => {
     await userEvent.click(screen.getByRole("button", { name: /Начать заново с питчей/ }));
     expect(screen.getByLabelText("О чём книга?")).toBeInTheDocument();
   });
+
+  it("shows an idea that arrived from outside — import fills it on the server", async () => {
+    // Приём материалов пишет замысел в концепт, страница перечитывает его и
+    // передаёт сюда новым пропом. Поле держало значение с момента монтирования,
+    // и автор видел пустую форму, хотя замысел уже лежал в базе.
+    const empty = emptyBookConcept();
+    const { rerender } = render(
+      <ConceptStage bookId={3} concept={empty} onConceptChange={vi.fn()} />,
+    );
+    expect(screen.getByLabelText("О чём книга?")).toHaveValue("");
+
+    rerender(
+      <ConceptStage
+        bookId={3}
+        concept={{ ...empty, idea: "Книга о городе за барьером." }}
+        onConceptChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("О чём книга?")).toHaveValue("Книга о городе за барьером.");
+  });
+
+  it("does not throw away what the author is typing", async () => {
+    const empty = emptyBookConcept();
+    const { rerender } = render(
+      <ConceptStage bookId={3} concept={empty} onConceptChange={vi.fn()} />,
+    );
+    await userEvent.type(screen.getByLabelText("О чём книга?"), "Моя задумка");
+
+    rerender(
+      <ConceptStage
+        bookId={3}
+        concept={{ ...empty, idea: "Пришедшее извне." }}
+        onConceptChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("О чём книга?")).toHaveValue("Моя задумка");
+  });
 });

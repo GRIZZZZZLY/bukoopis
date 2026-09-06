@@ -1,5 +1,5 @@
 import type { BookConcept } from "./concept.js";
-import { isConceptComplete } from "./concept.js";
+import { isConceptComplete, PITCH_FIELD_LABELS } from "./concept.js";
 import type { StageId, StageState, StudioState } from "./studio-state.js";
 import { STAGE_IDS } from "./studio-state.js";
 
@@ -100,14 +100,18 @@ export function computeStudioWarnings(input: StudioWarningsInput): StudioWarning
     });
   }
 
-  // 4. Plot started but logline missing.
+  // 4. Plot started but the premise line is missing.
+  //
+  // Слово «логлайн» в интерфейсе не живёт — строку называют её подписью из
+  // PITCH_FIELD_LABELS. Раньше это предупреждение было единственным местом,
+  // где автору показывали внутреннее имя поля, и он справедливо спрашивал,
+  // что это такое.
   if (isAdvanced(studioState, "plot") && !concept.premise.logline) {
     out.push({
       id: "plot_without_logline",
       severity: "warning",
       stageId: "plot",
-      message:
-        "Логлайн не задан — сюжет будет строиться вслепую. Утвердите замысел.",
+      message: `Сюжет уже идёт, а «${PITCH_FIELD_LABELS.logline}» не заполнено — сюжет строится вслепую. Утвердите замысел.`,
     });
   }
 
