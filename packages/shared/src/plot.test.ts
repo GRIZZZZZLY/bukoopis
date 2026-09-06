@@ -4,8 +4,10 @@ import {
   chapterBeatSheetVariantSchema,
   extractNarrativeArchitecture,
   narrativeArchitectureSchema,
+  outlineChapterSchema,
   renderNarrativeArchitecture,
   renderChapterClosing,
+  renderOutlineChapterIntent,
   type NarrativeArchitecture,
 } from "./plot.js";
 
@@ -100,6 +102,81 @@ describe("extractNarrativeArchitecture", () => {
   it("returns null for non-JSON and for null", () => {
     expect(extractNarrativeArchitecture("просто текст")).toBeNull();
     expect(extractNarrativeArchitecture(null)).toBeNull();
+  });
+});
+
+describe("outlineChapterSchema", () => {
+  it("принимает строку с одним только названием — оглавление автора бывает голым", () => {
+    const parsed = outlineChapterSchema.parse({ title: "Глава 1. Порог" });
+    expect(parsed.title).toBe("Глава 1. Порог");
+    expect(parsed.pov).toBeUndefined();
+  });
+
+  it("принимает полную строку", () => {
+    const parsed = outlineChapterSchema.parse({
+      title: "Порог",
+      pov: "Рин",
+      goal: "Уйти незамеченной",
+      conflict: "Сторож не спит",
+      stakes: "Поймают — не выйдет больше никогда",
+      hook: "За спиной щёлкает замок",
+    });
+    expect(parsed.pov).toBe("Рин");
+    expect(parsed.hook).toBe("За спиной щёлкает замок");
+  });
+
+  it("пустое название отвергается", () => {
+    expect(() => outlineChapterSchema.parse({ title: "  " })).toThrow();
+  });
+});
+
+describe("bookOutlineVariantSchema — вариант из материалов автора", () => {
+  it("принимает вариант без синопсиса и арок, но с главами", () => {
+    const parsed = bookOutlineVariantSchema.parse({
+      label: "из ваших материалов",
+      estimatedChapters: 2,
+      source: "author_material",
+      chapters: [{ title: "Порог" }, { title: "Мост", pov: "Сарек" }],
+    });
+    expect(parsed.chapters).toHaveLength(2);
+    expect(parsed.source).toBe("author_material");
+    expect(parsed.logline).toBeUndefined();
+  });
+
+  it("старый сгенерированный вариант без chapters и source читается как был", () => {
+    const parsed = bookOutlineVariantSchema.parse({
+      label: "тёмный",
+      logline: "Логлайн",
+      synopsis: "Синопсис",
+      themes: ["предательство"],
+      protagonist: "Ратибор",
+      antagonist: null,
+      setting: "Лес",
+      arcs: [{ title: "Арка", summary: "s", keyBeats: ["b"] }],
+      estimatedChapters: 12,
+    });
+    expect(parsed.chapters).toBeUndefined();
+    expect(parsed.source).toBeUndefined();
+  });
+});
+
+describe("renderOutlineChapterIntent", () => {
+  it("собирает намерение из заполненных полей и пропускает пустые", () => {
+    const text = renderOutlineChapterIntent({
+      title: "Порог",
+      pov: "Рин",
+      goal: "Уйти незамеченной",
+      conflict: "Сторож не спит",
+    });
+    expect(text).toContain("POV: Рин");
+    expect(text).toContain("Цель: Уйти незамеченной");
+    expect(text).toContain("Конфликт: Сторож не спит");
+    expect(text).not.toContain("Ставки:");
+    expect(text).not.toContain("Крючок:");
+  });
+
+  it("строка с одним названием даёт непустое намерение", () => {
+    expect(renderOutlineChapterIntent({ title: "Порог" }).trim().length).toBeGreaterThan(0);
   });
 });
 

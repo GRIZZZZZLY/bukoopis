@@ -132,17 +132,58 @@ export function extractNarrativeArchitecture(
   }
 }
 
+/** Строка поглавного плана. Всё, кроме названия, необязательно: оглавление
+ *  автора бывает голым списком, и выдумывать за него POV или конфликт — ровно
+ *  то, чего фаза 5 не должна делать. */
+export const outlineChapterSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  pov: z.string().trim().min(1).max(200).optional(),
+  goal: z.string().trim().min(1).max(2000).optional(),
+  conflict: z.string().trim().min(1).max(2000).optional(),
+  stakes: z.string().trim().min(1).max(2000).optional(),
+  hook: z.string().trim().min(1).max(2000).optional(),
+});
+export type OutlineChapter = z.infer<typeof outlineChapterSchema>;
+
+/** Намерение главы для Plot-агента: то, что автор раньше набирал руками в
+ *  `PlanPanel`. Пустые поля пропускаются — строка «Конфликт: » ничего не
+ *  сообщает и только сбивает модель. */
+export function renderOutlineChapterIntent(ch: OutlineChapter): string {
+  const lines: string[] = [ch.title];
+  if (ch.pov) lines.push(`POV: ${ch.pov}`);
+  if (ch.goal) lines.push(`Цель: ${ch.goal}`);
+  if (ch.conflict) lines.push(`Конфликт: ${ch.conflict}`);
+  if (ch.stakes) lines.push(`Ставки: ${ch.stakes}`);
+  if (ch.hook) lines.push(`Крючок: ${ch.hook}`);
+  return lines.join("\n");
+}
+
+/** Откуда взялся вариант плана. Автор должен видеть, что перед ним его
+ *  собственное оглавление, а не выдумка модели. */
+export const outlineSourceSchema = z.enum(["llm", "author_material"]);
+export type OutlineSource = z.infer<typeof outlineSourceSchema>;
+
+/** Повествовательные поля здесь необязательны, а в тулсхеме агента —
+ *  обязательны. Тот же приём, что уже применён к `architecture` выше: схема
+ *  хранения описывает всё, что может лежать в колонке, включая вариант из
+ *  авторского оглавления, у которого нет ни синопсиса, ни арок; тулсхема
+ *  описывает, что обязан вернуть генератор. Ослаблять требования к генерации
+ *  это не должно — см. `bookOutlineToolSchema` в packages/agents/src/plot.ts. */
 export const bookOutlineVariantSchema = z.object({
   label: z.string().min(1),
-  logline: z.string().min(1),
-  synopsis: z.string().min(1),
-  themes: z.array(z.string()).min(1).max(8),
-  protagonist: z.string().min(1),
-  antagonist: z.string().nullable(),
-  setting: z.string().min(1),
-  arcs: z.array(arcOutlineSchema).min(2).max(7),
+  logline: z.string().min(1).optional(),
+  synopsis: z.string().min(1).optional(),
+  themes: z.array(z.string()).max(8).optional(),
+  protagonist: z.string().min(1).optional(),
+  antagonist: z.string().nullable().optional(),
+  setting: z.string().min(1).optional(),
+  arcs: z.array(arcOutlineSchema).max(7).optional(),
   estimatedChapters: z.number().int().positive().max(120),
   architecture: narrativeArchitectureSchema.optional(),
+  /** Поглавные строки. Есть у варианта из материалов автора и у любого
+   *  варианта, который автор дополнил руками. */
+  chapters: z.array(outlineChapterSchema).max(200).optional(),
+  source: outlineSourceSchema.optional(),
 });
 export type BookOutlineVariant = z.infer<typeof bookOutlineVariantSchema>;
 

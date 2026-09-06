@@ -151,12 +151,18 @@ function VariantCard({
           </span>
         )}
       </div>
-      <p className="text-sm">
-        <strong>Logline:</strong> {variant.logline}
-      </p>
+      {variant.logline && (
+        <p className="text-sm">
+          <strong>Logline:</strong> {variant.logline}
+        </p>
+      )}
       <p className="text-sm text-[var(--color-muted-foreground)]">
-        <strong>Сеттинг:</strong> {variant.setting} · <strong>Глав:</strong>{" "}
-        {variant.estimatedChapters}
+        {variant.setting && (
+          <>
+            <strong>Сеттинг:</strong> {variant.setting} ·{" "}
+          </>
+        )}
+        <strong>Глав:</strong> {variant.estimatedChapters}
       </p>
       <button
         type="button"
@@ -172,27 +178,35 @@ function VariantCard({
             <br />
             {variant.synopsis}
           </p>
-          <p>
-            <strong>Темы:</strong> {variant.themes.join(", ")}
-          </p>
-          <p>
-            <strong>Протагонист:</strong> {variant.protagonist}
-          </p>
+          {/* Вариант из авторского оглавления повествовательных полей не
+              имеет вовсе — рисуем только то, что в нём есть. */}
+          {variant.themes && variant.themes.length > 0 && (
+            <p>
+              <strong>Темы:</strong> {variant.themes.join(", ")}
+            </p>
+          )}
+          {variant.protagonist && (
+            <p>
+              <strong>Протагонист:</strong> {variant.protagonist}
+            </p>
+          )}
           {variant.antagonist && (
             <p>
               <strong>Антагонист:</strong> {variant.antagonist}
             </p>
           )}
-          <div>
-            <strong>Арки:</strong>
-            <ul className="list-disc pl-5">
-              {variant.arcs.map((a, i) => (
-                <li key={i}>
-                  <strong>{a.title}.</strong> {a.summary}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {variant.arcs && variant.arcs.length > 0 && (
+            <div>
+              <strong>Арки:</strong>
+              <ul className="list-disc pl-5">
+                {variant.arcs.map((a, i) => (
+                  <li key={i}>
+                    <strong>{a.title}.</strong> {a.summary}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {variant.architecture && (
             <div className="flex flex-col gap-0.5">
               <strong>Архитектура:</strong>

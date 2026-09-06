@@ -6,6 +6,7 @@ import {
   type StructuredUsage,
 } from "@book-forge/llm";
 import {
+  arcOutlineSchema,
   bookOutlineVariantSchema,
   chapterBeatSheetVariantSchema,
   chapterClosingSchema,
@@ -19,9 +20,24 @@ export type UsageHandler = (usage: StructuredUsage) => void;
 
 // Stored schemas keep architecture/closing optional for old rows; the agent
 // must fill them on every fresh generation.
+//
+/** Схема хранения ослаблена ради варианта из авторского оглавления (см.
+ *  комментарий у `bookOutlineVariantSchema`). Генератору послаблений нет:
+ *  здесь всё, что он должен вернуть, снова обязательно. */
 export const bookOutlineToolSchema = z.object({
   variants: z
-    .array(bookOutlineVariantSchema.extend({ architecture: narrativeArchitectureSchema }))
+    .array(
+      bookOutlineVariantSchema.extend({
+        logline: z.string().min(1),
+        synopsis: z.string().min(1),
+        themes: z.array(z.string()).min(1).max(8),
+        protagonist: z.string().min(1),
+        antagonist: z.string().nullable(),
+        setting: z.string().min(1),
+        arcs: z.array(arcOutlineSchema).min(2).max(7),
+        architecture: narrativeArchitectureSchema,
+      }),
+    )
     .min(1)
     .max(5),
 });
