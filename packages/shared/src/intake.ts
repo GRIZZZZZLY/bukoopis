@@ -56,7 +56,7 @@ export type IntakeFragment = z.infer<typeof intakeFragmentSchema>;
 export interface IntakeLanded {
   target: IntakeTarget;
   title: string;
-  kind: "aspect" | "chapter" | "idea";
+  kind: "aspect" | "chapter" | "idea" | "plan";
 }
 
 const VARIANT_LABEL = "из ваших материалов";

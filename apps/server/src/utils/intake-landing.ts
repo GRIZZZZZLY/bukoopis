@@ -3,7 +3,9 @@ import {
   INTAKE_TARGET_LABELS,
   buildImportedEntityAspect,
   buildImportedMarkdownAspect,
+  buildImportedPlanVariant,
   mergeAspectsIntoStage,
+  type BookOutlineVariant,
   type IntakeFragment,
   type IntakeLanded,
   type StageAspect,
@@ -57,6 +59,9 @@ export interface LandFragmentsResult {
   landed: IntakeLanded[];
   /** Главы route обрабатывает сам — у них своя таблица, а не studio_state. */
   chapterFragments: IntakeFragment[];
+  /** Варианты плана из авторских оглавлений: их кладёт в books.outline_json
+   *  вызывающая сторона, потому что это колонка книги, а не studio_state. */
+  planVariants: BookOutlineVariant[];
 }
 
 /** Раскладывает фрагменты по этапам, ничего не утверждая. Входное состояние не
@@ -69,6 +74,7 @@ export function landFragments(
 ): LandFragmentsResult {
   const landed: IntakeLanded[] = [];
   const chapterFragments: IntakeFragment[] = [];
+  const planVariants: BookOutlineVariant[] = [];
   const byStage = new Map<AspectTarget, StageAspect[]>();
 
   for (const fragment of fragments) {
@@ -77,6 +83,20 @@ export function landFragments(
       continue;
     }
     if (!isAspectTarget(fragment.target)) continue; // concept и skip
+
+    // Разобранное оглавление — это план, а не заметка о плане. Аспектом оно
+    // становиться не должно: приземлившись абзацем прозы, самый
+    // структурированный файл в материалах обесценивается, а список глав автор
+    // всё равно заводит руками.
+    if (fragment.target === "plot") {
+      const variant = buildImportedPlanVariant(fragment);
+      if (variant) {
+        planVariants.push(variant);
+        landed.push({ target: "plot", title: fragment.title, kind: "plan" });
+        continue;
+      }
+      // Списка глав в тексте не было — пусть остаётся заметкой на экране плана.
+    }
 
     // Этап сущностей умеет показывать только набор карточек. Фрагмент, из
     // которого классификатор не вытащил ни одного имени (файл про связи, где
@@ -108,7 +128,7 @@ export function landFragments(
     );
   }
 
-  return { next: { ...state, stages }, landed, chapterFragments };
+  return { next: { ...state, stages }, landed, chapterFragments, planVariants };
 }
 
 /** Короткая опись того, что уже лежит на этапах, для промпта классификатора. */

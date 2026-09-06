@@ -189,3 +189,44 @@ describe("describeExistingStages", () => {
     expect(describeExistingStages(emptyStudioState())).toEqual([]);
   });
 });
+
+describe("landFragments и цель plot", () => {
+  it("разобранное оглавление становится вариантом плана, а не аспектом", () => {
+    const fragment: IntakeFragment = {
+      target: "plot",
+      title: "Оглавление",
+      body: "Глава 1. Порог",
+      chapters: [{ title: "Порог", pov: "Рин" }],
+    };
+    const result = landFragments(emptyStudioState(), [fragment], NOW);
+
+    expect(result.planVariants).toHaveLength(1);
+    expect(result.planVariants[0]?.chapters?.[0]?.title).toBe("Порог");
+    expect(result.next.stages["plot"]?.aspects ?? []).toHaveLength(0);
+    expect(result.landed[0]).toMatchObject({ target: "plot", kind: "plan" });
+  });
+
+  it("проза о сюжете без списка глав по-прежнему ложится заметкой", () => {
+    const fragment: IntakeFragment = {
+      target: "plot",
+      title: "Мысли о структуре",
+      body: "Хочу три части.",
+    };
+    const result = landFragments(emptyStudioState(), [fragment], NOW);
+
+    expect(result.planVariants).toHaveLength(0);
+    expect(result.next.stages["plot"]?.aspects).toHaveLength(1);
+    expect(result.landed[0]).toMatchObject({ target: "plot", kind: "aspect" });
+  });
+
+  it("два оглавления в одной папке дают два варианта", () => {
+    const mk = (title: string): IntakeFragment => ({
+      target: "plot",
+      title,
+      body: "b",
+      chapters: [{ title: "Глава" }],
+    });
+    const result = landFragments(emptyStudioState(), [mk("Первое"), mk("Второе")], NOW);
+    expect(result.planVariants).toHaveLength(2);
+  });
+});

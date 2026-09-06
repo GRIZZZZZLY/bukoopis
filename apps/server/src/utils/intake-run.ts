@@ -1,6 +1,9 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
+  bookOutlineSchema,
   summarizeIntake,
+  type BookOutline,
+  type BookOutlineVariant,
   type IntakeLanded,
   type IntakeSummaryRow,
   type IntakeTarget,
@@ -64,6 +67,8 @@ export interface IntakeRunResult {
   summary: IntakeSummaryRow[];
   ideaSet: boolean;
   chapters: InsertedChapter[];
+  /** Сколько авторских оглавлений легло вариантами в books.outline_json. */
+  planVariants: number;
   failures: Array<{ filename: string; message: string }>;
   revision: number;
   cancelled: boolean;
@@ -89,7 +94,9 @@ type IntakeResponseBody = Omit<IntakeRunResult, "cancelled" | "requestKey" | "re
  *
  *  Обе записи живут внутри `after`, который `studioEventPayloadSchema` держит
  *  как `z.unknown()` — расширять схему событий не требуется. */
-interface IntakeJournalAfter extends IntakeResponseBody {
+interface IntakeJournalAfter extends Omit<IntakeResponseBody, "planVariants"> {
+  /** Нет у событий, записанных до фазы 5. */
+  planVariants?: number;
   /** Нет у событий, записанных до появления дочитывания. */
   processedFiles?: string[];
   landed?: IntakeLanded[];
@@ -132,6 +139,9 @@ function replayOf(after: IntakeJournalAfter, requestKey: string): IntakeRunResul
     summary: after.summary,
     ideaSet: after.ideaSet,
     chapters: after.chapters,
+    // У событий, записанных до фазы 5, поля нет вовсе — это не ноль по ошибке,
+    // а «тогда планов ещё не приземляли».
+    planVariants: after.planVariants ?? 0,
     failures: after.failures,
     revision: after.revision,
     cancelled: false,
@@ -336,9 +346,9 @@ export async function runIntake(
   }
 
   const now = new Date().toISOString();
-  const { next, landed, chapterFragments } = landFragments(state, fragments, now);
+  const { next, landed, chapterFragments, planVariants } = landFragments(state, fragments, now);
   log(
-    `book ${bookId}: фрагментов всего ${fragments.length} [${countByTarget(fragments)}] → аспектов ${landed.length}, глав ${chapterFragments.length}` +
+    `book ${bookId}: фрагментов всего ${fragments.length} [${countByTarget(fragments)}] → аспектов ${landed.length}, глав ${chapterFragments.length}, планов ${planVariants.length}` +
       (conceptFragments.length > 0 ? `, concept-фрагментов ${conceptFragments.length}` : ""),
   );
 
@@ -370,6 +380,49 @@ export async function runIntake(
       failures.push({
         filename: "Главы",
         message: `Не удалось сохранить главы (${chapterFragments.map((f) => f.title).join(", ")}): ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
+  }
+
+  // Варианты из авторских оглавлений дописываются к уже существующим, а не
+  // заменяют их: сгенерированные варианты автор мог отбирать неделю.
+  // Выбор не сдвигается — новый вариант ничего за автора не решает.
+  let planVariantsLanded = 0;
+  if (planVariants.length > 0) {
+    try {
+      const row = sqlite
+        .prepare("SELECT outline_json FROM books WHERE id = ?")
+        .get(bookId) as { outline_json: string | null } | undefined;
+      let outline: BookOutline = { variants: [], selectedIndex: null, generatedAt: now };
+      if (row?.outline_json) {
+        const parsed = bookOutlineSchema.safeParse(JSON.parse(row.outline_json));
+        if (parsed.success) outline = parsed.data;
+      }
+      // Схема держит не больше пяти вариантов: место освобождают самые старые
+      // сгенерированные, авторские не вытесняются никогда.
+      const merged: BookOutlineVariant[] = [...outline.variants, ...planVariants];
+      const trimmed =
+        merged.length <= 5
+          ? merged
+          : [
+              ...merged.filter((v) => v.source === "author_material"),
+              ...merged.filter((v) => v.source !== "author_material"),
+            ].slice(0, 5);
+      sqlite
+        .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
+        .run(
+          JSON.stringify({ ...outline, variants: trimmed, generatedAt: now }),
+          now,
+          bookId,
+        );
+      planVariantsLanded = planVariants.length;
+      log(
+        `book ${bookId}: планов из материалов ${planVariants.length} → в outline_json вариантов ${trimmed.length}`,
+      );
+    } catch (e) {
+      failures.push({
+        filename: "План книги",
+        message: `Не удалось сохранить план из материалов: ${e instanceof Error ? e.message : String(e)}`,
       });
     }
   }
@@ -418,6 +471,7 @@ export async function runIntake(
     summary: summarizeIntake(landedAll),
     ideaSet: (prior?.ideaSet ?? false) || ideaSet,
     chapters: [...(prior?.chapters ?? []), ...chapters],
+    planVariants: (prior?.planVariants ?? 0) + planVariantsLanded,
     failures: [
       ...(prior?.failures ?? []).filter((f) => !decidedNow.has(f.filename)),
       ...failures,
@@ -448,7 +502,7 @@ export async function runIntake(
   }
 
   log(
-    `book ${bookId}: прогон закончен — прочитано ${processedNow.length}/${queue.length}, легло ${landedNow.length}, глав ${chapters.length}, ` +
+    `book ${bookId}: прогон закончен — прочитано ${processedNow.length}/${queue.length}, легло ${landedNow.length}, глав ${chapters.length}, планов ${planVariantsLanded}, ` +
       `замысел ${ideaSet ? "заполнен" : "нет"}, отказов ${response.failures.length}${cancelled ? ", остановлен автором" : ""}`,
   );
 

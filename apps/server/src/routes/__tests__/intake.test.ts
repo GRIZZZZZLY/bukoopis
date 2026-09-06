@@ -310,3 +310,67 @@ describe("POST /api/books/:id/intake", () => {
     expect(state2.stages.world!.aspects).toHaveLength(1);
   });
 });
+
+describe("авторское оглавление приземляется планом", () => {
+  it("фрагмент plot с разобранными главами становится вариантом плана, а не аспектом", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [
+        {
+          target: "plot",
+          title: "Оглавление",
+          body: "Глава 1. Порог\nГлава 2. Мост",
+          chapters: [{ title: "Порог", pov: "Рин" }, { title: "Мост" }],
+        },
+      ],
+    });
+    const id = await createBook();
+    const out = await sendJson<IntakeResponse & { planVariants: number }>(
+      t.app,
+      `/api/books/${id}/intake`,
+      "POST",
+      { files: [{ filename: "Оглавление.md", content: "Глава 1. Порог" }] },
+    );
+    expect(out.planVariants).toBe(1);
+    expect(out.failures).toEqual([]);
+
+    const book = await sendJson<{ outlineJson: string | null }>(
+      t.app,
+      `/api/books/${id}`,
+      "GET",
+    );
+    const outline = JSON.parse(book.outlineJson ?? "{}") as {
+      variants: Array<{ source?: string; chapters?: Array<{ title: string }> }>;
+      selectedIndex: number | null;
+    };
+    expect(outline.variants).toHaveLength(1);
+    expect(outline.variants[0]!.source).toBe("author_material");
+    expect(outline.variants[0]!.chapters).toHaveLength(2);
+    // Выбор за автора никто не делает.
+    expect(outline.selectedIndex).toBeNull();
+
+    const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    expect(state.stages["plot"]?.aspects ?? []).toHaveLength(0);
+  });
+
+  it("проза о сюжете без списка глав по-прежнему ложится аспектом", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [
+        { target: "plot", title: "Мысли о структуре", body: "Хочу три части." },
+      ],
+    });
+    const id = await createBook();
+    const out = await sendJson<IntakeResponse & { planVariants: number }>(
+      t.app,
+      `/api/books/${id}/intake`,
+      "POST",
+      { files: [{ filename: "Структура.md", content: "Хочу три части." }] },
+    );
+    expect(out.planVariants).toBe(0);
+
+    const book = await sendJson<{ outlineJson: string | null }>(t.app, `/api/books/${id}`, "GET");
+    expect(book.outlineJson).toBeNull();
+
+    const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
+    expect(state.stages["plot"]?.aspects).toHaveLength(1);
+  });
+});
