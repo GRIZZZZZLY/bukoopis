@@ -24,6 +24,7 @@ import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
+import { isPlanApproved } from "@book-forge/shared";
 import type {
   Book,
   BookConcept,
@@ -146,6 +147,7 @@ export function ChaptersStagePage() {
             total: chapters.length,
             finalized: chapters.filter((c) => c.status === "final").length,
           }}
+          planApproved={isPlanApproved(book.outlineJson)}
         />
 
         <div className="page-head">

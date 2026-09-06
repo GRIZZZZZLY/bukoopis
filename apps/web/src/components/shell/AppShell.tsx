@@ -28,7 +28,7 @@ const STAGE_LABEL: Record<string, string> = {
   lore: "Лор",
   characters: "Персонажи",
   items: "Предметы",
-  plot: "Сюжет",
+  plot: "План",
   chapters: "Главы",
   settings: "Настройки",
 };
