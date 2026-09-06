@@ -64,7 +64,7 @@ import {
 import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
-interface BookContext {
+export interface BookContext {
   title: string;
   premise: string;
   language: string;
@@ -77,7 +77,10 @@ interface BookContext {
   writerLocalModel: string | null;
 }
 
-function loadBookContext(
+/** Экспортируется ради быстрого сбора ([utils/quick-start-run.ts]): он обязан
+ *  собирать вход плана ровно так же, как маршрут генерации, а копия этой
+ *  сборки разошлась бы с оригиналом при первой же правке. */
+export function loadBookContext(
   sqlite: DatabaseType,
   bookId: number,
 ): BookContext | null {
