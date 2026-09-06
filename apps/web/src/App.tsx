@@ -16,6 +16,7 @@ import {
 import { UsagePage } from "@/pages/UsagePage";
 import { StudioPage } from "@/pages/StudioPage";
 import { MarkdownStagePage } from "@/pages/MarkdownStagePage";
+import { PlanStagePage } from "@/pages/PlanStagePage";
 import { EntityStagePage } from "@/pages/EntityStagePage";
 import { ChaptersStagePage } from "@/pages/ChaptersStagePage";
 import { SettingsStagePage } from "@/pages/SettingsStagePage";
@@ -48,6 +49,11 @@ function StagePageDispatch() {
   const { stageId } = useParams<{ stageId: string }>();
   if (stageId === "characters" || stageId === "items") {
     return <EntityStagePage />;
+  }
+  // Этап сюжета сохранил идентификатор, но перестал быть markdown-аспектами:
+  // его экран — план книги.
+  if (stageId === "plot") {
+    return <PlanStagePage />;
   }
   return <MarkdownStagePage />;
 }

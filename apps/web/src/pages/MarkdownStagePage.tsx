@@ -30,15 +30,17 @@ const STAGE_LABELS: Record<StageId, string> = {
   chapters: "Главы",
 };
 
-const STAGE_HINTS: Record<"world" | "lore" | "plot", string> = {
+const STAGE_HINTS: Record<"world" | "lore", string> = {
   world: "География, фракции, технологии, климат. Внешний слой реальности книги.",
   lore: "Мифы, история, культурные коды. Внутренний слой смыслов.",
-  plot: "Опорные сюжетные точки, повороты, арки. Костяк структуры.",
 };
 
-const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore", "plot"]);
+// `plot` ушёл отсюда в фазе 5: у него свой экран, PlanStagePage. Идентификатор
+// этапа остался — из STAGE_IDS его убирать нельзя, — но markdown-аспектами он
+// больше не живёт.
+const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore"]);
 
-function isMarkdownStage(s: string): s is "world" | "lore" | "plot" {
+function isMarkdownStage(s: string): s is "world" | "lore" {
   return MARKDOWN_STAGES.has(s);
 }
 
@@ -52,7 +54,7 @@ export function MarkdownStagePage() {
   if (!rawStageId || !isMarkdownStage(rawStageId)) {
     return <Navigate to={`/books/${bookId}/studio`} replace />;
   }
-  const stageId: "world" | "lore" | "plot" = rawStageId;
+  const stageId: "world" | "lore" = rawStageId;
 
   const [studio, setStudio] = useState<StudioState | null>(null);
   const [concept, setConcept] = useState<BookConcept | null>(null);

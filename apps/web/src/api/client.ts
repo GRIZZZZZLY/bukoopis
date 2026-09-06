@@ -245,6 +245,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ selectedIndex }),
     }),
+  approvePlan: (bookId: number) =>
+    req<{ created: number; updated: number; chapters: Chapter[] }>(
+      `/api/books/${bookId}/plan/approve`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
   generateChapterPlan: (
     chapterId: number,
     intent: string,
