@@ -846,7 +846,95 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ requestKey }),
     }),
+
+  /** Что собирается для книги прямо сейчас — или `null`. Как и у приёма
+   *  материала: 404 значит «ничего не идёт». */
+  getQuickStartInflight: async (bookId: number): Promise<QuickStartInflight | null> => {
+    try {
+      return await req<QuickStartInflight>(`/api/books/${bookId}/quick-start/inflight`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
+
+  /** Останавливает сбор перед следующим этапом; идущий вызов агента
+   *  дочитывается — прервать его нечем. */
+  cancelQuickStart: (bookId: number) =>
+    req<{ stopping: boolean }>(`/api/books/${bookId}/quick-start/cancel`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
 };
+
+export interface QuickStartInflight {
+  total: number;
+  startedAt: string;
+  rows: Array<{ stageId: string; status: string; message?: string }>;
+}
+
+export interface QuickStartStageEvent {
+  index: number;
+  total: number;
+  stageId: string;
+  status: "started" | "done" | "skipped" | "failed";
+  message?: string;
+}
+
+export interface QuickStartStreamHandlers {
+  onBegin: (payload: { total: number }) => void;
+  onStage: (e: QuickStartStageEvent) => void;
+  onDone: (payload: { stages: unknown[]; cancelled: boolean; revision: number }) => void;
+  onError: (message: string) => void;
+}
+
+/** Разбор потока — как в streamRepair: читаем куски, режем по "\n\n", достаём
+ *  event: и data:. Неизвестные события (в том числе `ping`) игнорируем. */
+export async function streamQuickStart(
+  bookId: number,
+  handlers: QuickStartStreamHandlers,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/books/${bookId}/quick-start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => res.statusText);
+    handlers.onError(`HTTP ${res.status}: ${text}`);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sepIdx;
+    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, sepIdx);
+      buffer = buffer.slice(sepIdx + 2);
+      const evMatch = raw.match(/^event: (.+)$/m);
+      const dataMatch = raw.match(/^data: (.+)$/m);
+      if (!dataMatch) continue;
+      const ev = evMatch?.[1] ?? "message";
+      try {
+        const data = JSON.parse(dataMatch[1]!);
+        if (ev === "begin") handlers.onBegin(data as { total: number });
+        else if (ev === "stage") handlers.onStage(data as QuickStartStageEvent);
+        else if (ev === "done")
+          handlers.onDone(data as { stages: unknown[]; cancelled: boolean; revision: number });
+        else if (ev === "error")
+          handlers.onError(
+            (data as { details?: { message?: string } }).details?.message ?? "сбор не удался",
+          );
+      } catch {
+        /* ignore malformed event */
+      }
+    }
+  }
+}
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
   return `${API_BASE}/api/books/${bookId}/export.${format}`;

@@ -21,6 +21,7 @@ import { StageCard } from "@/components/studio/StageCard";
 import { ConceptStage } from "@/components/studio/concept/ConceptStage";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { IntakePanel } from "@/components/studio/intake/IntakePanel";
+import { QuickStartPanel } from "@/components/studio/QuickStartPanel";
 import { stageRoute } from "@/lib/studio-routes";
 
 const STAGE_LABELS: Record<StageId, string> = {
@@ -284,6 +285,8 @@ export function StudioPage() {
         </div>
 
         <IntakePanel bookId={bookId} onIntake={() => void reload()} />
+
+        <QuickStartPanel bookId={bookId} onFinished={() => void reload()} />
 
         <WarningsFeed warnings={warnings} />
 

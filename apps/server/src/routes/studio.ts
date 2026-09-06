@@ -48,6 +48,8 @@ import {
   type IntakeFileEvent,
 } from "../utils/intake-run.js";
 import { createIntakeCancelRegistry } from "../utils/intake-cancel.js";
+import { createQuickStartCancelRegistry } from "../utils/quick-start-cancel.js";
+import { QUICK_START_STAGES, runQuickStart } from "../utils/quick-start-run.js";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -256,6 +258,19 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   // ничего и не начиналось. Снимок позволяет любой вкладке в любой момент
   // спросить «что сейчас идёт» и нарисовать тот же прогресс.
   const intakeInFlight = new Map<number, IntakeInFlightRun>();
+
+  const quickStartCancels = createQuickStartCancelRegistry();
+  /** Что сейчас собирается для книги — для GET .../quick-start/inflight.
+   *  В памяти процесса, как и у приёма материала: переживший перезапуск
+   *  прогон всё равно мёртв. */
+  const quickStartInFlight = new Map<
+    number,
+    {
+      total: number;
+      startedAt: string;
+      rows: Array<{ stageId: string; status: string; message?: string }>;
+    }
+  >();
 
   r.get("/books/recommended", (c) => {
     const rows = sqlite
@@ -721,6 +736,85 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
 
     const stopped = intakeCancels.requestStop(id, parsed.data.requestKey);
     if (!stopped) return notFound(c, "intake_run");
+    return c.json({ stopping: true });
+  });
+
+  // ───────── Быстрый сбор ─────────
+  //
+  // Поток, снимок и реестр отмены устроены как у приёма материала, включая
+  // `ping` раз в 20 секунд: вызов агента молчит минутами, а молчащее
+  // соединение вправе закрыть кто угодно по дороге.
+
+  r.post("/books/:id/quick-start", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      repo.loadConcept(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
+      throw e;
+    }
+
+    return streamSSE(c, async (stream) => {
+      let pending: Promise<void> = Promise.resolve();
+      const queue = (event: string, data: unknown): void => {
+        pending = pending
+          .then(() => stream.writeSSE({ event, data: JSON.stringify(data) }))
+          .catch(() => {});
+      };
+      const keepalive = setInterval(() => queue("ping", { at: Date.now() }), 20_000);
+      quickStartCancels.begin(id);
+      quickStartInFlight.set(id, {
+        total: QUICK_START_STAGES.length,
+        startedAt: new Date().toISOString(),
+        rows: [],
+      });
+      queue("begin", { total: QUICK_START_STAGES.length });
+
+      try {
+        const result = await runQuickStart(
+          { sqlite, hasVec, repo, bookId: id },
+          {
+            onStage: (e) => {
+              const run = quickStartInFlight.get(id);
+              if (run) {
+                run.rows[e.index] = {
+                  stageId: e.stageId,
+                  status: e.status,
+                  ...(e.message !== undefined ? { message: e.message } : {}),
+                };
+              }
+              queue("stage", e);
+            },
+            shouldStop: () => quickStartCancels.shouldStop(id),
+          },
+        );
+        await pending;
+        await stream.writeSSE({ event: "done", data: JSON.stringify(result) });
+      } catch (e) {
+        await pending;
+        const message = e instanceof Error ? e.message : String(e);
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ error: "quick_start_failed", details: { message } }),
+        });
+      } finally {
+        clearInterval(keepalive);
+        quickStartCancels.end(id);
+        quickStartInFlight.delete(id);
+      }
+    });
+  });
+
+  r.get("/books/:id/quick-start/inflight", (c) => {
+    const id = Number(c.req.param("id"));
+    const run = quickStartInFlight.get(id);
+    if (run === undefined) return notFound(c, "quick_start_run");
+    return c.json(run);
+  });
+
+  r.post("/books/:id/quick-start/cancel", (c) => {
+    const id = Number(c.req.param("id"));
+    if (!quickStartCancels.requestStop(id)) return notFound(c, "quick_start_run");
     return c.json({ stopping: true });
   });
 

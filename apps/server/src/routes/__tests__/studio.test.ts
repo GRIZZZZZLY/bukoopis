@@ -329,3 +329,22 @@ describe("studio routes", () => {
     expect(map[String(id)]).toBe("world");
   });
 });
+
+describe("быстрый сбор: снимок и остановка", () => {
+  it("GET /quick-start/inflight отвечает 404, когда ничего не идёт", async () => {
+    const id = await createBook();
+    const r = await send(t.app, `/api/books/${id}/quick-start/inflight`, "GET");
+    expect(r.status).toBe(404);
+  });
+
+  it("POST /quick-start/cancel без идущего сбора отвечает 404", async () => {
+    const id = await createBook();
+    const r = await send(t.app, `/api/books/${id}/quick-start/cancel`, "POST", {});
+    expect(r.status).toBe(404);
+  });
+
+  it("POST /quick-start для несуществующей книги отвечает 404", async () => {
+    const r = await send(t.app, "/api/books/9999/quick-start", "POST", {});
+    expect(r.status).toBe(404);
+  });
+});
