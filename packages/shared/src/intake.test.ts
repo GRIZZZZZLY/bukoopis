@@ -3,6 +3,7 @@ import {
   INTAKE_TARGETS,
   INTAKE_TARGET_LABELS,
   intakeFragmentSchema,
+  buildImportedPlanVariant,
   buildImportedMarkdownAspect,
   buildImportedEntityAspect,
   mergeAspectsIntoStage,
@@ -221,5 +222,58 @@ describe("summarizeIntake", () => {
 
   it("returns an empty list when nothing landed", () => {
     expect(summarizeIntake([])).toEqual([]);
+  });
+});
+
+describe("фрагмент с разобранным оглавлением", () => {
+  const fragment: IntakeFragment = {
+    target: "plot",
+    title: "Оглавление",
+    body: "Глава 1. Порог\nГлава 2. Мост",
+    chapters: [
+      { title: "Порог", pov: "Рин", goal: "Уйти незамеченной" },
+      { title: "Мост" },
+    ],
+  };
+
+  it("схема принимает поглавные строки", () => {
+    const parsed = intakeFragmentSchema.parse(fragment);
+    expect(parsed.chapters).toHaveLength(2);
+  });
+
+  it("схема принимает фрагмент без глав — так приходит обычная проза", () => {
+    const parsed = intakeFragmentSchema.parse({
+      target: "plot",
+      title: "Заметки о сюжете",
+      body: "текст",
+    });
+    expect(parsed.chapters).toBeUndefined();
+  });
+
+  it("строит вариант плана, помеченный авторским, с числом глав по списку", () => {
+    const variant = buildImportedPlanVariant(fragment);
+    expect(variant).toBeDefined();
+    expect(variant!.source).toBe("author_material");
+    expect(variant!.estimatedChapters).toBe(2);
+    expect(variant!.chapters?.[0]).toMatchObject({ title: "Порог", pov: "Рин" });
+    expect(variant!.label).toContain("Оглавление");
+  });
+
+  it("не выдумывает синопсис и арки за автора", () => {
+    const variant = buildImportedPlanVariant(fragment);
+    expect(variant!.synopsis).toBeUndefined();
+    expect(variant!.arcs).toBeUndefined();
+  });
+
+  it("фрагмент без глав вариантом не становится", () => {
+    expect(
+      buildImportedPlanVariant({ target: "plot", title: "t", body: "b" }),
+    ).toBeUndefined();
+  });
+
+  it("пустой список глав вариантом не становится", () => {
+    expect(
+      buildImportedPlanVariant({ target: "plot", title: "t", body: "b", chapters: [] }),
+    ).toBeUndefined();
   });
 });

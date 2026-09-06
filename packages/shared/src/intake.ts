@@ -1,5 +1,10 @@
 import { z } from "zod";
 import type { AspectVariant, StageAspect, StageState } from "./studio-state.js";
+import {
+  outlineChapterSchema,
+  type BookOutlineVariant,
+  type OutlineChapter,
+} from "./plot.js";
 
 /** Куда классификатор может отправить фрагмент. `skip` — «не пригодилось»:
  *  автор видит, что файл прочитан, но в этапы ничего не легло. */
@@ -41,6 +46,9 @@ export const intakeFragmentSchema = z.object({
   note: z.string().trim().max(400).optional(),
   /** Только для characters/items. Пусто для остальных целей. */
   entities: z.array(intakeEntitySchema).max(40).optional(),
+  /** Только для цели `plot`: оглавление, разобранное на строки. Пусто, если в
+   *  тексте не было поглавного списка — тогда фрагмент останется заметкой. */
+  chapters: z.array(outlineChapterSchema).max(200).optional(),
 });
 export type IntakeFragment = z.infer<typeof intakeFragmentSchema>;
 
@@ -148,6 +156,23 @@ export function mergeAspectsIntoStage(
       ...fresh.map((a, i) => ({ ...a, order: base + i })),
     ],
     updatedAt: now,
+  };
+}
+
+/** Авторское оглавление как вариант плана рядом со сгенерированными.
+ *  Ничего не досочиняет: ни синопсиса, ни арок, ни архитектуры — только то,
+ *  что автор написал сам. `estimatedChapters` берётся из длины списка, а не
+ *  из догадки. */
+export function buildImportedPlanVariant(
+  fragment: IntakeFragment,
+): BookOutlineVariant | undefined {
+  const chapters: OutlineChapter[] = fragment.chapters ?? [];
+  if (chapters.length === 0) return undefined;
+  return {
+    label: `${VARIANT_LABEL}: ${fragment.title}`,
+    estimatedChapters: chapters.length,
+    source: "author_material",
+    chapters,
   };
 }
 
