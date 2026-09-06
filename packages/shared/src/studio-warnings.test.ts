@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeStudioProgress,
   computeStudioWarnings,
   computeRecommendedNextStage,
   effectiveStageStatus,
 } from "./studio-warnings.js";
+import { isPlanApproved } from "./plot.js";
 import { emptyBookConcept, PITCH_FIELD_LABELS } from "./concept.js";
 import { emptyStudioState } from "./studio-state.js";
 
@@ -89,7 +91,6 @@ describe("computeStudioWarnings", () => {
   });
 });
 
-import { computeStudioProgress } from "./studio-warnings.js";
 import type { StudioState } from "./studio-state.js";
 
 describe("computeStudioProgress", () => {
@@ -325,5 +326,91 @@ describe("effectiveStageStatus", () => {
     expect(
       computeRecommendedNextStage({ concept: locked, studioState: emptyStudioState() }),
     ).toBe("world");
+  });
+});
+
+describe("готовность этапа плана", () => {
+  /** Утверждённый замысел: без него рекомендация не сдвинется с первого этапа. */
+  function conceptFixture() {
+    return { ...emptyBookConcept(), lockedAt: "2026-09-06T10:00:00.000Z" };
+  }
+  const concept = conceptFixture();
+  const emptyState = { schemaVersion: 1 as const, revision: 0, stages: {} };
+
+  it("план не утверждён — этап не пройден", () => {
+    const progress = computeStudioProgress(concept, emptyState, undefined, {
+      approved: false,
+    });
+    expect(progress.stages.find((s) => s.id === "plot")?.done).toBe(false);
+  });
+
+  it("план утверждён — этап пройден, даже если аспектов на нём нет", () => {
+    const progress = computeStudioProgress(concept, emptyState, undefined, {
+      approved: true,
+    });
+    expect(progress.stages.find((s) => s.id === "plot")?.done).toBe(true);
+  });
+
+  it("без признака плана поведение прежнее: этап не пройден", () => {
+    const progress = computeStudioProgress(concept, emptyState);
+    expect(progress.stages.find((s) => s.id === "plot")?.done).toBe(false);
+  });
+
+  it("утверждённый план сдвигает рекомендацию на главы", () => {
+    const done = {
+      schemaVersion: 1 as const,
+      revision: 0,
+      stages: {
+        world: { status: "skipped" as const, playbookGenerated: false, aspects: [] },
+        lore: { status: "skipped" as const, playbookGenerated: false, aspects: [] },
+        characters: { status: "complete" as const, playbookGenerated: true, aspects: [] },
+        items: { status: "skipped" as const, playbookGenerated: false, aspects: [] },
+      },
+    };
+    expect(
+      computeRecommendedNextStage({ concept, studioState: done, plan: { approved: true } }),
+    ).toBe("chapters");
+  });
+});
+
+describe("isPlanApproved", () => {
+  const withChapters = JSON.stringify({
+    variants: [{ label: "план", estimatedChapters: 1, chapters: [{ title: "Порог" }] }],
+    selectedIndex: 0,
+    generatedAt: "2026-09-06T10:00:00.000Z",
+  });
+
+  it("выбранный вариант с поглавными строками — утверждён", () => {
+    expect(isPlanApproved(withChapters)).toBe(true);
+  });
+
+  it("вариант выбран, но поглавных строк нет — не утверждён", () => {
+    expect(
+      isPlanApproved(
+        JSON.stringify({
+          variants: [{ label: "план", estimatedChapters: 12 }],
+          selectedIndex: 0,
+          generatedAt: "2026-09-06T10:00:00.000Z",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("вариант не выбран — не утверждён", () => {
+    expect(
+      isPlanApproved(
+        JSON.stringify({
+          variants: [{ label: "план", estimatedChapters: 1, chapters: [{ title: "Порог" }] }],
+          selectedIndex: null,
+          generatedAt: "2026-09-06T10:00:00.000Z",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("мусор и пустота не роняют проверку", () => {
+    expect(isPlanApproved(null)).toBe(false);
+    expect(isPlanApproved("не json")).toBe(false);
+    expect(isPlanApproved("{}")).toBe(false);
   });
 });

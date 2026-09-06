@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { toast } from "@/lib/toast";
+import { isPlanApproved } from "@book-forge/shared";
 import type {
   Book,
   BookConcept,
@@ -149,7 +150,13 @@ export function PlanStagePage() {
   return (
     <div className="route" data-screen-label="stage-plot">
       <div className="page page-stage">
-        <StageStepper bookId={bookId} concept={concept} studioState={studio} activeStageId="plot" />
+        <StageStepper
+          bookId={bookId}
+          concept={concept}
+          studioState={studio}
+          activeStageId="plot"
+          planApproved={isPlanApproved(book.outlineJson)}
+        />
 
         <div className="page-head">
           <div>

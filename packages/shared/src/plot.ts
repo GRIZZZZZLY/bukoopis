@@ -194,6 +194,20 @@ export const bookOutlineSchema = z.object({
 });
 export type BookOutline = z.infer<typeof bookOutlineSchema>;
 
+/** План утверждён, если вариант выбран и в нём есть поглавные строки. Само
+ *  наличие глав в книге признаком не служит: главы бывают заведены руками. */
+export function isPlanApproved(outlineJson: string | null | undefined): boolean {
+  if (!outlineJson) return false;
+  try {
+    const parsed = bookOutlineSchema.safeParse(JSON.parse(outlineJson));
+    if (!parsed.success || parsed.data.selectedIndex === null) return false;
+    const variant = parsed.data.variants[parsed.data.selectedIndex];
+    return (variant?.chapters?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Chapter beat-sheet (level 3)
 // ──────────────────────────────────────────────────────────────────

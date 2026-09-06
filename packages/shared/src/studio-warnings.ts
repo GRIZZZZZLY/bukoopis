@@ -28,6 +28,14 @@ export interface ChapterProgress {
   finalized: number;
 }
 
+/** У этапа плана, как и у глав, нет аспектов: его правда живёт в
+ *  `books.outline_json`. Признак приходит снаружи — общий пакет книгу не
+ *  читает. */
+export interface PlanProgress {
+  /** Выбран вариант плана и по нему созданы главы. */
+  approved: boolean;
+}
+
 export interface StudioWarningsInput {
   concept: BookConcept;
   studioState: StudioState;
@@ -122,6 +130,7 @@ export interface RecommendedNextInput {
   concept: BookConcept;
   studioState: StudioState;
   chapters?: ChapterProgress;
+  plan?: PlanProgress;
 }
 
 /** The concept stage has no `studio_state` record — it is a form — so its
@@ -132,6 +141,7 @@ function isStageDone(
   state: StudioState,
   id: StageId,
   chapters?: ChapterProgress,
+  plan?: PlanProgress,
 ): boolean {
   const s = stageStatus(state, id) ?? "not_started";
   if (s === "complete" || s === "skipped") return true;
@@ -144,6 +154,9 @@ function isStageDone(
       chapters.finalized >= chapters.total
     );
   }
+  // У плана тоже нет аспектов: этап пройден, когда план утверждён. Вызов без
+  // признака сохраняет прежнее поведение — этап не пройден.
+  if (id === "plot") return plan?.approved === true;
   return false;
 }
 
@@ -155,10 +168,11 @@ export function effectiveStageStatus(
   studioState: StudioState,
   id: StageId,
   chapters?: ChapterProgress,
+  plan?: PlanProgress,
 ): StageState["status"] {
   const stored = stageStatus(studioState, id) ?? "not_started";
   if (stored === "skipped" || stored === "complete") return stored;
-  if (isStageDone(concept, studioState, id, chapters)) return "complete";
+  if (isStageDone(concept, studioState, id, chapters, plan)) return "complete";
   if (id === "chapters" && (chapters?.total ?? 0) > 0) return "in_progress";
   if (id === "concept" && !isConceptComplete(concept)) {
     const touched =
@@ -174,7 +188,7 @@ export function computeRecommendedNextStage(
   input: RecommendedNextInput,
 ): StageId | undefined {
   for (const id of STAGE_ORDER) {
-    if (isStageDone(input.concept, input.studioState, id, input.chapters)) {
+    if (isStageDone(input.concept, input.studioState, id, input.chapters, input.plan)) {
       continue;
     }
     return id;
@@ -199,14 +213,16 @@ export function computeStudioProgress(
   concept: BookConcept,
   studioState: StudioState,
   chapters?: ChapterProgress,
+  plan?: PlanProgress,
 ): StudioProgress {
   const recommended = computeRecommendedNextStage({
     concept,
     studioState,
     ...(chapters !== undefined ? { chapters } : {}),
+    ...(plan !== undefined ? { plan } : {}),
   });
   const stages: StudioStageProgress[] = STAGE_IDS.map((id) => {
-    const done = isStageDone(concept, studioState, id, chapters);
+    const done = isStageDone(concept, studioState, id, chapters, plan);
     const status: StudioStageProgress["status"] = done
       ? "done"
       : id === recommended

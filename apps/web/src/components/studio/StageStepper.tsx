@@ -50,6 +50,9 @@ interface StageStepperProps {
   /** Omit on pages that have not loaded the chapter list; the chapters step
    *  then simply never reads as done. */
   chapters?: ChapterProgress;
+  /** План утверждён — этап «Сюжет» пройден. Страницы, у которых книги нет в
+   *  руках, признак не передают и получают прежнее поведение. */
+  planApproved?: boolean;
 }
 
 /** Reference: extracted app/stepper.jsx (.stepper / .step idiom). */
@@ -59,8 +62,14 @@ export function StageStepper({
   studioState,
   activeStageId,
   chapters,
+  planApproved,
 }: StageStepperProps) {
-  const progress = computeStudioProgress(concept, studioState, chapters);
+  const progress = computeStudioProgress(
+    concept,
+    studioState,
+    chapters,
+    planApproved !== undefined ? { approved: planApproved } : undefined,
+  );
   const byId = new Map(progress.stages.map((s) => [s.id, s]));
 
   return (

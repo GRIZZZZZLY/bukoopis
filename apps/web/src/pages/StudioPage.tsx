@@ -7,6 +7,7 @@ import {
   computeRecommendedNextStage,
   computeStudioProgress,
   effectiveStageStatus,
+  isPlanApproved,
 } from "@book-forge/shared";
 import type {
   Book,
@@ -187,12 +188,15 @@ export function StudioPage() {
     );
   }
 
+  // Готовность этапа плана видна только по колонке книги: аспектов у него нет.
+  const plan = { approved: isPlanApproved(book?.outlineJson ?? null) };
   const recommended = computeRecommendedNextStage({
     concept,
     studioState: studio,
     ...(chapters !== undefined ? { chapters } : {}),
+    plan,
   });
-  const progress = computeStudioProgress(concept, studio, chapters);
+  const progress = computeStudioProgress(concept, studio, chapters, plan);
   const continueStage = progress.recommended ?? "chapters";
 
   function handleConceptChange(next: BookConcept) {
@@ -234,6 +238,7 @@ export function StudioPage() {
           studioState={studio}
           activeStageId="concept"
           {...(chapters !== undefined ? { chapters } : {})}
+          planApproved={plan.approved}
         />
 
         <div className="card prog-block" aria-label="Прогресс книги">
@@ -307,7 +312,7 @@ export function StudioPage() {
                 key={id}
                 stageId={id}
                 label={STAGE_LABELS[id]}
-                status={effectiveStageStatus(concept, studio, id, chapters)}
+                status={effectiveStageStatus(concept, studio, id, chapters, plan)}
                 recommended={recommended === id}
                 {...(href !== undefined ? { href } : {})}
               />
