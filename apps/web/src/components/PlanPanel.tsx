@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import {
@@ -26,7 +27,9 @@ function parsePlan(json: string | null): ChapterPlan | null {
 export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
   const initial = useMemo(() => parsePlan(chapter.planJson), [chapter]);
   const [plan, setPlan] = useState<ChapterPlan | null>(initial);
-  const [intent, setIntent] = useState(chapter.intent ?? "");
+  // Намерение приходит из утверждённого плана книги, а не из головы автора в
+  // этой форме: одно и то же он не должен набирать дважды.
+  const intent = (chapter.intent ?? "").trim();
   const [variants, setVariants] = useState(2);
   const [generating, setGenerating] = useState(false);
   const [selecting, setSelecting] = useState<number | null>(null);
@@ -43,13 +46,13 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
 
   async function onGenerate() {
     setError(null);
-    if (intent.trim().length === 0) {
-      setError("Опиши намерение главы.");
+    if (intent.length === 0) {
+      setError("У главы нет намерения — утвердите план книги.");
       return;
     }
     setGenerating(true);
     try {
-      const result = await api.generateChapterPlan(chapter.id, intent.trim(), {
+      const result = await api.generateChapterPlan(chapter.id, intent, {
         variants,
       });
       setPlan(result);
@@ -79,13 +82,17 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
     <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
       <h2 className="text-xl font-semibold">План главы (Plot Agent)</h2>
 
-      <label className="text-sm font-medium">Намерение главы</label>
-      <textarea
-        className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm min-h-[100px]"
-        placeholder="Например: главный герой обнаруживает предательство друга, конфронтация в пещере"
-        value={intent}
-        onChange={(e) => setIntent(e.target.value)}
-      />
+      {intent.length > 0 ? (
+        <div>
+          <div className="caption">Намерение главы (из плана книги)</div>
+          <p className="text-sm" style={{ whiteSpace: "pre-wrap" }}>{intent}</p>
+        </div>
+      ) : (
+        <p className="text-sm">
+          У главы нет намерения. Оно приходит из плана книги — откройте{" "}
+          <Link to={`/books/${chapter.bookId}/studio/plot`}>план</Link> и утвердите его.
+        </p>
+      )}
 
       <div className="flex items-center gap-2">
         <label className="text-sm">
@@ -101,7 +108,7 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             className="w-14 border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
           />
         </label>
-        <Button onClick={onGenerate} disabled={generating}>
+        <Button onClick={onGenerate} disabled={generating || intent.length === 0}>
           {generating ? "Генерация…" : "Сгенерировать план"}
         </Button>
       </div>

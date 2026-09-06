@@ -17,7 +17,6 @@ vi.mock("@/api/client", () => ({
   },
 }));
 
-vi.mock("@/components/OutlinePanel", () => ({ OutlinePanel: () => <div /> }));
 vi.mock("@/components/KnowledgePanel", () => ({ KnowledgePanel: () => <div /> }));
 vi.mock("@/components/ImportExportPanel", () => ({ ImportExportPanel: () => <div /> }));
 vi.mock("@/components/SearchPanel", () => ({ SearchPanel: () => <div /> }));

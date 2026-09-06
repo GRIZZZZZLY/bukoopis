@@ -18,7 +18,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { Pill } from "@/components/ui/pill";
-import { OutlinePanel } from "@/components/OutlinePanel";
 import { ImportExportPanel } from "@/components/ImportExportPanel";
 import { SearchPanel } from "@/components/SearchPanel";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
@@ -168,8 +167,16 @@ export function ChaptersStagePage() {
         </div>
 
         {/* Plan */}
-        <div className="card panel-outline">
-          <OutlinePanel book={book} onUpdated={load} />
+        <div className="card">
+          <div className="panel-head">
+            <h3>План книги</h3>
+            <Link to={`/books/${id}/studio/plot`} className="btn btn-ghost btn-sm">
+              Открыть план →
+            </Link>
+          </div>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Поглавный костяк и создание глав переехали на отдельный экран.
+          </p>
         </div>
 
         {/* Canon + Import/Export */}
