@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="470" viewBox="0 0 1200 470"
+     role="img" aria-labelledby="wf-title wf-desc">
+  <title id="wf-title">Как устроена работа над книгой</title>
+  <desc id="wf-desc">Сверху — семь этапов подготовки: замысел, мир, лор, персонажи, предметы, план, главы; мир, лор и предметы необязательны. Снизу — путь одной главы: контекст, писатель, кандидат, решение автора, версия главы.</desc>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#43507A"/>
+    </marker>
+    <marker id="arrow-brass" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#D9A44A"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="470" rx="26" fill="#131722"/>
+  <rect x="1" y="1" width="1198" height="468" rx="25" fill="none" stroke="#252E45" stroke-width="2"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+
+    <text x="64" y="58" font-size="26" font-weight="600" fill="#F5F2E6">1 · Подготовка книги</text>
+    <text x="1136" y="58" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" fill="#8B93A8">пунктир — этап необязательный</text>
+
+    <line x1="64" y1="132" x2="1136" y2="132" stroke="#303B55" stroke-width="2"/>
+
+    <g id="stages">
+      <rect x="64" y="96" width="136" height="72" rx="12" fill="#212A3D" stroke="#43507A" stroke-width="2"/>
+      <text x="132" y="139" font-size="20" fill="#E4E1D4" text-anchor="middle">Замысел</text>
+
+      <rect x="220" y="96" width="136" height="72" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2" stroke-dasharray="6 5"/>
+      <text x="288" y="139" font-size="20" fill="#8B93A8" text-anchor="middle">Мир</text>
+
+      <rect x="376" y="96" width="136" height="72" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2" stroke-dasharray="6 5"/>
+      <text x="444" y="139" font-size="20" fill="#8B93A8" text-anchor="middle">Лор</text>
+
+      <rect x="532" y="96" width="136" height="72" rx="12" fill="#212A3D" stroke="#43507A" stroke-width="2"/>
+      <text x="600" y="139" font-size="20" fill="#E4E1D4" text-anchor="middle">Персонажи</text>
+
+      <rect x="688" y="96" width="136" height="72" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2" stroke-dasharray="6 5"/>
+      <text x="756" y="139" font-size="20" fill="#8B93A8" text-anchor="middle">Предметы</text>
+
+      <rect x="844" y="96" width="136" height="72" rx="12" fill="#212A3D" stroke="#43507A" stroke-width="2"/>
+      <text x="912" y="139" font-size="20" fill="#E4E1D4" text-anchor="middle">План</text>
+
+      <rect x="1000" y="96" width="136" height="72" rx="12" fill="#212A3D" stroke="#D9A44A" stroke-opacity="0.55" stroke-width="2"/>
+      <text x="1068" y="139" font-size="20" fill="#E4E1D4" text-anchor="middle">Главы</text>
+    </g>
+
+    <text x="64" y="238" font-size="26" font-weight="600" fill="#F5F2E6">2 · Одна глава</text>
+    <text x="1136" y="238" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" fill="#8B93A8">правка главы идёт тем же путём</text>
+
+    <g id="chapter-flow">
+      <rect x="64" y="272" width="260" height="132" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2"/>
+      <text x="88" y="308" font-size="22" font-weight="600" fill="#F5F2E6">Контекст</text>
+      <text x="88" y="338" font-size="18" fill="#8B93A8">последние главы целиком</text>
+      <text x="88" y="362" font-size="18" fill="#8B93A8">факты канона и заметки</text>
+      <text x="88" y="386" font-size="18" fill="#8B93A8">поиск по прошлым главам</text>
+
+      <line x1="334" y1="338" x2="362" y2="338" stroke="#43507A" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="372" y="272" width="200" height="132" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2"/>
+      <text x="396" y="308" font-size="22" font-weight="600" fill="#F5F2E6">Писатель</text>
+      <text x="396" y="338" font-size="18" fill="#8B93A8">стиль книги</text>
+      <text x="396" y="362" font-size="18" fill="#8B93A8">намерение главы</text>
+      <text x="396" y="386" font-size="18" fill="#8B93A8">критики после</text>
+
+      <line x1="582" y1="338" x2="610" y2="338" stroke="#43507A" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="620" y="272" width="230" height="132" rx="12" fill="#212A3D" stroke="#D9A44A" stroke-opacity="0.55" stroke-width="2"/>
+      <rect x="620" y="272" width="4" height="132" fill="#D9A44A"/>
+      <text x="644" y="308" font-size="22" font-weight="600" fill="#F5F2E6">Кандидат</text>
+      <text x="644" y="338" font-size="18" fill="#8B93A8">лежит отдельно</text>
+      <text x="644" y="362" font-size="18" fill="#8B93A8">версию не создаёт</text>
+      <text x="644" y="386" font-size="18" fill="#8B93A8">можно принять частями</text>
+
+      <text x="882" y="308" font-size="18" fill="#D9A44A" text-anchor="middle">автор</text>
+      <line x1="862" y1="338" x2="902" y2="338" stroke="#D9A44A" stroke-width="2" marker-end="url(#arrow-brass)"/>
+
+      <rect x="914" y="272" width="222" height="132" rx="12" fill="#1A2030" stroke="#303B55" stroke-width="2"/>
+      <text x="938" y="308" font-size="22" font-weight="600" fill="#F5F2E6">Версия главы</text>
+      <text x="938" y="338" font-size="18" fill="#8B93A8">одна транзакция</text>
+      <text x="938" y="362" font-size="18" fill="#8B93A8">память обновляется</text>
+      <text x="938" y="386" font-size="18" fill="#8B93A8">старые версии целы</text>
+    </g>
+
+    <text x="64" y="446" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" fill="#8B93A8">Приём чужих материалов и быстрый сбор кладут черновики в те же этапы — тоже без автоутверждения.</text>
+  </g>
+</svg>

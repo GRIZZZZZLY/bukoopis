@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="380" viewBox="0 0 1200 380"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Book Forge</title>
+  <desc id="hero-desc">Локальный редактор романа: книга собирается по этапам, а текст от модели приходит предложением, которое автор принимает или отклоняет.</desc>
+
+  <rect width="1200" height="380" rx="26" fill="#131722"/>
+  <rect x="1" y="1" width="1198" height="378" rx="25" fill="none" stroke="#252E45" stroke-width="2"/>
+
+  <g id="title-block" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+    <text x="64" y="100" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="19" letter-spacing="2" fill="#8B93A8">ЛОКАЛЬНЫЙ РЕДАКТОР РОМАНА</text>
+
+    <text x="64" y="180" font-size="66" font-weight="700" fill="#F5F2E6">Book Forge</text>
+
+    <text x="64" y="230" font-size="24" fill="#E4E1D4">Роман собирается по этапам — от замысла</text>
+    <text x="64" y="264" font-size="24" fill="#E4E1D4">до глав. Ничего не попадает в книгу,</text>
+    <text x="64" y="298" font-size="24" fill="#E4E1D4">пока автор не нажмёт «Принять».</text>
+
+    <text x="64" y="340" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" fill="#8B93A8">TypeScript · SQLite · 26 агентов · Node 22</text>
+  </g>
+
+  <g id="manuscript" transform="translate(656 56)"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+    <rect width="480" height="268" rx="16" fill="#1A2030" stroke="#303B55" stroke-width="2"/>
+
+    <!-- поле рукописи: мотив проекта -->
+    <line x1="56" y1="20" x2="56" y2="248" stroke="#43507A" stroke-width="2"/>
+    <rect x="52" y="104" width="8" height="8" fill="#D9A44A"/>
+
+    <!-- уже принятый текст главы -->
+    <rect x="80" y="30" width="356" height="9" rx="4" fill="#2A3550"/>
+    <rect x="80" y="52" width="312" height="9" rx="4" fill="#2A3550"/>
+    <rect x="80" y="74" width="340" height="9" rx="4" fill="#2A3550"/>
+
+    <!-- кандидат: ещё не версия -->
+    <rect x="72" y="104" width="384" height="124" rx="12" fill="#212A3D" stroke="#D9A44A" stroke-opacity="0.55" stroke-width="2"/>
+    <rect x="72" y="104" width="4" height="124" fill="#D9A44A"/>
+
+    <text x="92" y="132" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" letter-spacing="1.5" fill="#D9A44A">ПРЕДЛОЖЕНИЕ</text>
+
+    <rect x="92" y="146" width="344" height="9" rx="4" fill="#3A4666"/>
+    <rect x="92" y="164" width="276" height="9" rx="4" fill="#3A4666"/>
+
+    <rect x="92" y="186" width="124" height="32" rx="8" fill="#D9A44A"/>
+    <text x="154" y="208" font-size="18" font-weight="600" fill="#131722" text-anchor="middle">Принять</text>
+
+    <rect x="228" y="186" width="132" height="32" rx="8" fill="none" stroke="#43507A" stroke-width="2"/>
+    <text x="294" y="208" font-size="18" fill="#8B93A8" text-anchor="middle">Отклонить</text>
+
+    <rect x="80" y="246" width="212" height="9" rx="4" fill="#2A3550"/>
+  </g>
+</svg>
