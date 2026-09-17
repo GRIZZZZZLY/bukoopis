@@ -62,7 +62,6 @@ export const createVoiceSampleInputSchema = z.object({
   addresseeCharacterId: z.number().int().positive().nullable().optional(),
   note: z.string().max(1000).nullable().optional(),
   origin: voiceSampleOriginSchema.default("author"),
-  status: voiceSampleStatusSchema.optional(),
   sourceVersionId: z.number().int().positive().nullable().optional(),
   sourceChapterOrder: z.number().int().nonnegative().nullable().optional(),
 });

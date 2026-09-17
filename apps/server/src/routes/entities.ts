@@ -703,6 +703,8 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     // `/characters/:id` не несёт книгу в пути, поэтому проверка тут.
     const addressee = parsed.data.addresseeCharacterId ?? null;
     if (addressee !== null) {
+      // Герой не может быть собственным адресатом
+      if (addressee === id) return badRequest(c, "герой не может обращаться к самому себе");
       const ok = sqlite
         .prepare("SELECT id FROM characters WHERE id = ? AND book_id = ?")
         .get(addressee, ch.book_id) as { id: number } | undefined;
@@ -711,8 +713,8 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
 
     // Авторский образец — уже решение автора, отдельного принятия не просит.
     // Предложение модели ждёт: «ничего не утверждается без автора».
-    const status =
-      parsed.data.status ?? (parsed.data.origin === "author" ? "accepted" : "proposed");
+    // Статус не берётся из тела: схема его не принимает, пост-нулевой шанс обхода.
+    const status = parsed.data.origin === "author" ? "accepted" : "proposed";
     const now = new Date().toISOString();
     const info = sqlite
       .prepare(

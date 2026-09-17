@@ -47,7 +47,7 @@ describe("банк образцов речи", () => {
     expect(accepted.status).toBe("accepted");
   });
 
-  it("AC-30: адресат из другой книги отклоняется", async () => {
+  it("AC-30: адресат из другой книги отклоняется и ничего не сохраняется", async () => {
     const other = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Чужая" });
     const alien = await sendJson<CharacterJson>(t.app, `/api/books/${other.id}/characters`, "POST",
       { canonicalName: "Чужой", profile: { description: "X" } });
@@ -57,6 +57,8 @@ describe("банк образцов речи", () => {
       addresseeCharacterId: alien.id,
     });
     expect(r.status).toBe(400);
+    const list = await sendJson<SampleJson[]>(t.app, `/api/characters/${rin.id}/voice-samples`, "GET");
+    expect(list).toHaveLength(0);
   });
 
   it("адресат из своей книги принимается", async () => {
@@ -75,5 +77,36 @@ describe("банк образцов речи", () => {
     const del = await send(t.app, `/api/voice-samples/${s.id}`, "DELETE");
     expect(del.status).toBe(204);
     expect(await sendJson<SampleJson[]>(t.app, `/api/characters/${rin.id}/voice-samples`, "GET")).toHaveLength(0);
+  });
+
+  it("статус из тела игнорируется, образец модели остаётся в proposed", async () => {
+    const s = await sendJson<SampleJson>(t.app, `/api/characters/${rin.id}/voice-samples`, "POST", {
+      text: "Попытка обхода",
+      situation: "neutral",
+      origin: "llm",
+      status: "accepted",
+    });
+    expect(s.status).toBe("proposed");
+  });
+
+  it("GET с неверным id персонажа возвращает 404", async () => {
+    const r = await send(t.app, `/api/characters/999999/voice-samples`, "GET");
+    expect(r.status).toBe(404);
+  });
+
+  it("PATCH с неверным id образца возвращает 404", async () => {
+    const r = await send(t.app, `/api/voice-samples/999999`, "PATCH", { status: "accepted" });
+    expect(r.status).toBe(404);
+  });
+
+  it("адресат = сам герой отклоняется", async () => {
+    const r = await send(t.app, `/api/characters/${rin.id}/voice-samples`, "POST", {
+      text: "Говорю с собой",
+      situation: "neutral",
+      addresseeCharacterId: rin.id,
+    });
+    expect(r.status).toBe(400);
+    const list = await sendJson<SampleJson[]>(t.app, `/api/characters/${rin.id}/voice-samples`, "GET");
+    expect(list).toHaveLength(0);
   });
 });
