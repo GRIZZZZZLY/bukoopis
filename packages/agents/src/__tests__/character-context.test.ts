@@ -87,4 +87,37 @@ describe("characterContextToPrompt", () => {
     expect(text).not.toContain("доверие:");
     expect(text).not.toContain("уважение:");
   });
+
+  it("разногласия и умолчания отрисовываются при наличии", () => {
+    const resultWithDisputesAndSilences = {
+      ...result,
+      relationships: [
+        rel(13, 1, 2, {
+          trust: "верит на слово",
+          disputes: ["время встреч", "место работы"],
+          silences: ["прошлое", "семья"],
+        }),
+      ],
+    };
+    const text = characterContextToPrompt(resultWithDisputesAndSilences, names);
+    expect(text).toContain("разногласия: время встреч, место работы");
+    expect(text).toContain("умолчания: прошлое, семья");
+  });
+
+  it("пустые массивы разногласий и умолчаний не создают строк", () => {
+    const resultWithEmptyArrays = {
+      ...result,
+      relationships: [
+        rel(14, 1, 2, {
+          trust: "верит на слово",
+          disputes: [],
+          silences: [],
+        }),
+      ],
+    };
+    const text = characterContextToPrompt(resultWithEmptyArrays, names);
+    expect(text).toContain("доверие: верит на слово");
+    expect(text).not.toContain("разногласия:");
+    expect(text).not.toContain("умолчания:");
+  });
 });

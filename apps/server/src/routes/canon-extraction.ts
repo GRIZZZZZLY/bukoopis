@@ -12,6 +12,7 @@ import {
 } from "@book-forge/agents";
 import { logUsage } from "../utils/usageLogger.js";
 import { notFound, badRequest } from "../utils/errors.js";
+import { recordProfileVersion } from "../utils/entity-revisions.js";
 
 type EntityKind = "character" | "location" | "item" | "hook" | "relationship";
 
@@ -466,13 +467,25 @@ function createCharacterFromCandidate(
   const profile = JSON.stringify({
     description: c.profile ?? c.name,
   });
-  const info = sqlite
-    .prepare(
-      `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .run(bookId, c.name, profile, now, now);
-  return Number(info.lastInsertRowid);
+  const tx = sqlite.transaction(() => {
+    const info = sqlite
+      .prepare(
+        `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(bookId, c.name, profile, now, now);
+    const characterId = Number(info.lastInsertRowid);
+    recordProfileVersion(sqlite, {
+      bookId,
+      entityType: "character",
+      entityId: characterId,
+      revision: 0,
+      profileJson: profile,
+      origin: "llm",
+    });
+    return characterId;
+  });
+  return tx.immediate();
 }
 
 function createLocationFromCandidate(
@@ -531,7 +544,7 @@ function createRelationshipFromCandidate(
   c: StoredRelationshipCandidate,
 ): number {
   const lookup = sqlite.prepare(
-    "SELECT id FROM characters WHERE book_id = ? AND name = ? LIMIT 1",
+    "SELECT id FROM characters WHERE book_id = ? AND canonical_name = ? LIMIT 1",
   );
   const fromRow = lookup.get(bookId, c.fromName) as { id: number } | undefined;
   const toRow = lookup.get(bookId, c.toName) as { id: number } | undefined;
@@ -546,14 +559,27 @@ function createRelationshipFromCandidate(
     );
   }
   const now = new Date().toISOString();
-  const info = sqlite
-    .prepare(
-      `INSERT INTO relationships
-       (book_id, from_character_id, to_character_id, type, tension, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(bookId, fromRow.id, toRow.id, c.type, c.tension, null, now, now);
-  return Number(info.lastInsertRowid);
+  const profile = JSON.stringify({});
+  const tx = sqlite.transaction(() => {
+    const info = sqlite
+      .prepare(
+        `INSERT INTO relationships
+         (book_id, from_character_id, to_character_id, type, tension, notes, profile_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(bookId, fromRow.id, toRow.id, c.type, c.tension, null, profile, now, now);
+    const relationshipId = Number(info.lastInsertRowid);
+    recordProfileVersion(sqlite, {
+      bookId,
+      entityType: "relationship",
+      entityId: relationshipId,
+      revision: 0,
+      profileJson: profile,
+      origin: "llm",
+    });
+    return relationshipId;
+  });
+  return tx.immediate();
 }
 
 function applyAcceptDecision(

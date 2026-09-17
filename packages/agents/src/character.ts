@@ -260,6 +260,12 @@ export function characterContextToPrompt(
           lines.push(`  · ${label}: ${value}`);
         }
       }
+      if (Array.isArray(r.profile.disputes) && r.profile.disputes.length > 0) {
+        lines.push(`  · разногласия: ${r.profile.disputes.join(", ")}`);
+      }
+      if (Array.isArray(r.profile.silences) && r.profile.silences.length > 0) {
+        lines.push(`  · умолчания: ${r.profile.silences.join(", ")}`);
+      }
     }
   }
   return lines.join("\n");

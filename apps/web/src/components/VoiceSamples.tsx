@@ -148,7 +148,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
       ) : list.length === 0 ? (
         <p className="text-xs text-[var(--color-muted-foreground)]">
           Образцов речи нет. Три коротких — обычный разговор, конфликт,
-          уязвимость — дают Writer'у диапазон.
+          уязвимость — раскрывают диапазон голоса персонажа.
         </p>
       ) : (
         <ul className="flex flex-col gap-1">

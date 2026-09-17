@@ -93,7 +93,7 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
     );
     const characterContext =
       charResult.characters.length > 0
-        ? characterContextToPrompt(charResult, charNameById)
+        ? characterContextToPrompt(charResult, charNameById, { chapterOrder: ch.order_index })
         : null;
     const loreResult = gatherLoreContext(
       sqlite,
