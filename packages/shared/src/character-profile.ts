@@ -94,7 +94,11 @@ export const characterAuthorPlanSchema = z.object({
 });
 
 export const characterProfileV2Schema = z.object({
-  schemaVersion: z.literal(2),
+  // `.default(2)` — не только для `normalizeCharacterProfile` (она и так
+  // передаёт версию явно): схему держат задачи ниже по цепочке (4, 5, 7, 9,
+  // 10), и прямой `.parse()` сырой V1-строки без нормализации не должен
+  // валить книгу только потому, что поля версии в ней никогда не было.
+  schemaVersion: z.literal(2).default(2),
 
   // V1: сохраняется дословно и навсегда (AC-01).
   description: z.string().default(""),
@@ -158,15 +162,24 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
 
   const source = raw as Record<string, unknown>;
   const known: Record<string, unknown> = {};
-  const extra: Record<string, unknown> = {};
+  // `Object.create(null)` — без этого литеральный ключ `__proto__` из строки
+  // базы не становится собственным свойством, а меняет прототип аккумулятора,
+  // и значение пропадает молча (та же потеря, что чинит блок ниже).
+  const extra: Record<string, unknown> = Object.create(null);
   for (const [key, value] of Object.entries(source)) {
     if (key === "extra") continue;
     (KNOWN_KEYS.has(key) ? known : extra)[key] = value;
   }
-  // `extra` предыдущей нормализации не теряется при повторном проходе.
+  // `extra` предыдущей нормализации не теряется при повторном проходе. Раньше
+  // ветка `else` отсутствовала: `extra`, пришедший строкой или массивом (а не
+  // объектом кандидата), просто исчезал — та же потеря, что и с `__proto__`.
   const priorExtra = source["extra"];
-  if (priorExtra && typeof priorExtra === "object" && !Array.isArray(priorExtra)) {
-    Object.assign(extra, priorExtra as Record<string, unknown>);
+  if (priorExtra !== undefined) {
+    if (priorExtra && typeof priorExtra === "object" && !Array.isArray(priorExtra)) {
+      Object.assign(extra, priorExtra as Record<string, unknown>);
+    } else {
+      extra["extra"] = priorExtra;
+    }
   }
 
   const parsed = characterProfileV2Schema.safeParse({

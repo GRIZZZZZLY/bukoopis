@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeCharacterProfile,
   characterProfileWriteSchema,
+  characterProfileV2Schema,
 } from "./character-profile.js";
 
 describe("normalizeCharacterProfile", () => {
@@ -89,5 +90,37 @@ describe("normalizeCharacterProfile", () => {
       description: "я".repeat(20_001),
     });
     expect(r.success).toBe(false);
+  });
+
+  it("extra-строка не той формы не пропадает при повторном проходе", () => {
+    const p = normalizeCharacterProfile({ description: "X", extra: "мусор" });
+    expect(p.extra).toEqual({ extra: "мусор" });
+  });
+
+  it("extra-массив не пропадает при повторном проходе", () => {
+    const p = normalizeCharacterProfile({ description: "X", extra: ["a"] });
+    expect(p.extra).toEqual({ extra: ["a"] });
+  });
+
+  it("литеральный __proto__ в JSON-строке не пропадает и не меняет прототип", () => {
+    // Object-literal-синтаксис `{ __proto__: ... }` задаёт прототип, а не
+    // собственное свойство — так строку из базы не воспроизвести. JSON.parse
+    // не делает этого исключения и создаёт настоящее собственное свойство,
+    // как и было бы со значением из `books.studio_state`.
+    const raw = JSON.parse('{"description":"X","__proto__":{"secret":42}}');
+    const p = normalizeCharacterProfile(raw);
+    expect(Object.getPrototypeOf(p)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(p.extra, "__proto__")?.value).toEqual({
+      secret: 42,
+    });
+  });
+
+  it("схема чтения не бросает на сырой V1-строке без schemaVersion", () => {
+    const parsed = characterProfileV2Schema.parse({ description: "X" });
+    expect(parsed.schemaVersion).toBe(2);
+  });
+
+  it("верхнеуровневый массив не бросает", () => {
+    expect(() => normalizeCharacterProfile([1, 2])).not.toThrow();
   });
 });
