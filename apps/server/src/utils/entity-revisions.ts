@@ -33,7 +33,7 @@ export function recordProfileVersion(
 ): void {
   sqlite
     .prepare(
-      `INSERT OR IGNORE INTO entity_profile_versions
+      `INSERT INTO entity_profile_versions
          (book_id, entity_type, entity_id, revision, profile_json, origin, note, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
@@ -54,14 +54,18 @@ export function deleteProfileVersions(
   entityType: ProfileEntityType,
   entityId: number,
 ): void {
-  sqlite
-    .prepare(
-      "DELETE FROM entity_profile_versions WHERE entity_type = ? AND entity_id = ?",
-    )
-    .run(entityType, entityId);
+  const tx = sqlite.transaction(() => {
+    sqlite
+      .prepare(
+        "DELETE FROM entity_profile_versions WHERE entity_type = ? AND entity_id = ?",
+      )
+      .run(entityType, entityId);
+  });
+  tx.immediate();
 }
 
 /** Сравнение с ожидаемой ревизией, запись, рост, история — одна транзакция.
+ *  Перечитываем ревизию внутри транзакции; UPDATE охранён WHERE revision = ?.
  *  Бросает `RevisionConflictError`; вызывающий маршрут превращает её в 409. */
 export function bumpEntityRevision(
   sqlite: DatabaseType,
@@ -70,20 +74,29 @@ export function bumpEntityRevision(
     entityType: ProfileEntityType;
     entityId: number;
     expectedRevision: number;
-    currentRevision: number;
     profileJson: string;
     origin: ProfileOrigin;
-    /** Применяет остальные колонки строки; ревизию не трогает. */
-    applyColumns: (nextRevision: number, now: string) => void;
+    /** Применяет остальные колонки строки; ревизию в WHERE. Возвращает true если UPDATE затронул строку. */
+    applyColumns: (nextRevision: number, now: string) => boolean;
   },
 ): number {
   const tx = sqlite.transaction((): number => {
-    if (args.currentRevision !== args.expectedRevision) {
-      throw new RevisionConflictError(args.currentRevision);
+    // Перечитываем в транзакции для точной проверки
+    const table = args.entityType === "character" ? "characters" : "relationships";
+    const currentRow = sqlite
+      .prepare(`SELECT revision FROM ${table} WHERE id = ?`)
+      .get(args.entityId) as { revision: number } | undefined;
+    const currentRevision = currentRow?.revision ?? 0;
+
+    if (currentRevision !== args.expectedRevision) {
+      throw new RevisionConflictError(currentRevision);
     }
-    const next = args.currentRevision + 1;
+    const next = currentRevision + 1;
     const now = new Date().toISOString();
-    args.applyColumns(next, now);
+    const success = args.applyColumns(next, now);
+    if (!success) {
+      throw new RevisionConflictError(currentRevision);
+    }
     recordProfileVersion(sqlite, {
       bookId: args.bookId,
       entityType: args.entityType,

@@ -30,6 +30,7 @@ import {
   toHook,
   toRelationship,
   toCharacterKnowledge,
+  parseJsonOrNull,
   type CharacterRow,
   type LocationRow,
   type ItemRow,
@@ -64,6 +65,17 @@ function bumpBook(sqlite: DatabaseType, bookId: number): void {
     .run(new Date().toISOString(), bookId);
 }
 
+function revisionConflictResponse(c: any, currentRevision: number): any {
+  return c.json(
+    {
+      error: "revision_conflict",
+      message: "карточка изменилась, обновите её и повторите",
+      details: { currentRevision },
+    },
+    409,
+  );
+}
+
 export function createEntitiesRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
 
@@ -92,16 +104,28 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
 
     const now = new Date().toISOString();
     const profileJson = JSON.stringify(checked.profile);
-    const info = sqlite
-      .prepare(
-        `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, parsed.data.canonicalName, profileJson, now, now);
+    const tx = sqlite.transaction(() => {
+      const info = sqlite
+        .prepare(
+          `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, parsed.data.canonicalName, profileJson, now, now);
+      recordProfileVersion(sqlite, {
+        bookId: id,
+        entityType: "character",
+        entityId: Number(info.lastInsertRowid),
+        revision: 0,
+        profileJson,
+        origin: "author",
+      });
+      return info.lastInsertRowid;
+    });
+    const characterId = tx.immediate();
     bumpBook(sqlite, id);
     const row = sqlite
       .prepare("SELECT * FROM characters WHERE id = ?")
-      .get(info.lastInsertRowid) as CharacterRow;
+      .get(characterId) as CharacterRow;
     return c.json(toCharacter(row), 201);
   });
 
@@ -130,9 +154,7 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       if (!checked.ok) return validationFailed(c, checked.error);
       nextProfile = checked.profile;
     } else {
-      nextProfile = normalizeCharacterProfile(
-        JSON.parse(existing.profile_json || "null"),
-      );
+      nextProfile = normalizeCharacterProfile(parseJsonOrNull(existing.profile_json));
     }
     const profileJson = JSON.stringify(nextProfile);
     const nextName = parsed.data.canonicalName ?? existing.canonical_name;
@@ -143,29 +165,22 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
         entityType: "character",
         entityId: id,
         expectedRevision: parsed.data.expectedRevision,
-        currentRevision: existing.revision ?? 0,
         profileJson,
         origin: "author",
         applyColumns: (revision, now) => {
-          sqlite
+          const changes = sqlite
             .prepare(
               `UPDATE characters
                  SET canonical_name = ?, profile_json = ?, revision = ?, updated_at = ?
-               WHERE id = ?`,
+               WHERE id = ? AND revision = ?`,
             )
-            .run(nextName, profileJson, revision, now, id);
+            .run(nextName, profileJson, revision, now, id, parsed.data.expectedRevision).changes;
+          return changes > 0;
         },
       });
     } catch (e) {
       if (e instanceof RevisionConflictError) {
-        return c.json(
-          {
-            error: "revision_conflict",
-            message: "карточка изменилась, обновите её и повторите",
-            details: { currentRevision: e.currentRevision },
-          },
-          409,
-        );
+        return revisionConflictResponse(c, e.currentRevision);
       }
       throw e;
     }
@@ -183,8 +198,19 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT book_id FROM characters WHERE id = ?")
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "character");
-    deleteProfileVersions(sqlite, "character", id);
-    sqlite.prepare("DELETE FROM characters WHERE id = ?").run(id);
+
+    const tx = sqlite.transaction(() => {
+      deleteProfileVersions(sqlite, "character", id);
+      // Удалить историю его отношений (они каскадятся, но история остаётся сиротой)
+      const relIds = sqlite
+        .prepare("SELECT id FROM relationships WHERE from_character_id = ? OR to_character_id = ?")
+        .all(id, id) as Array<{ id: number }>;
+      for (const rel of relIds) {
+        deleteProfileVersions(sqlite, "relationship", rel.id);
+      }
+      sqlite.prepare("DELETE FROM characters WHERE id = ?").run(id);
+    });
+    tx.immediate();
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });
@@ -469,27 +495,39 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     }
     const now = new Date().toISOString();
     const profileJson = JSON.stringify(normalizeRelationshipProfile(null));
-    const info = sqlite
-      .prepare(
-        `INSERT INTO relationships
-         (book_id, from_character_id, to_character_id, type, tension, notes, profile_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        parsed.data.fromCharacterId,
-        parsed.data.toCharacterId,
-        parsed.data.type,
-        parsed.data.tension ?? 0,
-        parsed.data.notes ?? null,
+    const tx = sqlite.transaction(() => {
+      const info = sqlite
+        .prepare(
+          `INSERT INTO relationships
+           (book_id, from_character_id, to_character_id, type, tension, notes, profile_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          parsed.data.fromCharacterId,
+          parsed.data.toCharacterId,
+          parsed.data.type,
+          parsed.data.tension ?? 0,
+          parsed.data.notes ?? null,
+          profileJson,
+          now,
+          now,
+        );
+      recordProfileVersion(sqlite, {
+        bookId: id,
+        entityType: "relationship",
+        entityId: Number(info.lastInsertRowid),
+        revision: 0,
         profileJson,
-        now,
-        now,
-      );
+        origin: "author",
+      });
+      return info.lastInsertRowid;
+    });
+    const relationshipId = tx.immediate();
     bumpBook(sqlite, id);
     const row = sqlite
       .prepare("SELECT * FROM relationships WHERE id = ?")
-      .get(info.lastInsertRowid) as RelationshipRow;
+      .get(relationshipId) as RelationshipRow;
     return c.json(toRelationship(row), 201);
   });
 
@@ -509,9 +547,7 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       if (!checked.ok) return validationFailed(c, checked.error);
       nextProfile = checked.profile;
     } else {
-      nextProfile = normalizeRelationshipProfile(
-        JSON.parse(existing.profile_json || "null"),
-      );
+      nextProfile = normalizeRelationshipProfile(parseJsonOrNull(existing.profile_json));
     }
     const profileJson = JSON.stringify(nextProfile);
     const nextType = parsed.data.type ?? existing.type;
@@ -525,29 +561,22 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
         entityType: "relationship",
         entityId: id,
         expectedRevision: parsed.data.expectedRevision,
-        currentRevision: existing.revision ?? 0,
         profileJson,
         origin: "author",
         applyColumns: (revision, now) => {
-          sqlite
+          const changes = sqlite
             .prepare(
               `UPDATE relationships
                  SET type = ?, tension = ?, notes = ?, profile_json = ?, revision = ?, updated_at = ?
-               WHERE id = ?`,
+               WHERE id = ? AND revision = ?`,
             )
-            .run(nextType, nextTension, nextNotes, profileJson, revision, now, id);
+            .run(nextType, nextTension, nextNotes, profileJson, revision, now, id, parsed.data.expectedRevision).changes;
+          return changes > 0;
         },
       });
     } catch (e) {
       if (e instanceof RevisionConflictError) {
-        return c.json(
-          {
-            error: "revision_conflict",
-            message: "связь изменилась, обновите её и повторите",
-            details: { currentRevision: e.currentRevision },
-          },
-          409,
-        );
+        return revisionConflictResponse(c, e.currentRevision);
       }
       throw e;
     }
@@ -565,8 +594,12 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT book_id FROM relationships WHERE id = ?")
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "relationship");
-    deleteProfileVersions(sqlite, "relationship", id);
-    sqlite.prepare("DELETE FROM relationships WHERE id = ?").run(id);
+
+    const tx = sqlite.transaction(() => {
+      deleteProfileVersions(sqlite, "relationship", id);
+      sqlite.prepare("DELETE FROM relationships WHERE id = ?").run(id);
+    });
+    tx.immediate();
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });

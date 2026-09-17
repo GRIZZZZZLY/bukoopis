@@ -66,8 +66,23 @@ describe("ревизии персонажа", () => {
          WHERE entity_type = 'character' AND entity_id = ? ORDER BY revision`,
       )
       .all(rin.id) as Array<{ revision: number; origin: string }>;
-    expect(rows.map((r) => r.revision)).toEqual([1]);
-    expect(rows[0]?.origin).toBe("author");
+    expect(rows.map((r) => r.revision)).toEqual([0, 1]);
+    expect(rows.map((r) => r.origin)).toEqual(["author", "author"]);
+  });
+
+  it("удаление персонажа удаляет историю его отношений", async () => {
+    const ab = await sendJson<RelationshipJson>(
+      t.app, `/api/books/${bookId}/relationships`, "POST",
+      { fromCharacterId: rin.id, toCharacterId: sarek.id, type: "напарник", tension: 0 },
+    );
+    await send(t.app, `/api/characters/${rin.id}`, "DELETE");
+    const orphans = t.sqlite
+      .prepare(
+        `SELECT COUNT(*) c FROM entity_profile_versions
+         WHERE entity_type = 'relationship' AND entity_id = ?`,
+      )
+      .get(ab.id) as { c: number };
+    expect(orphans.c).toBe(0);
   });
 });
 

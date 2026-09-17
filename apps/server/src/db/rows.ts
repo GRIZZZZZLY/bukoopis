@@ -205,7 +205,7 @@ function safeProfile<T>(json: string, schema: { parse: (v: unknown) => T }): T {
 /** Строка базы может содержать что угодно: импорт, ответ модели, ручную
  *  правку файла. Текст нечитаемого JSON сохраняется — нормализатор положит
  *  его в `extra`, и автор увидит, что чинить. */
-function parseJsonOrNull(json: string | null): unknown {
+export function parseJsonOrNull(json: string | null): unknown {
   if (!json) return null;
   try {
     return JSON.parse(json);
