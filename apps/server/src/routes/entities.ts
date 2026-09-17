@@ -13,6 +13,8 @@ import {
   createRelationshipInputSchema,
   updateRelationshipInputSchema,
   createCharacterKnowledgeInputSchema,
+  createVoiceSampleInputSchema,
+  updateVoiceSampleInputSchema,
 } from "@book-forge/shared";
 import {
   normalizeCharacterProfile,
@@ -31,6 +33,7 @@ import {
   toHook,
   toRelationship,
   toCharacterKnowledge,
+  toVoiceSample,
   parseJsonOrNull,
   type CharacterRow,
   type LocationRow,
@@ -38,6 +41,7 @@ import {
   type HookRow,
   type RelationshipRow,
   type CharacterKnowledgeRow,
+  type CharacterVoiceSampleRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import {
@@ -665,6 +669,99 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .get(id) as { id: number; book_id: number } | undefined;
     if (!existing) return notFound(c, "knowledge");
     sqlite.prepare("DELETE FROM character_knowledge WHERE id = ?").run(id);
+    bumpBook(sqlite, existing.book_id);
+    return c.body(null, 204);
+  });
+
+  // ─────────────── Образцы речи ───────────────
+
+  r.get("/characters/:id/voice-samples", (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT id FROM characters WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!ch) return notFound(c, "character");
+    const rows = sqlite
+      .prepare(
+        "SELECT * FROM character_voice_samples WHERE character_id = ? ORDER BY id ASC",
+      )
+      .all(id) as CharacterVoiceSampleRow[];
+    return c.json(rows.map(toVoiceSample));
+  });
+
+  r.post("/characters/:id/voice-samples", async (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT id, book_id FROM characters WHERE id = ?")
+      .get(id) as { id: number; book_id: number } | undefined;
+    if (!ch) return notFound(c, "character");
+    const body = await c.req.json().catch(() => null);
+    const parsed = createVoiceSampleInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    // AC-30: адресат обязан жить в той же книге. Плоский маршрут
+    // `/characters/:id` не несёт книгу в пути, поэтому проверка тут.
+    const addressee = parsed.data.addresseeCharacterId ?? null;
+    if (addressee !== null) {
+      const ok = sqlite
+        .prepare("SELECT id FROM characters WHERE id = ? AND book_id = ?")
+        .get(addressee, ch.book_id) as { id: number } | undefined;
+      if (!ok) return badRequest(c, "адресат должен быть героем этой же книги");
+    }
+
+    // Авторский образец — уже решение автора, отдельного принятия не просит.
+    // Предложение модели ждёт: «ничего не утверждается без автора».
+    const status =
+      parsed.data.status ?? (parsed.data.origin === "author" ? "accepted" : "proposed");
+    const now = new Date().toISOString();
+    const info = sqlite
+      .prepare(
+        `INSERT INTO character_voice_samples
+           (book_id, character_id, text, situation, addressee_character_id, note,
+            origin, status, source_version_id, source_chapter_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ch.book_id, id, parsed.data.text, parsed.data.situation, addressee,
+        parsed.data.note ?? null, parsed.data.origin, status,
+        parsed.data.sourceVersionId ?? null, parsed.data.sourceChapterOrder ?? null,
+        now, now,
+      );
+    bumpBook(sqlite, ch.book_id);
+    const row = sqlite
+      .prepare("SELECT * FROM character_voice_samples WHERE id = ?")
+      .get(info.lastInsertRowid) as CharacterVoiceSampleRow;
+    return c.json(toVoiceSample(row), 201);
+  });
+
+  r.patch("/voice-samples/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = updateVoiceSampleInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const existing = sqlite
+      .prepare("SELECT id, book_id FROM character_voice_samples WHERE id = ?")
+      .get(id) as { id: number; book_id: number } | undefined;
+    if (!existing) return notFound(c, "voice_sample");
+    sqlite
+      .prepare(
+        "UPDATE character_voice_samples SET status = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(parsed.data.status, new Date().toISOString(), id);
+    bumpBook(sqlite, existing.book_id);
+    const row = sqlite
+      .prepare("SELECT * FROM character_voice_samples WHERE id = ?")
+      .get(id) as CharacterVoiceSampleRow;
+    return c.json(toVoiceSample(row));
+  });
+
+  r.delete("/voice-samples/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    const existing = sqlite
+      .prepare("SELECT book_id FROM character_voice_samples WHERE id = ?")
+      .get(id) as { book_id: number } | undefined;
+    if (!existing) return notFound(c, "voice_sample");
+    sqlite.prepare("DELETE FROM character_voice_samples WHERE id = ?").run(id);
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });
