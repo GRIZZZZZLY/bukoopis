@@ -8,6 +8,8 @@ import {
   lockConceptToPitch,
   unlockConcept,
   PITCH_MIX_FIELDS,
+  entityCandidateProfileSchema,
+  normalizeCharacterProfile,
   type BookConcept,
   type CanonSummary,
   type ChapterProgress,
@@ -50,6 +52,7 @@ import {
 import { createIntakeCancelRegistry } from "../utils/intake-cancel.js";
 import { createQuickStartCancelRegistry } from "../utils/quick-start-cancel.js";
 import { QUICK_START_STAGES, runQuickStart } from "../utils/quick-start-run.js";
+import { recordProfileVersion } from "../utils/entity-revisions.js";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -156,7 +159,10 @@ const materializeBodySchema = z.object({
       z.object({
         tempId: z.string().min(1),
         decision: z.enum(["accept", "reject"]),
-        profile: entityProfileSchema,
+        profile: entityCandidateProfileSchema,
+        /** Кандидат, уже заведённый в канон прошлой материализацией.
+         *  Обновляем его строку, а не вставляем вторую (раздел 5.1 ТЗ). */
+        materializedEntityId: z.number().int().positive().optional(),
         mergedIntoId: z.number().int().positive().optional(),
       }),
     )
@@ -1305,6 +1311,44 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       `INSERT INTO items (book_id, name, profile_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?)`,
     );
+    const selectCharRevision = sqlite.prepare(
+      "SELECT revision FROM characters WHERE id = ?",
+    );
+    const updateChar = sqlite.prepare(
+      `UPDATE characters
+         SET canonical_name = ?, profile_json = ?, revision = ?, updated_at = ?
+       WHERE id = ?`,
+    );
+    const updateItem = sqlite.prepare(
+      "UPDATE items SET name = ?, profile_json = ?, updated_at = ? WHERE id = ?",
+    );
+
+    // AC-30: проверить, что все materializedEntityId и mergedIntoId принадлежат этой книге.
+    const toCheckIds: number[] = [];
+    for (const cand of parsed.data.candidates) {
+      if (cand.materializedEntityId !== undefined) {
+        toCheckIds.push(cand.materializedEntityId);
+      }
+      if (cand.mergedIntoId !== undefined) {
+        toCheckIds.push(cand.mergedIntoId);
+      }
+    }
+    if (toCheckIds.length > 0) {
+      const table = parsed.data.stageId === "characters" ? "characters" : "items";
+      const placeholders = toCheckIds.map(() => "?").join(",");
+      const validIds = new Set(
+        (
+          sqlite
+            .prepare(`SELECT id FROM ${table} WHERE book_id = ? AND id IN (${placeholders})`)
+            .all(id, ...toCheckIds) as Array<{ id: number }>
+        ).map((r) => r.id),
+      );
+      for (const checkId of toCheckIds) {
+        if (!validIds.has(checkId)) {
+          return badRequest(c, "сущность принадлежит другой книге");
+        }
+      }
+    }
 
     let revision = 0;
     try {
@@ -1340,19 +1384,56 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           });
           continue;
         }
-        const profileJson = JSON.stringify(cand.profile);
-        const profile = cand.profile as { name?: unknown };
+
+        const profile =
+          parsed.data.stageId === "characters"
+            ? normalizeCharacterProfile(cand.profile)
+            : cand.profile;
+        const profileJson = JSON.stringify(profile);
         const name =
-          typeof profile.name === "string" ? profile.name : "Без имени";
+          typeof cand.profile.name === "string" && cand.profile.name.trim()
+            ? cand.profile.name.trim()
+            : "Без имени";
+
         let entityId: number;
-        if (parsed.data.stageId === "characters") {
-          const info = insertChar.run(id, name, profileJson, now, now);
-          entityId = Number(info.lastInsertRowid);
+        if (cand.materializedEntityId !== undefined) {
+          entityId = cand.materializedEntityId;
+          if (parsed.data.stageId === "characters") {
+            const current = selectCharRevision.get(entityId) as
+              | { revision: number }
+              | undefined;
+            const nextRevision = (current?.revision ?? 0) + 1;
+            updateChar.run(name, profileJson, nextRevision, now, entityId);
+            recordProfileVersion(sqlite, {
+              bookId: id,
+              entityType: "character",
+              entityId,
+              revision: nextRevision,
+              profileJson,
+              origin: "materialize",
+            });
+          } else {
+            updateItem.run(name, profileJson, now, entityId);
+          }
         } else {
-          const info = insertItem.run(id, name, profileJson, now, now);
+          const info =
+            parsed.data.stageId === "characters"
+              ? insertChar.run(id, name, profileJson, now, now)
+              : insertItem.run(id, name, profileJson, now, now);
           entityId = Number(info.lastInsertRowid);
+          if (parsed.data.stageId === "characters") {
+            recordProfileVersion(sqlite, {
+              bookId: id,
+              entityType: "character",
+              entityId,
+              revision: 0,
+              profileJson,
+              origin: "materialize",
+            });
+          }
+          createdEntityIds.push(entityId);
         }
-        createdEntityIds.push(entityId);
+
         candidatesAfter.push({
           tempId: cand.tempId,
           decision: "accept",

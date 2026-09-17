@@ -401,6 +401,9 @@ export function EntityStageRunner({
         tempId: c.tempId,
         decision: decisions[c.tempId] ?? ("accept" as const),
         profile: c.profile,
+        ...(c.materializedEntityId !== undefined
+          ? { materializedEntityId: c.materializedEntityId }
+          : {}),
       }));
       const result = await onMaterialize(aspect.id, {
         stageId,

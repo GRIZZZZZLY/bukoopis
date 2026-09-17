@@ -760,6 +760,7 @@ export const api = {
         tempId: string;
         decision: "accept" | "reject";
         profile: unknown;
+        materializedEntityId?: number;
         mergedIntoId?: number;
       }>;
     },

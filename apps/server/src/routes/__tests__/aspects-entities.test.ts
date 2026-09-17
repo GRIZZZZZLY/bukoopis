@@ -520,3 +520,123 @@ describe("/aspects/:aspectId/materialize", () => {
     expect(chars).toHaveLength(2);
   });
 });
+
+describe("AC-35: материализация с ревизией и профилем", () => {
+  it("AC-35: role/age/background переживают материализацию и читаются через API", async () => {
+    const bookId = await createBook();
+    const res = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp1/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: {
+              name: "Рин Даре",
+              role: "протагонист",
+              age: "34",
+              description: "Старший инженер смены, держит вахту на себе.",
+              background: "Выросла на орбитальной верфи.",
+            },
+          },
+        ],
+      },
+    );
+    const id = res.createdEntityIds[0]!;
+    const c = await sendJson<{ profile: Record<string, unknown>; revision: number }>(
+      t.app,
+      `/api/characters/${id}`,
+      "GET",
+    );
+    expect(c.profile.role).toBe("протагонист");
+    expect(c.profile.age).toBe("34");
+    expect(c.profile.background).toBe("Выросла на орбитальной верфи.");
+    expect(c.profile.schemaVersion).toBe(2);
+  });
+
+  it("AC-35: повторная материализация не создаёт дубликат", async () => {
+    const bookId = await createBook();
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp2/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { name: "Рин", description: "Инженер смены на станции." },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Тот же раздел, другой набор tempId — это НЕ повтор запроса, поэтому
+    // ключ идемпотентности не срабатывает и путь идёт до апдейта.
+    await sendJson(
+      t.app,
+      `/api/books/${bookId}/aspects/asp2/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            materializedEntityId: id,
+            profile: { name: "Рин Даре", description: "Старший инженер смены." },
+          },
+          {
+            tempId: "c2",
+            decision: "accept",
+            profile: { name: "Сарек", description: "Навигатор дальнего хода." },
+          },
+        ],
+      },
+    );
+
+    const all = await sendJson<Array<{ id: number; canonicalName: string; revision: number }>>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(all).toHaveLength(2);
+    const rin = all.find((c) => c.id === id);
+    expect(rin?.canonicalName).toBe("Рин Даре");
+    expect(rin?.revision).toBe(1);
+  });
+
+  it("AC-30: mergedIntoId из другой книги отклоняется", async () => {
+    const bookId = await createBook();
+    const other = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
+      title: "Чужая",
+    });
+    const alien = await sendJson<{ id: number }>(
+      t.app,
+      `/api/books/${other.id}/characters`,
+      "POST",
+      { canonicalName: "Чужой", profile: { description: "X" } },
+    );
+    const r = await send(t.app, `/api/books/${bookId}/aspects/asp3/materialize`, "POST", {
+      stageId: "characters",
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId: "c9",
+          decision: "accept",
+          mergedIntoId: alien.id,
+          profile: { name: "Ч" },
+        },
+      ],
+    });
+    expect(r.status).toBe(400);
+  });
+});
