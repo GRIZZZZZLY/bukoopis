@@ -109,7 +109,11 @@ describe("normalizeCharacterProfile", () => {
     // как и было бы со значением из `books.studio_state`.
     const raw = JSON.parse('{"description":"X","__proto__":{"secret":42}}');
     const p = normalizeCharacterProfile(raw);
-    expect(Object.getPrototypeOf(p)).toBe(Object.prototype);
+    // Прототип самого `extra`, а не внешнего профиля: аккумулятор внутри
+    // функции без прототипа, но наружу должен выйти обычный объект — иначе
+    // `p.extra.hasOwnProperty(...)` бросает на выходе функции.
+    expect(Object.getPrototypeOf(p.extra)).toBe(Object.prototype);
+    expect(p.extra.hasOwnProperty("__proto__")).toBe(true);
     expect(Object.getOwnPropertyDescriptor(p.extra, "__proto__")?.value).toEqual({
       secret: 42,
     });
@@ -121,6 +125,7 @@ describe("normalizeCharacterProfile", () => {
   });
 
   it("верхнеуровневый массив не бросает", () => {
-    expect(() => normalizeCharacterProfile([1, 2])).not.toThrow();
+    const p = normalizeCharacterProfile([1, 2]);
+    expect(p.extra).toEqual({ raw: [1, 2] });
   });
 });

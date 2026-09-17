@@ -186,7 +186,11 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
     ...known,
     schemaVersion: 2,
   });
-  if (parsed.success) return { ...parsed.data, extra };
+  // `{ ...extra }`, а не сам аккумулятор: он живёт без прототипа только
+  // внутри функции (см. выше), наружу должен уйти обычный объект — спред
+  // объектным литералом создаёт свойства через `CreateDataProperty`, так что
+  // собственный ключ `__proto__` переживает переход на объект с прототипом.
+  if (parsed.success) return { ...parsed.data, extra: { ...extra } };
 
   // Часть полей не той формы. Разбираем по одному: валидное — в профиль,
   // невалидное — в `extra`, чтобы автор увидел его и починил руками.
@@ -198,5 +202,5 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
     if (field && field.safeParse(value).success) salvaged[key] = value;
     else extra[key] = value;
   }
-  return { ...characterProfileV2Schema.parse(salvaged), extra };
+  return { ...characterProfileV2Schema.parse(salvaged), extra: { ...extra } };
 }
