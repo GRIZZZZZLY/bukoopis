@@ -41,15 +41,29 @@ export function resolveEntity(
         `SELECT id, canonical_name AS name FROM characters WHERE book_id = ?`,
       )
       .all(bookId) as Array<{ id: number; name: string }>;
-    const hit = rows.find((r) => normalizeEntityName(r.name) === norm);
-    if (hit) return { entityId: hit.id, canonicalName: hit.name };
+    // Два героя с одинаковым нормализованным именем — это неоднозначность,
+    // а не «возьмём первого». Тихий выбор пришивает факт чужому герою и
+    // обнаруживается только в готовой главе (AC-04).
+    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
+    if (hits.length === 1) {
+      const hit = hits[0]!;
+      return { entityId: hit.id, canonicalName: hit.name };
+    }
+    if (hits.length > 1) return null;
   } else {
     const table = entityType === "location" ? "locations" : "items";
     const rows = sqlite
       .prepare(`SELECT id, name FROM ${table} WHERE book_id = ?`)
       .all(bookId) as Array<{ id: number; name: string }>;
-    const hit = rows.find((r) => normalizeEntityName(r.name) === norm);
-    if (hit) return { entityId: hit.id, canonicalName: hit.name };
+    // Два героя с одинаковым нормализованным именем — это неоднозначность,
+    // а не «возьмём первого». Тихий выбор пришивает факт чужому герою и
+    // обнаруживается только в готовой главе (AC-04).
+    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
+    if (hits.length === 1) {
+      const hit = hits[0]!;
+      return { entityId: hit.id, canonicalName: hit.name };
+    }
+    if (hits.length > 1) return null;
   }
 
   // Alias fallback (author-registered).
