@@ -9,7 +9,6 @@ import {
 import { api } from "@/api/client";
 
 interface Props {
-  bookId: number;
   characterId: number;
   /** Для выбора адресата. Герой сам себе адресатом быть не может. */
   characters: Character[];
@@ -19,7 +18,7 @@ interface Props {
  *  Авторский образец — уже решение автора и создаётся принятым; образец
  *  модели ждёт кнопки. Отдельного экрана карточки в этом этапе нет, поэтому
  *  блок живёт во вкладке «Персонажи» панели материалов. */
-export function VoiceSamples({ bookId, characterId, characters }: Props) {
+export function VoiceSamples({ characterId, characters }: Props) {
   const [list, setList] = useState<CharacterVoiceSample[] | null>(null);
   const [text, setText] = useState("");
   const [situation, setSituation] = useState<VoiceSampleSituation>("neutral");
@@ -29,8 +28,10 @@ export function VoiceSamples({ bookId, characterId, characters }: Props) {
 
   async function load() {
     try {
+      setError(null);
       setList(await api.listVoiceSamples(characterId));
     } catch (e) {
+      setList([]);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -61,8 +62,22 @@ export function VoiceSamples({ bookId, characterId, characters }: Props) {
 
   async function setStatus(id: number, status: "accepted" | "rejected") {
     setBusy(true);
+    setError(null);
     try {
       await api.updateVoiceSample(id, { status });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteVoiceSample(id);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -172,10 +187,7 @@ export function VoiceSamples({ bookId, characterId, characters }: Props) {
                 type="button"
                 aria-label={`Удалить образец ${s.id}`}
                 disabled={busy}
-                onClick={async () => {
-                  await api.deleteVoiceSample(s.id);
-                  await load();
-                }}
+                onClick={() => onDelete(s.id)}
                 className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5"
               >
                 ×

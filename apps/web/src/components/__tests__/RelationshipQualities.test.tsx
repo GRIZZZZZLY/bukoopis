@@ -40,4 +40,37 @@ describe("RelationshipQualities", () => {
     expect(alert.textContent).toContain("изменилась");
     expect(alert.textContent).not.toContain("revision_conflict");
   });
+
+  it("типированное значение качества попадает в profile", async () => {
+    updateRelationship.mockResolvedValue({ ...rel, revision: 3 });
+    render(<RelationshipQualities relationship={rel as never} onSaved={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("доверие"), "верит на слово");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(updateRelationship).toHaveBeenCalled());
+    const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
+    expect((body.profile as Record<string, unknown>).trust).toBe("верит на слово");
+  });
+
+  it("очистка поля посылает null в profile", async () => {
+    const relWithTrust = { ...rel, profile: { ...rel.profile, trust: "существующее доверие" } };
+    updateRelationship.mockResolvedValue({ ...rel, revision: 3 });
+    render(<RelationshipQualities relationship={relWithTrust as never} onSaved={vi.fn()} />);
+    const input = screen.getByLabelText("доверие");
+    await userEvent.tripleClick(input);
+    await userEvent.keyboard(" ");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(updateRelationship).toHaveBeenCalled());
+    const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
+    expect((body.profile as Record<string, unknown>).trust).toBeNull();
+  });
+
+  it("можно вбить второй пункт разногласий", async () => {
+    updateRelationship.mockResolvedValue({ ...rel, revision: 3 });
+    render(<RelationshipQualities relationship={rel as never} onSaved={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText("разногласия"), "деньги, карьера");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(updateRelationship).toHaveBeenCalled());
+    const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
+    expect((body.profile as Record<string, unknown>).disputes).toEqual(["деньги", "карьера"]);
+  });
 });

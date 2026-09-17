@@ -24,14 +24,14 @@ describe("VoiceSamples", () => {
         sourceVersionId: null, sourceChapterOrder: null, bookId: 3,
         createdAt: "", updatedAt: "" },
     ]);
-    render(<VoiceSamples bookId={3} characterId={7} characters={[]} />);
+    render(<VoiceSamples characterId={7} characters={[]} />);
     expect(await screen.findByText("конфликт")).toBeTruthy();
     expect(screen.queryByText("conflict")).toBeNull();
   });
 
   it("добавление образца зовёт API и перечитывает список", async () => {
     api.createVoiceSample.mockResolvedValue({ id: 2 });
-    render(<VoiceSamples bookId={3} characterId={7} characters={[]} />);
+    render(<VoiceSamples characterId={7} characters={[]} />);
     await userEvent.type(await screen.findByLabelText("Текст образца"), "Хорошо.");
     await userEvent.click(screen.getByRole("button", { name: "Добавить образец" }));
     await waitFor(() => expect(api.createVoiceSample).toHaveBeenCalled());
@@ -46,7 +46,7 @@ describe("VoiceSamples", () => {
         createdAt: "", updatedAt: "" },
     ]);
     api.updateVoiceSample.mockResolvedValue({ id: 3, status: "accepted" });
-    render(<VoiceSamples bookId={3} characterId={7} characters={[]} />);
+    render(<VoiceSamples characterId={7} characters={[]} />);
     await userEvent.click(await screen.findByRole("button", { name: "Принять" }));
     await waitFor(() =>
       expect(api.updateVoiceSample).toHaveBeenCalledWith(3, { status: "accepted" }),

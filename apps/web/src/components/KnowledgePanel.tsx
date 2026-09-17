@@ -180,7 +180,7 @@ function CharactersTab({ bookId }: { bookId: number }) {
               </button>
               {expandedVoiceId === c.id && (
                 <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
-                  <VoiceSamples bookId={bookId} characterId={c.id} characters={list} />
+                  <VoiceSamples characterId={c.id} characters={list} />
                 </div>
               )}
             </li>
