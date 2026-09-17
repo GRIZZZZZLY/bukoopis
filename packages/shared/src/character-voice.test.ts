@@ -63,13 +63,15 @@ describe("selectVoiceSamples", () => {
   it("образец из поздней главы не попадает в раннюю сцену", () => {
     const early = selectVoiceSamples(bank, {
       situation: "intimate",
-      beforeChapterOrder: 4,
+      excludeFromChapterOrder: 4,
       limit: 5,
     });
     expect(early.map((s) => s.id)).not.toContain(6);
+    // Образец с sourceChapterOrder: null всегда отбирается
+    expect(early.map((s) => s.id)).toContain(3);
     const late = selectVoiceSamples(bank, {
       situation: "intimate",
-      beforeChapterOrder: 20,
+      excludeFromChapterOrder: 20,
       limit: 5,
     });
     expect(late.map((s) => s.id)).toContain(6);

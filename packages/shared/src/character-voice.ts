@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** Банк образцов речи (ТЗ индивидуальности, раздел 5.2).
  *
- *  Отбор обязан быть детерминированным при одинаковых входах: образцы едят
+ *  Отбор обязан быть детерминированным при одинаковых входах: образцы попадают
  *  в кэшируемый префикс промпта Writer'а, и `ORDER BY random()` там уже
  *  однажды стоил полного промаха кэша на каждую генерацию
  *  (см. `style-context.ts`). Здесь случайности нет ни в одном виде. */
@@ -76,9 +76,10 @@ export type UpdateVoiceSampleInput = z.infer<typeof updateVoiceSampleInputSchema
 export interface VoiceSampleSelection {
   situation: VoiceSampleSituation;
   addresseeCharacterId?: number | null;
-  /** Граница сцены. Образец, взятый из главы с этим порядком или позже,
-   *  отбрасывается. `null`/`undefined` — границы нет. */
-  beforeChapterOrder?: number | null;
+  /** Исключающая граница сцены: образец с `sourceChapterOrder >= excludeFromChapterOrder`
+   *  отбрасывается. Это не включающая граница — передайте текущий порядок главы,
+   *  не `order - 1` (см. различие с `gatherRetrievedChunks`). `null`/`undefined` — границы нет. */
+  excludeFromChapterOrder?: number | null;
   limit?: number;
 }
 
@@ -89,7 +90,7 @@ export function selectVoiceSamples(
   selection: VoiceSampleSelection,
 ): CharacterVoiceSample[] {
   const limit = selection.limit ?? 3;
-  const boundary = selection.beforeChapterOrder ?? null;
+  const boundary = selection.excludeFromChapterOrder ?? null;
   const scored = samples
     .filter((s) => s.status === "accepted")
     .filter(
@@ -107,6 +108,10 @@ export function selectVoiceSamples(
       ) {
         score += 3;
       }
+      /* Образец автора попадает в выборку даже без совпадений: доверие к авторской
+       * речи шире, чем к сгенерированной. Это ворота допуска: образец автора
+       * с нулевым совпадением попадает как заполнение, а сгенерированный —
+       * отбрасывается фильтром `score > 0`. */
       if (s.origin === "author") score += 1;
       return { sample: s, score };
     })
