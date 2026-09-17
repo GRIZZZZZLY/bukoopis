@@ -134,11 +134,18 @@ describe("resolveEntity", () => {
     // одинаковые имена в РАЗНЫХ книгах — это не неоднозначность
     const bookA = insertBook();
     const bookB = insertBook();
-    const idA = insertCharacter(bookA, "Рин");
+    insertCharacter(bookA, "Рин");
     insertCharacter(bookA, "рин"); // двойник в первой книге
-    insertCharacter(bookB, "Рин"); // одно имя в другой книге
+    const idB = insertCharacter(bookB, "Рин"); // одно имя в другой книге
     expect(resolveEntity(sqlite, bookA, "character", "Рин")).toBeNull(); // неоднозначна в первой
-    expect(resolveEntity(sqlite, bookB, "character", "Рин")).not.toBeNull(); // но не неоднозначна во второй
+    expect(resolveEntity(sqlite, bookB, "character", "Рин")?.entityId).toBe(idB); // но не неоднозначна во второй
+  });
+
+  it("AC-04: два предмета с одинаковым именем не резолвятся в случайный", () => {
+    const b = insertBook();
+    insertItem(b, "Артефакт");
+    insertItem(b, "артефакт");
+    expect(resolveEntity(sqlite, b, "item", "Артефакт")).toBeNull();
   });
 });
 
