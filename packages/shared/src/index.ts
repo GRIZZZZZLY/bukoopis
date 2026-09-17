@@ -19,3 +19,4 @@ export * from "./prose-rules.js";
 export * from "./intake.js";
 export * from "./prose-diff.js";
 export * from "./proposal.js";
+export * from "./character-profile.js";
