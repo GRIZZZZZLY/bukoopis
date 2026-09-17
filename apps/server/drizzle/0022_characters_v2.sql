@@ -21,7 +21,8 @@ CREATE TABLE entity_profile_versions (
   note TEXT,
   created_at TEXT NOT NULL,
   CHECK (entity_type IN ('character','relationship')),
-  CHECK (origin IN ('author','llm','import','materialize','migration'))
+  CHECK (origin IN ('author','llm','import','materialize','migration')),
+  CHECK (revision >= 0)
 );--> statement-breakpoint
 CREATE UNIQUE INDEX uq_entity_profile_versions
   ON entity_profile_versions (entity_type, entity_id, revision);--> statement-breakpoint
@@ -46,7 +47,8 @@ CREATE TABLE character_voice_samples (
   updated_at TEXT NOT NULL,
   CHECK (situation IN ('neutral','conflict','vulnerable','authority','intimate','stranger')),
   CHECK (origin IN ('author','accepted_prose','llm')),
-  CHECK (status IN ('proposed','accepted','rejected'))
+  CHECK (status IN ('proposed','accepted','rejected')),
+  CHECK (source_chapter_order IS NULL OR source_chapter_order >= 0)
 );--> statement-breakpoint
 CREATE INDEX idx_voice_samples_character
   ON character_voice_samples (character_id, status);--> statement-breakpoint

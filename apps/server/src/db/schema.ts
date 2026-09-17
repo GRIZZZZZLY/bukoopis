@@ -621,6 +621,10 @@ export const entityProfileVersions = sqliteTable(
       "entity_profile_versions_origin_check",
       sql`${t.origin} IN ('author','llm','import','materialize','migration')`,
     ),
+    check(
+      "entity_profile_versions_revision_check",
+      sql`${t.revision} >= 0`,
+    ),
   ],
 );
 
@@ -647,7 +651,7 @@ export const characterVoiceSamples = sqliteTable(
     origin: text("origin").notNull(),
     status: text("status").notNull().default("proposed"),
     sourceVersionId: integer("source_version_id").references(
-      (): AnySQLiteColumn => chapterVersions.id,
+      () => chapterVersions.id,
       { onDelete: "set null" },
     ),
     sourceChapterOrder: integer("source_chapter_order"),
@@ -668,6 +672,10 @@ export const characterVoiceSamples = sqliteTable(
     check(
       "character_voice_samples_status_check",
       sql`${t.status} IN ('proposed','accepted','rejected')`,
+    ),
+    check(
+      "character_voice_samples_source_chapter_order_check",
+      sql`${t.sourceChapterOrder} IS NULL OR ${t.sourceChapterOrder} >= 0`,
     ),
   ],
 );
