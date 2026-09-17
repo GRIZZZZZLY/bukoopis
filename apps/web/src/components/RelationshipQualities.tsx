@@ -47,8 +47,8 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
     setBusy(true);
     setError(null);
     try {
-      // Compute arrays locally from raw text to ensure they reach the payload.
-      // setDraft is async, so draft would still be stale here.
+      // Вычисляем массивы локально из сырого текста, чтобы они попали в payload.
+      // setDraft асинхронный, поэтому draft здесь остался бы старым.
       const disputes = splitList(disputesText);
       const silences = splitList(silencesText);
       await api.updateRelationship(relationship.id, {

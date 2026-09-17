@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RelationshipQualities } from "../RelationshipQualities";
 
@@ -79,8 +79,8 @@ describe("RelationshipQualities", () => {
     render(<RelationshipQualities relationship={rel as never} onSaved={vi.fn()} />);
     const input = screen.getByLabelText("разногласия");
     await userEvent.type(input, "первое, второе");
-    // Сохранить без blur (не полагаемся на фокус браузера)
-    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    // fireEvent не трогает focus, в отличие от userEvent: input остаётся в фокусе, onBlur не срабатывает
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
     await waitFor(() => expect(updateRelationship).toHaveBeenCalled());
     const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
     expect((body.profile as Record<string, unknown>).disputes).toEqual(["первое", "второе"]);
