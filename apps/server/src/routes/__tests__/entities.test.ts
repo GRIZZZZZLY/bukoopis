@@ -9,6 +9,7 @@ interface CharacterJson {
   bookId: number;
   canonicalName: string;
   profile: { description: string; want?: string | null };
+  revision: number;
 }
 interface LocationJson {
   id: number;
@@ -27,6 +28,7 @@ interface RelationshipJson {
   toCharacterId: number;
   type: string;
   tension: number;
+  revision: number;
 }
 
 let t: TestApp;
@@ -92,7 +94,7 @@ describe("characters CRUD", () => {
       t.app,
       `/api/characters/${c.id}`,
       "PATCH",
-      { profile: { description: "v2", want: "Power" } },
+      { expectedRevision: c.revision, profile: { description: "v2", want: "Power" } },
     );
     expect(u.canonicalName).toBe("Ратибор");
     expect(u.profile.description).toBe("v2");
@@ -287,7 +289,7 @@ describe("relationships CRUD", () => {
       t.app,
       `/api/relationships/${r.id}`,
       "PATCH",
-      { tension: 0.7 },
+      { expectedRevision: r.revision, tension: 0.7 },
     );
     expect(u.tension).toBeCloseTo(0.7, 5);
   });

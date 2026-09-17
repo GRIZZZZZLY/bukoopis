@@ -115,6 +115,38 @@ describe("resolveEntity", () => {
     expect(resolveEntity(sqlite, b, "character", "Айрис")).toBeNull();
     expect(resolveEntity(sqlite, a, "item", "Айрис")).toBeNull();
   });
+
+  it("AC-04: два героя с одинаковым именем не резолвятся в случайного", () => {
+    const b = insertBook();
+    insertCharacter(b, "Рин");
+    insertCharacter(b, "рин");
+    expect(resolveEntity(sqlite, b, "character", "Рин")).toBeNull();
+  });
+
+  it("AC-04: алиас склонённого имени резолвится в явного героя", () => {
+    const b = insertBook();
+    const id = insertCharacter(b, "Рин Даре");
+    addEntityAlias(sqlite, b, "character", id, "Рину");
+    expect(resolveEntity(sqlite, b, "character", "рину")?.entityId).toBe(id);
+  });
+
+  it("AC-04: неоднозначность не мешает соседней книге", () => {
+    // одинаковые имена в РАЗНЫХ книгах — это не неоднозначность
+    const bookA = insertBook();
+    const bookB = insertBook();
+    insertCharacter(bookA, "Рин");
+    insertCharacter(bookA, "рин"); // двойник в первой книге
+    const idB = insertCharacter(bookB, "Рин"); // одно имя в другой книге
+    expect(resolveEntity(sqlite, bookA, "character", "Рин")).toBeNull(); // неоднозначна в первой
+    expect(resolveEntity(sqlite, bookB, "character", "Рин")?.entityId).toBe(idB); // но не неоднозначна во второй
+  });
+
+  it("AC-04: два предмета с одинаковым именем не резолвятся в случайный", () => {
+    const b = insertBook();
+    insertItem(b, "Артефакт");
+    insertItem(b, "артефакт");
+    expect(resolveEntity(sqlite, b, "item", "Артефакт")).toBeNull();
+  });
 });
 
 describe("addEntityAlias", () => {

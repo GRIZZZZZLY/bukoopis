@@ -520,3 +520,280 @@ describe("/aspects/:aspectId/materialize", () => {
     expect(chars).toHaveLength(2);
   });
 });
+
+describe("AC-35: материализация с ревизией и профилем", () => {
+  it("AC-35: role/age/background переживают материализацию и читаются через API", async () => {
+    const bookId = await createBook();
+    const res = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp1/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: {
+              name: "Рин Даре",
+              role: "протагонист",
+              age: "34",
+              description: "Старший инженер смены, держит вахту на себе.",
+              background: "Выросла на орбитальной верфи.",
+            },
+          },
+        ],
+      },
+    );
+    const id = res.createdEntityIds[0]!;
+    const c = await sendJson<{ profile: Record<string, unknown>; revision: number }>(
+      t.app,
+      `/api/characters/${id}`,
+      "GET",
+    );
+    expect(c.profile.role).toBe("протагонист");
+    expect(c.profile.age).toBe("34");
+    expect(c.profile.background).toBe("Выросла на орбитальной верфи.");
+    expect(c.profile.schemaVersion).toBe(2);
+  });
+
+  it("AC-35: повторная материализация не создаёт дубликат", async () => {
+    const bookId = await createBook();
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp2/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { name: "Рин", description: "Инженер смены на станции." },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Тот же раздел, другой набор tempId — это НЕ повтор запроса, поэтому
+    // ключ идемпотентности не срабатывает и путь идёт до апдейта.
+    await sendJson(
+      t.app,
+      `/api/books/${bookId}/aspects/asp2/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            materializedEntityId: id,
+            profile: { name: "Рин Даре", description: "Старший инженер смены." },
+          },
+          {
+            tempId: "c2",
+            decision: "accept",
+            profile: { name: "Сарек", description: "Навигатор дальнего хода." },
+          },
+        ],
+      },
+    );
+
+    const all = await sendJson<Array<{ id: number; canonicalName: string; revision: number }>>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(all).toHaveLength(2);
+    const rin = all.find((c) => c.id === id);
+    expect(rin?.canonicalName).toBe("Рин Даре");
+    expect(rin?.revision).toBe(1);
+  });
+
+  it("AC-30: mergedIntoId из другой книги отклоняется", async () => {
+    const bookId = await createBook();
+    const other = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
+      title: "Чужая",
+    });
+    const alien = await sendJson<{ id: number }>(
+      t.app,
+      `/api/books/${other.id}/characters`,
+      "POST",
+      { canonicalName: "Чужой", profile: { description: "X" } },
+    );
+    const r = await send(t.app, `/api/books/${bookId}/aspects/asp3/materialize`, "POST", {
+      stageId: "characters",
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId: "c9",
+          decision: "accept",
+          mergedIntoId: alien.id,
+          profile: { name: "Ч" },
+        },
+      ],
+    });
+    expect(r.status).toBe(400);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(0);
+  });
+
+  it("идемпотентность: один и тот же запрос возвращает тот же ответ без дублей", async () => {
+    const bookId = await createBook();
+    const body = {
+      stageId: "characters" as const,
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId: "c1",
+          decision: "accept" as const,
+          profile: { name: "Айрис", description: "Герой" },
+        },
+      ],
+    };
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp4/materialize`,
+      "POST",
+      body,
+    );
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp4/materialize`,
+      "POST",
+      body,
+    );
+    expect(second.createdEntityIds).toEqual(first.createdEntityIds);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(1);
+  });
+
+  it("идемпотентность: один и тот же запрос с ключами профиля в разном порядке возвращает тот же ответ", async () => {
+    const bookId = await createBook();
+    // Первый запрос: плоский профиль {name, description, role} и вложенный массив с {x, y}
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp6/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: {
+              name: "Айрис",
+              description: "Герой",
+              role: "главная",
+              samples: [{ x: 1, y: 2 }],
+            },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Второй запрос: тот же tempId и профиль, но:
+    // - ключи верхнего уровня в другом порядке {role, name, description, samples}
+    // - ключи вложенного объекта в массиве также переставлены {y, x}
+    // requestKey с детерминированной сортировкой должен совпасть, и произойдёт replay.
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp6/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: {
+              role: "главная",
+              name: "Айрис",
+              description: "Герой",
+              samples: [{ y: 2, x: 1 }],
+            },
+          },
+        ],
+      },
+    );
+
+    expect(second.createdEntityIds).toEqual(first.createdEntityIds);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(1);
+  });
+
+  it("отредактированный профиль одного tempId обновляет строку и не создаёт дубликат", async () => {
+    const bookId = await createBook();
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp5/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { name: "Айрис", role: "главная", description: "Герой" },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Автор отредактировал имя — одинаковые tempId, но разный профиль.
+    // requestKey теперь включает профиль, поэтому это новый запрос и идёт в апдейт.
+    await sendJson(
+      t.app,
+      `/api/books/${bookId}/aspects/asp5/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            materializedEntityId: id,
+            profile: { name: "Айрис Хэйр", role: "главная", description: "Герой" },
+          },
+        ],
+      },
+    );
+
+    const updated = await sendJson<{ canonicalName: string; revision: number }>(
+      t.app,
+      `/api/characters/${id}`,
+      "GET",
+    );
+    expect(updated.canonicalName).toBe("Айрис Хэйр");
+    expect(updated.revision).toBe(1);
+
+    const all = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(all).toHaveLength(1);
+  });
+});

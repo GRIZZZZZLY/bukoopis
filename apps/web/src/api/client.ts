@@ -11,6 +11,7 @@ import type {
   ChapterWithCurrentVersion,
   Character,
   CharacterKnowledge,
+  CharacterVoiceSample,
   CreateBookInput,
   CreateChapterInput,
   CreateCharacterInput,
@@ -19,6 +20,7 @@ import type {
   CreateItemInput,
   CreateLocationInput,
   CreateRelationshipInput,
+  CreateVoiceSampleInput,
   GenerationConfig,
   Hook,
   IntakeSummaryRow,
@@ -37,6 +39,7 @@ import type {
   UpdateItemInput,
   UpdateLocationInput,
   UpdateRelationshipInput,
+  UpdateVoiceSampleInput,
 } from "@book-forge/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
@@ -326,6 +329,22 @@ export const api = {
     }),
   deleteCharacterKnowledge: (id: number) =>
     req<void>(`/api/character-knowledge/${id}`, { method: "DELETE" }),
+
+  // ── Образцы речи ──
+  listVoiceSamples: (characterId: number) =>
+    req<CharacterVoiceSample[]>(`/api/characters/${characterId}/voice-samples`),
+  createVoiceSample: (characterId: number, body: CreateVoiceSampleInput) =>
+    req<CharacterVoiceSample>(`/api/characters/${characterId}/voice-samples`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateVoiceSample: (id: number, body: UpdateVoiceSampleInput) =>
+    req<CharacterVoiceSample>(`/api/voice-samples/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteVoiceSample: (id: number) =>
+    req<void>(`/api/voice-samples/${id}`, { method: "DELETE" }),
 
   // ── Locations ──
   listLocations: (bookId: number) =>
@@ -741,6 +760,7 @@ export const api = {
         tempId: string;
         decision: "accept" | "reject";
         profile: unknown;
+        materializedEntityId?: number;
         mergedIntoId?: number;
       }>;
     },

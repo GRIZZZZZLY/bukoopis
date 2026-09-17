@@ -35,21 +35,32 @@ export function resolveEntity(
 
   // Case-insensitive compare in JS — SQLite's built-in lower() is ASCII-only
   // and leaves Cyrillic untouched, so "Айрис" would never match "айрис".
+  // Две сущности с одинаковым нормализованным именем — это неоднозначность,
+  // а не «возьмём первого». Тихий выбор пришивает факт чужой сущности и
+  // обнаруживается только в готовой главе (AC-04).
   if (entityType === "character") {
     const rows = sqlite
       .prepare(
         `SELECT id, canonical_name AS name FROM characters WHERE book_id = ?`,
       )
       .all(bookId) as Array<{ id: number; name: string }>;
-    const hit = rows.find((r) => normalizeEntityName(r.name) === norm);
-    if (hit) return { entityId: hit.id, canonicalName: hit.name };
+    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
+    if (hits.length === 1) {
+      const hit = hits[0]!;
+      return { entityId: hit.id, canonicalName: hit.name };
+    }
+    if (hits.length > 1) return null;
   } else {
     const table = entityType === "location" ? "locations" : "items";
     const rows = sqlite
       .prepare(`SELECT id, name FROM ${table} WHERE book_id = ?`)
       .all(bookId) as Array<{ id: number; name: string }>;
-    const hit = rows.find((r) => normalizeEntityName(r.name) === norm);
-    if (hit) return { entityId: hit.id, canonicalName: hit.name };
+    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
+    if (hits.length === 1) {
+      const hit = hits[0]!;
+      return { entityId: hit.id, canonicalName: hit.name };
+    }
+    if (hits.length > 1) return null;
   }
 
   // Alias fallback (author-registered).

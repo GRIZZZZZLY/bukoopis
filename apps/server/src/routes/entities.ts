@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   createCharacterInputSchema,
@@ -12,6 +13,18 @@ import {
   createRelationshipInputSchema,
   updateRelationshipInputSchema,
   createCharacterKnowledgeInputSchema,
+  createVoiceSampleInputSchema,
+  updateVoiceSampleInputSchema,
+} from "@book-forge/shared";
+import {
+  normalizeCharacterProfile,
+  parseCharacterProfileForWrite,
+  type CharacterProfileV2,
+} from "@book-forge/shared";
+import {
+  normalizeRelationshipProfile,
+  parseRelationshipProfileForWrite,
+  type DirectedRelationship,
 } from "@book-forge/shared";
 import {
   toCharacter,
@@ -20,12 +33,15 @@ import {
   toHook,
   toRelationship,
   toCharacterKnowledge,
+  toVoiceSample,
+  parseJsonOrNull,
   type CharacterRow,
   type LocationRow,
   type ItemRow,
   type HookRow,
   type RelationshipRow,
   type CharacterKnowledgeRow,
+  type CharacterVoiceSampleRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import {
@@ -33,6 +49,12 @@ import {
   listEntityAliases,
   deleteEntityAlias,
 } from "../utils/entity-resolve.js";
+import {
+  bumpEntityRevision,
+  deleteProfileVersions,
+  recordProfileVersion,
+  RevisionConflictError,
+} from "../utils/entity-revisions.js";
 import { z } from "zod";
 
 function bookExists(sqlite: DatabaseType, id: number): boolean {
@@ -46,6 +68,21 @@ function bumpBook(sqlite: DatabaseType, bookId: number): void {
   sqlite
     .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
     .run(new Date().toISOString(), bookId);
+}
+
+function revisionConflictResponse(
+  c: Context,
+  currentRevision: number,
+  noun: string,
+): Response {
+  return c.json(
+    {
+      error: "revision_conflict",
+      message: `${noun} изменилась, обновите её и повторите`,
+      details: { currentRevision },
+    },
+    409,
+  );
 }
 
 export function createEntitiesRoute(sqlite: DatabaseType): Hono {
@@ -70,23 +107,34 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     const body = await c.req.json().catch(() => null);
     const parsed = createCharacterInputSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
+
+    const checked = parseCharacterProfileForWrite(parsed.data.profile);
+    if (!checked.ok) return validationFailed(c, checked.error);
+
     const now = new Date().toISOString();
-    const info = sqlite
-      .prepare(
-        `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        parsed.data.canonicalName,
-        JSON.stringify(parsed.data.profile),
-        now,
-        now,
-      );
+    const profileJson = JSON.stringify(checked.profile);
+    const tx = sqlite.transaction(() => {
+      const info = sqlite
+        .prepare(
+          `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, parsed.data.canonicalName, profileJson, now, now);
+      recordProfileVersion(sqlite, {
+        bookId: id,
+        entityType: "character",
+        entityId: Number(info.lastInsertRowid),
+        revision: 0,
+        profileJson,
+        origin: "author",
+      });
+      return info.lastInsertRowid;
+    });
+    const characterId = tx.immediate();
     bumpBook(sqlite, id);
     const row = sqlite
       .prepare("SELECT * FROM characters WHERE id = ?")
-      .get(info.lastInsertRowid) as CharacterRow;
+      .get(characterId) as CharacterRow;
     return c.json(toCharacter(row), 201);
   });
 
@@ -108,18 +156,44 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT * FROM characters WHERE id = ?")
       .get(id) as CharacterRow | undefined;
     if (!existing) return notFound(c, "character");
-    const next = {
-      canonicalName: parsed.data.canonicalName ?? existing.canonical_name,
-      profileJson: parsed.data.profile
-        ? JSON.stringify(parsed.data.profile)
-        : existing.profile_json,
-    };
-    const now = new Date().toISOString();
-    sqlite
-      .prepare(
-        "UPDATE characters SET canonical_name = ?, profile_json = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(next.canonicalName, next.profileJson, now, id);
+
+    let nextProfile: CharacterProfileV2;
+    if (parsed.data.profile) {
+      const checked = parseCharacterProfileForWrite(parsed.data.profile);
+      if (!checked.ok) return validationFailed(c, checked.error);
+      nextProfile = checked.profile;
+    } else {
+      nextProfile = normalizeCharacterProfile(parseJsonOrNull(existing.profile_json));
+    }
+    const profileJson = JSON.stringify(nextProfile);
+    const nextName = parsed.data.canonicalName ?? existing.canonical_name;
+
+    try {
+      bumpEntityRevision(sqlite, {
+        bookId: existing.book_id,
+        entityType: "character",
+        entityId: id,
+        expectedRevision: parsed.data.expectedRevision,
+        profileJson,
+        origin: "author",
+        applyColumns: (revision, now) => {
+          const changes = sqlite
+            .prepare(
+              `UPDATE characters
+                 SET canonical_name = ?, profile_json = ?, revision = ?, updated_at = ?
+               WHERE id = ? AND revision = ?`,
+            )
+            .run(nextName, profileJson, revision, now, id, parsed.data.expectedRevision).changes;
+          return changes > 0;
+        },
+      });
+    } catch (e) {
+      if (e instanceof RevisionConflictError) {
+        return revisionConflictResponse(c, e.currentRevision, "карточка");
+      }
+      throw e;
+    }
+
     bumpBook(sqlite, existing.book_id);
     const row = sqlite
       .prepare("SELECT * FROM characters WHERE id = ?")
@@ -133,7 +207,19 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT book_id FROM characters WHERE id = ?")
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "character");
-    sqlite.prepare("DELETE FROM characters WHERE id = ?").run(id);
+
+    const tx = sqlite.transaction(() => {
+      deleteProfileVersions(sqlite, "character", id);
+      // Удалить историю его отношений (они каскадятся, но история остаётся сиротой)
+      const relIds = sqlite
+        .prepare("SELECT id FROM relationships WHERE from_character_id = ? OR to_character_id = ?")
+        .all(id, id) as Array<{ id: number }>;
+      for (const rel of relIds) {
+        deleteProfileVersions(sqlite, "relationship", rel.id);
+      }
+      sqlite.prepare("DELETE FROM characters WHERE id = ?").run(id);
+    });
+    tx.immediate();
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });
@@ -417,26 +503,40 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       return badRequest(c, "both characters must belong to this book");
     }
     const now = new Date().toISOString();
-    const info = sqlite
-      .prepare(
-        `INSERT INTO relationships
-         (book_id, from_character_id, to_character_id, type, tension, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        parsed.data.fromCharacterId,
-        parsed.data.toCharacterId,
-        parsed.data.type,
-        parsed.data.tension ?? 0,
-        parsed.data.notes ?? null,
-        now,
-        now,
-      );
+    const profileJson = JSON.stringify(normalizeRelationshipProfile(null));
+    const tx = sqlite.transaction(() => {
+      const info = sqlite
+        .prepare(
+          `INSERT INTO relationships
+           (book_id, from_character_id, to_character_id, type, tension, notes, profile_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          parsed.data.fromCharacterId,
+          parsed.data.toCharacterId,
+          parsed.data.type,
+          parsed.data.tension ?? 0,
+          parsed.data.notes ?? null,
+          profileJson,
+          now,
+          now,
+        );
+      recordProfileVersion(sqlite, {
+        bookId: id,
+        entityType: "relationship",
+        entityId: Number(info.lastInsertRowid),
+        revision: 0,
+        profileJson,
+        origin: "author",
+      });
+      return info.lastInsertRowid;
+    });
+    const relationshipId = tx.immediate();
     bumpBook(sqlite, id);
     const row = sqlite
       .prepare("SELECT * FROM relationships WHERE id = ?")
-      .get(info.lastInsertRowid) as RelationshipRow;
+      .get(relationshipId) as RelationshipRow;
     return c.json(toRelationship(row), 201);
   });
 
@@ -449,18 +549,47 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT * FROM relationships WHERE id = ?")
       .get(id) as RelationshipRow | undefined;
     if (!existing) return notFound(c, "relationship");
-    const next = {
-      type: parsed.data.type ?? existing.type,
-      tension: parsed.data.tension ?? existing.tension,
-      notes:
-        parsed.data.notes === undefined ? existing.notes : parsed.data.notes,
-    };
-    const now = new Date().toISOString();
-    sqlite
-      .prepare(
-        "UPDATE relationships SET type = ?, tension = ?, notes = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(next.type, next.tension, next.notes, now, id);
+
+    let nextProfile: DirectedRelationship;
+    if (parsed.data.profile) {
+      const checked = parseRelationshipProfileForWrite(parsed.data.profile);
+      if (!checked.ok) return validationFailed(c, checked.error);
+      nextProfile = checked.profile;
+    } else {
+      nextProfile = normalizeRelationshipProfile(parseJsonOrNull(existing.profile_json));
+    }
+    const profileJson = JSON.stringify(nextProfile);
+    const nextType = parsed.data.type ?? existing.type;
+    const nextTension = parsed.data.tension ?? existing.tension;
+    const nextNotes =
+      parsed.data.notes === undefined ? existing.notes : parsed.data.notes;
+
+    try {
+      bumpEntityRevision(sqlite, {
+        bookId: existing.book_id,
+        entityType: "relationship",
+        entityId: id,
+        expectedRevision: parsed.data.expectedRevision,
+        profileJson,
+        origin: "author",
+        applyColumns: (revision, now) => {
+          const changes = sqlite
+            .prepare(
+              `UPDATE relationships
+                 SET type = ?, tension = ?, notes = ?, profile_json = ?, revision = ?, updated_at = ?
+               WHERE id = ? AND revision = ?`,
+            )
+            .run(nextType, nextTension, nextNotes, profileJson, revision, now, id, parsed.data.expectedRevision).changes;
+          return changes > 0;
+        },
+      });
+    } catch (e) {
+      if (e instanceof RevisionConflictError) {
+        return revisionConflictResponse(c, e.currentRevision, "связь");
+      }
+      throw e;
+    }
+
     bumpBook(sqlite, existing.book_id);
     const row = sqlite
       .prepare("SELECT * FROM relationships WHERE id = ?")
@@ -474,7 +603,12 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT book_id FROM relationships WHERE id = ?")
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "relationship");
-    sqlite.prepare("DELETE FROM relationships WHERE id = ?").run(id);
+
+    const tx = sqlite.transaction(() => {
+      deleteProfileVersions(sqlite, "relationship", id);
+      sqlite.prepare("DELETE FROM relationships WHERE id = ?").run(id);
+    });
+    tx.immediate();
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });
@@ -535,6 +669,101 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .get(id) as { id: number; book_id: number } | undefined;
     if (!existing) return notFound(c, "knowledge");
     sqlite.prepare("DELETE FROM character_knowledge WHERE id = ?").run(id);
+    bumpBook(sqlite, existing.book_id);
+    return c.body(null, 204);
+  });
+
+  // ─────────────── Образцы речи ───────────────
+
+  r.get("/characters/:id/voice-samples", (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT id FROM characters WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!ch) return notFound(c, "character");
+    const rows = sqlite
+      .prepare(
+        "SELECT * FROM character_voice_samples WHERE character_id = ? ORDER BY id ASC",
+      )
+      .all(id) as CharacterVoiceSampleRow[];
+    return c.json(rows.map(toVoiceSample));
+  });
+
+  r.post("/characters/:id/voice-samples", async (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT id, book_id FROM characters WHERE id = ?")
+      .get(id) as { id: number; book_id: number } | undefined;
+    if (!ch) return notFound(c, "character");
+    const body = await c.req.json().catch(() => null);
+    const parsed = createVoiceSampleInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+
+    // AC-30: адресат обязан жить в той же книге. Плоский маршрут
+    // `/characters/:id` не несёт книгу в пути, поэтому проверка тут.
+    const addressee = parsed.data.addresseeCharacterId ?? null;
+    if (addressee !== null) {
+      // Герой не может быть собственным адресатом
+      if (addressee === id) return badRequest(c, "герой не может обращаться к самому себе");
+      const ok = sqlite
+        .prepare("SELECT id FROM characters WHERE id = ? AND book_id = ?")
+        .get(addressee, ch.book_id) as { id: number } | undefined;
+      if (!ok) return badRequest(c, "адресат должен быть героем этой же книги");
+    }
+
+    // Авторский образец — уже решение автора, отдельного принятия не просит.
+    // Предложение модели ждёт: «ничего не утверждается без автора».
+    // Статус не берётся из тела: схема его не принимает, пост-нулевой шанс обхода.
+    const status = parsed.data.origin === "author" ? "accepted" : "proposed";
+    const now = new Date().toISOString();
+    const info = sqlite
+      .prepare(
+        `INSERT INTO character_voice_samples
+           (book_id, character_id, text, situation, addressee_character_id, note,
+            origin, status, source_version_id, source_chapter_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ch.book_id, id, parsed.data.text, parsed.data.situation, addressee,
+        parsed.data.note ?? null, parsed.data.origin, status,
+        parsed.data.sourceVersionId ?? null, parsed.data.sourceChapterOrder ?? null,
+        now, now,
+      );
+    bumpBook(sqlite, ch.book_id);
+    const row = sqlite
+      .prepare("SELECT * FROM character_voice_samples WHERE id = ?")
+      .get(info.lastInsertRowid) as CharacterVoiceSampleRow;
+    return c.json(toVoiceSample(row), 201);
+  });
+
+  r.patch("/voice-samples/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = updateVoiceSampleInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const existing = sqlite
+      .prepare("SELECT id, book_id FROM character_voice_samples WHERE id = ?")
+      .get(id) as { id: number; book_id: number } | undefined;
+    if (!existing) return notFound(c, "voice_sample");
+    sqlite
+      .prepare(
+        "UPDATE character_voice_samples SET status = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(parsed.data.status, new Date().toISOString(), id);
+    bumpBook(sqlite, existing.book_id);
+    const row = sqlite
+      .prepare("SELECT * FROM character_voice_samples WHERE id = ?")
+      .get(id) as CharacterVoiceSampleRow;
+    return c.json(toVoiceSample(row));
+  });
+
+  r.delete("/voice-samples/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    const existing = sqlite
+      .prepare("SELECT book_id FROM character_voice_samples WHERE id = ?")
+      .get(id) as { book_id: number } | undefined;
+    if (!existing) return notFound(c, "voice_sample");
+    sqlite.prepare("DELETE FROM character_voice_samples WHERE id = ?").run(id);
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });

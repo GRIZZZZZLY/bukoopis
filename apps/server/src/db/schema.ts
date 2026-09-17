@@ -110,6 +110,9 @@ export const characters = sqliteTable(
       .references(() => books.id, { onDelete: "cascade" }),
     canonicalName: text("canonical_name").notNull(),
     profileJson: text("profile_json").notNull(),
+    /** Счётчик правок профиля: оптимистичная блокировка карточки (этап 2 ТЗ
+     *  индивидуальности) и номер строки в entity_profile_versions. */
+    revision: integer("revision").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -189,6 +192,11 @@ export const relationships = sqliteTable(
     type: text("type").notNull(),
     tension: real("tension").notNull().default(0),
     notes: text("notes"),
+    /** Направленный профиль отношения A→B (DirectedRelationship). NULL —
+     *  строка, созданная до этапа 2: нормализация на чтении даёт пустой
+     *  профиль, а не ошибку. */
+    profileJson: text("profile_json"),
+    revision: integer("revision").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -575,6 +583,99 @@ export const entityAliases = sqliteTable(
     check(
       "entity_aliases_type_check",
       sql`${t.entityType} IN ('character','location','item')`,
+    ),
+  ],
+);
+
+/** История профилей персонажей и отношений (этап 2 ТЗ индивидуальности).
+ *  Одна таблица на оба вида: ссылка полиморфная, как у entityAliases
+ *  (entity_type + entity_id, без внешнего ключа). */
+export const entityProfileVersions = sqliteTable(
+  "entity_profile_versions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id").notNull(),
+    revision: integer("revision").notNull(),
+    profileJson: text("profile_json").notNull(),
+    origin: text("origin").notNull(),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("uq_entity_profile_versions").on(
+      t.entityType,
+      t.entityId,
+      t.revision,
+    ),
+    index("idx_entity_profile_versions_entity").on(t.entityType, t.entityId),
+    index("idx_entity_profile_versions_book").on(t.bookId),
+    check(
+      "entity_profile_versions_type_check",
+      sql`${t.entityType} IN ('character','relationship')`,
+    ),
+    check(
+      "entity_profile_versions_origin_check",
+      sql`${t.origin} IN ('author','llm','import','materialize','migration')`,
+    ),
+    check(
+      "entity_profile_versions_revision_check",
+      sql`${t.revision} >= 0`,
+    ),
+  ],
+);
+
+/** Банк образцов речи персонажа (раздел 5.2 ТЗ). `source_chapter_order`
+ *  хранится рядом с образцом, чтобы реплика из главы 12 не попала в
+ *  подготовку главы 4. */
+export const characterVoiceSamples = sqliteTable(
+  "character_voice_samples",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    situation: text("situation").notNull(),
+    addresseeCharacterId: integer("addressee_character_id").references(
+      () => characters.id,
+      { onDelete: "set null" },
+    ),
+    note: text("note"),
+    origin: text("origin").notNull(),
+    status: text("status").notNull().default("proposed"),
+    sourceVersionId: integer("source_version_id").references(
+      () => chapterVersions.id,
+      { onDelete: "set null" },
+    ),
+    sourceChapterOrder: integer("source_chapter_order"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_voice_samples_character").on(t.characterId, t.status),
+    index("idx_voice_samples_book").on(t.bookId),
+    check(
+      "character_voice_samples_situation_check",
+      sql`${t.situation} IN ('neutral','conflict','vulnerable','authority','intimate','stranger')`,
+    ),
+    check(
+      "character_voice_samples_origin_check",
+      sql`${t.origin} IN ('author','accepted_prose','llm')`,
+    ),
+    check(
+      "character_voice_samples_status_check",
+      sql`${t.status} IN ('proposed','accepted','rejected')`,
+    ),
+    check(
+      "character_voice_samples_source_chapter_order_check",
+      sql`${t.sourceChapterOrder} IS NULL OR ${t.sourceChapterOrder} >= 0`,
     ),
   ],
 );

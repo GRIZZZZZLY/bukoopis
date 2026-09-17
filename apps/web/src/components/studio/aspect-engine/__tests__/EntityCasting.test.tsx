@@ -170,3 +170,85 @@ describe("going back to the variant list", () => {
     expect(aspect.status).toBe("reviewing");
   });
 });
+
+describe("materializedEntityId in candidate", () => {
+  it("candidate with materializedEntityId and edited profile sends id and unchanged role/background to materialize", async () => {
+    const aspect: StageAspect = {
+      id: "asp1",
+      name: "Протагонист",
+      status: "reviewing",
+      order: 0,
+      required: true,
+      source: "llm",
+      payloadKind: "entity_set",
+      selectedVariantId: "v1",
+      variants: [
+        {
+          id: "v1",
+          label: "первый",
+          payloadKind: "entity_set",
+          payload: {
+            candidates: [
+              {
+                tempId: "t1",
+                kind: "character" as const,
+                status: "accepted" as const,
+                materializedEntityId: 42,
+                profile: {
+                  name: "Мира",
+                  description: "картограф",
+                  role: "главная",
+                  background: "Выросла на берегу озера",
+                },
+              },
+            ],
+          },
+          status: "generated",
+          editSource: "llm",
+          generatedAt: "2026-05-09T20:00:00.000Z",
+        },
+      ],
+    };
+    const onPatch = vi.fn().mockResolvedValue({ revision: 2 });
+    render(
+      <EntityStageRunner
+        stage={makeStage([aspect])}
+        revision={1}
+        stageId="characters"
+        generator={generator as never}
+        onPatch={onPatch}
+        onMaterialize={materialize}
+      />,
+    );
+
+    // Edit the name
+    const nameInput = screen.getByDisplayValue("Мира");
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "Мира Хэйр");
+
+    // Materialize
+    await userEvent.click(screen.getByRole("button", { name: /Добавить в канон книги/ }));
+
+    await waitFor(() => expect(materialize).toHaveBeenCalledTimes(1));
+    const call = materialize.mock.calls[0]!;
+    const aspectId = call[0];
+    const body = call[1] as {
+      stageId: string;
+      aspectName: string;
+      candidates: Array<{
+        tempId: string;
+        decision: string;
+        materializedEntityId?: number;
+        profile: Record<string, unknown>;
+      }>;
+    };
+
+    expect(aspectId).toBe("asp1");
+    expect(body.candidates).toHaveLength(1);
+    const sentCandidate = body.candidates[0]!;
+    expect(sentCandidate.materializedEntityId).toBe(42);
+    expect(sentCandidate.profile.name).toBe("Мира Хэйр");
+    expect(sentCandidate.profile.role).toBe("главная");
+    expect(sentCandidate.profile.background).toBe("Выросла на берегу озера");
+  });
+});

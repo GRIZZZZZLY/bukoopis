@@ -8,6 +8,8 @@ import {
   lockConceptToPitch,
   unlockConcept,
   PITCH_MIX_FIELDS,
+  entityCandidateProfileSchema,
+  normalizeCharacterProfile,
   type BookConcept,
   type CanonSummary,
   type ChapterProgress,
@@ -50,6 +52,7 @@ import {
 import { createIntakeCancelRegistry } from "../utils/intake-cancel.js";
 import { createQuickStartCancelRegistry } from "../utils/quick-start-cancel.js";
 import { QUICK_START_STAGES, runQuickStart } from "../utils/quick-start-run.js";
+import { recordProfileVersion } from "../utils/entity-revisions.js";
 
 const patchStudioStateBodySchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
@@ -146,8 +149,6 @@ const intakeCancelBodySchema = z.object({
 
 const ENTITY_STAGES = new Set(["characters", "items"] as const);
 
-const entityProfileSchema = z.record(z.string(), z.unknown());
-
 const materializeBodySchema = z.object({
   stageId: z.enum(["characters", "items"]),
   aspectName: z.string().min(1).max(120),
@@ -156,7 +157,10 @@ const materializeBodySchema = z.object({
       z.object({
         tempId: z.string().min(1),
         decision: z.enum(["accept", "reject"]),
-        profile: entityProfileSchema,
+        profile: entityCandidateProfileSchema,
+        /** Кандидат, уже заведённый в канон прошлой материализацией.
+         *  Обновляем его строку, а не вставляем вторую (раздел 5.1 ТЗ). */
+        materializedEntityId: z.number().int().positive().optional(),
         mergedIntoId: z.number().int().positive().optional(),
       }),
     )
@@ -1266,28 +1270,72 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       .get(id) as { id: number; studio_state: string | null } | undefined;
     if (!bookRow) return notFound(c, "book");
 
+    // Рекурсивная сортировка ключей для детерминированной сериализации.
+    // JSON.stringify() один не гарантирует порядок ключей в объектах: входящий
+    // запрос может иметь {role, name} или {name, role}, и они будут
+    // сериализованы по-разному. Это сломало бы ключ идемпотентности: два
+    // одинаковых запроса с ключами профиля в разных порядках дали бы разные
+    // ключи, и повтор сетевого запроса был бы воспринят как новое редактирование.
+    // Старые события в журнале с формами "c1|c2" (первая попытка) и промежуточным
+    // JSON-обёрнутым ключом (коммит d312ee6) больше не совпадают; это нормально,
+    // потому что finalPayload клиента содержит materializedEntityId, и первый
+    // клик после этого идёт в ветку апдейта.
+    function stableSortedStringify(value: unknown): string {
+      if (value === null || value === undefined) return JSON.stringify(value);
+      if (typeof value !== "object") return JSON.stringify(value);
+      if (Array.isArray(value)) {
+        return JSON.stringify(value.map((item) => JSON.parse(stableSortedStringify(item))));
+      }
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[key];
+        if (v !== null && typeof v === "object") {
+          result[key] = JSON.parse(stableSortedStringify(v));
+        } else {
+          result[key] = v;
+        }
+      }
+      return JSON.stringify(result);
+    }
+
     // ADR 0002 (Step 7) — idempotency: a network retry replays the SAME
-    // request (same aspect, same tempId set) instead of inserting duplicate
-    // entities. The materialize event journaled in the same transaction
-    // below is the dedup key.
-    const requestKey = parsed.data.candidates
-      .map((cand) => cand.tempId)
-      .sort()
-      .join("|");
-    const prior = sqlite
-      .prepare(
-        `SELECT payload FROM studio_events
-         WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
-         ORDER BY id DESC LIMIT 1`,
-      )
-      .get(id, aspectId) as { payload: string } | undefined;
+    // request (same aspect, same candidate profiles) instead of inserting duplicate
+    // entities. An author's edit to a candidate's profile generates a new key
+    // and takes the update path. The materialize event journaled in the same
+    // transaction below is the dedup key. Stable serialization: sort by tempId,
+    // include decision, materializedEntityId, mergedIntoId, profile (with sorted keys).
+    const requestKey = JSON.stringify(
+      parsed.data.candidates
+        .map((c) => ({
+          tempId: c.tempId,
+          decision: c.decision,
+          materializedEntityId: c.materializedEntityId,
+          mergedIntoId: c.mergedIntoId,
+          profile: JSON.parse(stableSortedStringify(c.profile)),
+        }))
+        .sort((a, b) => (a.tempId < b.tempId ? -1 : a.tempId > b.tempId ? 1 : 0)),
+    );
+    let prior: { payload: string } | undefined;
+    try {
+      // SQLite's json_extract() can raise on malformed JSON in the payload column.
+      // Catch and treat as "no prior event" so the request takes the fresh materialization path.
+      prior = sqlite
+        .prepare(
+          `SELECT payload FROM studio_events
+           WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
+             AND json_extract(payload, '$.requestKey') = ?
+           ORDER BY id DESC LIMIT 1`,
+        )
+        .get(id, aspectId, requestKey) as { payload: string } | undefined;
+    } catch {
+      /* malformed event payload — fall through to a fresh materialization */
+    }
     if (prior) {
       try {
         const p = JSON.parse(prior.payload) as {
-          requestKey?: string;
           response?: unknown;
         };
-        if (p.requestKey === requestKey && p.response) {
+        if (p.response) {
           return c.json(p.response);
         }
       } catch {
@@ -1305,6 +1353,44 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       `INSERT INTO items (book_id, name, profile_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?)`,
     );
+    const selectCharRevision = sqlite.prepare(
+      "SELECT revision FROM characters WHERE id = ?",
+    );
+    const updateChar = sqlite.prepare(
+      `UPDATE characters
+         SET canonical_name = ?, profile_json = ?, revision = ?, updated_at = ?
+       WHERE id = ?`,
+    );
+    const updateItem = sqlite.prepare(
+      "UPDATE items SET name = ?, profile_json = ?, updated_at = ? WHERE id = ?",
+    );
+
+    // AC-30: проверить, что все materializedEntityId и mergedIntoId принадлежат этой книге.
+    const toCheckIds: number[] = [];
+    for (const cand of parsed.data.candidates) {
+      if (cand.materializedEntityId !== undefined) {
+        toCheckIds.push(cand.materializedEntityId);
+      }
+      if (cand.mergedIntoId !== undefined) {
+        toCheckIds.push(cand.mergedIntoId);
+      }
+    }
+    if (toCheckIds.length > 0) {
+      const table = parsed.data.stageId === "characters" ? "characters" : "items";
+      const placeholders = toCheckIds.map(() => "?").join(",");
+      const validIds = new Set(
+        (
+          sqlite
+            .prepare(`SELECT id FROM ${table} WHERE book_id = ? AND id IN (${placeholders})`)
+            .all(id, ...toCheckIds) as Array<{ id: number }>
+        ).map((r) => r.id),
+      );
+      for (const checkId of toCheckIds) {
+        if (!validIds.has(checkId)) {
+          return badRequest(c, "сущность принадлежит другой книге");
+        }
+      }
+    }
 
     let revision = 0;
     try {
@@ -1340,19 +1426,56 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           });
           continue;
         }
-        const profileJson = JSON.stringify(cand.profile);
-        const profile = cand.profile as { name?: unknown };
+
+        const profile =
+          parsed.data.stageId === "characters"
+            ? normalizeCharacterProfile(cand.profile)
+            : cand.profile;
+        const profileJson = JSON.stringify(profile);
         const name =
-          typeof profile.name === "string" ? profile.name : "Без имени";
+          typeof cand.profile.name === "string" && cand.profile.name.trim()
+            ? cand.profile.name.trim()
+            : "Без имени";
+
         let entityId: number;
-        if (parsed.data.stageId === "characters") {
-          const info = insertChar.run(id, name, profileJson, now, now);
-          entityId = Number(info.lastInsertRowid);
+        if (cand.materializedEntityId !== undefined) {
+          entityId = cand.materializedEntityId;
+          if (parsed.data.stageId === "characters") {
+            const current = selectCharRevision.get(entityId) as
+              | { revision: number }
+              | undefined;
+            const nextRevision = (current?.revision ?? 0) + 1;
+            updateChar.run(name, profileJson, nextRevision, now, entityId);
+            recordProfileVersion(sqlite, {
+              bookId: id,
+              entityType: "character",
+              entityId,
+              revision: nextRevision,
+              profileJson,
+              origin: "materialize",
+            });
+          } else {
+            updateItem.run(name, profileJson, now, entityId);
+          }
         } else {
-          const info = insertItem.run(id, name, profileJson, now, now);
+          const info =
+            parsed.data.stageId === "characters"
+              ? insertChar.run(id, name, profileJson, now, now)
+              : insertItem.run(id, name, profileJson, now, now);
           entityId = Number(info.lastInsertRowid);
+          if (parsed.data.stageId === "characters") {
+            recordProfileVersion(sqlite, {
+              bookId: id,
+              entityType: "character",
+              entityId,
+              revision: 0,
+              profileJson,
+              origin: "materialize",
+            });
+          }
+          createdEntityIds.push(entityId);
         }
-        createdEntityIds.push(entityId);
+
         candidatesAfter.push({
           tempId: cand.tempId,
           decision: "accept",

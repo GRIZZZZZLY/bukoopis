@@ -1,7 +1,19 @@
 import { z } from "zod";
+import { characterProfileV2Schema } from "./character-profile.js";
+import { directedRelationshipSchema } from "./relationship-profile.js";
 
 // ─────────────── Profiles (nested JSON documents) ───────────────
 
+/** Профиль на входе — сырой объект, а не `characterProfileWriteSchema`.
+ *  У схемы записи `schemaVersion: z.literal(2)` обязателен, и клиент,
+ *  присылающий `{ description: "…" }`, получал бы 400 на пустом месте.
+ *  Порядок один во всех маршрутах записи: сырое тело → нормализация →
+ *  проверка пределов схемой записи. */
+const rawProfileSchema = z.record(z.string(), z.unknown());
+
+/** V1, только для чтения старых данных и для входа create/update, который
+ *  этап 2 ещё не переписал. Новый код использует `characterProfileV2Schema`:
+ *  он сохраняет все поля V1 под теми же именами. */
 export const characterProfileSchema = z.object({
   description: z.string().min(1),
   want: z.string().nullable().optional(),
@@ -36,7 +48,9 @@ export const characterSchema = z.object({
   id: z.number().int().positive(),
   bookId: z.number().int().positive(),
   canonicalName: z.string().min(1),
-  profile: characterProfileSchema,
+  profile: characterProfileV2Schema,
+  /** Счётчик правок профиля: 0 у строк, которых этап 2 ещё не касался. */
+  revision: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -44,16 +58,19 @@ export type Character = z.infer<typeof characterSchema>;
 
 export const createCharacterInputSchema = z.object({
   canonicalName: z.string().min(1).max(200),
-  profile: characterProfileSchema,
+  profile: rawProfileSchema,
 });
 export type CreateCharacterInput = z.infer<typeof createCharacterInputSchema>;
 
 export const updateCharacterInputSchema = z
   .object({
+    // Обязателен с первого коммита: единственный клиент едет в том же
+    // репозитории, а необязательный режим ломает AC-02 (раздел 5.1 ТЗ).
+    expectedRevision: z.number().int().nonnegative(),
     canonicalName: z.string().min(1).max(200).optional(),
-    profile: characterProfileSchema.optional(),
+    profile: rawProfileSchema.optional(),
   })
-  .refine((v) => Object.keys(v).length > 0, {
+  .refine((v) => v.canonicalName !== undefined || v.profile !== undefined, {
     message: "at least one field required",
   });
 export type UpdateCharacterInput = z.infer<typeof updateCharacterInputSchema>;
@@ -176,6 +193,10 @@ export const relationshipSchema = z.object({
   type: z.string().min(1),
   tension: z.number().min(-1).max(1),
   notes: z.string().nullable(),
+  /** Направленный профиль A→B. У строк до этапа 2 — пустой: колонка была
+   *  NULL, а нормализация на чтении ничего не выдумывает. */
+  profile: directedRelationshipSchema,
+  revision: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -194,13 +215,20 @@ export type CreateRelationshipInput = z.infer<
 
 export const updateRelationshipInputSchema = z
   .object({
+    expectedRevision: z.number().int().nonnegative(),
     type: z.string().min(1).max(100).optional(),
     tension: z.number().min(-1).max(1).optional(),
     notes: z.string().max(2000).nullable().optional(),
+    profile: rawProfileSchema.optional(),
   })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "at least one field required",
-  });
+  .refine(
+    (v) =>
+      v.type !== undefined ||
+      v.tension !== undefined ||
+      v.notes !== undefined ||
+      v.profile !== undefined,
+    { message: "at least one field required" },
+  );
 export type UpdateRelationshipInput = z.infer<
   typeof updateRelationshipInputSchema
 >;

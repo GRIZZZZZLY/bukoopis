@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { StageAspect, StageState } from "@book-forge/shared";
+import type { StageAspect, StageState, EntityCandidateProfile } from "@book-forge/shared";
 import type { AspectGenerationProgress } from "@/api/client";
 import type { VariantGenerator } from "./types.js";
 import { candidateLabel, createEntityAdapter } from "./entityAdapter.js";
@@ -19,7 +19,7 @@ interface EntitySetPayload {
   candidates: Array<{
     tempId: string;
     kind: "character" | "location" | "item";
-    profile: unknown;
+    profile: EntityCandidateProfile;
     status: "proposed" | "accepted" | "rejected" | "merged";
     materializedEntityId?: number;
     mergedIntoEntityId?: number;
@@ -344,7 +344,7 @@ export function EntityStageRunner({
           ? {
               ...c,
               profile: {
-                ...(c.profile as Record<string, unknown>),
+                ...c.profile,
                 [field]: value,
               },
             }
@@ -401,6 +401,9 @@ export function EntityStageRunner({
         tempId: c.tempId,
         decision: decisions[c.tempId] ?? ("accept" as const),
         profile: c.profile,
+        ...(c.materializedEntityId !== undefined
+          ? { materializedEntityId: c.materializedEntityId }
+          : {}),
       }));
       const result = await onMaterialize(aspect.id, {
         stageId,

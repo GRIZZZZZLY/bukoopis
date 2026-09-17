@@ -115,10 +115,29 @@ export const aspectVariantSchema = z.object({
 });
 export type AspectVariant = z.infer<typeof aspectVariantSchema>;
 
+/** Профиль кандидата Мастерской. Поля перечислены (раздел 5.1 ТЗ требует
+ *  типизированной схемы вместо `z.unknown()`), но `catchall` оставляет
+ *  неизвестные ключи на месте: генератор сущностей волен вернуть больше,
+ *  и терять это на границе схемы нельзя. */
+export const entityCandidateProfileSchema = z
+  .object({
+    name: z.string().nullable().optional(),
+    role: z.string().nullable().optional(),
+    type: z.string().nullable().optional(),
+    age: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    background: z.string().nullable().optional(),
+    origin: z.string().nullable().optional(),
+    significance: z.string().nullable().optional(),
+    properties: z.string().nullable().optional(),
+  })
+  .catchall(z.unknown());
+export type EntityCandidateProfile = z.infer<typeof entityCandidateProfileSchema>;
+
 export const entityCandidateSchema = z.object({
   tempId: z.string().min(1),
   kind: entityKindSchema,
-  profile: z.unknown(),
+  profile: entityCandidateProfileSchema,
   status: entityCandidateStatusSchema,
   materializedEntityId: z.number().int().positive().optional(),
   mergedIntoEntityId: z.number().int().positive().optional(),
