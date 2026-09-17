@@ -21,3 +21,4 @@ export * from "./prose-diff.js";
 export * from "./proposal.js";
 export * from "./character-profile.js";
 export * from "./character-voice.js";
+export * from "./relationship-profile.js";
