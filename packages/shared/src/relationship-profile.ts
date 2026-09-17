@@ -11,10 +11,16 @@ import { z } from "zod";
  *  «боится», это разные сведения, и подмена одного другим — сочинение
  *  за автора. */
 
+/** Неизвестно — это `null`, а не пустая строка: «сведений нет» и «автор
+ *  стёр текст» — разные события. */
 const line = z.string().nullable().default(null);
 
 export const directedRelationshipSchema = z.object({
-  schemaVersion: z.literal(2),
+  // `.default(2)` — не только для `normalizeRelationshipProfile` (она и так
+  // передаёт версию явно): задачи 4, 5, 9, 10 держат схему и могут `.parse()`
+  // сырую строку из базы; падение на ней означает, что книга перестала
+  // открываться.
+  schemaVersion: z.literal(2).default(2),
   trust: line,
   respect: line,
   attachment: line,
@@ -30,11 +36,24 @@ export const directedRelationshipSchema = z.object({
   silences: z.array(z.string()).default([]),
   /** Характерный регистр общения A с B. */
   register: line,
+  /** Всё, чего схема не знает. Единственная гарантия, что нормализация
+   *  никогда не теряет авторские сведения (INV-07). */
   extra: z.record(z.string(), z.unknown()).default({}),
 });
 export type DirectedRelationship = z.infer<typeof directedRelationshipSchema>;
 
-export const RELATIONSHIP_QUALITY_LABELS: Record<string, string> = {
+export type RelationshipQualityKey =
+  | "trust"
+  | "respect"
+  | "attachment"
+  | "dependency"
+  | "fear"
+  | "duty"
+  | "resentment"
+  | "expectations"
+  | "register";
+
+export const RELATIONSHIP_QUALITY_LABELS: Record<RelationshipQualityKey, string> = {
   trust: "доверие",
   respect: "уважение",
   attachment: "привязанность",

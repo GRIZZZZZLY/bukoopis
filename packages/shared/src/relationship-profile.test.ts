@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeRelationshipProfile,
   directedRelationshipWriteSchema,
+  directedRelationshipSchema,
 } from "./relationship-profile.js";
 
 describe("normalizeRelationshipProfile", () => {
@@ -32,6 +33,8 @@ describe("normalizeRelationshipProfile", () => {
 
   it("чтение не бросает на мусоре", () => {
     expect(() => normalizeRelationshipProfile("строка")).not.toThrow();
+    const p1 = normalizeRelationshipProfile("строка");
+    expect(p1.extra).toEqual({ raw: "строка" });
     expect(() => normalizeRelationshipProfile({ trust: 5 })).not.toThrow();
     expect(normalizeRelationshipProfile({ trust: 5 }).extra).toEqual({ trust: 5 });
   });
@@ -46,6 +49,11 @@ describe("normalizeRelationshipProfile", () => {
       trust: "я".repeat(2001),
     });
     expect(tooLong.success).toBe(false);
+  });
+
+  it("schemaVersion имеет default, parsing без него не бросает", () => {
+    const p = directedRelationshipSchema.parse({ trust: "верит на слово" });
+    expect(p.schemaVersion).toBe(2);
   });
 
   it("non-object extra не теряется", () => {
