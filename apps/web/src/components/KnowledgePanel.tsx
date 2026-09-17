@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VoiceSamples } from "@/components/VoiceSamples";
+import { RelationshipQualities } from "@/components/RelationshipQualities";
 import { api } from "@/api/client";
 import type {
   Character,
@@ -91,6 +93,7 @@ function CharactersTab({ bookId }: { bookId: number }) {
   const [want, setWant] = useState("");
   const [need, setNeed] = useState("");
   const [creating, setCreating] = useState(false);
+  const [expandedVoiceId, setExpandedVoiceId] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -161,6 +164,25 @@ function CharactersTab({ bookId }: { bookId: number }) {
               {c.profile.want && <div>Хочет: {c.profile.want}</div>}
               {c.profile.need && <div>Нуждается: {c.profile.need}</div>}
               {c.profile.lie && <div>Самообман: {c.profile.lie}</div>}
+              <button
+                type="button"
+                onClick={() => setExpandedVoiceId(expandedVoiceId === c.id ? null : c.id)}
+                className="text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-text)] mt-2 flex items-center gap-1"
+              >
+                <ChevronDown
+                  className="size-3"
+                  style={{
+                    transform: expandedVoiceId === c.id ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform 0.2s",
+                  }}
+                />
+                Образцы речи
+              </button>
+              {expandedVoiceId === c.id && (
+                <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
+                  <VoiceSamples bookId={bookId} characterId={c.id} characters={list} />
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -364,6 +386,7 @@ function RelationshipsTab({ bookId }: { bookId: number }) {
   const [type, setType] = useState("");
   const [tension, setTension] = useState("0");
   const [error, setError] = useState<string | null>(null);
+  const [expandedRelId, setExpandedRelId] = useState<number | null>(null);
 
   async function load() {
     try {
@@ -421,17 +444,38 @@ function RelationshipsTab({ bookId }: { bookId: number }) {
       ) : (
         <ul className="flex flex-col gap-2">
           {list.map((r) => (
-            <li key={r.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm flex justify-between items-center">
-              <div>
-                <strong>{nameById.get(r.fromCharacterId) ?? `#${r.fromCharacterId}`}</strong>
-                {" → "}
-                <strong>{nameById.get(r.toCharacterId) ?? `#${r.toCharacterId}`}</strong>
-                : {r.type} (tension: {r.tension.toFixed(2)})
+            <li key={r.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
+              <div className="flex justify-between items-center">
+                <div>
+                  <strong>{nameById.get(r.fromCharacterId) ?? `#${r.fromCharacterId}`}</strong>
+                  {" → "}
+                  <strong>{nameById.get(r.toCharacterId) ?? `#${r.toCharacterId}`}</strong>
+                  : {r.type} (tension: {r.tension.toFixed(2)})
+                </div>
+                <DeleteButton
+                  label="Удалить связь"
+                  onClick={async () => { await api.deleteRelationship(r.id); await load(); }}
+                />
               </div>
-              <DeleteButton
-                label="Удалить связь"
-                onClick={async () => { await api.deleteRelationship(r.id); await load(); }}
-              />
+              <button
+                type="button"
+                onClick={() => setExpandedRelId(expandedRelId === r.id ? null : r.id)}
+                className="text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-text)] mt-2 flex items-center gap-1"
+              >
+                <ChevronDown
+                  className="size-3"
+                  style={{
+                    transform: expandedRelId === r.id ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform 0.2s",
+                  }}
+                />
+                Редактировать
+              </button>
+              {expandedRelId === r.id && (
+                <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
+                  <RelationshipQualities relationship={r} onSaved={load} />
+                </div>
+              )}
             </li>
           ))}
         </ul>
