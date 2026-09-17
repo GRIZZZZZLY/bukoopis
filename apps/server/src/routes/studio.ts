@@ -149,8 +149,6 @@ const intakeCancelBodySchema = z.object({
 
 const ENTITY_STAGES = new Set(["characters", "items"] as const);
 
-const entityProfileSchema = z.record(z.string(), z.unknown());
-
 const materializeBodySchema = z.object({
   stageId: z.enum(["characters", "items"]),
   aspectName: z.string().min(1).max(120),
@@ -1273,13 +1271,22 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     if (!bookRow) return notFound(c, "book");
 
     // ADR 0002 (Step 7) — idempotency: a network retry replays the SAME
-    // request (same aspect, same tempId set) instead of inserting duplicate
-    // entities. The materialize event journaled in the same transaction
-    // below is the dedup key.
-    const requestKey = parsed.data.candidates
-      .map((cand) => cand.tempId)
-      .sort()
-      .join("|");
+    // request (same aspect, same candidate profiles) instead of inserting duplicate
+    // entities. An author's edit to a candidate's profile generates a new key
+    // and takes the update path. The materialize event journaled in the same
+    // transaction below is the dedup key. Stable serialization: sort by tempId,
+    // include decision, materializedEntityId, mergedIntoId, profile.
+    const requestKey = JSON.stringify(
+      parsed.data.candidates
+        .map((c) => ({
+          tempId: c.tempId,
+          decision: c.decision,
+          materializedEntityId: c.materializedEntityId,
+          mergedIntoId: c.mergedIntoId,
+          profile: c.profile,
+        }))
+        .sort((a, b) => a.tempId.localeCompare(b.tempId)),
+    );
     const prior = sqlite
       .prepare(
         `SELECT payload FROM studio_events

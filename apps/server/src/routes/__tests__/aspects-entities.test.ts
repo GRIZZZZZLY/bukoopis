@@ -638,5 +638,101 @@ describe("AC-35: материализация с ревизией и профи�
       ],
     });
     expect(r.status).toBe(400);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(0);
+  });
+
+  it("идемпотентность: один и тот же запрос возвращает тот же ответ без дублей", async () => {
+    const bookId = await createBook();
+    const body = {
+      stageId: "characters" as const,
+      aspectName: "Протагонист",
+      candidates: [
+        {
+          tempId: "c1",
+          decision: "accept" as const,
+          profile: { name: "Айрис", description: "Герой" },
+        },
+      ],
+    };
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp4/materialize`,
+      "POST",
+      body,
+    );
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp4/materialize`,
+      "POST",
+      body,
+    );
+    expect(second.createdEntityIds).toEqual(first.createdEntityIds);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(1);
+  });
+
+  it("отредактированный профиль одного tempId обновляет строку и не создаёт дубликат", async () => {
+    const bookId = await createBook();
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp5/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { name: "Айрис", role: "главная", description: "Герой" },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Автор отредактировал имя — одинаковые tempId, но разный профиль.
+    // requestKey теперь включает профиль, поэтому это новый запрос и идёт в апдейт.
+    await sendJson(
+      t.app,
+      `/api/books/${bookId}/aspects/asp5/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            materializedEntityId: id,
+            profile: { name: "Айрис Хэйр", role: "главная", description: "Герой" },
+          },
+        ],
+      },
+    );
+
+    const updated = await sendJson<{ canonicalName: string; revision: number }>(
+      t.app,
+      `/api/characters/${id}`,
+      "GET",
+    );
+    expect(updated.canonicalName).toBe("Айрис Хэйр");
+    expect(updated.revision).toBe(1);
+
+    const all = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(all).toHaveLength(1);
   });
 });
