@@ -2,9 +2,17 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   normalizeCharacterProfile,
   normalizeRelationshipProfile,
+  selectVoiceSamples,
+  VOICE_SITUATION_LABELS,
+  RELATIONSHIP_QUALITY_LABELS,
   type Character,
   type CharacterKnowledge,
   type Relationship,
+  type CharacterVoiceSample,
+  type VoiceSampleSituation,
+  type VoiceSampleOrigin,
+  type VoiceSampleStatus,
+  type RelationshipQualityKey,
 } from "@book-forge/shared";
 
 interface CharacterRow {
@@ -33,6 +41,21 @@ interface RelationshipRow {
   notes: string | null;
   profile_json: string | null;
   revision: number;
+  created_at: string;
+  updated_at: string;
+}
+interface CharacterVoiceSampleRow {
+  id: number;
+  book_id: number;
+  character_id: number;
+  text: string;
+  situation: string;
+  addressee_character_id: number | null;
+  note: string | null;
+  origin: string;
+  status: string;
+  source_version_id: number | null;
+  source_chapter_order: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +107,23 @@ function rowToRelationship(r: RelationshipRow): Relationship {
     updatedAt: r.updated_at,
   };
 }
+function rowToVoiceSample(r: CharacterVoiceSampleRow): CharacterVoiceSample {
+  return {
+    id: r.id,
+    bookId: r.book_id,
+    characterId: r.character_id,
+    text: r.text,
+    situation: r.situation as VoiceSampleSituation,
+    addresseeCharacterId: r.addressee_character_id,
+    note: r.note,
+    origin: r.origin as VoiceSampleOrigin,
+    status: r.status as VoiceSampleStatus,
+    sourceVersionId: r.source_version_id,
+    sourceChapterOrder: r.source_chapter_order,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
 
 export interface CharacterContext {
   character: Character;
@@ -93,6 +133,8 @@ export interface CharacterContext {
 export interface CharacterAgentResult {
   characters: CharacterContext[];
   relationships: Relationship[];
+  /** Принятые образцы речи всех участников, в стабильном порядке. */
+  voiceSamples: CharacterVoiceSample[];
 }
 
 // Detect characters mentioned in any of the provided text blobs by canonical
@@ -107,7 +149,7 @@ export function gatherCharacterContext(
     .prepare("SELECT * FROM characters WHERE book_id = ?")
     .all(bookId) as CharacterRow[];
   if (allCharacters.length === 0) {
-    return { characters: [], relationships: [] };
+    return { characters: [], relationships: [], voiceSamples: [] };
   }
 
   const blob = texts.filter(Boolean).join("\n").toLowerCase();
@@ -118,7 +160,7 @@ export function gatherCharacterContext(
     if (blob.includes(name)) mentioned.add(c.id);
   }
   if (mentioned.size === 0) {
-    return { characters: [], relationships: [] };
+    return { characters: [], relationships: [], voiceSamples: [] };
   }
 
   const ids = [...mentioned];
@@ -148,15 +190,32 @@ export function gatherCharacterContext(
     )
     .all(bookId, ...ids, ...ids) as RelationshipRow[];
 
-  return { characters, relationships: rels.map(rowToRelationship) };
+  const voiceRows = sqlite
+    .prepare(
+      `SELECT * FROM character_voice_samples
+       WHERE character_id IN (${placeholders}) AND status = 'accepted'
+       ORDER BY id ASC`,
+    )
+    .all(...ids) as CharacterVoiceSampleRow[];
+
+  return {
+    characters,
+    relationships: rels.map(rowToRelationship),
+    voiceSamples: voiceRows.map(rowToVoiceSample),
+  };
 }
 
 export function characterContextToPrompt(
   result: CharacterAgentResult,
   charNameById: Map<number, string>,
+  options?: { situation?: VoiceSampleSituation; addresseeCharacterId?: number | null; chapterOrder?: number | null },
 ): string {
   if (result.characters.length === 0) return "";
   const lines: string[] = ["## Персонажи в сцене"];
+
+  const samplesFor = (characterId: number) =>
+    result.voiceSamples.filter((s) => s.characterId === characterId);
+
   for (const ctx of result.characters) {
     const c = ctx.character;
     lines.push(`### ${c.canonicalName}`);
@@ -171,6 +230,18 @@ export function characterContextToPrompt(
       lines.push("- Знает:");
       for (const k of ctx.knowledge) lines.push(`  · ${k.fact}`);
     }
+
+    const mine = selectVoiceSamples(samplesFor(c.id), {
+      situation: options?.situation ?? "neutral",
+      addresseeCharacterId: options?.addresseeCharacterId ?? null,
+      excludeFromChapterOrder: options?.chapterOrder ?? null,
+    });
+    if (mine.length > 0) {
+      lines.push("- Образцы речи (диапазон, не образец для копирования):");
+      for (const s of mine) {
+        lines.push(`  · [${VOICE_SITUATION_LABELS[s.situation]}] ${s.text}`);
+      }
+    }
   }
   if (result.relationships.length > 0) {
     lines.push("\n## Отношения");
@@ -182,6 +253,13 @@ export function characterContextToPrompt(
           r.notes ? ` — ${r.notes}` : ""
         }`,
       );
+      for (const key of Object.keys(RELATIONSHIP_QUALITY_LABELS) as RelationshipQualityKey[]) {
+        const value = r.profile[key];
+        if (typeof value === "string" && value.trim()) {
+          const label = RELATIONSHIP_QUALITY_LABELS[key];
+          lines.push(`  · ${label}: ${value}`);
+        }
+      }
     }
   }
   return lines.join("\n");
