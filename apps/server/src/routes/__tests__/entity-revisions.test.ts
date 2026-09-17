@@ -39,8 +39,9 @@ describe("ревизии персонажа", () => {
       profile: { description: "Инженер.", want: "уйти со станции" },
     });
     expect(second.status).toBe(409);
-    const body = (await second.json()) as { error: string; details?: { currentRevision: number } };
+    const body = (await second.json()) as { error: string; message?: string; details?: { currentRevision: number } };
     expect(body.error).toBe("revision_conflict");
+    expect(body.message).toBe("карточка изменилась, обновите её и повторите");
     expect(body.details?.currentRevision).toBe(1);
 
     const after = await sendJson<CharacterJson>(t.app, `/api/characters/${rin.id}`, "GET");
@@ -114,6 +115,26 @@ describe("направленные отношения", () => {
     expect(forward?.profile.trust).toBe("верит на слово");
     expect(back?.profile.trust).toBe("не доверяет обещаниям");
     expect(forward?.profile.resentment).toBeNull();
+  });
+
+  it("конфликт ревизии отношения содержит слово 'связь'", async () => {
+    const ab = await sendJson<RelationshipJson>(
+      t.app, `/api/books/${bookId}/relationships`, "POST",
+      { fromCharacterId: rin.id, toCharacterId: sarek.id, type: "напарник", tension: 0 },
+    );
+    const first = await send(t.app, `/api/relationships/${ab.id}`, "PATCH", {
+      expectedRevision: ab.revision,
+      profile: { trust: "верит на слово" },
+    });
+    expect(first.status).toBe(200);
+
+    const second = await send(t.app, `/api/relationships/${ab.id}`, "PATCH", {
+      expectedRevision: ab.revision,
+      profile: { trust: "не доверяет" },
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { message?: string };
+    expect(body.message).toBe("связь изменилась, обновите её и повторите");
   });
 
   it("AC-30: связь между книгами не создаётся", async () => {

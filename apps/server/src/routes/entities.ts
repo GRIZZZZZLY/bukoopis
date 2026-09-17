@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   createCharacterInputSchema,
@@ -65,11 +66,15 @@ function bumpBook(sqlite: DatabaseType, bookId: number): void {
     .run(new Date().toISOString(), bookId);
 }
 
-function revisionConflictResponse(c: any, currentRevision: number): any {
+function revisionConflictResponse(
+  c: Context,
+  currentRevision: number,
+  noun: string,
+): Response {
   return c.json(
     {
       error: "revision_conflict",
-      message: "карточка изменилась, обновите её и повторите",
+      message: `${noun} изменилась, обновите её и повторите`,
       details: { currentRevision },
     },
     409,
@@ -180,7 +185,7 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       });
     } catch (e) {
       if (e instanceof RevisionConflictError) {
-        return revisionConflictResponse(c, e.currentRevision);
+        return revisionConflictResponse(c, e.currentRevision, "карточка");
       }
       throw e;
     }
@@ -576,7 +581,7 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       });
     } catch (e) {
       if (e instanceof RevisionConflictError) {
-        return revisionConflictResponse(c, e.currentRevision);
+        return revisionConflictResponse(c, e.currentRevision, "связь");
       }
       throw e;
     }
