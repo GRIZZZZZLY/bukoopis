@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
+import type { Database as DatabaseType } from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as sqliteVec from "sqlite-vec";
@@ -15,6 +16,7 @@ const migrationsFolder = resolve(__dirname, "../../../drizzle");
 
 export interface TestApp extends AppHandle {
   dbDir: string;
+  sqlite: DatabaseType;
   cleanup: () => void;
 }
 
@@ -38,12 +40,15 @@ export function makeTestApp(): TestApp {
   sqlite.close();
 
   const handle = createApp(dbPath);
+  const reopenedSqlite = new Database(dbPath);
 
   return {
     ...handle,
     dbDir,
+    sqlite: reopenedSqlite,
     cleanup: () => {
       handle.close();
+      reopenedSqlite.close();
       try {
         rmSync(dbDir, { recursive: true, force: true });
       } catch {

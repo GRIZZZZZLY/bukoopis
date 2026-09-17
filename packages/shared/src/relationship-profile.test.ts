@@ -3,6 +3,7 @@ import {
   normalizeRelationshipProfile,
   directedRelationshipWriteSchema,
   directedRelationshipSchema,
+  parseRelationshipProfileForWrite,
 } from "./relationship-profile.js";
 
 describe("normalizeRelationshipProfile", () => {
@@ -67,5 +68,24 @@ describe("normalizeRelationshipProfile", () => {
     const p = normalizeRelationshipProfile(raw);
     expect(Object.getPrototypeOf(p.extra)).toBe(Object.prototype);
     expect(p.extra.__proto__).toBe("опасно");
+  });
+});
+
+describe("parseRelationshipProfileForWrite", () => {
+  it("валидный профиль проходит", () => {
+    const result = parseRelationshipProfileForWrite({
+      trust: "верит на слово",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile.trust).toBe("верит на слово");
+    }
+  });
+
+  it("превышение лимита trust не проходит", () => {
+    const result = parseRelationshipProfileForWrite({
+      trust: "я".repeat(2001),
+    });
+    expect(result.ok).toBe(false);
   });
 });

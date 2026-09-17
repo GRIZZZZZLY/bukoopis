@@ -127,3 +127,15 @@ export function normalizeRelationshipProfile(raw: unknown): DirectedRelationship
   }
   return { ...directedRelationshipSchema.parse(salvaged), extra: { ...extra } };
 }
+
+/** Принимает V1, V2 и то, что прислал автор; возвращает V2 или список
+ *  нарушенных пределов. Единственная дверь на запись профиля. */
+export function parseRelationshipProfileForWrite(
+  raw: unknown,
+): { ok: true; profile: DirectedRelationship } | { ok: false; error: z.ZodError } {
+  const normalized = normalizeRelationshipProfile(raw);
+  const checked = directedRelationshipWriteSchema.safeParse(normalized);
+  return checked.success
+    ? { ok: true, profile: normalized }
+    : { ok: false, error: checked.error };
+}

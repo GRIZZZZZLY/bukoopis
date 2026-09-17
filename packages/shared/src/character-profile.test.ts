@@ -3,6 +3,7 @@ import {
   normalizeCharacterProfile,
   characterProfileWriteSchema,
   characterProfileV2Schema,
+  parseCharacterProfileForWrite,
 } from "./character-profile.js";
 
 describe("normalizeCharacterProfile", () => {
@@ -127,5 +128,22 @@ describe("normalizeCharacterProfile", () => {
   it("верхнеуровневый массив не бросает", () => {
     const p = normalizeCharacterProfile([1, 2]);
     expect(p.extra).toEqual({ raw: [1, 2] });
+  });
+});
+
+describe("parseCharacterProfileForWrite", () => {
+  it("валидный профиль проходит", () => {
+    const result = parseCharacterProfileForWrite({ description: "Инженер." });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile.description).toBe("Инженер.");
+    }
+  });
+
+  it("превышение лимита description не проходит", () => {
+    const result = parseCharacterProfileForWrite({
+      description: "я".repeat(20_001),
+    });
+    expect(result.ok).toBe(false);
   });
 });

@@ -204,3 +204,15 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
   }
   return { ...characterProfileV2Schema.parse(salvaged), extra: { ...extra } };
 }
+
+/** Принимает V1, V2 и то, что прислал автор; возвращает V2 или список
+ *  нарушенных пределов. Единственная дверь на запись профиля. */
+export function parseCharacterProfileForWrite(
+  raw: unknown,
+): { ok: true; profile: CharacterProfileV2 } | { ok: false; error: z.ZodError } {
+  const normalized = normalizeCharacterProfile(raw);
+  const checked = characterProfileWriteSchema.safeParse(normalized);
+  return checked.success
+    ? { ok: true, profile: normalized }
+    : { ok: false, error: checked.error };
+}
