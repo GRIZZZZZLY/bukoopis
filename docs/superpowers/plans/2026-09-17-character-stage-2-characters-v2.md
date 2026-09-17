@@ -32,13 +32,15 @@
 
 Эти факты собраны чтением HEAD 2026-09-17. Они меняют форму задач, поэтому вынесены до них.
 
-1. **`role/age/background` теряются на чтении, а не на записи.** Материализация (`routes/studio.ts:1343`) кладёт в `profile_json` **весь** профиль кандидата, включая `role`, `age`, `background`. Теряет их `toCharacter` (`db/rows.ts:189`): `characterProfileSchema.parse` по умолчанию срезает неизвестные ключи. Значит у уже материализованных героев (в том числе у пилотного состава книги 3, id 22–27) эти поля **лежат в базе прямо сейчас** и восстанавливать их миграцией не нужно — достаточно перестать их срезать. Это и есть половина AC-35.
+1. **`role/age/background` теряются на чтении, а не на записи.** Материализация (`routes/studio.ts:1343`) кладёт в `profile_json` **весь** профиль кандидата, включая `role`, `age`, `background`. Теряет их `toCharacter` (`db/rows.ts:189`): `characterProfileSchema.parse` по умолчанию срезает неизвестные ключи. Значит у уже материализованных героев эти поля **лежат в базе прямо сейчас** и восстанавливать их миграцией не нужно — достаточно перестать их срезать. Это и есть половина AC-35.
+   **Уточнено проверкой на реальной базе (задача 11).** Пилотный состав книги 3 (id 22–27) заведён **не** через Мастерскую: у него форма V1 — `description, want, need, lie, arc, notes`, и `role`/`age`/`background` там не было никогда. Материализованные герои — это id 34–53 книги 1, у них в `profile_json` лежит ровно форма кандидата: `name, role, age, description, background`. AC-35 на реальных данных проверяется на них.
 2. **`safeProfile` бросает исключение.** `db/rows.ts:180` — `schema.parse(JSON.parse(json))`. Профиль с пустым `description` или битым JSON роняет весь `GET /books/:id/characters`. Отсюда требование «схема чтения не бросает».
 3. **`PATCH /characters/:id` и `PATCH /relationships/:id` перезаписывают молча** (`routes/entities.ts:102-128`, `443-469`): читают строку, накладывают поля, пишут. Ни ревизии, ни сравнения.
 4. **Ни один экран не вызывает `api.updateCharacter` и `api.updateRelationship`.** Поиск по `apps/web/src` даёт только определения в `api/client.ts`. Значит обязательный `expectedRevision` ничего не ломает в интерфейсе: правится сигнатура клиента, а не экраны.
 5. **Единственный существующий редактор сущностей — `KnowledgePanel`** (`apps/web/src/components/KnowledgePanel.tsx`, 441 строка, вкладки Characters/Locations/Items/Hooks/Relationships), примонтирован в `ChaptersStagePage.tsx:187`. `RelationshipsTab` умеет создавать связь (от/к/тип/tension) и удалять. Экрана карточки персонажа в приложении нет вообще.
 6. **`resolveEntity` (`utils/entity-resolve.ts:26`) на неоднозначности берёт первое совпадение** — `rows.find(...)`. Два героя с одинаковым нормализованным именем в одной книге дают тихий выбор «случайного». Алиасы уже хранятся нормализованными (`addEntityAlias` нормализует перед вставкой), уникальность — пара «книга + тип + алиас».
 7. **Материализация всегда `INSERT`** (`routes/studio.ts:1300-1355`). Идемпотентность есть только по `requestKey` — набору `tempId`. Автор, изменивший состав и нажавший «Добавить в канон» второй раз, получает дубликаты строк `characters`.
+   **Исправлено после ревью задачи 7:** одной ветки обновления мало. Автор, поправивший имя и нажавший кнопку снова, шлёт тот же набор `tempId` — повтор срабатывает до любой записи, возвращает прошлый ответ, и правка молча пропадает при виде успеха. Значит `requestKey` обязан включать отпечаток профилей кандидатов, а не только их `tempId`: повтор запроса по сети шлёт то же тело и получает тот же ответ, а правка автора меняет отпечаток и проходит в ветку обновления.
 8. **Следующий номер миграции — 0022.** В `apps/server/drizzle/meta/_journal.json` последняя запись `idx: 21`, `tag: "0021_critique_partial"`.
 9. **CHECK-ограничения менять не нужно.** Все новые значения перечислений живут в новых таблицах; в существующие таблицы добавляются только колонки. Перестройки таблиц в 0022 нет.
 
@@ -500,13 +502,13 @@ describe("selectVoiceSamples", () => {
   it("образец из поздней главы не попадает в раннюю сцену", () => {
     const early = selectVoiceSamples(bank, {
       situation: "intimate",
-      beforeChapterOrder: 4,
+      excludeFromChapterOrder: 4,
       limit: 5,
     });
     expect(early.map((s) => s.id)).not.toContain(6);
     const late = selectVoiceSamples(bank, {
       situation: "intimate",
-      beforeChapterOrder: 20,
+      excludeFromChapterOrder: 20,
       limit: 5,
     });
     expect(late.map((s) => s.id)).toContain(6);
@@ -593,7 +595,10 @@ export const createVoiceSampleInputSchema = z.object({
   addresseeCharacterId: z.number().int().positive().nullable().optional(),
   note: z.string().max(1000).nullable().optional(),
   origin: voiceSampleOriginSchema.default("author"),
-  status: voiceSampleStatusSchema.optional(),
+  // `status` на создании НЕ принимается: он выводится из `origin`.
+  // Иначе `{origin: "llm", status: "accepted"}` кладёт предложение
+  // модели сразу принятым, а `selectVoiceSamples` читает `accepted`
+  // как «автор решил» и уносит образец в промпт Writer'а (INV-01).
   sourceVersionId: z.number().int().positive().nullable().optional(),
   sourceChapterOrder: z.number().int().nonnegative().nullable().optional(),
 });
@@ -609,7 +614,7 @@ export interface VoiceSampleSelection {
   addresseeCharacterId?: number | null;
   /** Граница сцены. Образец, взятый из главы с этим порядком или позже,
    *  отбрасывается. `null`/`undefined` — границы нет. */
-  beforeChapterOrder?: number | null;
+  excludeFromChapterOrder?: number | null;
   limit?: number;
 }
 
@@ -620,7 +625,7 @@ export function selectVoiceSamples(
   selection: VoiceSampleSelection,
 ): CharacterVoiceSample[] {
   const limit = selection.limit ?? 3;
-  const boundary = selection.beforeChapterOrder ?? null;
+  const boundary = selection.excludeFromChapterOrder ?? null;
   const scored = samples
     .filter((s) => s.status === "accepted")
     .filter(
@@ -1256,8 +1261,12 @@ describe("ревизии персонажа", () => {
          WHERE entity_type = 'character' AND entity_id = ? ORDER BY revision`,
       )
       .all(rin.id) as Array<{ revision: number; origin: string }>;
-    expect(rows.map((r) => r.revision)).toEqual([1]);
-    expect(rows[0]?.origin).toBe("author");
+    // Ревизия 0 — карточка, какой её создали; 1 — принятая правка. Без
+    // нулевой строки исходную карточку нельзя восстановить никогда, а
+    // материализация состава (задача 7) свою нулевую пишет, и без этой
+    // истории у двух способов создать героя разошлись бы.
+    expect(rows.map((r) => r.revision)).toEqual([0, 1]);
+    expect(rows.map((r) => r.origin)).toEqual(["author", "author"]);
   });
 });
 
@@ -1721,8 +1730,9 @@ r.post("/characters/:id/voice-samples", async (c) => {
 
   // Авторский образец — уже решение автора, отдельного принятия не просит.
   // Предложение модели ждёт: «ничего не утверждается без автора».
+  // Статус выводится из происхождения и только из него.
   const status =
-    parsed.data.status ?? (parsed.data.origin === "author" ? "accepted" : "proposed");
+    parsed.data.origin === "author" ? "accepted" : "proposed";
   const now = new Date().toISOString();
   const info = sqlite
     .prepare(
@@ -2489,6 +2499,15 @@ describe("RelationshipQualities", () => {
 Run: `pnpm --filter @book-forge/web test -- src/components/__tests__/RelationshipQualities.test.tsx`
 Expected: FAIL, модуль не найден.
 
+
+> **Исправлено после ревью задачи 9.** Управляемое поле, значение которого
+> склеивается через `join(", ")`, а `onChange` сразу режет строку и
+> отбрасывает пустые куски, **стирает запятую в момент набора**: после `,`
+> получается `["а", ""]`, пустой кусок выбрасывается, и в DOM возвращается
+> `"а"`. Второй пункт вписать невозможно (вставка работает), а значение с
+> запятой внутри разваливается надвое. Держать сырой текст в локальном
+> состоянии и резать его на `blur`/сохранении.
+
 ```tsx
 import { useState } from "react";
 import {
@@ -2639,7 +2658,7 @@ git commit -m "feat(web): образцы речи и качества отнош
 
 **Interfaces:**
 - Consumes: `selectVoiceSamples`, `VOICE_SITUATION_LABELS`, `RELATIONSHIP_QUALITY_LABELS`, `normalizeCharacterProfile`, `toVoiceSample`.
-- Produces: `CharacterAgentResult` получает `voiceSamples`; `characterContextToPrompt(result, charNameById, options?)` принимает необязательные `{ situation, addresseeCharacterId, beforeChapterOrder }`.
+- Produces: `CharacterAgentResult` получает `voiceSamples`; `characterContextToPrompt(result, charNameById, options?)` принимает необязательные `{ situation, addresseeCharacterId, chapterOrder }`.
 
 Промпты Writer'а здесь **не меняются** — это этап 5. Меняется только то, что собирается и как оно отрисовано.
 
@@ -2715,9 +2734,19 @@ describe("characterContextToPrompt", () => {
   it("AC-06: для разговора с начальником берутся образцы этого регистра", () => {
     const boss = characterContextToPrompt(result, names, { situation: "authority" });
     const close = characterContextToPrompt(result, names, { situation: "intimate" });
-    expect(boss).toContain("Так точно.");
-    expect(boss).not.toContain("Ты опять за своё.");
-    expect(close).toContain("Ты опять за своё.");
+    // Исправлено после ревью задачи 10. Прежняя проверка требовала, чтобы
+    // образец чужого регистра ОТСУТСТВОВАЛ, и противоречила самому отбору:
+    // `selectVoiceSamples` берёт до трёх и намеренно добирает авторские
+    // образцы с нулевым совпадением как заполнение, потому что заголовок
+    // называет их диапазоном. Проверяем не отсутствие, а порядок — нужный
+    // регистр идёт первым.
+    expect(boss.indexOf("Так точно.")).toBeGreaterThan(-1);
+    expect(boss.indexOf("Так точно.")).toBeLessThan(
+      boss.indexOf("Ты опять за своё."),
+    );
+    expect(close.indexOf("Ты опять за своё.")).toBeLessThan(
+      close.indexOf("Так точно."),
+    );
   });
 
   it("без образцов и качеств лишних блоков нет", () => {
@@ -2773,7 +2802,11 @@ export interface CharacterAgentResult {
     const mine = selectVoiceSamples(samplesFor(c.id), {
       situation: options?.situation ?? "neutral",
       addresseeCharacterId: options?.addresseeCharacterId ?? null,
-      beforeChapterOrder: options?.beforeChapterOrder ?? null,
+      // `excludeFromChapterOrder` — ИСКЛЮЧАЮЩАЯ граница: передаём порядок
+      // текущей главы, а не `порядок - 1`. Одноимённое поле
+      // `gatherRetrievedChunks` включающее, и привычка вычитать единицу
+      // тихо отняла бы здесь все образцы предыдущей главы.
+      excludeFromChapterOrder: options?.chapterOrder ?? null,
     });
     if (mine.length > 0) {
       lines.push("- Образцы речи (диапазон, не образец для копирования):");
@@ -2845,7 +2878,7 @@ curl -s localhost:3001/api/books/3/characters | node -e "let s='';process.stdin.
 curl -s localhost:3001/api/books/3/relationships | head -c 400
 kill %1
 ```
-Expected: шесть героев книги 3 (id 22–27), у каждого `schemaVersion: 2`, `revision: 0`, и у материализованных — непустой `role`. Это AC-35 на реальных данных: поля лежали в `profile_json` и раньше, теперь они видны.
+Expected: шесть героев книги 3 (id 22–27) читаются, у каждого `schemaVersion: 2` и `revision: 0`. Непустого `role` у них НЕ будет: они заведены не Мастерской. AC-35 на реальных данных проверяется на книге 1, id 34–53, — это материализованный состав, и у него в `profile_json` лежит `name, role, age, description, background`. Поля лежали там и раньше; теперь чтение их не срезает.
 
 - [ ] **Step 3: AC-31 — импортированный состав и план**
 
