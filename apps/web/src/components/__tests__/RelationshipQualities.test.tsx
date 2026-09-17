@@ -73,4 +73,16 @@ describe("RelationshipQualities", () => {
     const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
     expect((body.profile as Record<string, unknown>).disputes).toEqual(["деньги", "карьера"]);
   });
+
+  it("разногласия без blur уходят в profile (не зависит от focus)", async () => {
+    updateRelationship.mockResolvedValue({ ...rel, revision: 3 });
+    render(<RelationshipQualities relationship={rel as never} onSaved={vi.fn()} />);
+    const input = screen.getByLabelText("разногласия");
+    await userEvent.type(input, "первое, второе");
+    // Сохранить без blur (не полагаемся на фокус браузера)
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(updateRelationship).toHaveBeenCalled());
+    const [, body] = updateRelationship.mock.calls[0] as [number, { profile: unknown }];
+    expect((body.profile as Record<string, unknown>).disputes).toEqual(["первое", "второе"]);
+  });
 });

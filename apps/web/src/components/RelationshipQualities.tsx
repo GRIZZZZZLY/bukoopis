@@ -22,6 +22,15 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** Разделить строку на элементы. Значение с запятой разбивается на две части;
+   *  это компромисс для поля с разделителем (документировано здесь, чтобы не переоткрыть как баг). */
+  function splitList(text: string): string[] {
+    return text
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
   function setField(key: RelationshipQualityKey, value: string) {
     setDraft((p) => ({ ...p, [key]: value.trim() ? value : null }));
   }
@@ -29,25 +38,22 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
   function commitDisputesAndSilences() {
     setDraft((p) => ({
       ...p,
-      disputes: disputesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      silences: silencesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      disputes: splitList(disputesText),
+      silences: splitList(silencesText),
     }));
   }
 
   async function save() {
-    commitDisputesAndSilences();
     setBusy(true);
     setError(null);
     try {
+      // Compute arrays locally from raw text to ensure they reach the payload.
+      // setDraft is async, so draft would still be stale here.
+      const disputes = splitList(disputesText);
+      const silences = splitList(silencesText);
       await api.updateRelationship(relationship.id, {
         expectedRevision: relationship.revision,
-        profile: draft,
+        profile: { ...draft, disputes, silences },
       });
       await onSaved();
     } catch (e) {
