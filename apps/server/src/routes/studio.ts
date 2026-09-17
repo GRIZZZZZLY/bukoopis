@@ -1270,12 +1270,43 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       .get(id) as { id: number; studio_state: string | null } | undefined;
     if (!bookRow) return notFound(c, "book");
 
+    // Рекурсивная сортировка ключей для детерминированной сериализации.
+    // JSON.stringify() один не гарантирует порядок ключей в объектах: входящий
+    // запрос может иметь {role, name} или {name, role}, и они будут
+    // сериализованы по-разному. Это сломало бы ключ идемпотентности: два
+    // одинаковых запроса с ключами профиля в разных порядках дали бы разные
+    // ключи, и повтор сетевого запроса был бы воспринят как новое редактирование.
+    // Старые события в журнале с формой "c1|c2" больше не совпадают; это нормально,
+    // потому что finalPayload клиента содержит materializedEntityId, и первый
+    // клик после этого идёт в ветку апдейта.
+    function stableSortedStringify(value: unknown): string {
+      if (value === null || value === undefined) return JSON.stringify(value);
+      if (typeof value !== "object") return JSON.stringify(value);
+      if (Array.isArray(value)) {
+        return JSON.stringify(value.map((item) => JSON.parse(stableSortedStringify(item))));
+      }
+      const sorted: Record<string, unknown> = {};
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        sorted[key] = (value as Record<string, unknown>)[key];
+      }
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(sorted).sort()) {
+        const v = sorted[key];
+        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+          result[key] = JSON.parse(stableSortedStringify(v));
+        } else {
+          result[key] = v;
+        }
+      }
+      return JSON.stringify(result);
+    }
+
     // ADR 0002 (Step 7) — idempotency: a network retry replays the SAME
     // request (same aspect, same candidate profiles) instead of inserting duplicate
     // entities. An author's edit to a candidate's profile generates a new key
     // and takes the update path. The materialize event journaled in the same
     // transaction below is the dedup key. Stable serialization: sort by tempId,
-    // include decision, materializedEntityId, mergedIntoId, profile.
+    // include decision, materializedEntityId, mergedIntoId, profile (with sorted keys).
     const requestKey = JSON.stringify(
       parsed.data.candidates
         .map((c) => ({
@@ -1283,7 +1314,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           decision: c.decision,
           materializedEntityId: c.materializedEntityId,
           mergedIntoId: c.mergedIntoId,
-          profile: c.profile,
+          profile: JSON.parse(stableSortedStringify(c.profile)),
         }))
         .sort((a, b) => a.tempId.localeCompare(b.tempId)),
     );
@@ -1291,16 +1322,16 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       .prepare(
         `SELECT payload FROM studio_events
          WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
+           AND json_extract(payload, '$.requestKey') = ?
          ORDER BY id DESC LIMIT 1`,
       )
-      .get(id, aspectId) as { payload: string } | undefined;
+      .get(id, aspectId, requestKey) as { payload: string } | undefined;
     if (prior) {
       try {
         const p = JSON.parse(prior.payload) as {
-          requestKey?: string;
           response?: unknown;
         };
-        if (p.requestKey === requestKey && p.response) {
+        if (p.response) {
           return c.json(p.response);
         }
       } catch {

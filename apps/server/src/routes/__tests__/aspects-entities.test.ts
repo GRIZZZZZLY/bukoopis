@@ -680,6 +680,55 @@ describe("AC-35: материализация с ревизией и профи�
     expect(chars).toHaveLength(1);
   });
 
+  it("идемпотентность: один и тот же запрос с ключами профиля в разном порядке возвращает тот же ответ", async () => {
+    const bookId = await createBook();
+    // Первый запрос: {name, description, role}
+    const first = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp6/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { name: "Айрис", description: "Герой", role: "главная" },
+          },
+        ],
+      },
+    );
+    const id = first.createdEntityIds[0]!;
+
+    // Второй запрос: тот же tempId и профиль, но ключи в другом порядке {role, name, description}.
+    // requestKey с детерминированной сортировкой должен совпасть, и произойдёт replay.
+    const second = await sendJson<{ createdEntityIds: number[] }>(
+      t.app,
+      `/api/books/${bookId}/aspects/asp6/materialize`,
+      "POST",
+      {
+        stageId: "characters",
+        aspectName: "Протагонист",
+        candidates: [
+          {
+            tempId: "c1",
+            decision: "accept",
+            profile: { role: "главная", name: "Айрис", description: "Герой" },
+          },
+        ],
+      },
+    );
+
+    expect(second.createdEntityIds).toEqual(first.createdEntityIds);
+    const chars = await sendJson<unknown[]>(
+      t.app,
+      `/api/books/${bookId}/characters`,
+      "GET",
+    );
+    expect(chars).toHaveLength(1);
+  });
+
   it("отредактированный профиль одного tempId обновляет строку и не создаёт дубликат", async () => {
     const bookId = await createBook();
     const first = await sendJson<{ createdEntityIds: number[] }>(
