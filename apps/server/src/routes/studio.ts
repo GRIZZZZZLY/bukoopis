@@ -1276,7 +1276,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     // сериализованы по-разному. Это сломало бы ключ идемпотентности: два
     // одинаковых запроса с ключами профиля в разных порядках дали бы разные
     // ключи, и повтор сетевого запроса был бы воспринят как новое редактирование.
-    // Старые события в журнале с формой "c1|c2" больше не совпадают; это нормально,
+    // Старые события в журнале с формами "c1|c2" (первая попытка) и промежуточным
+    // JSON-обёрнутым ключом (коммит d312ee6) больше не совпадают; это нормально,
     // потому что finalPayload клиента содержит materializedEntityId, и первый
     // клик после этого идёт в ветку апдейта.
     function stableSortedStringify(value: unknown): string {
@@ -1285,14 +1286,10 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       if (Array.isArray(value)) {
         return JSON.stringify(value.map((item) => JSON.parse(stableSortedStringify(item))));
       }
-      const sorted: Record<string, unknown> = {};
-      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-        sorted[key] = (value as Record<string, unknown>)[key];
-      }
       const result: Record<string, unknown> = {};
-      for (const key of Object.keys(sorted).sort()) {
-        const v = sorted[key];
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[key];
+        if (v !== null && typeof v === "object") {
           result[key] = JSON.parse(stableSortedStringify(v));
         } else {
           result[key] = v;
@@ -1316,16 +1313,23 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           mergedIntoId: c.mergedIntoId,
           profile: JSON.parse(stableSortedStringify(c.profile)),
         }))
-        .sort((a, b) => a.tempId.localeCompare(b.tempId)),
+        .sort((a, b) => (a.tempId < b.tempId ? -1 : a.tempId > b.tempId ? 1 : 0)),
     );
-    const prior = sqlite
-      .prepare(
-        `SELECT payload FROM studio_events
-         WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
-           AND json_extract(payload, '$.requestKey') = ?
-         ORDER BY id DESC LIMIT 1`,
-      )
-      .get(id, aspectId, requestKey) as { payload: string } | undefined;
+    let prior: { payload: string } | undefined;
+    try {
+      // SQLite's json_extract() can raise on malformed JSON in the payload column.
+      // Catch and treat as "no prior event" so the request takes the fresh materialization path.
+      prior = sqlite
+        .prepare(
+          `SELECT payload FROM studio_events
+           WHERE book_id = ? AND aspect_id = ? AND event_type = 'materialize_entity_set'
+             AND json_extract(payload, '$.requestKey') = ?
+           ORDER BY id DESC LIMIT 1`,
+        )
+        .get(id, aspectId, requestKey) as { payload: string } | undefined;
+    } catch {
+      /* malformed event payload — fall through to a fresh materialization */
+    }
     if (prior) {
       try {
         const p = JSON.parse(prior.payload) as {

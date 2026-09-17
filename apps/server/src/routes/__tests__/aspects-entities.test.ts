@@ -682,7 +682,7 @@ describe("AC-35: материализация с ревизией и профи�
 
   it("идемпотентность: один и тот же запрос с ключами профиля в разном порядке возвращает тот же ответ", async () => {
     const bookId = await createBook();
-    // Первый запрос: {name, description, role}
+    // Первый запрос: плоский профиль {name, description, role} и вложенный массив с {x, y}
     const first = await sendJson<{ createdEntityIds: number[] }>(
       t.app,
       `/api/books/${bookId}/aspects/asp6/materialize`,
@@ -694,14 +694,21 @@ describe("AC-35: материализация с ревизией и профи�
           {
             tempId: "c1",
             decision: "accept",
-            profile: { name: "Айрис", description: "Герой", role: "главная" },
+            profile: {
+              name: "Айрис",
+              description: "Герой",
+              role: "главная",
+              samples: [{ x: 1, y: 2 }],
+            },
           },
         ],
       },
     );
     const id = first.createdEntityIds[0]!;
 
-    // Второй запрос: тот же tempId и профиль, но ключи в другом порядке {role, name, description}.
+    // Второй запрос: тот же tempId и профиль, но:
+    // - ключи верхнего уровня в другом порядке {role, name, description, samples}
+    // - ключи вложенного объекта в массиве также переставлены {y, x}
     // requestKey с детерминированной сортировкой должен совпасть, и произойдёт replay.
     const second = await sendJson<{ createdEntityIds: number[] }>(
       t.app,
@@ -714,7 +721,12 @@ describe("AC-35: материализация с ревизией и профи�
           {
             tempId: "c1",
             decision: "accept",
-            profile: { role: "главная", name: "Айрис", description: "Герой" },
+            profile: {
+              role: "главная",
+              name: "Айрис",
+              description: "Герой",
+              samples: [{ y: 2, x: 1 }],
+            },
           },
         ],
       },
