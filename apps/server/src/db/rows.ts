@@ -13,7 +13,7 @@ import type {
   Item,
   Location,
   Relationship,
-  CharacterProfile,
+  CharacterVoiceSample,
   LocationProfile,
   ItemProfile,
   WriterProvider,
@@ -21,9 +21,11 @@ import type {
   StudioEventPayload,
 } from "@book-forge/shared";
 import {
-  characterProfileSchema,
+  characterVoiceSampleSchema,
   locationProfileSchema,
   itemProfileSchema,
+  normalizeCharacterProfile,
+  normalizeRelationshipProfile,
   studioEventTypeSchema,
   studioEventPayloadSchema,
 } from "@book-forge/shared";
@@ -129,6 +131,7 @@ export interface CharacterRow {
   book_id: number;
   canonical_name: string;
   profile_json: string;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -166,6 +169,24 @@ export interface RelationshipRow {
   type: string;
   tension: number;
   notes: string | null;
+  profile_json: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CharacterVoiceSampleRow {
+  id: number;
+  book_id: number;
+  character_id: number;
+  text: string;
+  situation: string;
+  addressee_character_id: number | null;
+  note: string | null;
+  origin: string;
+  status: string;
+  source_version_id: number | null;
+  source_chapter_order: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -181,12 +202,28 @@ function safeProfile<T>(json: string, schema: { parse: (v: unknown) => T }): T {
   return schema.parse(JSON.parse(json));
 }
 
+/** Строка базы может содержать что угодно: импорт, ответ модели, ручную
+ *  правку файла. Текст нечитаемого JSON сохраняется — нормализатор положит
+ *  его в `extra`, и автор увидит, что чинить. */
+function parseJsonOrNull(json: string | null): unknown {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return { rawProfileJson: json };
+  }
+}
+
+/** Профиль читается нормализатором, а не `schema.parse`: одно исключение
+ *  здесь означает, что `GET /books/:id/characters` перестал отвечать на
+ *  всю книгу из-за одной кривой строки. */
 export function toCharacter(r: CharacterRow): Character {
   return {
     id: r.id,
     bookId: r.book_id,
     canonicalName: r.canonical_name,
-    profile: safeProfile<CharacterProfile>(r.profile_json, characterProfileSchema),
+    profile: normalizeCharacterProfile(parseJsonOrNull(r.profile_json)),
+    revision: r.revision ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -236,9 +273,31 @@ export function toRelationship(r: RelationshipRow): Relationship {
     type: r.type,
     tension: r.tension,
     notes: r.notes,
+    profile: normalizeRelationshipProfile(parseJsonOrNull(r.profile_json)),
+    revision: r.revision ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+/** `parse` здесь допустим: значения приходят из колонок с CHECK-ограничениями,
+ *  свободного JSON в строке нет. */
+export function toVoiceSample(r: CharacterVoiceSampleRow): CharacterVoiceSample {
+  return characterVoiceSampleSchema.parse({
+    id: r.id,
+    bookId: r.book_id,
+    characterId: r.character_id,
+    text: r.text,
+    situation: r.situation,
+    addresseeCharacterId: r.addressee_character_id,
+    note: r.note,
+    origin: r.origin,
+    status: r.status,
+    sourceVersionId: r.source_version_id,
+    sourceChapterOrder: r.source_chapter_order,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  });
 }
 
 export function toCharacterKnowledge(r: CharacterKnowledgeRow): CharacterKnowledge {

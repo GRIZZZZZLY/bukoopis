@@ -1,9 +1,9 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
-  characterProfileSchema,
+  normalizeCharacterProfile,
+  normalizeRelationshipProfile,
   type Character,
   type CharacterKnowledge,
-  type CharacterProfile,
   type Relationship,
 } from "@book-forge/shared";
 
@@ -12,6 +12,7 @@ interface CharacterRow {
   book_id: number;
   canonical_name: string;
   profile_json: string;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -30,8 +31,22 @@ interface RelationshipRow {
   type: string;
   tension: number;
   notes: string | null;
+  profile_json: string | null;
+  revision: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Та же защита, что в `db/rows.ts`: одна кривая строка профиля не должна
+ *  срывать сбор контекста для генерации главы. Нечитаемый текст сохраняется —
+ *  нормализатор положит его в `extra`. */
+function parseJsonOrNull(json: string | null): unknown {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return { rawProfileJson: json };
+  }
 }
 
 function rowToCharacter(r: CharacterRow): Character {
@@ -39,9 +54,8 @@ function rowToCharacter(r: CharacterRow): Character {
     id: r.id,
     bookId: r.book_id,
     canonicalName: r.canonical_name,
-    profile: characterProfileSchema.parse(
-      JSON.parse(r.profile_json),
-    ) as CharacterProfile,
+    profile: normalizeCharacterProfile(parseJsonOrNull(r.profile_json)),
+    revision: r.revision ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -64,6 +78,8 @@ function rowToRelationship(r: RelationshipRow): Relationship {
     type: r.type,
     tension: r.tension,
     notes: r.notes,
+    profile: normalizeRelationshipProfile(parseJsonOrNull(r.profile_json)),
+    revision: r.revision ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

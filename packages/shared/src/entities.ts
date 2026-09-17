@@ -1,7 +1,12 @@
 import { z } from "zod";
+import { characterProfileV2Schema } from "./character-profile.js";
+import { directedRelationshipSchema } from "./relationship-profile.js";
 
 // ─────────────── Profiles (nested JSON documents) ───────────────
 
+/** V1, только для чтения старых данных и для входа create/update, который
+ *  этап 2 ещё не переписал. Новый код использует `characterProfileV2Schema`:
+ *  он сохраняет все поля V1 под теми же именами. */
 export const characterProfileSchema = z.object({
   description: z.string().min(1),
   want: z.string().nullable().optional(),
@@ -36,7 +41,9 @@ export const characterSchema = z.object({
   id: z.number().int().positive(),
   bookId: z.number().int().positive(),
   canonicalName: z.string().min(1),
-  profile: characterProfileSchema,
+  profile: characterProfileV2Schema,
+  /** Счётчик правок профиля: 0 у строк, которых этап 2 ещё не касался. */
+  revision: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -176,6 +183,10 @@ export const relationshipSchema = z.object({
   type: z.string().min(1),
   tension: z.number().min(-1).max(1),
   notes: z.string().nullable(),
+  /** Направленный профиль A→B. У строк до этапа 2 — пустой: колонка была
+   *  NULL, а нормализация на чтении ничего не выдумывает. */
+  profile: directedRelationshipSchema,
+  revision: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
