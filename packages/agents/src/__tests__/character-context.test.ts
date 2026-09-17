@@ -67,6 +67,7 @@ describe("characterContextToPrompt", () => {
     const close = characterContextToPrompt(result, names, { situation: "intimate" });
     expect(boss.indexOf("Так точно.")).toBeGreaterThan(-1);
     expect(boss.indexOf("Так точно.")).toBeLessThan(boss.indexOf("Ты опять за своё."));
+    expect(close.indexOf("Ты опять за своё.")).toBeGreaterThan(-1);
     expect(close.indexOf("Ты опять за своё.")).toBeLessThan(close.indexOf("Так точно."));
   });
 
