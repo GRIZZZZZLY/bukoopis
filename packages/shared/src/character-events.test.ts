@@ -41,13 +41,68 @@ describe("события персонажа", () => {
     expect(d.endCondition).toBeNull();
   });
 
-  it("чтение не бросает ни на каком мусоре", () => {
-    for (const kind of CHARACTER_EVENT_KINDS) {
-      expect(() => normalizeEventData(kind, null)).not.toThrow();
-      expect(() => normalizeEventData(kind, "строка")).not.toThrow();
-      expect(() => normalizeEventData(kind, [1, 2])).not.toThrow();
-      expect(() => normalizeEventData(kind, { fact: 42 })).not.toThrow();
-    }
+  it("чтение не бросает ни на каком мусоре и заменяет невалидное умолчанием", () => {
+    // Обеспечивает resilience path для каждого вида с неправильно типизированным полем своего вида.
+
+    // knowledge: fact должна быть строкой, становится пустой
+    expect(normalizeEventData("knowledge", { fact: 42 }).fact).toBe("");
+    expect(normalizeEventData("knowledge", undefined).fact).toBe("");
+    expect(normalizeEventData("knowledge", "строка").fact).toBe("");
+    expect(normalizeEventData("knowledge", [1, 2]).fact).toBe("");
+    // acquisition неправильного типа становится observed
+    expect(normalizeEventData("knowledge", { acquisition: 42 }).acquisition).toBe("observed");
+
+    // state: state должна быть строкой, становится пустой
+    expect(normalizeEventData("state", { state: 42 }).state).toBe("");
+    expect(normalizeEventData("state", undefined).state).toBe("");
+    expect(normalizeEventData("state", []).state).toBe("");
+    // scope неправильного типа становится unknown
+    expect(normalizeEventData("state", { scope: 42 }).scope).toBe("unknown");
+
+    // relation_shift: quality должна быть строкой, становится пустой
+    expect(normalizeEventData("relation_shift", { quality: 42 }).quality).toBe("");
+    expect(normalizeEventData("relation_shift", null).quality).toBe("");
+    expect(normalizeEventData("relation_shift", true).quality).toBe("");
+
+    // commitment: commitment должна быть строкой, становится пустой
+    expect(normalizeEventData("commitment", { commitment: undefined }).commitment).toBe("");
+    expect(normalizeEventData("commitment", "").commitment).toBe("");
+    expect(normalizeEventData("commitment", 999).commitment).toBe("");
+  });
+
+  it("извлечённое событие проверяет, что data подходит своему виду", () => {
+    // data с неправильным типом поля отвергается
+    const badFact = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: 42, acquisition: "told" },
+      evidenceQuote: "…",
+      evidenceStart: 0,
+      evidenceEnd: 1,
+    });
+    expect(badFact.success).toBe(false);
+
+    // валидный data пропускает
+    const valid = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "верное" },
+      evidenceQuote: "…",
+      evidenceStart: 0,
+      evidenceEnd: 1,
+    });
+    expect(valid.success).toBe(true);
+
+    // пустой data для knowledge тоже пропускает (заполнится умолчанием)
+    const emptyData = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: {},
+      evidenceQuote: "…",
+      evidenceStart: 0,
+      evidenceEnd: 1,
+    });
+    expect(emptyData.success).toBe(true);
   });
 
   it("извлечённое событие обязано нести цитату и диапазон", () => {

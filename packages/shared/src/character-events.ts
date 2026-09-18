@@ -127,6 +127,7 @@ export function normalizeEventData<K extends CharacterEventKind>(
   // Разбираем по полю: валидное сохраняем, невалидное заменяем умолчанием.
   const salvaged: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(source)) {
+    if (!Object.hasOwn(schema.shape, key)) continue;
     const field = (schema.shape as Record<string, z.ZodTypeAny>)[key];
     if (field && field.safeParse(value).success) salvaged[key] = value;
   }
@@ -169,5 +170,14 @@ export const extractedCharacterEventSchema = z
   .refine((e) => e.evidenceEnd > e.evidenceStart, {
     message: "конец диапазона должен быть больше начала",
     path: ["evidenceEnd"],
+  })
+  .superRefine((e, ctx) => {
+    if (!DATA_SCHEMAS[e.kind].safeParse(e.data).success) {
+      ctx.addIssue({
+        code: "custom",
+        message: `данные не подходят виду события ${e.kind}`,
+        path: ["data"],
+      });
+    }
   });
 export type ExtractedCharacterEvent = z.infer<typeof extractedCharacterEventSchema>;
