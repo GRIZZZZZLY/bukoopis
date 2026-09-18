@@ -160,7 +160,7 @@ describe("memory activation with character events", () => {
   it("AC-23: результат устаревшей версии не активируется", () => {
     const b = insertBook();
     const ch = insertChapter(b, 1);
-    const contentText = "Текст первой версии.";
+    const contentText = "Герой закрыл дверь первой версии.";
     const vId = insertVersion(ch, contentText);
     const otherVersionId = insertVersion(ch, "Текст второй версии.");
 
@@ -168,9 +168,22 @@ describe("memory activation with character events", () => {
 
     markVersionAsCurrent(ch, otherVersionId); // ← текущая версия ДРУГАЯ
 
+    // События здесь настоящие и с находимой цитатой: со списком `[]` проверка
+    // «событий не появилось» держалась бы при любой реализации, включая ту,
+    // что пишет их до проверки на устаревание.
     const factsResult = {
       factCount: 0,
-      staged: { facts: [], characterEvents: [] },
+      staged: {
+        facts: [],
+        characterEvents: [
+          {
+            subjectName: "Герой",
+            kind: "state",
+            data: { state: "закрыл дверь", scope: "scene" },
+            evidenceQuote: "закрыл дверь",
+          },
+        ],
+      },
     };
     const notesResult = { newCount: 0, resolvedCount: 0, staged: null };
 
@@ -285,5 +298,107 @@ describe("memory activation with character events", () => {
     const secondCount = countEvents();
 
     expect(secondCount).toBe(firstCount);
+  });
+
+  it("AC-22: падение ПОСЛЕ записи событий откатывает и их", () => {
+    // Единственная проверка настоящего отката. Прежний тест AC-22 оставлял
+    // задание notes в `pending`, то есть возвращался до открытия транзакции:
+    // реализация, пишущая события отдельной транзакцией после успешной
+    // активации, проходила бы его. Здесь событие уже вставлено, и следом
+    // падает материализация заметок.
+    const b = insertBook();
+    const ch = insertChapter(b, 1);
+    const contentText = "Рин закрыла люк и села.";
+    const vId = insertVersion(ch, contentText);
+    markVersionAsCurrent(ch, vId);
+    insertCharacter(b, "Рин");
+
+    const factsResult = {
+      factCount: 0,
+      staged: {
+        facts: [],
+        characterEvents: [
+          {
+            subjectName: "Рин",
+            kind: "state",
+            data: { state: "закрыла люк", scope: "scene" },
+            evidenceQuote: "закрыла люк",
+          },
+        ],
+      },
+    };
+    // `embeddings` не массив: `.map` в активации бросит уже после вставки
+    // событий. Испорченный result_json — реальный случай: он читается
+    // `JSON.parse(...) as T`, без схемы.
+    const notesResult = {
+      newCount: 0,
+      resolvedCount: 0,
+      staged: { extraction: { newNotes: [], resolvedNoteIds: [] }, embeddings: null },
+    };
+
+    enqueueJob(b, ch, vId, "index", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "summary", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "facts", JSON.stringify(factsResult), "done");
+    enqueueJob(b, ch, vId, "notes", JSON.stringify(notesResult), "done");
+
+    expect(() => tryActivateMemoryVersion(sqlite, ch, vId)).toThrow();
+    expect(countEvents()).toBe(0);
+    const row = sqlite
+      .prepare("SELECT memory_version_id FROM chapters WHERE id = ?")
+      .get(ch) as { memory_version_id: number | null };
+    expect(row.memory_version_id).toBeNull();
+  });
+
+  it("испорченный стадированный результат не бросает внутри транзакции", () => {
+    // Бросок здесь теряет память всей версии молча и навсегда: задание к
+    // этому моменту уже `done`, повторять активацию нечему.
+    const b = insertBook();
+    const ch = insertChapter(b, 1);
+    const vId = insertVersion(ch, "Рин закрыла люк и села.");
+    markVersionAsCurrent(ch, vId);
+    insertCharacter(b, "Рин");
+
+    const factsResult = {
+      factCount: 0,
+      staged: {
+        facts: [],
+        characterEvents: [
+          { subjectName: "Рин", kind: "state", data: {}, evidenceQuote: 42 },
+          { subjectName: "Рин", kind: "state", data: {}, evidenceQuote: null },
+        ],
+      },
+    };
+    const notesResult = { newCount: 0, resolvedCount: 0, staged: null };
+
+    enqueueJob(b, ch, vId, "index", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "summary", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "facts", JSON.stringify(factsResult), "done");
+    enqueueJob(b, ch, vId, "notes", JSON.stringify(notesResult), "done");
+
+    expect(tryActivateMemoryVersion(sqlite, ch, vId)).toBe("activated");
+    expect(countEvents()).toBe(0);
+  });
+
+  it("characterEvents не массивом не бросает внутри транзакции", () => {
+    const b = insertBook();
+    const ch = insertChapter(b, 1);
+    const vId = insertVersion(ch, "Рин закрыла люк и села.");
+    markVersionAsCurrent(ch, vId);
+
+    // Строка правдиво отвечает на `.length`, поэтому прежняя проверка
+    // пропускала её в `for…of`.
+    const factsResult = {
+      factCount: 0,
+      staged: { facts: [], characterEvents: "не массив" },
+    };
+    const notesResult = { newCount: 0, resolvedCount: 0, staged: null };
+
+    enqueueJob(b, ch, vId, "index", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "summary", JSON.stringify({}), "done");
+    enqueueJob(b, ch, vId, "facts", JSON.stringify(factsResult), "done");
+    enqueueJob(b, ch, vId, "notes", JSON.stringify(notesResult), "done");
+
+    expect(tryActivateMemoryVersion(sqlite, ch, vId)).toBe("activated");
+    expect(countEvents()).toBe(0);
   });
 });

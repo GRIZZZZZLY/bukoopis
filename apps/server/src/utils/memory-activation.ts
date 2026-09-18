@@ -99,7 +99,10 @@ export function tryActivateMemoryVersion(
       );
     }
     const staged = factsResult?.staged;
-    if (staged?.characterEvents?.length) {
+    // `Array.isArray`, а не `.length`: `parseJson` — это `JSON.parse as T` без
+    // схемы, и строка или `{length: 1}` из испорченного result_json дошли бы
+    // до `for…of` и бросили внутри транзакции.
+    if (Array.isArray(staged?.characterEvents) && staged.characterEvents.length > 0) {
       const outcome = persistCharacterEvents(sqlite, {
         bookId: ch.book_id,
         chapterId,
@@ -112,7 +115,7 @@ export function tryActivateMemoryVersion(
         // Но молчать нельзя — это единственное место, где видно, сколько
         // извлечённого отброшено и почему.
         console.warn(
-          `[memory] v${versionId}: событий отброшено — доказательство ${outcome.rejectedEvidence}, имя не разрешилось ${outcome.unresolved}`,
+          `[memory] v${versionId}: принято событий ${outcome.inserted}, повторов ${outcome.duplicates}; отброшено — доказательство ${outcome.rejectedEvidence}, имя героя или адресата не разрешилось ${outcome.unresolved}`,
         );
       }
     }

@@ -29,6 +29,11 @@ export function locateEvidence(
   contentText: string,
   quote: string,
 ): { start: number; end: number } | null {
+  // Стадированный результат читается `JSON.parse(...) as T`, без схемы, так
+  // что сюда может прийти что угодно. Без этой проверки `quote.trim()` бросил
+  // бы TypeError внутри транзакции активации, а бросок там теряет память всей
+  // версии молча и навсегда — задание к тому моменту уже `done`.
+  if (typeof quote !== "string") return null;
   // Пробел или одиночный символ сходится где угодно: такая «цитата»
   // подтверждает любое утверждение и делает проверку бессмысленной.
   if (quote.trim().length < 2) return null;
