@@ -29,6 +29,7 @@ describe("SceneBoundary", () => {
     expect(a).toBe(b);
     expect(a).toBe("b3:c41:s0");
     expect(sceneKey(boundaryForChapter(3, 42, 512))).not.toBe(a);
+    expect(sceneKey(boundaryForChapter(4, 41, 512))).not.toBe(a);
   });
 
   it("отрицательный порядковый номер сцены отвергается", () => {
@@ -37,6 +38,16 @@ describe("SceneBoundary", () => {
       chapterId: 1,
       chapterVersionId: null,
       sceneOrdinal: -1,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("дробный порядковый номер сцены отвергается", () => {
+    const r = sceneBoundarySchema.safeParse({
+      bookId: 1,
+      chapterId: 1,
+      chapterVersionId: null,
+      sceneOrdinal: 1.5,
     });
     expect(r.success).toBe(false);
   });
