@@ -22,20 +22,56 @@ describe("промпт извлекателя", () => {
   });
 
   it("называет поля data для каждого вида события", () => {
-    for (const field of ["fact", "state", "quality", "commitment", "toWhom", "scope"]) {
-      expect(CANON_FACT_EXTRACTOR_SYSTEM).toContain(field);
+    // Подстрока сама по себе ничего не доказывает: «fact» есть в «facts[]»,
+    // «state» — в «stated_by_character», «observed» — в «directly_observed».
+    // Проверяем именно строку описания вида, где поля перечислены в data:{}.
+    const bullets = {
+      knowledge: ["fact", "acquisition", "source"],
+      state: ["state", "scope"],
+      relation_shift: ["quality", "from", "to"],
+      commitment: ["commitment", "toWhom"],
+    };
+    for (const [kind, fields] of Object.entries(bullets)) {
+      const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find(
+        (l) => l.startsWith(`- ${kind} —`) && l.includes("data:"),
+      );
+      expect(line, `нет строки с полями data для ${kind}`).toBeDefined();
+      for (const f of fields) expect(line).toContain(`${f}:`);
     }
   });
 
   it("делает acquisition обязательным и объясняет все четыре значения", () => {
     expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/acquisition ОБЯЗАТЕЛЬНО/);
-    for (const mode of ["observed", "told", "inferred", "believed"]) {
-      expect(CANON_FACT_EXTRACTOR_SYSTEM).toContain(mode);
+    // «observed» и «believed» встречаются в списке assertionMode фактов,
+    // поэтому ищем их в строке, которая их именно объясняет.
+    const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+      l.includes("acquisition = observed"),
+    );
+    expect(line).toBeDefined();
+    for (const mode of ["told", "inferred", "believed"]) {
+      expect(line).toContain(mode);
     }
   });
 
-  it("задаёт правило имён и предел числа событий", () => {
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/Ивану.*Иван/);
+  it("задаёт правило именительного падежа именно для имён в событиях", () => {
+    // Такое же правило давно есть у entityName фактов, поэтому общий поиск
+    // по «Ивану → Иван» проходил бы и без этой строки.
+    const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+      l.includes("subjectName"),
+    );
+    expect(line).toBeDefined();
+    expect(line).toContain("addresseeName");
+    expect(line).toMatch(/Ивану.*Иван/);
+  });
+
+  it("называет настоящую цену ошибки, а не пропуск одного события", () => {
+    // Одно негодное событие валит safeParse целиком, вместе с фактами.
+    // Модель, которой обещан дешёвый отказ, рискнёт сомнительным событием.
+    const matches = CANON_FACT_EXTRACTOR_SYSTEM.match(/ВЕСЬ ответ, вместе с фактами/g);
+    expect(matches?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it("называет предел числа событий", () => {
     expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/Не более 30 событий/);
   });
 });

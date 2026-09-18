@@ -8,7 +8,7 @@ import { persistCharacterEvents, dedupKeyFor } from "../character-events.js";
 import type { ExtractedCharacterEvent } from "@book-forge/shared";
 
 /**
- * Проверки самой записи, а не её кирпичей: `verifyEvidence` и `dedupKeyFor`
+ * Проверки самой записи, а не её кирпичей: `locateEvidence` и `dedupKeyFor`
  * покрыты отдельно, а здесь проверяется, что они соединены правильно —
  * отказ по доказательству, неразрешённое имя, повтор и адресат в ключе.
  * Без этого файла первый отказ всплыл бы на задаче 7, далеко от причины.
