@@ -122,10 +122,20 @@ export function persistCharacterEvents(
     throw new Error(`extractorVersion должен быть целым >= 1, получено ${args.extractorVersion}`);
   }
   const version = sqlite
-    .prepare("SELECT content_text FROM chapter_versions WHERE id = ?")
-    .get(args.sourceVersionId) as { content_text: string } | undefined;
+    .prepare("SELECT content_text, chapter_id FROM chapter_versions WHERE id = ?")
+    .get(args.sourceVersionId) as
+    | { content_text: string; chapter_id: number }
+    | undefined;
   if (!version) {
     throw new Error(`версия ${args.sourceVersionId} не найдена`);
+  }
+  // Глава приходит параметром, а версия знает свою сама. Расхождение значит,
+  // что событие приписали бы не той главе — и граница сцены, ради которой
+  // весь этап, считалась бы по чужому номеру.
+  if (version.chapter_id !== args.chapterId) {
+    throw new Error(
+      `версия ${args.sourceVersionId} принадлежит главе ${version.chapter_id}, а не ${args.chapterId}`,
+    );
   }
   const contentText = version.content_text;
   const insert = sqlite.prepare(

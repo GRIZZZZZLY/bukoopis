@@ -203,6 +203,27 @@ describe("persistCharacterEvents", () => {
     expect(out).toMatchObject({ inserted: 0, rejectedEvidence: 1 });
   });
 
+  it("версия из чужой главы падает, а не приписывает событие не туда", () => {
+    const otherChapterId = Number(
+      t.sqlite
+        .prepare(
+          `INSERT INTO chapters (book_id, order_index, title, status, created_at, updated_at)
+           VALUES (?, 20, 'Глава вторая', 'draft', ?, ?)`,
+        )
+        .run(bookId, new Date().toISOString(), new Date().toISOString())
+        .lastInsertRowid,
+    );
+    expect(() =>
+      persistCharacterEvents(t.sqlite, {
+        bookId,
+        chapterId: otherChapterId,
+        sourceVersionId: versionId,
+        events: [event()],
+        extractorVersion: 1,
+      }),
+    ).toThrow(/принадлежит главе/);
+  });
+
   it("негодный номер извлекателя падает, а не считается дубликатами", () => {
     // `INSERT OR IGNORE` гасит и нарушение CHECK: без проверки на входе
     // весь прогон вернул бы «всё дубликаты» и выглядел бы как повтор.
