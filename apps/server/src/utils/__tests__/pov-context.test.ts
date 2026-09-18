@@ -7,6 +7,7 @@ import { dirname } from "node:path";
 import Database, { type Database as DatabaseType } from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { ACQUISITION_LABELS } from "@book-forge/shared";
 import { loadPovKnowledge, renderPovKnowledgePrompt } from "../pov-context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,13 +49,28 @@ function insertChapter(bookId: number, order: number): number {
       .run(bookId, order, `Глава ${order}`, NOW, NOW).lastInsertRowid,
   );
 }
-function learn(characterId: number, fact: string, chapterId: number | null): void {
+function learn(
+  bookId: number,
+  characterId: number,
+  fact: string,
+  chapterId: number | null,
+  acquisition = "observed",
+): void {
   sqlite
     .prepare(
-      `INSERT INTO character_knowledge (character_id, fact, learned_in_chapter_id, created_at)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO character_events
+         (book_id, subject_character_id, kind, data_json, chapter_id, scene_ordinal,
+          origin, verification, extractor_version, dedup_key, created_at)
+       VALUES (?, ?, 'knowledge', ?, ?, 0, 'manual', 'confirmed', 1, ?, ?)`,
     )
-    .run(characterId, fact, chapterId, NOW);
+    .run(
+      bookId,
+      characterId,
+      JSON.stringify({ fact, acquisition }),
+      chapterId,
+      `k:${fact}`,
+      NOW,
+    );
 }
 
 beforeEach(() => open());
@@ -64,38 +80,84 @@ afterEach(() => {
 });
 
 describe("loadPovKnowledge", () => {
-  it("returns only what POV learned by the current chapter", () => {
+  it("возвращает узнанное ДО этой главы, но не в ней самой", () => {
     const b = insertBook();
     const ivan = insertCharacter(b, "Иван");
     const ch2 = insertChapter(b, 2);
+    const ch5 = insertChapter(b, 5);
     const ch7 = insertChapter(b, 7);
-    learn(ivan, "знает пароль", ch2);
-    learn(ivan, "видел убийцу", ch7);
-    learn(ivan, "боится темноты", null); // known from the start
+    learn(b, ivan, "знает пароль", ch2);
+    learn(b, ivan, "видел убийцу", ch7);
+    learn(b, ivan, "боится темноты", null); // известно с начала
 
-    const at5 = loadPovKnowledge(sqlite, b, "Иван", 5);
+    const at5 = loadPovKnowledge(sqlite, b, "Иван", ch5);
     expect(at5.povName).toBe("Иван");
-    expect(at5.facts).toContain("знает пароль");
-    expect(at5.facts).toContain("боится темноты");
-    expect(at5.facts).not.toContain("видел убийцу"); // learned later, at ch7
+    expect(at5.facts.join(" ")).toContain("знает пароль");
+    expect(at5.facts.join(" ")).toContain("боится темноты");
+    expect(at5.facts.join(" ")).not.toContain("видел убийцу");
 
-    const at7 = loadPovKnowledge(sqlite, b, "Иван", 7);
-    expect(at7.facts).toContain("видел убийцу");
+    // Решающий случай: в СВОЕЙ главе знание ещё не получено. При включающей
+    // границе (как было до этапа 3) герой входил бы в сцену, уже зная её
+    // поворот, и Писателю разрешалось бы это озвучить.
+    const at7 = loadPovKnowledge(sqlite, b, "Иван", ch7);
+    expect(at7.facts.join(" ")).not.toContain("видел убийцу");
+    expect(at7.facts.join(" ")).toContain("знает пароль");
   });
 
-  it("resolves the POV name to the canonical character (case-insensitive)", () => {
+  it("сохраняет, откуда герой узнал: услышанное не равно увиденному", () => {
     const b = insertBook();
     const ivan = insertCharacter(b, "Иван");
-    learn(ivan, "умеет читать руны", null);
-    expect(loadPovKnowledge(sqlite, b, "иван", 3).facts).toEqual([
-      "умеет читать руны",
-    ]);
+    const ch1 = insertChapter(b, 1);
+    const ch4 = insertChapter(b, 4);
+    learn(b, ivan, "станцию закрывают", ch1, "told");
+    learn(b, ivan, "дверь была взломана", ch1, "observed");
+
+    const facts = loadPovKnowledge(sqlite, b, "Иван", ch4).facts;
+    const told = facts.find((f) => f.includes("станцию закрывают"))!;
+    const seen = facts.find((f) => f.includes("дверь была взломана"))!;
+    expect(told).toContain(ACQUISITION_LABELS.told);
+    expect(seen).toContain(ACQUISITION_LABELS.observed);
+    expect(told).not.toContain(ACQUISITION_LABELS.observed);
   });
 
-  it("returns empty for an unknown POV name", () => {
+  it("гипотеза извлекателя в голову герою не попадает", () => {
     const b = insertBook();
-    insertCharacter(b, "Иван");
-    expect(loadPovKnowledge(sqlite, b, "Незнакомец", 3).facts).toEqual([]);
+    const ivan = insertCharacter(b, "Иван");
+    const ch1 = insertChapter(b, 1);
+    const ch4 = insertChapter(b, 4);
+    learn(b, ivan, "точно знает", ch1);
+    sqlite
+      .prepare(
+        `INSERT INTO character_events
+           (book_id, subject_character_id, kind, data_json, chapter_id, scene_ordinal,
+            origin, verification, extractor_version, dedup_key, created_at)
+         VALUES (?, ?, 'knowledge', ?, ?, 0, 'llm', 'proposed', 1, 'p', ?)`,
+      )
+      .run(b, ivan, JSON.stringify({ fact: "только предположение" }), ch1, NOW);
+
+    const facts = loadPovKnowledge(sqlite, b, "Иван", ch4).facts.join(" ");
+    expect(facts).toContain("точно знает");
+    expect(facts).not.toContain("только предположение");
+  });
+
+  it("разрешает имя POV к каноническому герою без учёта регистра", () => {
+    const b = insertBook();
+    const ivan = insertCharacter(b, "Иван");
+    const ch3 = insertChapter(b, 3);
+    learn(b, ivan, "умеет читать руны", null);
+    const out = loadPovKnowledge(sqlite, b, "иван", ch3);
+    expect(out.povName).toBe("Иван");
+    expect(out.facts).toHaveLength(1);
+    expect(out.facts[0]).toContain("умеет читать руны");
+  });
+
+  it("на неизвестное имя POV возвращает пусто", () => {
+    const b = insertBook();
+    const ivan = insertCharacter(b, "Иван");
+    const ch3 = insertChapter(b, 3);
+    // У книги есть что возвращать — иначе пустой ответ ничего не доказывает.
+    learn(b, ivan, "знает город", null);
+    expect(loadPovKnowledge(sqlite, b, "Незнакомец", ch3).facts).toEqual([]);
   });
 });
 

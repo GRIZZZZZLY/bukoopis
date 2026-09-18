@@ -64,7 +64,7 @@ beforeEach(async () => {
     profile: { description: "Инженер." },
   });
   rinId = c.id;
-  for (const o of [1, 2, 4, 8, 9]) makeChapter(o, `Глава ${o}`);
+  for (const o of [1, 2, 3, 4, 8, 9]) makeChapter(o, `Глава ${o}`);
 
   addEvent({ kind: "knowledge", chapterOrder: 2, data: { fact: "Станцию закрывают", acquisition: "told" } });
   addEvent({ kind: "knowledge", chapterOrder: 8, data: { fact: "Сарек — брат Селены", acquisition: "observed" } });
@@ -117,8 +117,10 @@ describe("character knowledge boundary", () => {
     const known = loadKnowledgeAtBoundary(t.sqlite, rinId, boundaryForChapter(bookId, ch9Id, null));
     const lie = known.find((k) => (k.data as { fact: string }).fact === "Сарек погиб");
     expect((lie?.data as { acquisition: string } | undefined)?.acquisition).toBe("told");
-    const facts = t.sqlite.prepare("SELECT COUNT(*) c FROM book_facts WHERE book_id = ?").get(bookId) as { c: number };
-    expect(facts.c).toBe(0);
+    // Прежде здесь стояла проверка `COUNT(*) FROM book_facts = 0`. Упасть она
+    // не могла: ни фикстура, ни проверяемый код в эту таблицу не пишут.
+    // Настоящее разделение «знание героя против факта книги» держит
+    // `acquisition` выше и промпт POV, где услышанное подписано услышанным.
   });
 
   it("перенесённое ручное знание без главы видно на любой границе", () => {
@@ -161,5 +163,78 @@ describe("character knowledge boundary", () => {
     // поэтому граница верна сразу. С денормализованным номером она осталась бы
     // тихо неверной до следующего пересчёта — и заметить это было бы нечем.
     expect(at4()).toContain("Сарек — брат Селены");
+  });
+
+  it("удаление главы уносит её знания, а не открывает их раньше времени", () => {
+    // `chapter_id` пустой значит «известно с начала» и видно на любой
+    // границе. С `ON DELETE SET NULL` удаление восьмой главы превращало бы
+    // её секрет ровно в такую запись, и он всплывал бы на границе четвёртой.
+    const at4 = () =>
+      loadKnowledgeAtBoundary(
+        t.sqlite,
+        rinId,
+        boundaryForChapter(bookId, chapterIds.get(4)!, null),
+      ).map((k) => (k.data as { fact: string }).fact);
+    expect(at4()).not.toContain("Сарек — брат Селены");
+
+    t.sqlite.prepare("DELETE FROM chapters WHERE id = ?").run(chapterIds.get(8)!);
+
+    expect(at4()).not.toContain("Сарек — брат Селены");
+    const orphans = t.sqlite
+      .prepare("SELECT COUNT(*) c FROM character_events WHERE chapter_id IS NULL")
+      .get() as { c: number };
+    expect(orphans.c).toBe(0);
+  });
+
+  it("не-знание на границу знаний не выдаётся", () => {
+    // Состояние и обязательство лежат в той же таблице и проходят тот же
+    // фильтр по статусу. Без проверки вида они приехали бы в список знаний
+    // героя, и Писатель прочитал бы «устала» как факт, который она знает.
+    addEvent({
+      kind: "state",
+      chapterOrder: 1,
+      verification: "confirmed",
+      data: { state: "смертельно устала", scope: "chapter" },
+    });
+    addEvent({
+      kind: "commitment",
+      chapterOrder: 1,
+      verification: "confirmed",
+      data: { commitment: "вернуться за Сареком", toWhom: "Селена" },
+    });
+
+    const boundary = boundaryForChapter(bookId, chapterIds.get(4)!, null);
+    const knowledge = loadKnowledgeAtBoundary(t.sqlite, rinId, boundary);
+    expect(knowledge.every((e) => e.kind === "knowledge")).toBe(true);
+
+    // Но на общей границе событий они есть — иначе проверка выше проходила бы
+    // и на реализации, которая их просто не записала.
+    const all = loadEventsAtBoundary(t.sqlite, [rinId], boundary).map((e) => e.kind);
+    expect(all).toContain("state");
+    expect(all).toContain("commitment");
+  });
+
+  it("опровергнутое к этой главе знание не возвращается", () => {
+    addEvent({
+      kind: "knowledge",
+      chapterOrder: 1,
+      verification: "confirmed",
+      data: {
+        fact: "Селена мертва",
+        acquisition: "told",
+        disprovedFromChapterOrder: 3,
+      },
+    });
+    const at = (order: number) =>
+      loadKnowledgeAtBoundary(
+        t.sqlite,
+        rinId,
+        boundaryForChapter(bookId, chapterIds.get(order)!, null),
+      ).map((k) => (k.data as { fact: string }).fact);
+
+    // До третьей главы герой ещё верит.
+    expect(at(2)).toContain("Селена мертва");
+    // С третьей — уже нет, и на границе четвёртой этого знания нет.
+    expect(at(4)).not.toContain("Селена мертва");
   });
 });

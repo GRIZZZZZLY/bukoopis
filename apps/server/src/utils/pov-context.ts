@@ -1,15 +1,24 @@
 import type { Database as DatabaseType } from "better-sqlite3";
+import {
+  ACQUISITION_LABELS,
+  acquisitionModeSchema,
+  boundaryForChapter,
+} from "@book-forge/shared";
 import { resolveEntity } from "./entity-resolve.js";
+import { loadKnowledgeAtBoundary } from "./character-events.js";
 
 /**
- * ADR 0003 slice 3b — POV knowledge layer.
+ * ADR 0003 slice 3b — POV knowledge layer, переведён на события (этап 3).
  *
- * Objective canon (renderActiveFactsPrompt) is what's TRUE in the world; this
- * is what the POV character has actually learned by the current chapter
- * (character_knowledge, authored/extracted). The Writer is told it may voice
- * only this in the POV's thoughts, keeping author-only knowledge out of the
- * character's head. A knowledge row with no learned_in chapter counts as known
- * from the start.
+ * Объективный канон (`renderActiveFactsPrompt`) — то, что ИСТИННО в мире;
+ * здесь — то, что POV-герой успел узнать. Писателю сказано, что вслух и в
+ * мыслях герой может опираться только на это.
+ *
+ * Читается на границе сцены и ИСКЛЮЧАЮЩЕ: входя в главу N, герой ещё не
+ * знает того, что узнает в ней самой (AC-07). Прежняя версия читала
+ * `character_knowledge` с `order_index <= N` — включающе и из таблицы, в
+ * которую после этапа 3 никто не пишет: авторская правка знаний не
+ * доходила бы до Писателя вовсе, а удалённая — продолжала бы доходить.
  */
 
 export interface PovKnowledge {
@@ -21,25 +30,31 @@ export function loadPovKnowledge(
   sqlite: DatabaseType,
   bookId: number,
   povName: string,
-  currentChapterOrder: number,
+  chapterId: number,
 ): PovKnowledge {
   const resolved = resolveEntity(sqlite, bookId, "character", povName);
   if (!resolved) return { povName, facts: [] };
-  const rows = sqlite
-    .prepare(
-      `SELECT k.fact AS fact
-       FROM character_knowledge k
-       LEFT JOIN chapters c ON c.id = k.learned_in_chapter_id
-       WHERE k.character_id = ?
-         AND (c.order_index IS NULL OR c.order_index <= ?)
-       ORDER BY (c.order_index IS NULL) DESC, c.order_index ASC, k.id ASC`,
-    )
-    .all(resolved.entityId, currentChapterOrder) as Array<{ fact: string }>;
-  return { povName: resolved.canonicalName, facts: rows.map((r) => r.fact) };
+  const events = loadKnowledgeAtBoundary(
+    sqlite,
+    resolved.entityId,
+    boundaryForChapter(bookId, chapterId, null),
+  );
+  const facts = events.map((e) => {
+    const d = e.data as { fact?: unknown; acquisition?: unknown; source?: unknown };
+    const fact = typeof d.fact === "string" ? d.fact : "";
+    // Как узнал — половина смысла этапа. Список без этого возвращает героя,
+    // для которого услышанное и увиденное одно и то же.
+    const mode = acquisitionModeSchema.safeParse(d.acquisition);
+    const how = mode.success ? ACQUISITION_LABELS[mode.data] : null;
+    const from = typeof d.source === "string" && d.source.trim() ? d.source.trim() : null;
+    const tail = [how, from].filter(Boolean).join(", ");
+    return tail ? `${fact} (${tail})` : fact;
+  });
+  return { povName: resolved.canonicalName, facts: facts.filter((f) => f.length > 0) };
 }
 
 export function renderPovKnowledgePrompt(k: PovKnowledge): string | null {
   if (k.facts.length === 0) return null;
   const lines = k.facts.map((f) => `- ${f}`);
-  return `## Известно POV-персонажу (${k.povName})\nТолько это персонаж знает и может думать/говорить как своё знание:\n${lines.join("\n")}`;
+  return `## Известно POV-персонажу (${k.povName})\nТолько это персонаж знает и может думать/говорить как своё знание. В скобках — откуда знает: услышанное и выведенное не равны увиденному своими глазами.\n${lines.join("\n")}`;
 }

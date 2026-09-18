@@ -701,8 +701,11 @@ export const characterEvents = sqliteTable(
     dataJson: text("data_json").notNull(),
     // Граница сцены. Номер главы НЕ денормализуется: перестановка глав
     // оставила бы тихо неверную границу, а join к chapters всегда верен.
+    // CASCADE: пустая глава значит «известно с начала» и видно на любой
+    // границе. SET NULL превращал бы секрет удалённой главы 8 в такую
+    // запись, и он всплывал бы в подготовке главы 4.
     chapterId: integer("chapter_id").references(() => chapters.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     sceneOrdinal: integer("scene_ordinal").notNull().default(0),
     // CASCADE: доказательство события живёт в content_text этой версии. Без

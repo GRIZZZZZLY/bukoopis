@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { characterProfileV2Schema } from "./character-profile.js";
 import { directedRelationshipSchema } from "./relationship-profile.js";
+import { acquisitionModeSchema } from "./character-events.js";
 
 // ─────────────── Profiles (nested JSON documents) ───────────────
 
@@ -247,6 +248,10 @@ export type CharacterKnowledge = z.infer<typeof characterKnowledgeSchema>;
 export const createCharacterKnowledgeInputSchema = z.object({
   fact: z.string().min(1).max(2000),
   learnedInChapterId: z.number().int().positive().nullable().optional(),
+  /** Как герой узнал. Умолчание `observed` — то, что было зашито в маршрут
+   *  до этапа 3; теперь автор может сказать «ему сказали», и Писатель
+   *  увидит разницу вместо выдуманного «видел сам». */
+  acquisition: acquisitionModeSchema.optional(),
 });
 export type CreateCharacterKnowledgeInput = z.infer<
   typeof createCharacterKnowledgeInputSchema

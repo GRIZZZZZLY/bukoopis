@@ -16,7 +16,12 @@ CREATE TABLE character_events (
 
   -- Граница сцены. Номер главы НЕ денормализуется: перестановка глав
   -- оставила бы тихо неверную границу, а join к chapters всегда верен.
-  chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL,
+  --
+  -- CASCADE, а не SET NULL. Пустая глава означает «известно с самого начала»
+  -- и видно на любой границе. При SET NULL удаление главы 8 превращало бы
+  -- записанный в ней секрет ровно в такую запись — и он начинал светиться
+  -- в подготовке главы 4. Это та самая утечка, против которой весь этап.
+  chapter_id INTEGER REFERENCES chapters(id) ON DELETE CASCADE,
   scene_ordinal INTEGER NOT NULL DEFAULT 0,
 
   -- CASCADE, а не SET NULL: доказательство события живёт в content_text этой

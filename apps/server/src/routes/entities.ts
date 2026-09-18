@@ -32,7 +32,6 @@ import {
   toItem,
   toHook,
   toRelationship,
-  toCharacterKnowledge,
   toVoiceSample,
   parseJsonOrNull,
   toCharacterEvent,
@@ -41,7 +40,6 @@ import {
   type ItemRow,
   type HookRow,
   type RelationshipRow,
-  type CharacterKnowledgeRow,
   type CharacterVoiceSampleRow,
   type CharacterEventRow,
 } from "../db/rows.js";
@@ -57,6 +55,7 @@ import {
   recordProfileVersion,
   RevisionConflictError,
 } from "../utils/entity-revisions.js";
+import { dedupKeyFor } from "../utils/character-events.js";
 import { z } from "zod";
 
 function bookExists(sqlite: DatabaseType, id: number): boolean {
@@ -664,8 +663,14 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     const parsed = createCharacterKnowledgeInputSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
     const now = new Date().toISOString();
-    const eventData = { fact: parsed.data.fact, acquisition: "observed" };
-    const dedupKey = `knowledge:-:${JSON.stringify(eventData)}`;
+    const eventData = {
+      fact: parsed.data.fact,
+      acquisition: parsed.data.acquisition ?? "observed",
+    };
+    // Через `dedupKeyFor`, а не руками: формат ключа живёт там, нормализует
+    // строки и приводит данные к форме вида. Собранная здесь строка
+    // разошлась бы с ним молча при первой же правке.
+    const dedupKey = dedupKeyFor("knowledge", eventData, null);
     const info = sqlite
       .prepare(
         `INSERT INTO character_events

@@ -453,7 +453,7 @@ export function createPlotRoute(
 
     // ADR 0003 slice 3b: what the POV character knows so far (POV guard).
     const povKnowledge = renderPovKnowledgePrompt(
-      loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.order_index),
+      loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.id),
     );
 
     // Verbatim close of the preceding chapter — carries intonation and
