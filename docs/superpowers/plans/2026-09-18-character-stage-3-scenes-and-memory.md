@@ -855,7 +855,7 @@ git commit -m "feat(db): миграция 0023 — события персона
 
 **Interfaces:**
 - Consumes: `extractedCharacterEventSchema`, `defaultVerificationFor`, `normalizeEventData`, `toCharacterEvent`, `resolveEntity` (этап 2).
-- Produces: `verifyEvidence(contentText, quote, start, end)`, `dedupKeyFor(kind, data)`, `persistCharacterEvents(sqlite, args)`, тип `PersistEventsOutcome`. Задачи 5–8 зависят от них.
+- Produces: `locateEvidence(contentText, quote)`, `dedupKeyFor(kind, data, addresseeCharacterId?)`, `persistCharacterEvents(sqlite, args)`, тип `PersistEventsOutcome`. Задачи 5–8 зависят от них. (Изначально здесь значился `verifyEvidence(contentText, quote, start, end)`; ревью задачи 5 показало, что диапазон у модели просить нельзя — см. врезку в конце Step 3.)
 
 - [ ] **Step 1: Написать падающие тесты**
 
@@ -1106,6 +1106,15 @@ export function persistCharacterEvents(
 > но неразрешённый адресат — отказ `unresolved`, а не `NULL`; `extractorVersion`
 > проверяется на входе, потому что `INSERT OR IGNORE` гасит и нарушения CHECK;
 > `verifyEvidence` отвергает цитату короче двух значащих символов.
+>
+> **Позже, по итогам ревью задачи 5, доказательство перестало нести диапазон.**
+> `extractedCharacterEventSchema` больше не имеет `evidenceStart`/`evidenceEnd`,
+> а `verifyEvidence` заменён на `locateEvidence(contentText, quote)`, который
+> ищет цитату сам и возвращает `{start, end}` либо `null`. Причина: модель не
+> считает позиции символов в главе на двадцать тысяч знаков, промах на единицу
+> отвергает событие, и весь разбор выглядел бы как «в главе ничего нет».
+> Цитата, встречающаяся дважды, тоже отвергается — неоднозначная привязка
+> хуже отсутствующей. В хранилище диапазон остался: его считает сервер.
 
 - [ ] **Step 4: Прогнать тесты**
 
@@ -1264,8 +1273,6 @@ it("staged-результат задания facts несёт события р�
         kind: "knowledge",
         data: { fact: "Станцию закрывают", acquisition: "told" },
         evidenceQuote: QUOTE,
-        evidenceStart: start,
-        evidenceEnd: start + QUOTE.length,
       },
     ],
   });

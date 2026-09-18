@@ -11,28 +11,33 @@ import { resolveEntity } from "./entity-resolve.js";
 /** Слой событий персонажа (ТЗ индивидуальности, разделы 6, 12). */
 
 /**
- * Доказательство — точная цитата и диапазон в НЕИЗМЕНЯЕМОМ `content_text`
- * указанной версии. Проверка буквальная: `slice(start, end) === quote`.
- * Модельный ответ не считается доверенным только потому, что он правильной
- * формы (раздел 14), а событие без сошедшегося доказательства не
+ * Находит дословную цитату в НЕИЗМЕНЯЕМОМ `content_text` указанной версии.
+ * Поиск буквальный: цитата либо есть в тексте ровно один раз, либо
+ * доказательства нет. Модельный ответ не считается доверенным потому, что он
+ * правильной формы (раздел 14), а событие без доказательства не
  * активируется (AC-25).
  *
- * Координаты — UTF-16 offsets, как их считает JavaScript. Это
+ * Диапазон СЧИТАЕТ СЕРВЕР, а не модель. Просить у модели позиции символов
+ * в главе на двадцать тысяч знаков — просить то, чего она не умеет: промах
+ * на единицу отвергает событие, и весь разбор возвращается пустым, как если
+ * бы в главе ничего не было. Цитату модель копирует, а это она умеет.
+ *
+ * Координаты на выходе — UTF-16 offsets, как их считает JavaScript. Это
  * задокументированная система: смешивать её с индексами TipTap нельзя.
  */
-export function verifyEvidence(
+export function locateEvidence(
   contentText: string,
   quote: string,
-  start: number,
-  end: number,
-): boolean {
-  if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
-  if (start < 0 || end <= start) return false;
-  if (end > contentText.length) return false;
+): { start: number; end: number } | null {
   // Пробел или одиночный символ сходится где угодно: такая «цитата»
   // подтверждает любое утверждение и делает проверку бессмысленной.
-  if (quote.trim().length < 2) return false;
-  return contentText.slice(start, end) === quote;
+  if (quote.trim().length < 2) return null;
+  const start = contentText.indexOf(quote);
+  if (start < 0) return null;
+  // Второе вхождение — неоднозначная привязка. То же правило, что у
+  // `resolveEntity` на двух тёзках: указать не туда хуже, чем не указать.
+  if (contentText.indexOf(quote, start + 1) >= 0) return null;
+  return { start, end: start + quote.length };
 }
 
 /**
@@ -149,10 +154,11 @@ export function persistCharacterEvents(
   const now = new Date().toISOString();
 
   for (const e of args.events) {
-    // Доказательство проверяется первым: это сравнение строк, а разбор имени
+    // Доказательство ищется первым: это поиск по строке, а разбор имени
     // идёт в базу. Порядок ещё и честнее в подсчёте — выдуманная цитата
     // ложится в `rejectedEvidence`, а не прячется в `unresolved`.
-    if (!verifyEvidence(contentText, e.evidenceQuote, e.evidenceStart, e.evidenceEnd)) {
+    const span = locateEvidence(contentText, e.evidenceQuote);
+    if (!span) {
       out.rejectedEvidence += 1;
       continue;
     }
@@ -191,8 +197,8 @@ export function persistCharacterEvents(
       IMPLICIT_SCENE_ORDINAL,
       args.sourceVersionId,
       e.evidenceQuote,
-      e.evidenceStart,
-      e.evidenceEnd,
+      span.start,
+      span.end,
       defaultVerificationFor(e.kind),
       args.extractorVersion,
       dedupKeyFor(e.kind, e.data, addresseeId),

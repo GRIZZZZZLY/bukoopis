@@ -1,41 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { verifyEvidence, dedupKeyFor } from "../character-events.js";
+import { locateEvidence, dedupKeyFor } from "../character-events.js";
 
-describe("verifyEvidence", () => {
+describe("locateEvidence", () => {
   const text = "Рин молчала. — Станцию закрывают, — сказал Сарек. Она кивнула.";
 
-  it("совпадающая цитата принимается", () => {
-    const start = text.indexOf("— Станцию закрывают");
+  it("цитата находится, диапазон считает сервер", () => {
     const quote = "— Станцию закрывают";
-    expect(verifyEvidence(text, quote, start, start + quote.length)).toBe(true);
+    const span = locateEvidence(text, quote);
+    expect(span).not.toBeNull();
+    expect(text.slice(span!.start, span!.end)).toBe(quote);
   });
 
-  it("AC-25: сдвинутый диапазон отвергается", () => {
-    const start = text.indexOf("— Станцию закрывают");
-    const quote = "— Станцию закрывают";
-    expect(verifyEvidence(text, quote, start + 3, start + 3 + quote.length)).toBe(false);
+  it("AC-25: цитаты, которой в тексте нет, не находит", () => {
+    expect(locateEvidence(text, "— Станцию не закрывают")).toBeNull();
   });
 
-  it("AC-25: цитата, которой в тексте нет, отвергается", () => {
-    expect(verifyEvidence(text, "— Станцию не закрывают", 10, 32)).toBe(false);
+  it("AC-25: пересказ вместо дословной цитаты отвергается", () => {
+    // Модель, «поправившая» тире или падеж, не получает доказательства.
+    expect(locateEvidence(text, "- Станцию закрывают")).toBeNull();
+    expect(locateEvidence(text, "Станцию закрыли")).toBeNull();
   });
 
-  it("диапазон за концом текста отвергается, а не бросает", () => {
-    expect(() => verifyEvidence(text, "хвост", 10_000, 10_005)).not.toThrow();
-    expect(verifyEvidence(text, "хвост", 10_000, 10_005)).toBe(false);
+  it("цитата, встречающаяся дважды, отвергается как неоднозначная", () => {
+    const twice = "Она кивнула. Сарек молчал. Она кивнула.";
+    expect(twice.indexOf("Она кивнула.")).toBeGreaterThanOrEqual(0);
+    expect(locateEvidence(twice, "Она кивнула.")).toBeNull();
   });
 
-  it("конец не позже начала отвергается", () => {
-    expect(verifyEvidence(text, "Рин", 5, 1)).toBe(false);
-    expect(verifyEvidence(text, "Рин", 5, 5)).toBe(false);
-  });
-
-  it("вырожденная цитата отвергается, хотя и сходится", () => {
-    // Пробел стоит в тексте на позиции 3 — сравнение пройдёт. Такая
-    // «цитата» подтверждает любое утверждение, и в этом вся беда.
-    expect(text.slice(3, 4)).toBe(" ");
-    expect(verifyEvidence(text, " ", 3, 4)).toBe(false);
-    expect(verifyEvidence(text, "Р", 0, 1)).toBe(false);
+  it("вырожденная цитата отвергается, хотя и находится", () => {
+    // Пробел в тексте есть — и подтвердил бы любое утверждение.
+    expect(text.includes(" ")).toBe(true);
+    expect(locateEvidence(text, " ")).toBeNull();
+    expect(locateEvidence(text, "Р")).toBeNull();
   });
 });
 

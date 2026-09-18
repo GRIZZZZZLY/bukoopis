@@ -41,8 +41,6 @@ function event(
     kind: "knowledge",
     data: { fact: "Станцию закрывают", acquisition: "told" },
     evidenceQuote: QUOTE,
-    evidenceStart: START,
-    evidenceEnd: START + QUOTE.length,
     ...over,
   };
 }
@@ -127,10 +125,8 @@ describe("persistCharacterEvents", () => {
     );
   });
 
-  it("AC-25: сдвинутое доказательство не записывается вовсе", () => {
-    const out = persist([
-      event({ evidenceStart: START + 3, evidenceEnd: START + 3 + QUOTE.length }),
-    ]);
+  it("AC-25: пересказ вместо цитаты не записывается вовсе", () => {
+    const out = persist([event({ evidenceQuote: "Станцию собирались закрыть" })]);
     expect(out.rejectedEvidence).toBe(1);
     expect(out.inserted).toBe(0);
     const c = t.sqlite
@@ -243,7 +239,7 @@ describe("persistCharacterEvents", () => {
     const out = persist([
       event(),
       event({ subjectName: "Некто" }),
-      event({ evidenceStart: START + 3, evidenceEnd: START + 3 + QUOTE.length }),
+      event({ evidenceQuote: "этого в главе нет" }),
       event(),
     ]);
     const total = out.inserted + out.rejectedEvidence + out.unresolved + out.duplicates;

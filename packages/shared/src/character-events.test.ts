@@ -87,69 +87,92 @@ describe("события персонажа", () => {
     );
   });
 
+  const QUOTE = "— Станцию закрывают, — сказал Сарек.";
+
   it("извлечённое событие проверяет, что data подходит своему виду", () => {
-    // data с неправильным типом поля отвергается
     const badFact = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
       data: { fact: 42, acquisition: "told" },
-      evidenceQuote: "…",
-      evidenceStart: 0,
-      evidenceEnd: 1,
+      evidenceQuote: QUOTE,
     });
     expect(badFact.success).toBe(false);
 
-    // валидный data пропускает
     const valid = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
-      data: { fact: "верное" },
-      evidenceQuote: "…",
-      evidenceStart: 0,
-      evidenceEnd: 1,
+      data: { fact: "верное", acquisition: "told" },
+      evidenceQuote: QUOTE,
     });
     expect(valid.success).toBe(true);
+  });
 
-    // пустой data для knowledge тоже пропускает (заполнится умолчанием)
-    const emptyData = extractedCharacterEventSchema.safeParse({
+  it("пустой data на извлечении отвергается, хотя чтение его стерпит", () => {
+    // Схема чтения заполняет всё умолчаниями и никогда не бросает. На входе
+    // такое событие означало бы пустую карточку в каноне, поэтому здесь
+    // содержательное поле требуется явно.
+    const r = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
       data: {},
-      evidenceQuote: "…",
-      evidenceStart: 0,
-      evidenceEnd: 1,
+      evidenceQuote: QUOTE,
     });
-    expect(emptyData.success).toBe(true);
+    expect(r.success).toBe(false);
   });
 
-  it("извлечённое событие обязано нести цитату и диапазон", () => {
+  it("выдуманные имена полей в data отвергаются", () => {
+    // `z.object` срезает незнакомые ключи, поэтому без явной проверки
+    // `{описание: "…"}` прошло бы как валидный knowledge.
+    const r = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { описание: "Станцию закрывают", acquisition: "told" },
+      evidenceQuote: QUOTE,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("knowledge без acquisition отвергается", () => {
+    // Умолчание — `observed`, то есть «видел сам». Забытое поле сделало бы
+    // героя свидетелем всего, о чём он только слышал.
+    const r = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "Станцию закрывают" },
+      evidenceQuote: QUOTE,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("извлечённое событие обязано нести цитату", () => {
     const ok = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
       data: { fact: "Станцию закрывают", acquisition: "told" },
-      evidenceQuote: "— Станцию закрывают, — сказал Сарек.",
-      evidenceStart: 100,
-      evidenceEnd: 136,
+      evidenceQuote: QUOTE,
     });
     expect(ok.success).toBe(true);
 
     const noQuote = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
-      data: { fact: "X" },
+      data: { fact: "X", acquisition: "told" },
     });
     expect(noQuote.success).toBe(false);
   });
 
-  it("диапазон с концом раньше начала отвергается", () => {
+  it("диапазона на извлечении нет: модель его не считает", () => {
+    // Лишние ключи схема срезает — попытка прислать позиции ничего не ломает
+    // и ничего не значит.
     const r = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
-      data: { fact: "X" },
-      evidenceQuote: "…",
+      data: { fact: "X", acquisition: "told" },
+      evidenceQuote: QUOTE,
       evidenceStart: 200,
       evidenceEnd: 100,
     });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
+    expect(r.success && "evidenceStart" in r.data).toBe(false);
   });
 });

@@ -153,9 +153,24 @@ export const characterEventSchema = z.object({
 });
 export type CharacterEvent = z.infer<typeof characterEventSchema>;
 
+/** Обязательное содержательное поле каждого вида. Пустое значение проходит
+ *  схему чтения (там всё с умолчаниями) и превращается в пустую карточку,
+ *  поэтому на извлечении оно требуется явно. */
+const REQUIRED_DATA_FIELD: Record<CharacterEventKind, string> = {
+  knowledge: "fact",
+  state: "state",
+  relation_shift: "quality",
+  commitment: "commitment",
+};
+
 /** Форма, которую возвращает извлекатель. Доказательство обязательно: без
- *  цитаты и диапазона проверить событие нечем, а непроверяемое событие не
- *  активируется (AC-25). */
+ *  цитаты проверить событие нечем, а непроверяемое событие не активируется
+ *  (AC-25).
+ *
+ *  Диапазона здесь НЕТ намеренно. Модель не умеет считать позиции символов
+ *  в главе на двадцать тысяч знаков, а `slice(start, end) === quote` не
+ *  прощает промаха на единицу — требование диапазона давало почти стопроцентный
+ *  отказ, неотличимый от «модель ничего не нашла». Цитату ищет сервер. */
 export const extractedCharacterEventSchema = z
   .object({
     /** Имя героя как в главе; сервер сопоставляет его резолвером. */
@@ -164,12 +179,6 @@ export const extractedCharacterEventSchema = z
     kind: characterEventKindSchema,
     data: z.record(z.string(), z.unknown()),
     evidenceQuote: z.string().min(1).max(2000),
-    evidenceStart: z.number().int().nonnegative(),
-    evidenceEnd: z.number().int().nonnegative(),
-  })
-  .refine((e) => e.evidenceEnd > e.evidenceStart, {
-    message: "конец диапазона должен быть больше начала",
-    path: ["evidenceEnd"],
   })
   .superRefine((e, ctx) => {
     if (!DATA_SCHEMAS[e.kind].safeParse(e.data).success) {
@@ -177,6 +186,28 @@ export const extractedCharacterEventSchema = z
         code: "custom",
         message: `данные не подходят виду события ${e.kind}`,
         path: ["data"],
+      });
+      return;
+    }
+    // `z.object` срезает незнакомые ключи, а все известные имеют умолчания,
+    // поэтому проверка выше пропускает `data` с выдуманными именами полей:
+    // событие ляжет в базу и прочитается пустой карточкой.
+    const required = REQUIRED_DATA_FIELD[e.kind];
+    const value = e.data[required];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: `для вида ${e.kind} обязательно поле "${required}"`,
+        path: ["data", required],
+      });
+    }
+    // Умолчание `observed` означало бы «герой видел сам» всякий раз, когда
+    // модель поле забыла, — ровно та всеведущая оптика, которую этап отменяет.
+    if (e.kind === "knowledge" && e.data["acquisition"] === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'для knowledge обязательно поле "acquisition"',
+        path: ["data", "acquisition"],
       });
     }
   });
