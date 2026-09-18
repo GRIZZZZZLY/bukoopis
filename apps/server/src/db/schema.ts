@@ -705,9 +705,12 @@ export const characterEvents = sqliteTable(
       onDelete: "set null",
     }),
     sceneOrdinal: integer("scene_ordinal").notNull().default(0),
+    // CASCADE: доказательство события живёт в content_text этой версии. Без
+    // версии смещения показывают в пустоту, а событие остаётся активным —
+    // состояние, которое запрещает AC-25.
     sourceVersionId: integer("source_version_id").references(
       () => chapterVersions.id,
-      { onDelete: "set null" },
+      { onDelete: "cascade" },
     ),
     // Доказательство в неизменяемом content_text указанной версии.
     evidenceQuote: text("evidence_quote"),
@@ -725,11 +728,15 @@ export const characterEvents = sqliteTable(
     // строки без версии-источника (ручные, перенесённые миграцией) этим
     // индексом не дедуплицируются. Так и задумано: идемпотентность нужна
     // только повторной обработке версии (AC-21), а там версия есть всегда.
+    // `extractor_version` в ключе: без него повышение номера извлекателя
+    // гасилось бы индексом целиком, и колонка существовала бы ради случая,
+    // который ключ запрещает.
     uniqueIndex("uq_character_events_dedup").on(
       t.subjectCharacterId,
       t.kind,
       t.dedupKey,
       t.sourceVersionId,
+      t.extractorVersion,
     ),
     index("idx_character_events_subject").on(t.subjectCharacterId),
     index("idx_character_events_chapter").on(t.chapterId),

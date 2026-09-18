@@ -5,6 +5,7 @@ import { toCharacterEvent, type CharacterEventRow } from "../rows.js";
 let t: TestApp;
 let bookId: number;
 let charId: number;
+let chapterId: number;
 let versionId: number;
 let otherVersionId: number;
 
@@ -39,7 +40,7 @@ beforeEach(async () => {
        VALUES (?, 10, 'Глава первая', 'draft', ?, ?)`,
     )
     .run(bookId, now, now);
-  const chapterId = Number(chapter.lastInsertRowid);
+  chapterId = Number(chapter.lastInsertRowid);
   versionId = insertVersion(chapterId, "Станцию закрывают.");
   otherVersionId = insertVersion(chapterId, "Станцию закрывают на зиму.");
 });
@@ -69,6 +70,50 @@ describe("чтение строки события", () => {
     expect(e.kind).toBe("knowledge");
     expect((e.data as { fact: string }).fact).toBe("Станцию закрывают");
     expect((e.data as { acquisition: string }).acquisition).toBe("told");
+  });
+
+  it("каждая колонка ложится в своё поле", () => {
+    // Все значения различны нарочно: перепутанная пара колонок (смещения,
+    // две ссылки на персонажа, книга и глава) прошла бы любую проверку,
+    // где совпадают хотя бы два числа.
+    const other = t.sqlite
+      .prepare(
+        `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+         VALUES (?, 'Кай', '{}', ?, ?)`,
+      )
+      .run(bookId, new Date().toISOString(), new Date().toISOString());
+    const otherId = Number(other.lastInsertRowid);
+    const created = "2026-09-18T10:20:30.000Z";
+    const info = t.sqlite
+      .prepare(
+        `INSERT INTO character_events
+           (book_id, subject_character_id, addressee_character_id, kind, data_json,
+            chapter_id, scene_ordinal, source_version_id,
+            evidence_quote, evidence_start, evidence_end,
+            origin, verification, extractor_version, dedup_key, created_at)
+         VALUES (?, ?, ?, 'relation_shift', '{}', ?, 0, ?, 'он солгал', 11, 22,
+                 'accepted_prose', 'proposed', 1, 'map', ?)`,
+      )
+      .run(bookId, charId, otherId, chapterId, versionId, created);
+    const row = t.sqlite
+      .prepare("SELECT * FROM character_events WHERE id = ?")
+      .get(Number(info.lastInsertRowid)) as CharacterEventRow;
+
+    const e = toCharacterEvent(row);
+    expect(e.id).toBe(Number(info.lastInsertRowid));
+    expect(e.bookId).toBe(bookId);
+    expect(e.subjectCharacterId).toBe(charId);
+    expect(e.addresseeCharacterId).toBe(otherId);
+    expect(e.kind).toBe("relation_shift");
+    expect(e.chapterId).toBe(chapterId);
+    expect(e.sceneOrdinal).toBe(0);
+    expect(e.sourceVersionId).toBe(versionId);
+    expect(e.evidenceQuote).toBe("он солгал");
+    expect(e.evidenceStart).toBe(11);
+    expect(e.evidenceEnd).toBe(22);
+    expect(e.origin).toBe("accepted_prose");
+    expect(e.verification).toBe("proposed");
+    expect(e.createdAt).toBe(created);
   });
 
   it("битый data_json не роняет чтение", () => {
@@ -108,6 +153,43 @@ describe("чтение строки события", () => {
       .prepare("SELECT COUNT(*) c FROM character_events WHERE dedup_key = 'same'")
       .get() as { c: number };
     expect(c.c).toBe(2);
+  });
+
+  it("новый номер извлекателя даёт новую запись, а не отказ", () => {
+    const now = new Date().toISOString();
+    const ins = t.sqlite.prepare(
+      `INSERT INTO character_events
+         (book_id, subject_character_id, kind, data_json, scene_ordinal,
+          source_version_id, origin, verification, extractor_version,
+          dedup_key, created_at)
+       VALUES (?, ?, 'knowledge', '{}', 0, ?, 'llm', 'derived', ?, 'same', ?)`,
+    );
+    ins.run(bookId, charId, versionId, 1, now);
+    ins.run(bookId, charId, versionId, 2, now);
+    const c = t.sqlite
+      .prepare("SELECT COUNT(*) c FROM character_events WHERE dedup_key = 'same'")
+      .get() as { c: number };
+    expect(c.c).toBe(2);
+  });
+
+  it("удаление версии-источника уносит событие вместе с доказательством", () => {
+    // AC-25: событие, которое больше нечем проверить, не остаётся активным.
+    const now = new Date().toISOString();
+    t.sqlite
+      .prepare(
+        `INSERT INTO character_events
+           (book_id, subject_character_id, kind, data_json, scene_ordinal,
+            source_version_id, evidence_quote, evidence_start, evidence_end,
+            origin, verification, extractor_version, dedup_key, created_at)
+         VALUES (?, ?, 'knowledge', '{}', 0, ?, 'цитата', 0, 6,
+                 'llm', 'derived', 1, 'ev', ?)`,
+      )
+      .run(bookId, charId, versionId, now);
+    t.sqlite.prepare("DELETE FROM chapter_versions WHERE id = ?").run(versionId);
+    const c = t.sqlite
+      .prepare("SELECT COUNT(*) c FROM character_events WHERE dedup_key = 'ev'")
+      .get() as { c: number };
+    expect(c.c).toBe(0);
   });
 
   it("событие без версии-источника индексом не дедуплицируется", () => {
