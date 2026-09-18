@@ -665,7 +665,9 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     const now = new Date().toISOString();
     const eventData = {
       fact: parsed.data.fact,
-      acquisition: parsed.data.acquisition ?? "observed",
+      // `unknown`, а не `observed`: автор происхождения не называл, и
+      // приписать ему «видел сам» — выдумать сведение (INV-07).
+      acquisition: parsed.data.acquisition ?? "unknown",
     };
     // Через `dedupKeyFor`, а не руками: формат ключа живёт там, нормализует
     // строки и приводит данные к форме вида. Собранная здесь строка

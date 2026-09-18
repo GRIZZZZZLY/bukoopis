@@ -26,7 +26,16 @@ export type CharacterEventKind = z.infer<typeof characterEventKindSchema>;
 
 /** Как герой получил сведение. Убеждение может быть ложным — это не меняет
  *  объективный канон книги (раздел 5.4, AC-09). */
-export const ACQUISITION_MODES = ["observed", "told", "inferred", "believed"] as const;
+export const ACQUISITION_MODES = [
+  "observed",
+  "told",
+  "inferred",
+  "believed",
+  /** Не записано. Умолчание и состояние перенесённых знаний: у ручной записи
+   *  происхождения нет, и `observed` вместо него — выдумка ровно того рода,
+   *  которую запрещает INV-07. Извлекателю этот вариант не предлагается. */
+  "unknown",
+] as const;
 export const acquisitionModeSchema = z.enum(ACQUISITION_MODES);
 export type AcquisitionMode = z.infer<typeof acquisitionModeSchema>;
 
@@ -35,6 +44,7 @@ export const ACQUISITION_LABELS: Record<AcquisitionMode, string> = {
   told: "со слов",
   inferred: "догадался",
   believed: "верит",
+  unknown: "",
 };
 
 export const EVENT_ORIGINS = ["manual", "llm", "accepted_prose", "migration"] as const;
@@ -59,7 +69,7 @@ const line = z.string().nullable().default(null);
 
 export const knowledgeDataSchema = z.object({
   fact: z.string().default(""),
-  acquisition: acquisitionModeSchema.default("observed"),
+  acquisition: acquisitionModeSchema.default("unknown"),
   /** Откуда узнал — человек, документ, наблюдение. */
   source: line,
   /** Ссылка на объективный факт книги, если он есть. Знание может
@@ -203,12 +213,24 @@ export const extractedCharacterEventSchema = z
     }
     // Умолчание `observed` означало бы «герой видел сам» всякий раз, когда
     // модель поле забыла, — ровно та всеведущая оптика, которую этап отменяет.
-    if (e.kind === "knowledge" && e.data["acquisition"] === undefined) {
-      ctx.addIssue({
-        code: "custom",
-        message: 'для knowledge обязательно поле "acquisition"',
-        path: ["data", "acquisition"],
-      });
+    if (e.kind === "knowledge") {
+      const acquisition = e.data["acquisition"];
+      if (acquisition === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: 'для knowledge обязательно поле "acquisition"',
+          path: ["data", "acquisition"],
+        });
+      } else if (acquisition === "unknown") {
+        // `unknown` существует для перенесённых авторских записей, у которых
+        // происхождения нет. Извлекателю он не предлагается: иначе это
+        // готовая лазейка — пометить так всё, чего не разобрал.
+        ctx.addIssue({
+          code: "custom",
+          message: 'извлекателю значение "unknown" недоступно',
+          path: ["data", "acquisition"],
+        });
+      }
     }
   });
 export type ExtractedCharacterEvent = z.infer<typeof extractedCharacterEventSchema>;

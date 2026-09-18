@@ -28,9 +28,9 @@ describe("события персонажа", () => {
     expect(ACQUISITION_LABELS.told).toBe("со слов");
   });
 
-  it("неизвестный способ получения не роняет чтение, а становится observed", () => {
+  it("неизвестный способ получения не роняет чтение, а становится unknown", () => {
     const d = normalizeEventData("knowledge", { fact: "X", acquisition: "мусор" });
-    expect(d.acquisition).toBe("observed");
+    expect(d.acquisition).toBe("unknown");
   });
 
   it("AC-34: эпизодическое состояние обязано нести условие завершения", () => {
@@ -57,7 +57,7 @@ describe("события персонажа", () => {
     const cases: Record<CharacterEventKind, Array<[unknown, string, unknown]>> = {
       knowledge: [
         [{ fact: 42 }, "fact", ""],
-        [{ acquisition: 42 }, "acquisition", "observed"],
+        [{ acquisition: 42 }, "acquisition", "unknown"],
       ],
       state: [
         [{ state: 42 }, "state", ""],
@@ -133,12 +133,24 @@ describe("события персонажа", () => {
   });
 
   it("knowledge без acquisition отвергается", () => {
-    // Умолчание — `observed`, то есть «видел сам». Забытое поле сделало бы
+    // Умолчание — `unknown`: происхождения нет. Забытое поле сделало бы
     // героя свидетелем всего, о чём он только слышал.
     const r = extractedCharacterEventSchema.safeParse({
       subjectName: "Рин",
       kind: "knowledge",
       data: { fact: "Станцию закрывают" },
+      evidenceQuote: QUOTE,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('извлекателю "unknown" недоступен', () => {
+    // Иначе это лазейка: пометить так всё, чего модель не разобрала, и
+    // отличие услышанного от увиденного исчезнет обратно.
+    const r = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "Станцию закрывают", acquisition: "unknown" },
       evidenceQuote: QUOTE,
     });
     expect(r.success).toBe(false);

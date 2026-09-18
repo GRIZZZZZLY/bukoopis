@@ -44,8 +44,10 @@ export function loadPovKnowledge(
     const fact = typeof d.fact === "string" ? d.fact : "";
     // Как узнал — половина смысла этапа. Список без этого возвращает героя,
     // для которого услышанное и увиденное одно и то же.
+    // `unknown` подписи не имеет: у перенесённых и введённых вручную знаний
+    // происхождения нет, и «видел сам» вместо него — выдуманное сведение.
     const mode = acquisitionModeSchema.safeParse(d.acquisition);
-    const how = mode.success ? ACQUISITION_LABELS[mode.data] : null;
+    const how = mode.success ? ACQUISITION_LABELS[mode.data] || null : null;
     const from = typeof d.source === "string" && d.source.trim() ? d.source.trim() : null;
     const tail = [how, from].filter(Boolean).join(", ");
     return tail ? `${fact} (${tail})` : fact;

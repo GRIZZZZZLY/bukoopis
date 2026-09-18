@@ -97,7 +97,7 @@ SELECT
   k.character_id,
   NULL,
   'knowledge',
-  json_object('fact', k.fact, 'acquisition', 'observed',
+  json_object('fact', k.fact, 'acquisition', 'unknown',
               'source', NULL, 'canonFactId', NULL,
               'disprovedFromChapterOrder', NULL),
   k.learned_in_chapter_id,
