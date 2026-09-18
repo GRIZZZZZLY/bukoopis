@@ -162,6 +162,13 @@
       "when": 1789662483866,
       "tag": "0022_characters_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1789767215034,
+      "tag": "0023_0023_character_events",
+      "breakpoints": true
     }
   ]
 }
