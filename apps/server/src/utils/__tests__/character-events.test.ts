@@ -26,8 +26,16 @@ describe("verifyEvidence", () => {
   });
 
   it("конец не позже начала отвергается", () => {
-    expect(verifyEvidence(text, "Рин", 5, 5)).toBe(false);
     expect(verifyEvidence(text, "Рин", 5, 1)).toBe(false);
+    expect(verifyEvidence(text, "Рин", 5, 5)).toBe(false);
+  });
+
+  it("вырожденная цитата отвергается, хотя и сходится", () => {
+    // Пробел стоит в тексте на позиции 3 — сравнение пройдёт. Такая
+    // «цитата» подтверждает любое утверждение, и в этом вся беда.
+    expect(text.slice(3, 4)).toBe(" ");
+    expect(verifyEvidence(text, " ", 3, 4)).toBe(false);
+    expect(verifyEvidence(text, "Р", 0, 1)).toBe(false);
   });
 });
 
@@ -65,6 +73,29 @@ describe("dedupKeyFor", () => {
     const data = { fact: "X" };
     expect(dedupKeyFor("knowledge", data, null)).toBe(
       dedupKeyFor("knowledge", data),
+    );
+  });
+
+  it("AC-21: дописанные умолчания и лишние ключи ключ не меняют", () => {
+    // Схема извлечения — z.record: лишние ключи проходят, умолчания не
+    // подставляются. Модель на втором прогоне вернёт то же плюс явные
+    // null — сырой ключ развёл бы одно событие на два активные строки.
+    const first = { fact: "X", acquisition: "told" };
+    const second = {
+      fact: "X",
+      acquisition: "told",
+      source: null,
+      canonFactId: null,
+      disprovedFromChapterOrder: null,
+      отсебятина: "модель добавила поле",
+    };
+    expect(dedupKeyFor("knowledge", first)).toBe(dedupKeyFor("knowledge", second));
+  });
+
+  it("составные символы не разводят ключ", () => {
+    // «й» одной кодовой точкой против «и» + U+0306: для читателя одно слово.
+    expect(dedupKeyFor("knowledge", { fact: "тайный" })).toBe(
+      dedupKeyFor("knowledge", { fact: "тайный".normalize("NFD") }),
     );
   });
 });

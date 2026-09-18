@@ -4,7 +4,7 @@ import {
   sendJson,
   type TestApp,
 } from "../../routes/__tests__/_helpers.js";
-import { persistCharacterEvents } from "../character-events.js";
+import { persistCharacterEvents, dedupKeyFor } from "../character-events.js";
 import type { ExtractedCharacterEvent } from "@book-forge/shared";
 
 /**
@@ -20,6 +20,7 @@ const START = TEXT.indexOf(QUOTE);
 
 let t: TestApp;
 let bookId: number;
+let subjectId: number;
 let chapterId: number;
 let versionId: number;
 
@@ -43,7 +44,7 @@ function event(
     evidenceStart: START,
     evidenceEnd: START + QUOTE.length,
     ...over,
-  } as ExtractedCharacterEvent;
+  };
 }
 
 function persist(events: ExtractedCharacterEvent[], extractorVersion = 1) {
@@ -51,7 +52,6 @@ function persist(events: ExtractedCharacterEvent[], extractorVersion = 1) {
     bookId,
     chapterId,
     sourceVersionId: versionId,
-    contentText: TEXT,
     events,
     extractorVersion,
   });
@@ -60,30 +60,41 @@ function persist(events: ExtractedCharacterEvent[], extractorVersion = 1) {
 beforeEach(async () => {
   delete process.env.ANTHROPIC_API_KEY;
   t = makeTestApp();
+
+  // Идентификаторы нарочно разводятся, и разным числом пустышек на таблицу:
+  // в свежей базе книга, герой, глава и версия все получили бы id 1, и
+  // перестановка двух колонок в INSERT на шестнадцать плейсхолдеров прошла
+  // бы незамеченной. Равное число пустышек снова сделало бы их равными.
+  const decoy = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
+    title: "Пустышка",
+  });
   const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
     title: "Запись событий",
   });
   bookId = b.id;
-  await makeCharacter("Рин");
+
+  await makeCharacter("Первый лишний");
+  await makeCharacter("Второй лишний");
+  const subject = await makeCharacter("Рин");
+  subjectId = subject.id;
 
   const now = new Date().toISOString();
-  chapterId = Number(
-    t.sqlite
-      .prepare(
-        `INSERT INTO chapters (book_id, order_index, title, status, created_at, updated_at)
-         VALUES (?, 10, 'Глава первая', 'draft', ?, ?)`,
-      )
-      .run(bookId, now, now).lastInsertRowid,
+  const insertChapter = t.sqlite.prepare(
+    `INSERT INTO chapters (book_id, order_index, title, status, created_at, updated_at)
+     VALUES (?, 10, 'Глава', 'draft', ?, ?)`,
   );
-  versionId = Number(
-    t.sqlite
-      .prepare(
-        `INSERT INTO chapter_versions
-           (chapter_id, content_json, content_text, word_count, source, created_at)
-         VALUES (?, '{}', ?, 10, 'manual', ?)`,
-      )
-      .run(chapterId, TEXT, now).lastInsertRowid,
+  for (let i = 0; i < 3; i += 1) insertChapter.run(decoy.id, now, now);
+  chapterId = Number(insertChapter.run(bookId, now, now).lastInsertRowid);
+
+  const insertVersion = t.sqlite.prepare(
+    `INSERT INTO chapter_versions
+       (chapter_id, content_json, content_text, word_count, source, created_at)
+     VALUES (?, '{}', ?, 10, 'manual', ?)`,
   );
+  for (let i = 0; i < 4; i += 1) insertVersion.run(chapterId, "Другой текст.", now);
+  versionId = Number(insertVersion.run(chapterId, TEXT, now).lastInsertRowid);
+
+  expect(new Set([bookId, subjectId, chapterId, versionId]).size).toBe(4);
 });
 afterEach(() => t.cleanup());
 
@@ -99,11 +110,21 @@ describe("persistCharacterEvents", () => {
     const row = t.sqlite
       .prepare("SELECT * FROM character_events")
       .get() as Record<string, unknown>;
-    expect(row.source_version_id).toBe(versionId);
+    expect(row.book_id).toBe(bookId);
+    expect(row.subject_character_id).toBe(subjectId);
+    expect(row.addressee_character_id).toBe(null);
     expect(row.chapter_id).toBe(chapterId);
+    expect(row.source_version_id).toBe(versionId);
+    expect(row.scene_ordinal).toBe(0);
     expect(row.origin).toBe("llm");
     expect(row.verification).toBe("derived");
     expect(row.evidence_quote).toBe(QUOTE);
+    expect(row.evidence_start).toBe(START);
+    expect(row.evidence_end).toBe(START + QUOTE.length);
+    expect(JSON.parse(row.data_json as string).fact).toBe("Станцию закрывают");
+    expect(row.dedup_key).toBe(
+      dedupKeyFor("knowledge", { fact: "Станцию закрывают", acquisition: "told" }),
+    );
   });
 
   it("AC-25: сдвинутое доказательство не записывается вовсе", () => {
@@ -150,6 +171,62 @@ describe("persistCharacterEvents", () => {
     // Одинаковые данные, одна версия, разные адресаты. Без адресата в ключе
     // второе событие молча съел бы INSERT OR IGNORE.
     expect(out).toMatchObject({ inserted: 2, duplicates: 0 });
+  });
+
+  it("названный, но неизвестный адресат — отказ, а не событие в никуда", async () => {
+    const data = { quality: "доверие", from: "ровно", to: "холодно" };
+    const out = persist([
+      event({ kind: "relation_shift", data, addresseeName: "Никто" }),
+      event({ kind: "relation_shift", data, addresseeName: "Никто другой" }),
+    ]);
+    // Обнулить адресата означало бы свести оба к ключу на «-»: первое легло
+    // бы, второе съел бы INSERT OR IGNORE, и оба отказа пропали бы из счёта.
+    expect(out).toMatchObject({ inserted: 0, unresolved: 2, duplicates: 0 });
+  });
+
+  it("текст берётся по версии, а не со слов вызывающего", () => {
+    // Доказательство сверяется с content_text ЭТОЙ версии. Соседняя версия
+    // той же главы содержит другой текст, и цитата из неё не проходит.
+    const otherVersionId = (
+      t.sqlite
+        .prepare("SELECT id FROM chapter_versions WHERE chapter_id = ? ORDER BY id LIMIT 1")
+        .get(chapterId) as { id: number }
+    ).id;
+    expect(otherVersionId).not.toBe(versionId);
+    const out = persistCharacterEvents(t.sqlite, {
+      bookId,
+      chapterId,
+      sourceVersionId: otherVersionId,
+      events: [event()],
+      extractorVersion: 1,
+    });
+    expect(out).toMatchObject({ inserted: 0, rejectedEvidence: 1 });
+  });
+
+  it("негодный номер извлекателя падает, а не считается дубликатами", () => {
+    // `INSERT OR IGNORE` гасит и нарушение CHECK: без проверки на входе
+    // весь прогон вернул бы «всё дубликаты» и выглядел бы как повтор.
+    expect(() => persist([event()], 0)).toThrow(/extractorVersion/);
+  });
+
+  it("пустой список событий — пустой итог, а не отказ", () => {
+    expect(persist([])).toEqual({
+      inserted: 0,
+      rejectedEvidence: 0,
+      unresolved: 0,
+      duplicates: 0,
+    });
+  });
+
+  it("итог сходится с числом поданных событий", () => {
+    const out = persist([
+      event(),
+      event({ subjectName: "Некто" }),
+      event({ evidenceStart: START + 3, evidenceEnd: START + 3 + QUOTE.length }),
+      event(),
+    ]);
+    const total = out.inserted + out.rejectedEvidence + out.unresolved + out.duplicates;
+    expect(total).toBe(4);
   });
 
   it("сдвиг отношения приходит на подтверждение, а не принятым", async () => {

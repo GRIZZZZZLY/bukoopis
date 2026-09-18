@@ -1020,9 +1020,12 @@ export interface PersistEventsOutcome {
 export interface PersistEventsArgs {
   bookId: number;
   chapterId: number;
+  /**
+   * Версия-источник. Текст для сверки читается по ней внутри и параметром
+   * не принимается: гарантия AC-25 не должна зависеть от того, передал ли
+   * вызывающий текст ИМЕННО этой версии, а не черновик рядом с ней.
+   */
   sourceVersionId: number;
-  /** Текст ИМЕННО той версии, из которой извлекали. */
-  contentText: string;
   events: ExtractedCharacterEvent[];
   extractorVersion: number;
 }
@@ -1093,6 +1096,16 @@ export function persistCharacterEvents(
 ```
 
 `INSERT OR IGNORE` здесь **уместен и намеренно отличается** от `recordProfileVersion` этапа 2, где `OR IGNORE` был убран: там дубликат означал бы потерянное обновление, а здесь он означает ровно то, что AC-21 требует — повторная обработка той же версии не плодит строк. Написать это комментарием, иначе следующий читатель «поправит» по аналогии.
+
+> **Блок выше — исходный замысел; реализация ушла вперёд по итогам ревью.**
+> Живая ссылка — `apps/server/src/utils/character-events.ts`. Отличия, каждое
+> закрывает найденную дыру: текст читается по `sourceVersionId` внутри, а не
+> принимается параметром; `dedupKeyFor` хеширует `normalizeEventData(kind, data)`
+> и приводит строки к NFC, иначе дописанные моделью умолчания разводят одно
+> событие на два; доказательство проверяется раньше разбора имени; названный,
+> но неразрешённый адресат — отказ `unresolved`, а не `NULL`; `extractorVersion`
+> проверяется на входе, потому что `INSERT OR IGNORE` гасит и нарушения CHECK;
+> `verifyEvidence` отвергает цитату короче двух значащих символов.
 
 - [ ] **Step 4: Прогнать тесты**
 
@@ -1266,7 +1279,6 @@ it("staged-результат задания facts несёт события р�
   const staged = JSON.parse(row.result_json);
   expect(staged.staged.facts).toHaveLength(1);
   expect(staged.staged.characterEvents).toHaveLength(1);
-  expect(staged.staged.contentText).toBe(CHAPTER_TEXT);
   expect(staged.eventCount).toBe(1);
 });
 ```
@@ -1297,8 +1309,6 @@ export interface FactsPayload {
   facts: ExtractedFact[];
   /** Личные события героев из того же вызова (раздел 12, решение 6). */
   characterEvents: ExtractedCharacterEvent[];
-  /** Текст ИМЕННО этой версии — активация сверяет по нему доказательства. */
-  contentText: string;
   bookId: number;
   chapterId: number;
   chapterOrder: number;
@@ -1306,7 +1316,7 @@ export interface FactsPayload {
 }
 ```
 
-Вернуть `characterEvents: result.characterEvents ?? []` и `contentText: v.content_text` из всех ветвей, включая обе ранние с пустым результатом — иначе тип не сойдётся, и заглушать это приведением было бы неверным исправлением.
+Вернуть `characterEvents: result.characterEvents ?? []` из всех ветвей, включая обе ранние с пустым результатом — иначе тип не сойдётся, и заглушать это приведением было бы неверным исправлением. Текста версии в стадированном результате нет намеренно: `persistCharacterEvents` читает его сам по `sourceVersionId`, и пронести сюда чужой текст больше нечем.
 
 В `apps/server/src/utils/memory-worker.ts`, `handleFacts`:
 
@@ -1317,7 +1327,6 @@ completeMemoryJob(sqlite, job.id, {
   staged: {
     facts: p.facts,
     characterEvents: p.characterEvents,
-    contentText: p.contentText,
   },
 });
 ```
@@ -1409,7 +1418,6 @@ export interface StagedFactsResult {
     facts: ExtractedFact[];
     /** Необязательные: staged-результаты версии конвейера 1 их не несут. */
     characterEvents?: ExtractedCharacterEvent[];
-    contentText?: string;
   };
 }
 ```
@@ -1418,12 +1426,11 @@ export interface StagedFactsResult {
 
 ```ts
     const staged = factsResult?.staged;
-    if (staged?.characterEvents?.length && staged.contentText) {
+    if (staged?.characterEvents?.length) {
       const outcome = persistCharacterEvents(sqlite, {
         bookId: ch.book_id,
         chapterId,
         sourceVersionId: versionId,
-        contentText: staged.contentText,
         events: staged.characterEvents,
         extractorVersion: MEMORY_PIPELINE_VERSION,
       });

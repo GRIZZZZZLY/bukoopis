@@ -1,6 +1,8 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   defaultVerificationFor,
+  normalizeEventData,
+  IMPLICIT_SCENE_ORDINAL,
   type CharacterEventKind,
   type ExtractedCharacterEvent,
 } from "@book-forge/shared";
@@ -27,6 +29,9 @@ export function verifyEvidence(
   if (!Number.isInteger(start) || !Number.isInteger(end)) return false;
   if (start < 0 || end <= start) return false;
   if (end > contentText.length) return false;
+  // Пробел или одиночный символ сходится где угодно: такая «цитата»
+  // подтверждает любое утверждение и делает проверку бессмысленной.
+  if (quote.trim().length < 2) return false;
   return contentText.slice(start, end) === quote;
 }
 
@@ -40,6 +45,11 @@ export function verifyEvidence(
  * `addressee_character_id`, а не в `data`: у `relation_shift` данные — это
  * {quality, from, to}, и два сдвига из одной версии к разным героям без
  * него совпали бы ключом, а `INSERT OR IGNORE` выбросил бы второй молча.
+ *
+ * Данные сперва приводятся к форме своего вида. Схема извлечения — это
+ * `z.record`: лишние ключи она пропускает, умолчания не подставляет. Модель
+ * на первом прогоне вернёт {fact, acquisition}, на втором — то же плюс
+ * `source: null`, и сырой ключ развёл бы одно событие на два.
  */
 export function dedupKeyFor(
   kind: CharacterEventKind,
@@ -47,7 +57,11 @@ export function dedupKeyFor(
   addresseeCharacterId: number | null = null,
 ): string {
   const norm = (v: unknown): unknown => {
-    if (typeof v === "string") return v.trim().replace(/\s+/g, " ").toLowerCase();
+    if (typeof v === "string") {
+      // NFC: «й» одной точкой и «и» с комбинирующей краткой — один символ
+      // для читателя и два разных ключа без нормализации.
+      return v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+    }
     if (Array.isArray(v)) return v.map(norm);
     if (v !== null && typeof v === "object") {
       const out: Record<string, unknown> = {};
@@ -58,7 +72,9 @@ export function dedupKeyFor(
     }
     return v;
   };
-  return `${kind}:${addresseeCharacterId ?? "-"}:${JSON.stringify(norm(data))}`;
+  return `${kind}:${addresseeCharacterId ?? "-"}:${JSON.stringify(
+    norm(normalizeEventData(kind, data)),
+  )}`;
 }
 
 export interface PersistEventsOutcome {
@@ -74,9 +90,12 @@ export interface PersistEventsOutcome {
 export interface PersistEventsArgs {
   bookId: number;
   chapterId: number;
+  /**
+   * Версия-источник. Текст для сверки читается по ней здесь же и параметром
+   * не принимается: гарантия AC-25 не должна зависеть от того, передал ли
+   * вызывающий текст ИМЕННО этой версии, а не черновик рядом с ней.
+   */
   sourceVersionId: number;
-  /** Текст ИМЕННО той версии, из которой извлекали. */
-  contentText: string;
   events: ExtractedCharacterEvent[];
   extractorVersion: number;
 }
@@ -96,17 +115,37 @@ export function persistCharacterEvents(
     unresolved: 0,
     duplicates: 0,
   };
+  // `INSERT OR IGNORE` гасит и нарушения CHECK, а не только конфликт
+  // уникального индекса: с extractorVersion = 0 весь прогон вернул бы
+  // «всё дубликаты» и был бы неотличим от идемпотентного повтора.
+  if (!Number.isInteger(args.extractorVersion) || args.extractorVersion < 1) {
+    throw new Error(`extractorVersion должен быть целым >= 1, получено ${args.extractorVersion}`);
+  }
+  const version = sqlite
+    .prepare("SELECT content_text FROM chapter_versions WHERE id = ?")
+    .get(args.sourceVersionId) as { content_text: string } | undefined;
+  if (!version) {
+    throw new Error(`версия ${args.sourceVersionId} не найдена`);
+  }
+  const contentText = version.content_text;
   const insert = sqlite.prepare(
     `INSERT OR IGNORE INTO character_events
        (book_id, subject_character_id, addressee_character_id, kind, data_json,
         chapter_id, scene_ordinal, source_version_id,
         evidence_quote, evidence_start, evidence_end,
         origin, verification, extractor_version, dedup_key, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'llm', ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'llm', ?, ?, ?, ?)`,
   );
   const now = new Date().toISOString();
 
   for (const e of args.events) {
+    // Доказательство проверяется первым: это сравнение строк, а разбор имени
+    // идёт в базу. Порядок ещё и честнее в подсчёте — выдуманная цитата
+    // ложится в `rejectedEvidence`, а не прячется в `unresolved`.
+    if (!verifyEvidence(contentText, e.evidenceQuote, e.evidenceStart, e.evidenceEnd)) {
+      out.rejectedEvidence += 1;
+      continue;
+    }
     const subject = resolveEntity(sqlite, args.bookId, "character", e.subjectName);
     if (!subject) {
       // Неоднозначное или неизвестное имя. Резолвер намеренно возвращает
@@ -115,28 +154,38 @@ export function persistCharacterEvents(
       out.unresolved += 1;
       continue;
     }
-    if (!verifyEvidence(args.contentText, e.evidenceQuote, e.evidenceStart, e.evidenceEnd)) {
-      out.rejectedEvidence += 1;
-      continue;
+    // Названный, но неразрешённый адресат — тот же отказ, а не NULL. Иначе
+    // два сдвига к разным неизвестным героям сходятся ключом на «-», и
+    // второй молча съедает `INSERT OR IGNORE`. Сдвиг отношения в никуда
+    // всё равно не строка, которой можно пользоваться.
+    let addresseeId: number | null = null;
+    if (e.addresseeName) {
+      const addressee = resolveEntity(sqlite, args.bookId, "character", e.addresseeName);
+      if (!addressee) {
+        out.unresolved += 1;
+        continue;
+      }
+      addresseeId = addressee.entityId;
     }
-    const addressee = e.addresseeName
-      ? resolveEntity(sqlite, args.bookId, "character", e.addresseeName)
-      : null;
 
     const info = insert.run(
       args.bookId,
       subject.entityId,
-      addressee?.entityId ?? null,
+      addresseeId,
       e.kind,
       JSON.stringify(e.data),
       args.chapterId,
+      // Одна неявная сцена на главу (этап 3). В ключ порядковый номер не
+      // входит: варьировать его пока нечему, а войдя, он развёл бы то же
+      // событие по сценам, как только их станет больше одной.
+      IMPLICIT_SCENE_ORDINAL,
       args.sourceVersionId,
       e.evidenceQuote,
       e.evidenceStart,
       e.evidenceEnd,
       defaultVerificationFor(e.kind),
       args.extractorVersion,
-      dedupKeyFor(e.kind, e.data, addressee?.entityId ?? null),
+      dedupKeyFor(e.kind, e.data, addresseeId),
       now,
     );
     if (info.changes > 0) out.inserted += 1;
