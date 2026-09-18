@@ -35,6 +35,7 @@ import {
   toCharacterKnowledge,
   toVoiceSample,
   parseJsonOrNull,
+  toCharacterEvent,
   type CharacterRow,
   type LocationRow,
   type ItemRow,
@@ -42,6 +43,7 @@ import {
   type RelationshipRow,
   type CharacterKnowledgeRow,
   type CharacterVoiceSampleRow,
+  type CharacterEventRow,
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import {
@@ -623,52 +625,90 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     if (!character) return notFound(c, "character");
     const rows = sqlite
       .prepare(
-        "SELECT * FROM character_knowledge WHERE character_id = ? ORDER BY created_at ASC",
+        `SELECT e.id, e.book_id as bookId, e.subject_character_id as characterId,
+                e.chapter_id as learnedInChapterId, e.created_at as createdAt,
+                e.data_json as fact_json
+         FROM character_events e
+         WHERE e.subject_character_id = ? AND e.kind = 'knowledge'
+         ORDER BY e.id ASC`,
       )
-      .all(id) as CharacterKnowledgeRow[];
-    return c.json(rows.map(toCharacterKnowledge));
+      .all(id) as Array<{
+        id: number;
+        bookId: number;
+        characterId: number;
+        learnedInChapterId: number | null;
+        createdAt: string;
+        fact_json: string | null;
+      }>;
+    return c.json(
+      rows.map((r) => {
+        const parsed = parseJsonOrNull(r.fact_json);
+        return {
+          id: r.id,
+          characterId: r.characterId,
+          fact: (parsed as { fact?: string } | null)?.fact ?? "",
+          learnedInChapterId: r.learnedInChapterId,
+          createdAt: r.createdAt,
+        };
+      }),
+    );
   });
 
   r.post("/characters/:id/knowledge", async (c) => {
     const id = Number(c.req.param("id"));
     const character = sqlite
-      .prepare("SELECT book_id FROM characters WHERE id = ?")
-      .get(id) as { book_id: number } | undefined;
+      .prepare("SELECT id, book_id FROM characters WHERE id = ?")
+      .get(id) as { id: number; book_id: number } | undefined;
     if (!character) return notFound(c, "character");
     const body = await c.req.json().catch(() => null);
     const parsed = createCharacterKnowledgeInputSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
     const now = new Date().toISOString();
+    const eventData = { fact: parsed.data.fact, acquisition: "observed" };
+    const dedupKey = `knowledge:-:${JSON.stringify(eventData)}`;
     const info = sqlite
       .prepare(
-        `INSERT INTO character_knowledge (character_id, fact, learned_in_chapter_id, created_at)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO character_events
+           (book_id, subject_character_id, kind, data_json, chapter_id, scene_ordinal,
+            origin, verification, extractor_version, dedup_key, created_at)
+         VALUES (?, ?, 'knowledge', ?, ?, 0, 'manual', 'confirmed', 1, ?, ?)`,
       )
       .run(
+        character.book_id,
         id,
-        parsed.data.fact,
+        JSON.stringify(eventData),
         parsed.data.learnedInChapterId ?? null,
+        dedupKey,
         now,
       );
     bumpBook(sqlite, character.book_id);
     const row = sqlite
-      .prepare("SELECT * FROM character_knowledge WHERE id = ?")
-      .get(info.lastInsertRowid) as CharacterKnowledgeRow;
-    return c.json(toCharacterKnowledge(row), 201);
+      .prepare("SELECT * FROM character_events WHERE id = ?")
+      .get(info.lastInsertRowid) as CharacterEventRow;
+    const event = toCharacterEvent(row);
+    return c.json(
+      {
+        id: event.id,
+        characterId: event.subjectCharacterId,
+        fact: (event.data as { fact?: string } | null)?.fact ?? "",
+        learnedInChapterId: event.chapterId,
+        createdAt: event.createdAt,
+      },
+      201,
+    );
   });
 
   r.delete("/character-knowledge/:id", (c) => {
     const id = Number(c.req.param("id"));
     const existing = sqlite
       .prepare(
-        `SELECT k.id, c.book_id
-         FROM character_knowledge k
-         JOIN characters c ON c.id = k.character_id
-         WHERE k.id = ?`,
+        `SELECT e.id, e.book_id
+         FROM character_events e
+         WHERE e.id = ? AND e.kind = 'knowledge'`,
       )
       .get(id) as { id: number; book_id: number } | undefined;
     if (!existing) return notFound(c, "knowledge");
-    sqlite.prepare("DELETE FROM character_knowledge WHERE id = ?").run(id);
+    sqlite.prepare("DELETE FROM character_events WHERE id = ?").run(id);
     bumpBook(sqlite, existing.book_id);
     return c.body(null, 204);
   });

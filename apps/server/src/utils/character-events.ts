@@ -5,7 +5,10 @@ import {
   IMPLICIT_SCENE_ORDINAL,
   type CharacterEventKind,
   type ExtractedCharacterEvent,
+  type SceneBoundary,
+  type CharacterEvent,
 } from "@book-forge/shared";
+import { toCharacterEvent, type CharacterEventRow } from "../db/rows.js";
 import { resolveEntity } from "./entity-resolve.js";
 
 /** Слой событий персонажа (ТЗ индивидуальности, разделы 6, 12). */
@@ -213,4 +216,61 @@ export function persistCharacterEvents(
     else out.duplicates += 1;
   }
   return out;
+}
+
+/** Только эти статусы считаются действующими знаниями. Гипотеза в контекст
+ *  не идёт, отклонённое — тем более (AC-26). */
+const ACTIVE_VERIFICATIONS = "('derived','confirmed')";
+
+/**
+ * События субъектов на начало сцены. Граница ИСКЛЮЧАЮЩАЯ: начальный контекст
+ * строится из событий ДО неё, иначе герой входит в сцену, уже зная то, что
+ * узнает в ней (раздел 7, AC-07).
+ *
+ * Порядок главы берётся **join'ом к `chapters`**, а не денормализованной
+ * колонкой: перестановка глав иначе оставила бы тихо неверную границу, и
+ * заметить это было бы нечем.
+ *
+ * Событие без главы (перенесённое ручное знание) видно всегда: автор ввёл
+ * его вне повествования, и прятать его — потеря авторских сведений.
+ */
+export function loadEventsAtBoundary(
+  sqlite: DatabaseType,
+  subjectIds: number[],
+  boundary: SceneBoundary,
+): CharacterEvent[] {
+  if (subjectIds.length === 0) return [];
+  const placeholders = subjectIds.map(() => "?").join(",");
+  const rows = sqlite
+    .prepare(
+      `SELECT e.* FROM character_events e
+       LEFT JOIN chapters ec ON ec.id = e.chapter_id
+       WHERE e.subject_character_id IN (${placeholders})
+         AND e.verification IN ${ACTIVE_VERIFICATIONS}
+         AND (
+           e.chapter_id IS NULL
+           OR ec.order_index < (SELECT order_index FROM chapters WHERE id = ?)
+         )
+       ORDER BY e.id ASC`,
+    )
+    .all(...subjectIds, boundary.chapterId) as CharacterEventRow[];
+  return rows.map(toCharacterEvent);
+}
+
+/** Знания одного героя на границе. Опровергнутое к этому моменту не
+ *  возвращается: «знал, но уже знает, что это неправда» — не знание. */
+export function loadKnowledgeAtBoundary(
+  sqlite: DatabaseType,
+  characterId: number,
+  boundary: SceneBoundary,
+): CharacterEvent[] {
+  const order = sqlite
+    .prepare("SELECT order_index FROM chapters WHERE id = ?")
+    .get(boundary.chapterId) as { order_index: number } | undefined;
+  return loadEventsAtBoundary(sqlite, [characterId], boundary).filter((e) => {
+    if (e.kind !== "knowledge") return false;
+    const d = e.data as { disprovedFromChapterOrder: number | null };
+    if (d.disprovedFromChapterOrder === null || !order) return true;
+    return d.disprovedFromChapterOrder > order.order_index;
+  });
 }
