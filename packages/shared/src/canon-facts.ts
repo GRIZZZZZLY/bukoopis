@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { extractedCharacterEventSchema } from "./character-events";
+import { extractedCharacterEventSchema } from "./character-events.js";
 
 /**
  * Phase 3 — temporal canon facts.

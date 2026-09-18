@@ -255,6 +255,7 @@ describe("triggerCanonFactExtraction", () => {
     const vId = seedChapter(b, 3, 500);
     extractMock.mockResolvedValue({
       facts: [fact("Аня", "умеет", "магия огня")],
+      characterEvents: [],
       notes: null,
     });
     await triggerCanonFactExtraction(sqlite, vId);
