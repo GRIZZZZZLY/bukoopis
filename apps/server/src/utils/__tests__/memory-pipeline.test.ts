@@ -473,7 +473,6 @@ describe("worker end-to-end (mocked LLM)", () => {
       .prepare("UPDATE chapter_versions SET content_text = ? WHERE id = ?")
       .run(CHAPTER_TEXT, vId);
 
-    const start = CHAPTER_TEXT.indexOf(QUOTE);
     factsMock.mockResolvedValue({
       facts: [
         {
