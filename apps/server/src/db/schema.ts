@@ -721,6 +721,10 @@ export const characterEvents = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
+    // NULL в `source_version_id` SQLite считает уникальным значением, поэтому
+    // строки без версии-источника (ручные, перенесённые миграцией) этим
+    // индексом не дедуплицируются. Так и задумано: идемпотентность нужна
+    // только повторной обработке версии (AC-21), а там версия есть всегда.
     uniqueIndex("uq_character_events_dedup").on(
       t.subjectCharacterId,
       t.kind,
