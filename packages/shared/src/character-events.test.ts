@@ -43,26 +43,36 @@ describe("события персонажа", () => {
   });
 
   it("чтение не бросает ни на каком мусоре и заменяет невалидное умолчанием", () => {
-    // Вид-независимые входы (non-object, undefined, bare number).
+    // Вид-независимые входы (non-object, undefined, bare number, null, array, boolean).
     for (const kind of CHARACTER_EVENT_KINDS) {
       expect(() => normalizeEventData(kind, undefined)).not.toThrow();
       expect(() => normalizeEventData(kind, "строка")).not.toThrow();
       expect(() => normalizeEventData(kind, 999)).not.toThrow();
+      expect(() => normalizeEventData(kind, null)).not.toThrow();
+      expect(() => normalizeEventData(kind, [])).not.toThrow();
+      expect(() => normalizeEventData(kind, true)).not.toThrow();
     }
 
     // Неправильно типизированные известные поля каждого вида (salvage path).
-    type TestCase = [CharacterEventKind, unknown, string, unknown];
-    const cases: TestCase[] = [
-      ["knowledge", { fact: 42 }, "fact", ""],
-      ["knowledge", { acquisition: 42 }, "acquisition", "observed"],
-      ["state", { state: 42 }, "state", ""],
-      ["state", { scope: 42 }, "scope", "unknown"],
-      ["relation_shift", { quality: 42 }, "quality", ""],
-      ["commitment", { commitment: 42 }, "commitment", ""],
-    ];
-    for (const [kind, input, field, expected] of cases) {
-      const result = normalizeEventData(kind, input);
-      expect((result as Record<string, unknown>)[field]).toBe(expected);
+    const cases: Record<CharacterEventKind, Array<[unknown, string, unknown]>> = {
+      knowledge: [
+        [{ fact: 42 }, "fact", ""],
+        [{ acquisition: 42 }, "acquisition", "observed"],
+      ],
+      state: [
+        [{ state: 42 }, "state", ""],
+        [{ scope: 42 }, "scope", "unknown"],
+      ],
+      relation_shift: [[{ quality: 42 }, "quality", ""]],
+      commitment: [[{ commitment: 42 }, "commitment", ""]],
+    };
+    for (const [kind, testCases] of Object.entries(cases) as Array<
+      [CharacterEventKind, Array<[unknown, string, unknown]>]
+    >) {
+      for (const [input, field, expected] of testCases) {
+        const result = normalizeEventData(kind, input);
+        expect((result as Record<string, unknown>)[field]).toBe(expected);
+      }
     }
   });
 
