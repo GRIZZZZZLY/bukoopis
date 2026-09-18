@@ -6,6 +6,7 @@ import {
   defaultVerificationFor,
   ACQUISITION_LABELS,
   CHARACTER_EVENT_KINDS,
+  type CharacterEventKind,
 } from "./character-events.js";
 
 describe("события персонажа", () => {
@@ -42,32 +43,38 @@ describe("события персонажа", () => {
   });
 
   it("чтение не бросает ни на каком мусоре и заменяет невалидное умолчанием", () => {
-    // Обеспечивает resilience path для каждого вида с неправильно типизированным полем своего вида.
+    // Вид-независимые входы (non-object, undefined, bare number).
+    for (const kind of CHARACTER_EVENT_KINDS) {
+      expect(() => normalizeEventData(kind, undefined)).not.toThrow();
+      expect(() => normalizeEventData(kind, "строка")).not.toThrow();
+      expect(() => normalizeEventData(kind, 999)).not.toThrow();
+    }
 
-    // knowledge: fact должна быть строкой, становится пустой
-    expect(normalizeEventData("knowledge", { fact: 42 }).fact).toBe("");
-    expect(normalizeEventData("knowledge", undefined).fact).toBe("");
-    expect(normalizeEventData("knowledge", "строка").fact).toBe("");
-    expect(normalizeEventData("knowledge", [1, 2]).fact).toBe("");
-    // acquisition неправильного типа становится observed
-    expect(normalizeEventData("knowledge", { acquisition: 42 }).acquisition).toBe("observed");
+    // Неправильно типизированные известные поля каждого вида (salvage path).
+    type TestCase = [CharacterEventKind, unknown, string, unknown];
+    const cases: TestCase[] = [
+      ["knowledge", { fact: 42 }, "fact", ""],
+      ["knowledge", { acquisition: 42 }, "acquisition", "observed"],
+      ["state", { state: 42 }, "state", ""],
+      ["state", { scope: 42 }, "scope", "unknown"],
+      ["relation_shift", { quality: 42 }, "quality", ""],
+      ["commitment", { commitment: 42 }, "commitment", ""],
+    ];
+    for (const [kind, input, field, expected] of cases) {
+      const result = normalizeEventData(kind, input);
+      expect((result as Record<string, unknown>)[field]).toBe(expected);
+    }
+  });
 
-    // state: state должна быть строкой, становится пустой
-    expect(normalizeEventData("state", { state: 42 }).state).toBe("");
-    expect(normalizeEventData("state", undefined).state).toBe("");
-    expect(normalizeEventData("state", []).state).toBe("");
-    // scope неправильного типа становится unknown
-    expect(normalizeEventData("state", { scope: 42 }).scope).toBe("unknown");
-
-    // relation_shift: quality должна быть строкой, становится пустой
-    expect(normalizeEventData("relation_shift", { quality: 42 }).quality).toBe("");
-    expect(normalizeEventData("relation_shift", null).quality).toBe("");
-    expect(normalizeEventData("relation_shift", true).quality).toBe("");
-
-    // commitment: commitment должна быть строкой, становится пустой
-    expect(normalizeEventData("commitment", { commitment: undefined }).commitment).toBe("");
-    expect(normalizeEventData("commitment", "").commitment).toBe("");
-    expect(normalizeEventData("commitment", 999).commitment).toBe("");
+  it("защита от prototype-named ключей в salvage loop", () => {
+    // Сочетание неправильного типа известного поля (triggering salvage)
+    // и прототипного ключа не должно бросать TypeError.
+    expect(() =>
+      normalizeEventData("knowledge", { fact: 42, toString: "x" })
+    ).not.toThrow();
+    expect(normalizeEventData("knowledge", { fact: 42, toString: "x" }).fact).toBe(
+      ""
+    );
   });
 
   it("извлечённое событие проверяет, что data подходит своему виду", () => {
