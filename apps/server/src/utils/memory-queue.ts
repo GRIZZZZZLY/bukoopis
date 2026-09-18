@@ -16,7 +16,11 @@ import {
  * race-free without locking tricks.
  */
 
-export const MEMORY_PIPELINE_VERSION = 1;
+/** 2 — этап 3: задание `facts` возвращает ещё и события персонажей.
+ *  Строки уникальны по (chapter_version_id, kind, pipeline_version), поэтому
+ *  повышение версии само переразбирает уже обработанные главы новым
+ *  контрактом; отдельной миграции не нужно. */
+export const MEMORY_PIPELINE_VERSION = 2;
 export const MEMORY_MAX_ATTEMPTS = 5;
 
 /** Jobs enqueued atomically with every committed chapter version. */
