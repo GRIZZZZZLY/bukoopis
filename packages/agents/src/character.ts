@@ -429,7 +429,9 @@ export function characterContextToPrompt(
       const from = charNameById.get(r.fromCharacterId) ?? `#${r.fromCharacterId}`;
       const to = charNameById.get(r.toCharacterId) ?? `#${r.toCharacterId}`;
       lines.push(
-        `- ${from} → ${to}: ${r.type} (tension: ${r.tension.toFixed(2)})${
+        // Подпись по-русски: в русском промпте «tension: -0.90» — единственная
+        // английская строка, и модель читала её как служебную разметку.
+        `- ${from} → ${to}: ${r.type} (напряжение: ${r.tension.toFixed(2)})${
           r.notes ? ` — ${r.notes}` : ""
         }`,
       );

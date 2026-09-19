@@ -1,4 +1,8 @@
 // Anthropic pricing as of August 2026. Source: https://www.anthropic.com/pricing
+// НЕ СВЕРЯЛОСЬ с прайс-листом после этой даты (низкое замечание ревью
+// 2026-09-19): числа ниже остаются догадкой ровно до тех пор, пока кто-то
+// не откроет страницу цен и не поправит дату в этой строке. Оценка
+// стоимости на экране книги считается по ним.
 // All values in USD per million tokens. Cache write = 1.25x base, cache read =
 // 0.1x base (90% discount). Update when Anthropic changes pricing.
 

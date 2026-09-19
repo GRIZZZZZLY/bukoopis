@@ -745,6 +745,31 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     // строки и приводит данные к форме вида. Собранная здесь строка
     // разошлась бы с ним молча при первой же правке.
     const dedupKey = dedupKeyFor("knowledge", eventData, null);
+    // Повтор того же знания возвращает прежнюю запись, а не падает на
+    // уникальном индексе и не заводит дубль (низкое замечание ревью
+    // 2026-09-19). Ключ у ручных записей теперь считается по
+    // COALESCE(source_version_id, -1) — миграция 0028.
+    const existing = sqlite
+      .prepare(
+        `SELECT * FROM character_events
+         WHERE subject_character_id = ? AND kind = 'knowledge'
+           AND dedup_key = ? AND source_version_id IS NULL
+         LIMIT 1`,
+      )
+      .get(id, dedupKey) as CharacterEventRow | undefined;
+    if (existing) {
+      const prior = toCharacterEvent(existing);
+      return c.json(
+        {
+          id: prior.id,
+          characterId: prior.subjectCharacterId,
+          fact: (prior.data as { fact?: string } | null)?.fact ?? "",
+          learnedInChapterId: prior.chapterId,
+          createdAt: prior.createdAt,
+        },
+        200,
+      );
+    }
     const info = sqlite
       .prepare(
         `INSERT INTO character_events
