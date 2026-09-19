@@ -33,6 +33,7 @@ import {
 } from "../utils/rolling-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import { assembleGenerationContext } from "../utils/generation-context.js";
+import { recordContextManifest } from "../utils/context-manifests.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import { resolveEntity } from "../utils/entity-resolve.js";
@@ -343,6 +344,15 @@ export function createPlotRoute(
     // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
     const beatSheetForWriter =
       assembled.povCharacterId !== null ? { ...beatSheet, pov: assembled.pov } : beatSheet;
+    // Манифест источников (этап 4): принятие кандидата привяжет его к
+    // созданной версии, и критика сверит с ним свой отпечаток.
+    const contextManifest = recordContextManifest(sqlite, {
+      bookId: ch.book_id,
+      chapterId: ch.id,
+      chapterVersionId: null,
+      purpose: "writer",
+      assembled,
+    });
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -361,6 +371,7 @@ export function createPlotRoute(
         chapterId: ch.id,
         kind: "write",
         baseVersionId: ch.current_version_id,
+        contextManifestId: contextManifest.id,
       });
       cancels.begin(proposalId);
       const signal = cancels.signal(proposalId);

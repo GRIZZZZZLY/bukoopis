@@ -15,6 +15,7 @@ import {
 } from "@book-forge/shared";
 import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "./memory-queue.js";
 import { markMemoryStaleOnCommit } from "./memory-activation.js";
+import { attachManifestToVersion } from "./context-manifests.js";
 import { extractText, countWords } from "./prosemirror.js";
 
 export interface ProseProposalRow {
@@ -103,6 +104,9 @@ export interface CreateProposalInput {
   chapterId: number;
   kind: ProposalKind;
   baseVersionId: number | null;
+  /** Манифест контекста, с которым кандидат писался (этап 4). Принятие
+   *  привяжет его к созданной версии; без него критике нечем сверять базу. */
+  contextManifestId?: number | null;
 }
 
 const EMPTY_CONTENT_JSON = '{"type":"doc","content":[{"type":"paragraph"}]}';
@@ -122,8 +126,8 @@ export function createProposal(
       `INSERT INTO prose_proposals
          (book_id, chapter_id, kind, status, base_version_id, base_draft_revision,
           context_fingerprint, content_text, content_json, word_count,
-          completion, created_at, updated_at)
-       VALUES (?, ?, ?, 'streaming', ?, ?, ?, '', ?, 0, 'unconfirmed', ?, ?)`,
+          completion, context_manifest_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'streaming', ?, ?, ?, '', ?, 0, 'unconfirmed', ?, ?, ?)`,
     )
     .run(
       input.bookId,
@@ -133,6 +137,7 @@ export function createProposal(
       draft ? draft.revision : null,
       contextFingerprint(sqlite, input.chapterId),
       EMPTY_CONTENT_JSON,
+      input.contextManifestId ?? null,
       now,
       now,
     );
@@ -397,6 +402,12 @@ export function acceptProposal(
     });
     markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
     sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(ch.id);
+    // Этап 4: манифест контекста, с которым кандидат писался, теперь
+    // принадлежит созданной версии — критика сверит с ним свой отпечаток.
+    const manifestRow = sqlite
+      .prepare("SELECT context_manifest_id AS id FROM prose_proposals WHERE id = ?")
+      .get(proposalId) as { id: number | null } | undefined;
+    if (manifestRow?.id) attachManifestToVersion(sqlite, manifestRow.id, versionId);
 
     sqlite
       .prepare(

@@ -845,6 +845,12 @@ export const proseProposals = sqliteTable(
       { onDelete: "set null" },
     ),
     acceptRequestId: text("accept_request_id"),
+    // Этап 4: с каким манифестом контекста кандидат писался. Принятие
+    // привязывает манифест к созданной версии.
+    contextManifestId: integer("context_manifest_id").references(
+      () => contextManifests.id,
+      { onDelete: "set null" },
+    ),
     errorMessage: text("error_message"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -864,6 +870,41 @@ export const proseProposals = sqliteTable(
     check(
       "prose_proposals_completion_check",
       sql`${t.completion} IN ('confirmed','unconfirmed')`,
+    ),
+  ],
+);
+
+// Этап 4 (раздел 8.1 ТЗ): манифест контекста генерации — какие источники
+// вошли в сборку и отпечаток их набора. Текст промпта не хранится: всё, на
+// что указывает манифест, версионировано. Критика сверяет свой отпечаток с
+// записанным при написании (`purpose = writer`) и сообщает автору о
+// расхождении, не блокируя.
+export const contextManifests = sqliteTable(
+  "context_manifests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterId: integer("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    // У Writer null до принятия кандидата; критике и правке известна сразу.
+    chapterVersionId: integer("chapter_version_id").references(
+      () => chapterVersions.id,
+      { onDelete: "cascade" },
+    ),
+    purpose: text("purpose").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    manifestJson: text("manifest_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_context_manifests_version").on(t.chapterVersionId, t.purpose, t.id),
+    index("idx_context_manifests_chapter").on(t.chapterId, t.purpose, t.id),
+    check(
+      "context_manifests_purpose_check",
+      sql`${t.purpose} IN ('writer','critique','repair')`,
     ),
   ],
 );

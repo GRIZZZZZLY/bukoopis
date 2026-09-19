@@ -19,6 +19,8 @@ interface ReportJson {
 
 let t: TestApp;
 let versionId: number;
+let bookId: number;
+let chapterId: number;
 
 beforeEach(async () => {
   t = makeTestApp();
@@ -52,6 +54,8 @@ beforeEach(async () => {
     },
   );
   versionId = v.id;
+  bookId = b.id;
+  chapterId = ch.id;
 });
 afterEach(() => t.cleanup());
 
@@ -161,5 +165,61 @@ describe("critique endpoints", () => {
       "DELETE",
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("отпечаток базы в отчёте критики (AC-13)", () => {
+  interface ReportWithContext {
+    report: { contextFingerprint?: string; baseChanged?: boolean | null } | null;
+  }
+  const run = () =>
+    sendJson<ReportWithContext>(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {});
+
+  it("версия не из Writer'а — отпечаток есть, сравнивать нечем", async () => {
+    const r = await run();
+    expect(r.report?.contextFingerprint).toMatch(/^[0-9a-f]{16}$/);
+    expect(r.report?.baseChanged).toBeNull();
+    // Манифест критики записан и привязан к версии.
+    const row = t.sqlite
+      .prepare("SELECT purpose FROM context_manifests WHERE chapter_version_id = ?")
+      .get(versionId) as { purpose: string };
+    expect(row.purpose).toBe("critique");
+  });
+
+  it("та же база — false; появившаяся ранняя глава — true", async () => {
+    const first = await run();
+    const fp = first.report!.contextFingerprint!;
+    // Как будто версию писал Writer на этой же базе.
+    t.sqlite
+      .prepare(
+        `INSERT INTO context_manifests
+           (book_id, chapter_id, chapter_version_id, purpose, fingerprint, manifest_json, created_at)
+         VALUES (?, ?, ?, 'writer', ?, '{}', ?)`,
+      )
+      .run(bookId, chapterId, versionId, fp, new Date().toISOString());
+    const same = await run();
+    expect(same.report?.baseChanged).toBe(false);
+
+    // Новая глава ПЕРЕД этой с принятой версией меняет набор источников.
+    const now = new Date().toISOString();
+    const earlier = Number(
+      t.sqlite
+        .prepare(
+          "INSERT INTO chapters (book_id, order_index, title, created_at, updated_at) VALUES (?, 5, 'Ранняя', ?, ?)",
+        )
+        .run(bookId, now, now).lastInsertRowid,
+    );
+    const ev = Number(
+      t.sqlite
+        .prepare(
+          `INSERT INTO chapter_versions (chapter_id, content_json, content_text, word_count, created_at)
+           VALUES (?, '{}', 'Ранний текст.', 2, ?)`,
+        )
+        .run(earlier, now).lastInsertRowid,
+    );
+    t.sqlite.prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?").run(ev, earlier);
+    const changed = await run();
+    expect(changed.report?.baseChanged).toBe(true);
+    expect(changed.report?.contextFingerprint).not.toBe(fp);
   });
 });

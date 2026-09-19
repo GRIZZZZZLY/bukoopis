@@ -19,6 +19,7 @@ import {
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
+import { recordContextManifest, compareWithWriterBase } from "../utils/context-manifests.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   createProposal,
@@ -161,11 +162,21 @@ export function createCritiqueRoute(
     // Та же история, что у Writer (AC-36): одна сборка, один бюджет.
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
-      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext, compiled,
+      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext, compiled, assembled,
     } = await loadChapterProseContext(sqlite, book, ch, version.content_text, { hasVec });
     if (compiled.requiredOverflow) {
       return badRequest(c, requiredOverflowMessage(compiled));
     }
+    // Отпечаток базы критики против отпечатка, с которым версия писалась
+    // (AC-13). Расхождение — сигнал автору в отчёте, не блокировка.
+    const critiqueManifest = recordContextManifest(sqlite, {
+      bookId: book.id,
+      chapterId: ch.id,
+      chapterVersionId: version.id,
+      purpose: "critique",
+      assembled,
+    });
+    const baseChanged = compareWithWriterBase(sqlite, version.id, critiqueManifest.fingerprint);
 
     // Style critic judges the chapter against the book's target style, not a
     // generic prose bar. Few-shot samples are excluded (0) — the critic needs
@@ -249,7 +260,17 @@ export function createCritiqueRoute(
            SET status = ?, report_json = ?, error_message = ?, completed_at = ?
            WHERE id = ?`,
         )
-        .run(status, JSON.stringify(result.report), errorMessage, completedAt, reportRowId);
+        .run(
+          status,
+          JSON.stringify({
+            ...result.report,
+            contextFingerprint: critiqueManifest.fingerprint,
+            baseChanged,
+          }),
+          errorMessage,
+          completedAt,
+          reportRowId,
+        );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       sqlite
@@ -321,11 +342,19 @@ export function createCritiqueRoute(
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
       previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext,
-      architectureContext, compiled,
+      architectureContext, compiled, assembled,
     } = await loadChapterProseContext(sqlite, book, ch, v.content_text, { hasVec });
     if (compiled.requiredOverflow) {
       return badRequest(c, requiredOverflowMessage(compiled));
     }
+    const repairManifest = recordContextManifest(sqlite, {
+      bookId: book.id,
+      chapterId: ch.id,
+      chapterVersionId: v.id,
+      purpose: "repair",
+      assembled,
+    });
+    const repairBaseChanged = compareWithWriterBase(sqlite, v.id, repairManifest.fingerprint);
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -354,7 +383,12 @@ export function createCritiqueRoute(
         });
         await stream.writeSSE({
           event: "proposal",
-          data: JSON.stringify({ proposalId, baseVersionId: v.id }),
+          data: JSON.stringify({
+            proposalId,
+            baseVersionId: v.id,
+            // База уехала с момента написания: замечания могли устареть.
+            contextBaseChanged: repairBaseChanged,
+          }),
         });
 
         const styleCtx = loadStyleContext(sqlite, book.style_profile_id);

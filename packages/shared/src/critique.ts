@@ -53,6 +53,14 @@ export const fullCritiqueReportSchema = z.object({
   suggestionCount: z.number().int().nonnegative(),
   nitCount: z.number().int().nonnegative(),
   generatedAt: z.string(),
+  /** Этап 4: отпечаток набора источников, с которым критика собирала
+   *  контекст, и сравнение с отпечатком, с которым версия писалась.
+   *  `baseChanged` — true: база уехала (герои, план, предыдущие главы), и
+   *  часть замечаний может быть следствием этого, а не ошибки писателя;
+   *  false: та же база; null: версия не из Writer'а, сравнивать нечем.
+   *  Необязательные: отчёты до этапа 4 их не несут. */
+  contextFingerprint: z.string().optional(),
+  baseChanged: z.boolean().nullable().optional(),
 });
 export type FullCritiqueReport = z.infer<typeof fullCritiqueReportSchema>;
 
