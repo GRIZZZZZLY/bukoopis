@@ -85,9 +85,16 @@ describe("gatherCharacterContext на границе сцены", () => {
 
   it("без читателей границы знаний нет вовсе", () => {
     // Прежнее поведение — список по всей книге сразу — было хуже пустого:
-    // в третью главу приезжали факты из двадцатой.
+    // в третью главу приезжали факты из двадцатой. `null` передаётся явно:
+    // забыть аргумент теперь нельзя, он обязателен.
     know("Станцию закрывают", 2);
-    const result = gatherCharacterContext(t.sqlite, bookId, ["Рин осматривает шлюз."]);
+    const result = gatherCharacterContext(
+      t.sqlite,
+      bookId,
+      ["Рин осматривает шлюз."],
+      [],
+      null,
+    );
     expect(result.characters).toHaveLength(1);
     expect(result.characters[0]!.knowledge).toEqual([]);
   });

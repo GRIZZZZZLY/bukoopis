@@ -54,7 +54,6 @@ export interface WriteChapterInput {
   previousChapterTail?: string | null;
   characterContext: string | null;
   /** ADR 0003 slice 3b — what the POV character knows so far (POV guard). */
-  povKnowledge?: string | null;
   loreContext: string | null;
   styleContext: string | null; // fingerprint + few-shot from reference corpus
   fatigueWords: string[]; // additional avoid-list
@@ -133,7 +132,6 @@ export function buildWriterStableSystem(input: WriteChapterInput): string {
     );
   }
   if (input.characterContext) stableParts.push(input.characterContext);
-  if (input.povKnowledge) stableParts.push(input.povKnowledge);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {

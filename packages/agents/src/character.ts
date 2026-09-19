@@ -140,9 +140,10 @@ export interface CharacterAgentResult {
  * первым на первой же правке — и разошёлся бы молча, потому что именно этот
  * путь идёт в Писателя.
  *
- * Не передали — знаний и состояний не будет. Это намеренно: неограниченный
- * список, каким он был до этапа 3, приносил в третью главу факты из
- * двадцатой.
+ * Аргумент ОБЯЗАТЕЛЕН, хотя `null` и разрешён. Необязательный он означал бы,
+ * что четвёртый вызывающий, забывший его передать, молча теряет все знания и
+ * состояния: ни ошибки типов, ни падения теста, ни видимой разницы в промпте.
+ * `null` передаётся осознанно и значит «знаний в этом контексте нет».
  */
 export interface CharacterBoundaryReaders {
   knowledge(characterId: number): CharacterKnowledge[];
@@ -156,7 +157,7 @@ export function gatherCharacterContext(
   bookId: number,
   texts: Array<string | null | undefined>,
   alwaysIncludeIds: number[] = [],
-  readers?: CharacterBoundaryReaders,
+  readers: CharacterBoundaryReaders | null,
 ): CharacterAgentResult {
   const allCharacters = sqlite
     .prepare("SELECT * FROM characters WHERE book_id = ?")
@@ -224,7 +225,14 @@ export function characterContextToPrompt(
   options?: { situation?: VoiceSampleSituation; addresseeCharacterId?: number | null; chapterOrder?: number | null },
 ): string {
   if (result.characters.length === 0) return "";
-  const lines: string[] = ["## Персонажи в сцене"];
+  const lines: string[] = [
+    "## Персонажи в сцене",
+    // Правило приехало из отдельного блока «Известно POV-персонажу», который
+    // рисовал те же события из той же границы вторым списком и платился
+    // дважды из одного бюджета. Оно общее: оно верно для каждого героя, а не
+    // только для POV.
+    "Под «Знает» — всё, что герой знает К НАЧАЛУ сцены. Думать и говорить как своё он может только это; остального он ещё не знает, даже если это правда.",
+  ];
 
   const samplesFor = (characterId: number) =>
     result.voiceSamples.filter((s) => s.characterId === characterId);

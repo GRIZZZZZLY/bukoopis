@@ -270,11 +270,17 @@ export function loadKnowledgeAtBoundary(
   const order = sqlite
     .prepare("SELECT order_index FROM chapters WHERE id = ?")
     .get(boundary.chapterId) as { order_index: number } | undefined;
+  // Позиция, а не `order_index`: все поля с суффиксом `ChapterOrder` в этом
+  // этапе означают номер главы, как его видит автор. Сравнив позицию с
+  // разрежённым индексом, фильтр молча считал бы опровергнутым почти всё.
+  const boundaryPosition = order
+    ? chapterPositionLookup(sqlite, boundary.bookId)(order.order_index)
+    : null;
   return loadEventsAtBoundary(sqlite, [characterId], boundary).filter((e) => {
     if (e.kind !== "knowledge") return false;
     const d = e.data as { disprovedFromChapterOrder: number | null };
-    if (d.disprovedFromChapterOrder === null || !order) return true;
-    return d.disprovedFromChapterOrder > order.order_index;
+    if (d.disprovedFromChapterOrder === null || boundaryPosition === null) return true;
+    return d.disprovedFromChapterOrder > boundaryPosition;
   });
 }
 
@@ -332,8 +338,11 @@ export function loadActiveStates(
   const seen = new Set<number>();
 
   for (const row of rows) {
+    // `seen` отмечается ТОЛЬКО когда состояние действительно взято. Пометка
+    // до проверок отдавала слот герою за отброшенной строкой: «в ярости»
+    // (scope: scene, глава 9) занимало место и выбрасывалось, и рана из
+    // второй главы, ещё действующая, не находилась уже никогда.
     if (seen.has(row.subject_character_id)) continue;
-    seen.add(row.subject_character_id);
 
     let data: unknown;
     try {
@@ -380,6 +389,7 @@ export function loadActiveStates(
       observedAtChapterOrder !== null &&
       observedAtChapterOrder >= boundaryPosition - FRESHNESS_THRESHOLD;
 
+    seen.add(row.subject_character_id);
     result.push({
       subjectCharacterId: row.subject_character_id,
       state,
