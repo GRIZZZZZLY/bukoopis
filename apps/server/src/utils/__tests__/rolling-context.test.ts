@@ -151,6 +151,68 @@ describe("loadRollingChapterContext", () => {
     expect(ctx).toContain("Глава #1 «Глава 1»");
   });
 
+  it("берётся ближайшая подходящая сводка, а не единственная на книгу", async () => {
+    // Хранилась одна строка на книгу, и она всегда покрывала всё, кроме
+    // последних трёх глав. Для главы 10 она пересказывала будущее, а значит
+    // не годилась — и три десятка ранних глав уходили в промпт поглавно.
+    const bookId = insertBook();
+    for (let i = 1; i <= 12; i++) insertChapter(bookId, i, `Сводка ${i}`);
+    metaSummarizeMock.mockResolvedValue({
+      summary: "СВОДКА_ДО_ДЕВЯТОЙ",
+      modelId: "noop",
+      tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
+    });
+    await runMetaSummary(sqlite, bookId);
+
+    for (let i = 13; i <= 23; i++) insertChapter(bookId, i, `Сводка ${i}`);
+    metaSummarizeMock.mockResolvedValue({
+      summary: "СВОДКА_ДО_ДВАДЦАТОЙ",
+      modelId: "noop",
+      tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
+    });
+    await runMetaSummary(sqlite, bookId);
+
+    // Обе живут рядом: рубеж — часть ключа.
+    const rows = sqlite
+      .prepare(
+        "SELECT covers_to_order FROM book_meta_summaries WHERE book_id = ? ORDER BY covers_to_order",
+      )
+      .all(bookId) as Array<{ covers_to_order: number }>;
+    expect(rows.map((r) => r.covers_to_order)).toEqual([9, 20]);
+
+    const ctx = loadRollingChapterContext(sqlite, bookId, 10)!;
+    expect(ctx).toContain("СВОДКА_ДО_ДЕВЯТОЙ");
+    expect(ctx).not.toContain("СВОДКА_ДО_ДВАДЦАТОЙ");
+    // И ранние главы больше не идут поглавно — ради этого всё и затевалось.
+    expect(ctx).not.toContain("Глава #1 «Глава 1»");
+    expect(ctx).toContain("Глава #9 «Глава 9»");
+  });
+
+  it("переименование главы внутри диапазона обесценивает сводку", async () => {
+    // Название главы уходит в промпт сводки, поэтому сводка называет её
+    // прежним именем. Отпечаток это ловит только если включает названия.
+    const bookId = insertBook();
+    for (let i = 1; i <= 12; i++) insertChapter(bookId, i, `Сводка ${i}`);
+    metaSummarizeMock.mockResolvedValue({
+      summary: "СВОДКА_ДО_ДЕВЯТОЙ",
+      modelId: "noop",
+      tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 },
+    });
+    await runMetaSummary(sqlite, bookId);
+    expect(loadRollingChapterContext(sqlite, bookId, 10)).toContain(
+      "СВОДКА_ДО_ДЕВЯТОЙ",
+    );
+
+    sqlite
+      .prepare(
+        "UPDATE chapters SET title = 'Другое имя' WHERE book_id = ? AND order_index = 3",
+      )
+      .run(bookId);
+    const ctx = loadRollingChapterContext(sqlite, bookId, 10)!;
+    expect(ctx).not.toContain("СВОДКА_ДО_ДЕВЯТОЙ");
+    expect(ctx).toContain("Глава #3 «Другое имя»");
+  });
+
   it("сводка в пределах границы по-прежнему используется", () => {
     const bookId = insertBook();
     for (let i = 1; i <= 12; i++) insertChapter(bookId, i, `Сводка ${i}`);
