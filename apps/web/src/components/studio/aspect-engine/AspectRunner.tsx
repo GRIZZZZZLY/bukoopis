@@ -25,6 +25,9 @@ interface Props<TPayload> {
     expectedRevision: number,
     next: StageState,
   ) => Promise<{ stage: StageState; revision: number }>;
+  /** Перечитать этап после конфликта ревизии. Без него 409 остаётся ошибкой
+   *  на карточке, и результат долгой генерации пропадает (В11). */
+  onReloadStage?: () => Promise<{ stage: StageState; revision: number }>;
 }
 
 const STATUS_LABEL: Record<StageAspect["status"], string> = {
@@ -41,6 +44,7 @@ export function AspectRunner<TPayload>({
   adapter,
   generator,
   onPatch,
+  onReloadStage,
 }: Props<TPayload>) {
   const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>(
@@ -95,17 +99,52 @@ export function AspectRunner<TPayload>({
     };
   }
 
+  /** Возвращает `true`, когда состояние действительно записано.
+   *
+   *  В11 ревью 2026-09-19: результат был `void`, и вызывающие считали
+   *  неудачу успехом — редактор закрывался, стирая единственную копию
+   *  авторской правки. Плюс конфликт ревизии: генерация раздела идёт
+   *  минуты, автор за это время принимает соседний, ревизия уходит вперёд,
+   *  и ответ модели выбрасывался вместе с платным вызовом. Теперь на 409
+   *  состояние перечитывается, и меняется ТОЛЬКО свой раздел — чужая
+   *  работа, легшая за это время, остаётся. */
   async function applyPatch(
     aspectId: string,
     next: StageState,
-  ): Promise<void> {
+  ): Promise<boolean> {
     setErrorByAspect((p) => ({ ...p, [aspectId]: "" }));
     setBusyAspectId(aspectId);
     try {
       await onPatch(revision, next);
+      return true;
     } catch (e) {
+      const isConflict = (e as { status?: number } | null)?.status === 409;
+      if (isConflict && onReloadStage) {
+        try {
+          const fresh = await onReloadStage();
+          const mine = next.aspects.find((a) => a.id === aspectId);
+          const exists = fresh.stage.aspects.some((a) => a.id === aspectId);
+          if (mine && exists) {
+            const merged: StageState = {
+              ...fresh.stage,
+              aspects: fresh.stage.aspects.map((a) =>
+                a.id === aspectId ? mine : a,
+              ),
+              updatedAt: new Date().toISOString(),
+            };
+            await onPatch(fresh.revision, merged);
+            return true;
+          }
+        } catch (retryError) {
+          const msg =
+            retryError instanceof Error ? retryError.message : String(retryError);
+          setErrorByAspect((p) => ({ ...p, [aspectId]: msg }));
+          return false;
+        }
+      }
       const msg = e instanceof Error ? e.message : String(e);
       setErrorByAspect((p) => ({ ...p, [aspectId]: msg }));
+      return false;
     } finally {
       setBusyAspectId(null);
     }
@@ -338,9 +377,12 @@ export function AspectRunner<TPayload>({
       }),
       aspect.id,
     );
-    await applyPatch(aspect.id, next);
-    setEditingAspectId(null);
-    setEditText("");
+    // Редактор закрывается только когда правка действительно записана: его
+    // содержимое — единственная копия того, что автор набрал.
+    if (await applyPatch(aspect.id, next)) {
+      setEditingAspectId(null);
+      setEditText("");
+    }
   }
 
   async function handleRefineSubmit(

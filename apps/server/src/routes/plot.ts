@@ -396,6 +396,18 @@ export function createPlotRoute(
       cancels.begin(proposalId);
       const signal = cancels.signal(proposalId);
 
+      // В9: до первого токена подписочный бэкенд молчит минутами, а молчащее
+      // соединение вправе закрыть кто угодно по дороге. Признак жизни раз в
+      // 20 секунд — как у приёма материала; клиент неизвестные события
+      // пропускает. Пишется через ту же цепочку, что и всё остальное, чтобы
+      // кадры не наложились.
+      let pending: Promise<void> = Promise.resolve();
+      const keepalive = setInterval(() => {
+        pending = pending
+          .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
+          .catch(() => {});
+      }, 20_000);
+
       try {
         await stream.writeSSE({
           event: "proposal",
@@ -526,6 +538,8 @@ export function createPlotRoute(
           data: JSON.stringify({ message, proposalId }),
         });
       } finally {
+        clearInterval(keepalive);
+        await pending;
         cancels.end(proposalId);
       }
     });

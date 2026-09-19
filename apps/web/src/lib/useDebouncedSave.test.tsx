@@ -58,6 +58,73 @@ describe("useDebouncedSave", () => {
     expect(save).toHaveBeenCalledWith("now");
   });
 
+  /** В10 ревью 2026-09-19: упавший автосейв не перезапускал таймер. Автор
+   *  отвлекался, и всё набранное висело несохранённым до следующей клавиши —
+   *  а если её не было, до закрытия вкладки. */
+  it("повторяет сохранение после сбоя, пока не выйдет", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("сеть"))
+      .mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() =>
+      useDebouncedSave(save, { delayMs: 50, retryDelaysMs: [200] }),
+    );
+
+    act(() => {
+      result.current.mark("текст");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.lastSavedAt).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(result.current.lastSavedAt).not.toBeNull();
+  });
+
+  it("новая правка отменяет запланированный повтор и сохраняет её саму", async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("сеть"))
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useDebouncedSave(save, { delayMs: 50, retryDelaysMs: [500] }),
+    );
+
+    act(() => {
+      result.current.mark("первое");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.mark("второе");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(60);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith("второе");
+
+    // Повтор первого больше не срабатывает: его текст уже вытеснен.
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it("sets lastSavedAt after successful save", async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>

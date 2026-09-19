@@ -375,6 +375,13 @@ export function createCritiqueRoute(
       });
       cancels.begin(proposalId);
       const signal = cancels.signal(proposalId);
+      // В9: то же, что у Писателя — молчащее соединение рвут по дороге.
+      let pending: Promise<void> = Promise.resolve();
+      const keepalive = setInterval(() => {
+        pending = pending
+          .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
+          .catch(() => {});
+      }, 20_000);
       try {
         await stream.writeSSE({
           event: "iteration",
@@ -518,6 +525,8 @@ export function createCritiqueRoute(
           data: JSON.stringify({ message }),
         });
       } finally {
+        clearInterval(keepalive);
+        await pending;
         cancels.end(proposalId);
       }
     });

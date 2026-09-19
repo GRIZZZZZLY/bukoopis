@@ -41,6 +41,7 @@ import type {
   UpdateRelationshipInput,
   UpdateVoiceSampleInput,
 } from "@book-forge/shared";
+import { consumeSse, SSE_BROKEN_MESSAGE } from "./sse";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 
@@ -836,41 +837,27 @@ export const api = {
       const text = await res.text().catch(() => res.statusText);
       throw new ApiError(res.status, `HTTP ${res.status}: ${errorSummary(text)}`);
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     let result: (IntakeResponse & { cancelled: boolean }) | undefined;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sepIdx;
-      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-        const raw = buffer.slice(0, sepIdx);
-        buffer = buffer.slice(sepIdx + 2);
-        const evMatch = raw.match(/^event: (.+)$/m);
-        const dataMatch = raw.match(/^data: (.+)$/m);
-        if (!dataMatch) continue;
-        const ev = evMatch?.[1] ?? "message";
-        try {
-          const data = JSON.parse(dataMatch[1]!);
-          if (ev === "begin") handlers.onBegin?.(data);
-          else if (ev === "file") handlers.onFile?.(data);
-          else if (ev === "done") result = data;
-          else if (ev === "error") {
-            throw new ApiError(
-              res.status,
-              `HTTP ${res.status}: ${errorSummary(JSON.stringify(data))}`,
-            );
-          }
-        } catch (e) {
-          if (e instanceof ApiError) throw e;
-          /* ignore malformed event */
+    let failure: ApiError | undefined;
+    await consumeSse(
+      res.body,
+      ({ event, data }) => {
+        if (event === "begin")
+          handlers.onBegin?.(data as { requestKey: string; total: number });
+        else if (event === "file") handlers.onFile?.(data as IntakeFileEvent);
+        else if (event === "done") result = data as IntakeResponse & { cancelled: boolean };
+        else if (event === "error") {
+          failure = new ApiError(
+            res.status,
+            `HTTP ${res.status}: ${errorSummary(JSON.stringify(data))}`,
+          );
         }
-      }
-    }
+      },
+      { terminalEvents: ["done", "error"] },
+    );
+    if (failure) throw failure;
     if (!result) {
-      throw new ApiError(res.status, "Поток разбора оборвался без результата");
+      throw new ApiError(res.status, SSE_BROKEN_MESSAGE);
     }
     return result;
   },
@@ -955,36 +942,21 @@ export async function streamQuickStart(
     handlers.onError(`HTTP ${res.status}: ${text}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sepIdx;
-    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
-      const evMatch = raw.match(/^event: (.+)$/m);
-      const dataMatch = raw.match(/^data: (.+)$/m);
-      if (!dataMatch) continue;
-      const ev = evMatch?.[1] ?? "message";
-      try {
-        const data = JSON.parse(dataMatch[1]!);
-        if (ev === "begin") handlers.onBegin(data as { total: number });
-        else if (ev === "stage") handlers.onStage(data as QuickStartStageEvent);
-        else if (ev === "done")
-          handlers.onDone(data as { stages: unknown[]; cancelled: boolean; revision: number });
-        else if (ev === "error")
-          handlers.onError(
-            (data as { details?: { message?: string } }).details?.message ?? "сбор не удался",
-          );
-      } catch {
-        /* ignore malformed event */
-      }
-    }
-  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      if (event === "begin") handlers.onBegin(data as { total: number });
+      else if (event === "stage") handlers.onStage(data as QuickStartStageEvent);
+      else if (event === "done")
+        handlers.onDone(data as { stages: unknown[]; cancelled: boolean; revision: number });
+      else if (event === "error")
+        handlers.onError(
+          (data as { details?: { message?: string } }).details?.message ?? "сбор не удался",
+        );
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
 }
 
 export function exportBookUrl(bookId: number, format: "md" | "epub"): string {
@@ -1027,31 +999,17 @@ export async function streamInlineCommand(
     handlers.onError(`HTTP ${res.status}: ${text}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sepIdx;
-    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
-      const evMatch = raw.match(/^event: (.+)$/m);
-      const dataMatch = raw.match(/^data: (.+)$/m);
-      if (!dataMatch) continue;
-      const ev = evMatch?.[1] ?? "message";
-      try {
-        const data = JSON.parse(dataMatch[1]!);
-        if (ev === "chunk") handlers.onChunk(data.text as string);
-        else if (ev === "done") handlers.onDone(data);
-        else if (ev === "error") handlers.onError(data.message as string);
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      if (event === "chunk") handlers.onChunk((data as { text: string }).text);
+      else if (event === "done")
+        handlers.onDone(data as { text: string; tokens: { input: number; output: number } });
+      else if (event === "error") handlers.onError((data as { message: string }).message);
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
 }
 
 // ── SSE entity-variants streaming ──
@@ -1101,41 +1059,16 @@ async function postAspectStream<TDone>(
     handlers.onError(`HTTP ${res.status}: ${errorSummary(text)}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let sawTerminal = false;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sepIdx;
-    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
-      const evMatch = raw.match(/^event: (.+)$/m);
-      const dataMatch = raw.match(/^data: (.+)$/m);
-      if (!dataMatch) continue;
-      const ev = evMatch?.[1] ?? "message";
-      try {
-        const data = JSON.parse(dataMatch[1]!);
-        if (ev === "progress") {
-          handlers.onProgress(data as AspectGenerationProgress);
-        } else if (ev === "done") {
-          sawTerminal = true;
-          handlers.onDone(data as TDone);
-        } else if (ev === "error") {
-          sawTerminal = true;
-          handlers.onError(data.message as string);
-        }
-      } catch {
-        /* ignore malformed event */
-      }
-    }
-  }
-  if (!sawTerminal) {
-    handlers.onError("Поток генерации оборвался без результата");
-  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      if (event === "progress") handlers.onProgress(data as AspectGenerationProgress);
+      else if (event === "done") handlers.onDone(data as TDone);
+      else if (event === "error") handlers.onError((data as { message: string }).message);
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
 }
 
 export function streamAspectEntityVariants(
@@ -1248,34 +1181,21 @@ export async function streamRepair(
     handlers.onError(`HTTP ${res.status}: ${text}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sepIdx;
-    while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sepIdx);
-      buffer = buffer.slice(sepIdx + 2);
-      const evMatch = raw.match(/^event: (.+)$/m);
-      const dataMatch = raw.match(/^data: (.+)$/m);
-      if (!dataMatch) continue;
-      const ev = evMatch?.[1] ?? "message";
-      try {
-        const data = JSON.parse(dataMatch[1]!);
-        if (ev === "iteration")
-          handlers.onIteration?.(data.current as number, data.max as number);
-        else if (ev === "proposal") handlers.onProposal?.(data.proposalId as number);
-        else if (ev === "chunk") handlers.onChunk(data.text as string);
-        else if (ev === "done") handlers.onDone(data);
-        else if (ev === "error") handlers.onError(data.message as string);
-      } catch {
-        /* ignore malformed event */
-      }
-    }
-  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      const d = data as Record<string, unknown>;
+      if (event === "iteration")
+        handlers.onIteration?.(d.current as number, d.max as number);
+      else if (event === "proposal") handlers.onProposal?.(d.proposalId as number);
+      else if (event === "chunk") handlers.onChunk(d.text as string);
+      else if (event === "done")
+        handlers.onDone(data as Parameters<RepairStreamHandlers["onDone"]>[0]);
+      else if (event === "error") handlers.onError(d.message as string);
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
 }
 
 // ── SSE writer streaming ──
@@ -1318,33 +1238,24 @@ export async function streamWriteChapter(
     handlers.onError(`HTTP ${res.status}: ${text}`);
     return;
   }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sepIdx;
-      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-        const raw = buffer.slice(0, sepIdx);
-        buffer = buffer.slice(sepIdx + 2);
-        const evMatch = raw.match(/^event: (.+)$/m);
-        const dataMatch = raw.match(/^data: (.+)$/m);
-        if (!dataMatch) continue;
-        const ev = evMatch?.[1] ?? "message";
-        try {
-          const data = JSON.parse(dataMatch[1]!);
-          if (ev === "proposal") handlers.onProposal?.(data.proposalId as number);
-          else if (ev === "chunk") handlers.onChunk(data.text as string);
-          else if (ev === "done") handlers.onDone(data);
-          else if (ev === "error") handlers.onError(data.message as string);
-        } catch {
-          /* ignore malformed event */
-        }
-      }
-    }
+    const { sawTerminal } = await consumeSse(
+      res.body,
+      ({ event, data }) => {
+        const d = data as Record<string, unknown>;
+        if (event === "proposal") handlers.onProposal?.(d.proposalId as number);
+        else if (event === "chunk") handlers.onChunk(d.text as string);
+        else if (event === "done")
+          handlers.onDone(data as Parameters<WriterStreamHandlers["onDone"]>[0]);
+        else if (event === "error") handlers.onError(d.message as string);
+      },
+      { terminalEvents: ["done", "error"] },
+    );
+    // Обрыв без `done`/`error` — самый частый способ подвесить экран:
+    // кнопка Писателя не отпускалась, и кандидат оставался «пишется»
+    // навсегда (В9). Отмена автором сюда не попадает: она приходит
+    // исключением по сигналу.
+    if (!sawTerminal && !signal?.aborted) handlers.onError(SSE_BROKEN_MESSAGE);
   } catch (err) {
     if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
       handlers.onAbort?.();

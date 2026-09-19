@@ -466,3 +466,135 @@ describe("AspectRunner", () => {
     expect(next.aspects[0]!.variants[0]!.status).toBe("superseded");
   });
 });
+
+/** В11 независимого ревью 2026-09-19: неудачное сохранение правки закрывало
+ *  редактор и стирало набранный текст, а конфликт ревизии (автор принял
+ *  соседний раздел, пока шла генерация) выбрасывал сгенерированные варианты
+ *  вместе с платным вызовом. */
+describe("AspectRunner — сохранность авторской работы (В11)", () => {
+  function acceptedAspect(): StageAspect {
+    return makeAspect({
+      status: "accepted",
+      finalPayload: "Принятый текст раздела.",
+      selectedVariantId: "v1",
+      variants: [
+        {
+          id: "v1",
+          label: "вариант",
+          payloadKind: "markdown",
+          payload: "Принятый текст раздела.",
+          status: "accepted",
+          editSource: "llm",
+          generatedAt: "2026-09-19T00:00:00.000Z",
+        },
+      ],
+    });
+  }
+
+  it("неудачное сохранение правки оставляет редактор открытым и текст на месте", async () => {
+    const onPatch = vi.fn(async () => {
+      throw new Error("сеть отвалилась");
+    });
+    render(
+      <AspectRunner
+        stage={makeStage([acceptedAspect()])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Редактировать текст" }),
+    );
+    const area = screen.getByRole("textbox", { name: /Текст раздела/ });
+    await userEvent.clear(area);
+    await userEvent.type(area, "Долгая авторская правка");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить правку" }));
+
+    await waitFor(() => expect(onPatch).toHaveBeenCalled());
+    // Редактор не закрылся, текст не стёрт — иначе правку пришлось бы
+    // набирать заново, и это единственная её копия.
+    expect(
+      (screen.getByRole("textbox", { name: /Текст раздела/ }) as HTMLTextAreaElement).value,
+    ).toBe("Долгая авторская правка");
+    expect(screen.getByText(/сеть отвалилась/)).toBeTruthy();
+  });
+
+  it("удачное сохранение правки редактор закрывает", async () => {
+    const onPatch = vi.fn(async (rev: number, next: StageState) => ({
+      stage: next,
+      revision: rev + 1,
+    }));
+    render(
+      <AspectRunner
+        stage={makeStage([acceptedAspect()])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Редактировать текст" }),
+    );
+    const area = screen.getByRole("textbox", { name: /Текст раздела/ });
+    await userEvent.clear(area);
+    await userEvent.type(area, "Новая редакция");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить правку" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: /Текст раздела/ })).toBeNull(),
+    );
+  });
+
+  it("конфликт ревизии не выбрасывает работу: правка ложится на свежее состояние", async () => {
+    const conflict = Object.assign(new Error("revision_conflict"), { status: 409 });
+    const onPatch = vi
+      .fn()
+      .mockRejectedValueOnce(conflict)
+      .mockImplementation(async (rev: number, next: StageState) => ({
+        stage: next,
+        revision: rev + 1,
+      }));
+    // Свежее состояние: соседний раздел приняли, пока автор правил этот.
+    const freshStage = makeStage([
+      acceptedAspect(),
+      makeAspect({ id: "a2", name: "климат", status: "accepted", finalPayload: "Климат." }),
+    ]);
+    const onReloadStage = vi.fn(async () => ({ stage: freshStage, revision: 7 }));
+
+    render(
+      <AspectRunner
+        stage={makeStage([acceptedAspect()])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+        onReloadStage={onReloadStage}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Редактировать текст" }),
+    );
+    const area = screen.getByRole("textbox", { name: /Текст раздела/ });
+    await userEvent.clear(area);
+    await userEvent.type(area, "Правка поверх конфликта");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить правку" }));
+
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(2));
+    expect(onReloadStage).toHaveBeenCalledTimes(1);
+    // Повтор идёт с новой ревизией и несёт ОБА раздела: соседний, принятый
+    // за это время, не потерян.
+    const [rev, next] = onPatch.mock.calls[1] as [number, StageState];
+    expect(rev).toBe(7);
+    expect(next.aspects.map((a) => a.id)).toEqual(["a1", "a2"]);
+    expect(next.aspects[0]!.finalPayload).toBe("Правка поверх конфликта");
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: /Текст раздела/ })).toBeNull(),
+    );
+  });
+});
