@@ -452,16 +452,19 @@ export function ChapterPage() {
       // всегда ложился текст версии, и первый же автосейв записывал его
       // поверх черновика — незакоммиченная работа исчезала от одного
       // захода в предпросмотр и обратно.
-      const draftIsNewer =
-        chapter.draft != null &&
-        (!chapter.currentVersion ||
-          chapter.draft.updatedAt > chapter.currentVersion.createdAt);
-      const json = draftIsNewer
-        ? chapter.draft!.contentJson
-        : (chapter.currentVersion?.contentJson ?? null);
+      // «Новее» считается по содержимому, а не по отметке времени: тот же
+      // выбор, что делает выгрузка (К2). Автосейв и принятие версии
+      // ложатся в одну секунду, и сравнение времени там врало.
+      const draftJson = chapter.draft?.contentJson ?? null;
+      const versionJson = chapter.currentVersion?.contentJson ?? null;
+      const json =
+        draftJson !== null && draftJson !== versionJson ? draftJson : versionJson;
       const doc = parseDoc(json);
       editor?.commands.setContent(doc as never, false);
       baselineJsonRef.current = JSON.stringify(doc);
+      // База сравнения обновлена — признак несохранённого снимается
+      // вместе с ней, иначе он держался бы на пустом месте.
+      setDirty(title.trim() !== titleBaselineRef.current.trim());
       editor?.setEditable(true);
       return;
     }

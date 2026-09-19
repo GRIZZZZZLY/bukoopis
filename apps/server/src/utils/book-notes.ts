@@ -108,6 +108,8 @@ export function renderOpenNotesPrompt(
     withIds?: boolean;
     /** Порядковые номера глав вместо разрежённого `order_index` (С4). */
     positionOf?: (orderIndex: number) => number | null;
+    /** Какую главу называть в заголовке; см. `renderActiveFactsPrompt`. */
+    headingOrder?: number;
   },
 ): string | null {
   if (notes.length === 0) return null;
@@ -126,7 +128,7 @@ export function renderOpenNotesPrompt(
     (n) =>
       `- ${opts?.withIds ? `[note_${n.id}] ` : ""}[${KIND_LABEL[n.kind]}] ${n.title}: ${n.body} (${since(n.introduced)})`,
   );
-  return `## ${heading} (актуально на главу ${num(atChapterOrder)})\n${lines.join("\n")}`;
+  return `## ${heading} (актуально на главу ${num(opts?.headingOrder ?? atChapterOrder)})\n${lines.join("\n")}`;
 }
 
 /**

@@ -186,7 +186,18 @@ export async function assembleGenerationContext(
   // «сократите состав сцены» автор выполнить не мог: состав он не задавал.
   // Намерение главы, её беат-лист (или её текст у критики), название,
   // премиса и POV — то, что про сцену и есть.
-  const scanTexts = [ch.intent, title, premise, pov, ...args.scanTexts];
+  const scanTexts = [
+    ch.intent,
+    title,
+    premise,
+    pov,
+    ...args.scanTexts,
+    // Хвост предыдущей главы — часть этой же сцены: герой, действующий в
+    // продолжающемся эпизоде, может быть не назван в беат-листе, и без
+    // этого его карточка пропадала. Пересказы всей книги сюда по-прежнему
+    // не идут — именно они и раздували состав (С1).
+    tailRow?.text ?? null,
+  ];
   const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id ?? null);
   const charResult = gatherCharacterContext(
     sqlite,
@@ -230,6 +241,11 @@ export async function assembleGenerationContext(
     args.factsBoundary === "before_chapter"
       ? Math.max(0, ch.order_index - 1)
       : ch.order_index;
+  // Заголовок блока называет главу, для которой собран контекст, а не
+  // границу канона: `factsOrder` у Писателя — это `order_index - 1`, номера
+  // главы с таким индексом в книге нет, и `positionOf` вернул бы `null` —
+  // в промпте рядом со строками «с главы 3» печаталось «#29».
+  const factsLabelOrder = ch.order_index;
   const factsPrompt = renderActiveFactsPrompt(
     sqlite,
     book.id,
@@ -237,6 +253,7 @@ export async function assembleGenerationContext(
     {
       ...(factEntityNames.length > 0 ? { entityNames: factEntityNames } : {}),
       positionOf,
+      headingOrder: factsLabelOrder,
     },
   );
   const characterContext =
@@ -255,7 +272,7 @@ export async function assembleGenerationContext(
         await gatherRelevantNotes(sqlite, book.id, args.notesQuery, factsOrder),
         "Открытые линии",
         factsOrder,
-        { positionOf },
+        { positionOf, headingOrder: factsLabelOrder },
       )
     : null;
 

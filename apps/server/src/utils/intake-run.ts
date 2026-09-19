@@ -391,12 +391,19 @@ export async function runIntake(
   let chapters: InsertedChapter[] = [];
   if (chapterFragments.length > 0) {
     try {
-      ({ created: chapters } = await insertChapters(
+      const inserted = await insertChapters(
         sqlite,
         hasVec,
         bookId,
         chapterFragments.map((f) => ({ title: f.title, body: f.body })),
-      ));
+      );
+      chapters = inserted.created;
+      // Глава, отсеянная как повтор по названию, обязана быть названа:
+      // иначе она исчезает молча, а в авторском документе две сцены с
+      // одинаковым заголовком — обычное дело.
+      for (const s of inserted.skipped) {
+        failures.push({ filename: s.title, message: `Глава не добавлена: ${s.reason}` });
+      }
     } catch (e) {
       failures.push({
         filename: "Главы",

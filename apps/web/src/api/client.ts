@@ -345,8 +345,15 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  /** Возвращает, что ушло вместе с героем: события, образцы речи,
+   *  отношения, псевдонимы (С10). */
   deleteCharacter: (id: number) =>
-    req<void>(`/api/characters/${id}`, { method: "DELETE" }),
+    req<{
+      deletedEvents: number;
+      deletedVoiceSamples: number;
+      deletedRelationships: number;
+      deletedAliases: number;
+    }>(`/api/characters/${id}`, { method: "DELETE" }),
   listCharacterKnowledge: (id: number) =>
     req<CharacterKnowledge[]>(`/api/characters/${id}/knowledge`),
   addCharacterKnowledge: (

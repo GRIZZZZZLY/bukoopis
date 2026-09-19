@@ -113,6 +113,10 @@ export function renderActiveFactsPrompt(
     withIds?: boolean;
     /** Порядковые номера глав вместо разрежённого `order_index` (С4). */
     positionOf?: (orderIndex: number) => number | null;
+    /** Какую главу называть в заголовке. По умолчанию — сама граница; у
+     *  Писателя граница на главу раньше, и печатать её номер значило бы
+     *  назвать главу, которой нет. */
+    headingOrder?: number;
   },
 ): string | null {
   const facts = loadActiveFacts(sqlite, bookId, atChapterOrder, opts);
@@ -144,7 +148,7 @@ export function renderActiveFactsPrompt(
     );
     blocks.push(`### ${TYPE_LABEL[type]}: ${name}\n${lines.join("\n")}`);
   }
-  return `## Канон-факты (актуальны на главу ${chapterNum(atChapterOrder, opts?.positionOf)})\n${blocks.join("\n\n")}`;
+  return `## Канон-факты (актуальны на главу ${chapterNum(opts?.headingOrder ?? atChapterOrder, opts?.positionOf)})\n${blocks.join("\n\n")}`;
 }
 
 /**

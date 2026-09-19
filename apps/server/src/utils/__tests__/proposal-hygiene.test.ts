@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestApp, sendJson, type TestApp } from "../../routes/__tests__/_helpers.js";
 import { recoverStaleProseProposals } from "../critique-recovery.js";
 import { finishProposal } from "../prose-proposals.js";
-import { aspectModelLabel } from "../../routes/studio.js";
+import { aspectModelLabel } from "../aspect-model-label.js";
 
 /** Средние замечания ревью 2026-09-19: С7 (подпись модели — константа),
  *  С8 (кандидаты-зомби после рестарта и незащищённый финал). */
@@ -11,8 +11,8 @@ let t: TestApp;
 let bookId: number;
 let chapterId: number;
 
-function seedProposal(status: string): number {
-  const now = new Date().toISOString();
+function seedProposal(status: string, createdAt?: string): number {
+  const now = createdAt ?? new Date().toISOString();
   return Number(
     t.sqlite
       .prepare(
@@ -44,7 +44,8 @@ afterEach(() => t.cleanup());
 
 describe("кандидаты прозы после рестарта (С8)", () => {
   it("застрявший streaming становится ошибкой, остальные не трогаются", () => {
-    const zombie = seedProposal("streaming");
+    // Старше получаса: живую генерацию другого процесса гасить нельзя.
+    const zombie = seedProposal("streaming", "2020-01-01T00:00:00.000Z");
     const ready = seedProposal("ready");
 
     expect(recoverStaleProseProposals(t.sqlite)).toBe(1);
@@ -55,6 +56,17 @@ describe("кандидаты прозы после рестарта (С8)", () =
     expect(rows.find((r) => r.id === zombie)!.status).toBe("failed");
     expect(rows.find((r) => r.id === zombie)!.error_message).toContain("прервалась");
     expect(rows.find((r) => r.id === ready)!.status).toBe("ready");
+  });
+
+  it("не трогает генерацию, начатую только что", () => {
+    // Второй процесс сервера на той же базе иначе пометил бы живой кандидат
+    // первого как упавший, и его результат было бы некуда записать.
+    const fresh = seedProposal("streaming");
+    expect(recoverStaleProseProposals(t.sqlite)).toBe(0);
+    const row = t.sqlite
+      .prepare("SELECT status FROM prose_proposals WHERE id = ?")
+      .get(fresh) as { status: string };
+    expect(row.status).toBe("streaming");
   });
 
   it("поздний ответ не переписывает отменённого кандидата", () => {

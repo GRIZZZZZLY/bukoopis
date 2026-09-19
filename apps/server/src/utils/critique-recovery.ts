@@ -20,19 +20,29 @@ import type { Database as DatabaseType } from "better-sqlite3";
  * запускает генерацию заново, то есть платит второй раз за тот же текст.
  * После старта ни один `streaming` живым быть не может.
  */
-export function recoverStaleProseProposals(sqlite: DatabaseType): number {
-  const now = new Date().toISOString();
+export function recoverStaleProseProposals(
+  sqlite: DatabaseType,
+  nowMs: number = Date.now(),
+): number {
+  const now = new Date(nowMs).toISOString();
+  // Только кандидаты старше получаса. Второй процесс сервера на той же базе
+  // (а запустить его ничто не мешает) иначе гасил бы ЖИВУЮ генерацию первого:
+  // статус уходил бы в `failed`, и `finishProposal`, который пишет только из
+  // `streaming`, выбросил бы уже написанный текст главы. Полчаса — заведомо
+  // больше самой долгой генерации: свой предел ожидания у неё 10 минут.
+  const cutoff = new Date(nowMs - 30 * 60 * 1000).toISOString();
   return sqlite
     .prepare(
       `UPDATE prose_proposals
        SET status = 'failed',
            error_message = COALESCE(error_message, ?),
            updated_at = ?
-       WHERE status = 'streaming'`,
+       WHERE status = 'streaming' AND created_at < ?`,
     )
     .run(
       "Генерация прервалась вместе с работой сервера. Запустите её заново.",
       now,
+      cutoff,
     ).changes;
 }
 

@@ -76,18 +76,6 @@ export function resolveEntityDetailed(
     return { status: "ambiguous", candidates: hits.map((h) => h.name) };
   }
 
-  // Падежная форма: «Анны» при герое «Анна». Сравнение по основе идёт
-  // ПОСЛЕ точного и только при единственном совпадении — иначе «Инна» и
-  // «Анна» слились бы (С2 ревью 2026-09-19).
-  const byStem = rows.filter((r) => sameEntityName(r.name, name));
-  if (byStem.length === 1) {
-    const hit = byStem[0]!;
-    return { status: "resolved", entity: { entityId: hit.id, canonicalName: hit.name } };
-  }
-  if (byStem.length > 1) {
-    return { status: "ambiguous", candidates: byStem.map((h) => h.name) };
-  }
-
   // Alias fallback (author-registered).
   const alias = sqlite
     .prepare(

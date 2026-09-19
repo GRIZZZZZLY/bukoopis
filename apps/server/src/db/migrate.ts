@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createDb, resolveDbPath } from "./client.js";
@@ -15,14 +16,46 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * «no such column» на случайном маршруте — без единой подсказки, что надо
  * выполнить отдельную команду.
  */
-export function runMigrations(dbPath: string = resolveDbPath()): void {
-  // Single-file SQLite with hand-written SQL migrations: a bad migration or a
-  // corrupt write is unrecoverable without a copy. Snapshot before touching it.
-  const backupPath = backupDatabase(dbPath);
-  if (backupPath) console.log(`🛟 backup: ${backupPath}`);
+/** Есть ли в журнале миграции, которых нет в таблице применённых.
+ *  Таблицы может не быть вовсе — это свежая база, применять есть что. */
+function hasPendingMigrations(
+  sqlite: ReturnType<typeof createDb>["sqlite"],
+  migrationsFolder: string,
+): boolean {
+  let journalCount = 0;
+  try {
+    const journal = JSON.parse(
+      readFileSync(resolve(migrationsFolder, "meta/_journal.json"), "utf8"),
+    ) as { entries?: unknown[] };
+    journalCount = journal.entries?.length ?? 0;
+  } catch {
+    return true; // журнал не прочитался — пусть решает сам мигратор
+  }
+  try {
+    const row = sqlite
+      .prepare("SELECT COUNT(*) AS c FROM __drizzle_migrations")
+      .get() as { c: number };
+    return row.c < journalCount;
+  } catch {
+    return true; // таблицы нет — база свежая
+  }
+}
 
+export function runMigrations(dbPath: string = resolveDbPath()): void {
   const { sqlite, db, hasVec } = createDb(dbPath);
   const migrationsFolder = resolve(__dirname, "../../drizzle");
+
+  // Копия делается, только если применять действительно есть что.
+  // Сервер зовёт миграции на каждый старт, а в разработке он стартует на
+  // каждое сохранение файла: безусловный `VACUUM INTO` за десяток правок
+  // вытеснял из `data/backups/` все копии, сделанные перед настоящей
+  // миграцией, — то есть ровно те, ради которых всё и заводилось.
+  if (hasPendingMigrations(sqlite, migrationsFolder)) {
+    // Single-file SQLite with hand-written SQL migrations: a bad migration or
+    // a corrupt write is unrecoverable without a copy.
+    const backupPath = backupDatabase(dbPath);
+    if (backupPath) console.log(`🛟 backup: ${backupPath}`);
+  }
   migrate(db, { migrationsFolder });
   bootstrapVirtualTables(sqlite, hasVec);
 

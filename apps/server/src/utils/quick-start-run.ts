@@ -1,4 +1,4 @@
-import { aspectModelLabel } from "../routes/studio.js";
+import { aspectModelLabel } from "./aspect-model-label.js";
 import { randomUUID } from "node:crypto";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -315,7 +315,7 @@ async function generateVariants(
     });
     return toStoredEntityVariants(result, {
       contextRef,
-      modelId: aspectModelLabel("aspect_variants"),
+      modelId: aspectModelLabel("aspect_entity_variants"),
     });
   }
   const contextRef = buildContextRef({

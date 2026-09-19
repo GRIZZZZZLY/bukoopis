@@ -1,4 +1,4 @@
-import { resolveBackend, resolveModelId } from "@book-forge/llm";
+import { aspectModelLabel } from "../utils/aspect-model-label.js";
 import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -279,17 +279,6 @@ interface IntakeInFlightRun {
   rows: IntakeInFlightRow[];
 }
 
-/** Настоящая подпись модели для варианта (С7 ревью 2026-09-19).
- *
- *  Варианты Мастерской подписывались константой «subscription:claude-sonnet-4-6»
- *  во всех восьми местах — независимо от бэкенда, от переопределения
- *  `LLM_AGENT_BACKEND_MAP` и от выбранной модели. По такой подписи нельзя
- *  ни понять, чем вариант написан, ни посчитать его стоимость. */
-export function aspectModelLabel(agent: "aspect_variants" | "aspect_playbook" | "aspect_entity_variants", model: "sonnet" | "opus" = "sonnet"): string {
-  const id = resolveModelId(model);
-  return resolveBackend(agent) === "subscription" ? `subscription:${id}` : id;
-}
-
 export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
@@ -306,6 +295,30 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   // ничего и не начиналось. Снимок позволяет любой вкладке в любой момент
   // спросить «что сейчас идёт» и нарисовать тот же прогресс.
   const intakeInFlight = new Map<number, IntakeInFlightRun>();
+
+  /** Отказ, когда разбор этой книги уже идёт (С14). Реестр в памяти
+   *  ключуется книгой — это нужно `GET /intake/inflight`, которому нечем
+   *  спросить про конкретный прогон, — поэтому второй разбор не забирает
+   *  слот, а получает 409: иначе идущий становился невидимым и его нельзя
+   *  было ни показать, ни остановить. */
+  function intakeBusyResponse(c: Context, bookId: number): Response | null {
+    const running = intakeInFlight.get(bookId);
+    if (!running) return null;
+    return c.json(
+      {
+        error: "intake_in_progress",
+        details: {
+          requestKey: running.requestKey,
+          startedAt: running.startedAt,
+          message:
+            "Разбор этой книги уже идёт. Дождитесь его конца или остановите" +
+            " в той вкладке, где он запущен.",
+        },
+      },
+      409,
+    );
+  }
+
 
   const quickStartCancels = createQuickStartCancelRegistry();
   /** Что сейчас собирается для книги — для GET .../quick-start/inflight.
@@ -620,6 +633,17 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     const parsed = intakeBodySchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
 
+    // Тот же отказ, что у потокового маршрута: два разбора одной книги
+    // пишут в одни этапы, и второй делал первый невидимым (С14).
+    const busy = intakeBusyResponse(c, id);
+    if (busy) return busy;
+    intakeInFlight.set(id, {
+      requestKey: "sync",
+      total: parsed.data.files.length,
+      startedAt: new Date().toISOString(),
+      rows: [],
+    });
+
     try {
       const { summary, ideaSet, chapters, planVariants, failures, revision } = await runIntake(
         { sqlite, hasVec, repo, bookId: id },
@@ -635,6 +659,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         );
       }
       throw e;
+    } finally {
+      intakeInFlight.delete(id);
     }
   });
 
@@ -654,22 +680,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     // нужно `GET /intake/inflight`, которому нечем спросить про конкретный
     // прогон, — и перезапись делала идущий разбор невидимым: его нельзя
     // было ни показать, ни остановить, а он продолжал писать в те же этапы.
-    const running = intakeInFlight.get(id);
-    if (running) {
-      return c.json(
-        {
-          error: "intake_in_progress",
-          details: {
-            requestKey: running.requestKey,
-            startedAt: running.startedAt,
-            message:
-              "Разбор этой книги уже идёт. Дождитесь его конца или остановите" +
-              " в той вкладке, где он запущен.",
-          },
-        },
-        409,
-      );
-    }
+    const busyStream = intakeBusyResponse(c, id);
+    if (busyStream) return busyStream;
 
     return streamSSE(c, async (stream) => {
       // onFile синхронный, а stream.writeSSE — асинхронный запись; без
@@ -1112,7 +1124,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
               contextRef,
-              modelId: aspectModelLabel("aspect_variants"),
+              modelId: aspectModelLabel("aspect_entity_variants"),
             }),
             contextRef,
           }),

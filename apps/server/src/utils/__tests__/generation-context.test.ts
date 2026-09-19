@@ -335,16 +335,47 @@ describe("состав сцены (С1) и приоритеты бюджета (
 
   it("поиск и стиль вытесняются позже принятых разделов Мастерской", async () => {
     insertCharacter("Рин");
-    const first = insertChapter(10, "Первая глава. Рин у ручья.");
-    expect(first).toBeGreaterThan(0);
+    insertChapter(10, "Первая глава. Рин у ручья. ОРИЕНТИР_ПЕРВОЙ.");
     const second = insertChapter(20, "Вторая.");
+    // Принятый мир Мастерской — большой: именно так «библия» и выбивала из
+    // бюджета поиск и стиль, которые держат непротиворечивость и голос.
+    const world = "Мир держится на соли. ".repeat(200);
+    sqlite
+      .prepare("UPDATE books SET studio_state = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          schemaVersion: 1,
+          revision: 1,
+          stages: {
+            world: {
+              status: "complete",
+              playbookGenerated: true,
+              aspects: [
+                {
+                  id: "a1",
+                  name: "мир",
+                  status: "accepted",
+                  order: 0,
+                  required: true,
+                  source: "llm",
+                  payloadKind: "markdown",
+                  variants: [],
+                  finalPayload: world,
+                },
+              ],
+            },
+          },
+        }),
+        bookId,
+      );
 
-    const ctx = await assemble(second, { budgetTokens: 400 });
+    const roomy = await assemble(second, { budgetTokens: 100000 });
+    expect(roomy.compiled.includedIds).toContain("studio");
 
-    // Мир и лор — фон; поиск по прошлым главам и стиль держат
-    // непротиворечивость и голос, и уходить первыми должны не они.
-    const order = ctx.compiled.includedIds;
-    expect(order.includes("studio") && !order.includes("style")).toBe(false);
+    // Тесно: уходит студийный контекст, а не стиль.
+    const tight = await assemble(second, { budgetTokens: 900 });
+    expect(tight.compiled.includedIds).not.toContain("studio");
+    expect(tight.compiled.dropped.map((d) => d.id)).toContain("studio");
   });
 });
 
