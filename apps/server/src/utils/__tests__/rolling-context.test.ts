@@ -17,6 +17,7 @@ import { metaSummarize } from "@book-forge/agents";
 import {
   loadRollingChapterContext,
   triggerMetaSummary,
+  runMetaSummary,
 } from "../rolling-context.js";
 
 const metaSummarizeMock = vi.mocked(metaSummarize);
@@ -166,6 +167,24 @@ describe("loadRollingChapterContext", () => {
 });
 
 describe("triggerMetaSummary", () => {
+  /** Новая принятая версия главы со своей поглавной сводкой. Именно смена
+   *  `chapters.current_version_id` и делает отпечаток источников другим. */
+  function commitNewVersion(chapterId: number, text: string, summary: string): number {
+    const now = new Date().toISOString();
+    const info = sqlite
+      .prepare(
+        `INSERT INTO chapter_versions
+           (chapter_id, content_json, content_text, word_count, summary, created_at)
+         VALUES (?, '{}', ?, ?, ?, ?)`,
+      )
+      .run(chapterId, text, text.split(/\s+/).length, summary, now);
+    const versionId = Number(info.lastInsertRowid);
+    sqlite
+      .prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?")
+      .run(versionId, chapterId);
+    return versionId;
+  }
+
   it("does not write a meta row when summarized count <= window", async () => {
     const bookId = insertBook();
     insertChapter(bookId, 1, "S1");
@@ -207,5 +226,36 @@ describe("triggerMetaSummary", () => {
     await triggerMetaSummary(sqlite, bookId);
     await triggerMetaSummary(sqlite, bookId);
     expect(metaSummarizeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("AC-11: правка главы внутри покрытого диапазона заставляет пересчитать сводку", async () => {
+    const bookId = insertBook();
+    // Книга из 12 глав, у каждой принятая версия со сводкой. Первый прогон
+    // строит сводку по главам 1–9 (всё, что старше окна в три главы).
+    const chapterIds = new Map<number, number>();
+    for (let i = 1; i <= 12; i++) {
+      insertChapter(bookId, i, `S${i}`);
+      const ch = sqlite
+        .prepare("SELECT id FROM chapters WHERE book_id = ? AND order_index = ?")
+        .get(bookId, i) as { id: number } | undefined;
+      if (ch) chapterIds.set(i, ch.id);
+    }
+
+    await runMetaSummary(sqlite, bookId);
+
+    // Глава 3 — внутри покрытого диапазона — получает другую версию.
+    commitNewVersion(chapterIds.get(3)!, "совсем другой текст", "другая сводка главы 3");
+
+    const r = await runMetaSummary(sqlite, bookId);
+    expect(r.skipped).not.toBe("covered");
+    expect(r.updated).toBe(true);
+  });
+
+  it("без изменений сводка не пересчитывается", async () => {
+    const bookId = insertBook();
+    for (let i = 1; i <= 5; i++) insertChapter(bookId, i, `S${i}`);
+    await runMetaSummary(sqlite, bookId);
+    const r = await runMetaSummary(sqlite, bookId);
+    expect(r.skipped).toBe("covered");
   });
 });

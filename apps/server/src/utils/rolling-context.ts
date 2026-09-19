@@ -148,6 +148,19 @@ export interface MetaSummaryResult {
   skipped?: "window" | "covered" | "missing" | "empty";
 }
 
+/** Отпечаток источников сводки: какие главы и КАКИЕ ИХ ВЕРСИИ в неё вошли.
+ *  Сравнение по диапазону не ловит правку внутри него — именно так сводка
+ *  и оставалась описывать старый текст главы 3 навсегда. */
+function metaSourceFingerprint(
+  rows: Array<{ order_index: number; version_id: number }>,
+): string {
+  return rows
+    .slice()
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((r) => `${r.order_index}:${r.version_id}`)
+    .join("|");
+}
+
 /**
  * Throwing core: collapse all summarized chapters older than the rolling
  * window into one meta-summary row. Idempotent — skips when the existing meta
@@ -162,7 +175,7 @@ export async function runMetaSummary(
   {
     const summarized = sqlite
       .prepare(
-        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary
+        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary, v.id AS version_id
          FROM chapters c
          JOIN chapter_versions v ON v.id = c.current_version_id
          WHERE c.book_id = ?
@@ -174,6 +187,7 @@ export async function runMetaSummary(
       order_index: number;
       title: string;
       summary: string;
+      version_id: number;
     }>;
 
     if (summarized.length <= window) {
@@ -184,12 +198,19 @@ export async function runMetaSummary(
     const coversFrom = older[0]!.order_index;
     const coversTo = older[older.length - 1]!.order_index;
 
+    const fingerprint = metaSourceFingerprint(older);
     const existing = sqlite
       .prepare(
-        `SELECT covers_to_order FROM book_meta_summaries WHERE book_id = ?`,
+        `SELECT covers_to_order, source_fingerprint FROM book_meta_summaries WHERE book_id = ?`,
       )
-      .get(bookId) as { covers_to_order: number } | undefined;
-    if (existing && existing.covers_to_order >= coversTo) {
+      .get(bookId) as
+      | { covers_to_order: number; source_fingerprint: string | null }
+      | undefined;
+    if (
+      existing &&
+      existing.covers_to_order >= coversTo &&
+      existing.source_fingerprint === fingerprint
+    ) {
       return { updated: false, coversTo, skipped: "covered" }; // up to date
     }
 
@@ -215,16 +236,17 @@ export async function runMetaSummary(
     sqlite
       .prepare(
         `INSERT INTO book_meta_summaries
-           (book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (book_id, covers_from_order, covers_to_order, summary_text, model_id, source_fingerprint, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(book_id) DO UPDATE SET
            covers_from_order = excluded.covers_from_order,
            covers_to_order   = excluded.covers_to_order,
            summary_text      = excluded.summary_text,
            model_id          = excluded.model_id,
+           source_fingerprint = excluded.source_fingerprint,
            created_at        = excluded.created_at`,
       )
-      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, now);
+      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, fingerprint, now);
 
     if (result.modelId !== "noop") {
       logUsage(sqlite, {
