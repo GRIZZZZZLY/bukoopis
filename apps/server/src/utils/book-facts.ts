@@ -87,11 +87,33 @@ const TYPE_LABEL: Record<FactEntityType, string> = {
  * Render active facts as a prompt block grouped by entity. Returns null when
  * there are no active facts. `entityNames` scopes to mentioned entities.
  */
+/** Номер главы для промпта: порядковый, если справочник дан (С4). */
+function chapterNum(
+  orderIndex: number,
+  positionOf?: (orderIndex: number) => number | null,
+): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `#${orderIndex}` : String(pos);
+}
+
+function chapterSince(
+  orderIndex: number,
+  positionOf?: (orderIndex: number) => number | null,
+): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `с гл. #${orderIndex}` : `с главы ${pos}`;
+}
+
 export function renderActiveFactsPrompt(
   sqlite: DatabaseType,
   bookId: number,
   atChapterOrder: number,
-  opts?: { entityNames?: string[]; withIds?: boolean },
+  opts?: {
+    entityNames?: string[];
+    withIds?: boolean;
+    /** Порядковые номера глав вместо разрежённого `order_index` (С4). */
+    positionOf?: (orderIndex: number) => number | null;
+  },
 ): string | null {
   const facts = loadActiveFacts(sqlite, bookId, atChapterOrder, opts);
   if (facts.length === 0) return null;
@@ -118,11 +140,11 @@ export function renderActiveFactsPrompt(
     // contexts stay id-free to avoid prompt noise.
     const lines = group.map(
       (f) =>
-        `- ${opts?.withIds ? `[fact_${f.id}] ` : ""}${f.predicate}: ${f.objectText} (с гл. #${f.validFromChapter})`,
+        `- ${opts?.withIds ? `[fact_${f.id}] ` : ""}${f.predicate}: ${f.objectText} (${chapterSince(f.validFromChapter, opts?.positionOf)})`,
     );
     blocks.push(`### ${TYPE_LABEL[type]}: ${name}\n${lines.join("\n")}`);
   }
-  return `## Канон-факты (актуальны на главу #${atChapterOrder})\n${blocks.join("\n\n")}`;
+  return `## Канон-факты (актуальны на главу ${chapterNum(atChapterOrder, opts?.positionOf)})\n${blocks.join("\n\n")}`;
 }
 
 /**

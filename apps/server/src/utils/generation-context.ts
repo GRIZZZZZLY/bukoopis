@@ -1,3 +1,5 @@
+import { chapterPositionLookup } from "./chapter-position.js";
+import type { VoiceSampleSituation } from "@book-forge/shared";
 import type { Database as DatabaseType } from "better-sqlite3";
 import { boundaryForChapter } from "@book-forge/shared";
 import {
@@ -67,6 +69,12 @@ export interface AssembleContextArgs {
    * канон значит заставить новую версию повторить старую.
    */
   factsBoundary?: "at_chapter" | "before_chapter";
+  /** Регистр диалога сцены из плана главы. По нему отбираются образцы речи;
+   *  без него берутся нейтральные, и в допрос ехала бытовая болтовня (С3). */
+  dialogueRegister?: VoiceSampleSituation | null;
+  /** План автора на героя — замысел, а не факт книги. Писателю он нужен,
+   *  критике нет: та судит написанное. */
+  includeAuthorPlan?: boolean;
   budgetTokens?: number;
   /** Подпись для инспектора контекста в логе. */
   label: string;
@@ -134,7 +142,12 @@ export async function assembleGenerationContext(
   const outlineSelected = bookCtx?.outlineSelected ?? null;
 
   // История — теми же тремя функциями и в том же порядке для всех ролей.
-  const rolling = loadRollingChapterContext(sqlite, book.id, ch.order_index);
+  // Один справочник позиций на всю сборку: номера глав в промпте должны
+  // быть порядковыми, а не разрежёнными `order_index` (С4).
+  const positionOf = chapterPositionLookup(sqlite, book.id);
+  const rolling = loadRollingChapterContext(sqlite, book.id, ch.order_index, {
+    positionOf,
+  });
   const tailRow = loadPreviousChapterTailWithOrder(sqlite, book.id, ch.order_index);
   const retrieved = await gatherRetrievedChunks(sqlite, {
     bookId: book.id,
@@ -145,6 +158,7 @@ export async function assembleGenerationContext(
     // блоком; её фрагменты повторение. Остальным окно даёт пересказ, и
     // деталь, не попавшая в него, достаётся только поиском (AC-12).
     verbatimChapterOrders: tailRow ? [tailRow.chapterOrder] : [],
+    positionOf,
   });
 
   // POV — отдельным идентификатором, а не надеждой на совпадение имени в
@@ -164,15 +178,15 @@ export async function assembleGenerationContext(
     }
   }
 
-  const scanTexts = [
-    ch.intent,
-    title,
-    premise,
-    outlineSelected,
-    pov,
-    ...args.scanTexts,
-    rolling,
-  ];
+  // Состав сцены ищется по СЦЕНЕ, а не по книге (С1 ревью 2026-09-19).
+  // Прежде сюда входили весь выбранный аутлайн и все пересказы прошлых глав,
+  // поэтому участником каждой сцены оказывался почти каждый герой книги — с
+  // карточкой, знаниями и событиями, в обязательном слое, который нельзя
+  // урезать. На тридцати главах это и переполняло бюджет, а сообщение
+  // «сократите состав сцены» автор выполнить не мог: состав он не задавал.
+  // Намерение главы, её беат-лист (или её текст у критики), название,
+  // премиса и POV — то, что про сцену и есть.
+  const scanTexts = [ch.intent, title, premise, pov, ...args.scanTexts];
   const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id ?? null);
   const charResult = gatherCharacterContext(
     sqlite,
@@ -186,7 +200,13 @@ export async function assembleGenerationContext(
   );
   const characterCards =
     charResult.characters.length > 0
-      ? characterContextToPrompt(charResult, charNameById, { chapterOrder: ch.order_index })
+      ? characterContextToPrompt(charResult, charNameById, {
+          chapterOrder: ch.order_index,
+          ...(args.dialogueRegister ? { situation: args.dialogueRegister } : {}),
+          ...(args.includeAuthorPlan !== undefined
+            ? { includeAuthorPlan: args.includeAuthorPlan }
+            : {}),
+        })
       : null;
   const loreResult = gatherLoreContext(sqlite, book.id, scanTexts, ch.order_index);
   const loreContext =
@@ -214,7 +234,10 @@ export async function assembleGenerationContext(
     sqlite,
     book.id,
     factsOrder,
-    factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
+    {
+      ...(factEntityNames.length > 0 ? { entityNames: factEntityNames } : {}),
+      positionOf,
+    },
   );
   const characterContext =
     factsPrompt !== null
@@ -232,6 +255,7 @@ export async function assembleGenerationContext(
         await gatherRelevantNotes(sqlite, book.id, args.notesQuery, factsOrder),
         "Открытые линии",
         factsOrder,
+        { positionOf },
       )
     : null;
 
@@ -247,9 +271,14 @@ export async function assembleGenerationContext(
       { id: "prevTail", text: tailRow?.text ?? null, priority: 2 },
       { id: "rolling", text: rolling, priority: 2 },
       { id: "lore", text: loreContext, priority: 3 },
-      { id: "studio", text: studioContext, priority: 4 },
-      { id: "retrieval", text: retrieved.promptBlock, priority: 5 },
-      { id: "style", text: styleContext.prompt, priority: 6 },
+      // Поиск по прошлым главам и стиль — выше принятых разделов Мастерской
+      // (С6). Мир и лор автор задал один раз и читает сам; поиск отвечает за
+      // непротиворечивость деталей, а стилевые образцы — за голос, и
+      // вытеснять их большой «библией» значит терять ровно то, за чем
+      // Писателя и зовут.
+      { id: "retrieval", text: retrieved.promptBlock, priority: 4 },
+      { id: "style", text: styleContext.prompt, priority: 5 },
+      { id: "studio", text: studioContext, priority: 6 },
     ],
     { maxTokens: budget },
   );

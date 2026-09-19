@@ -36,14 +36,25 @@ interface MetaRow {
   source_fingerprint: string | null;
 }
 
-function chapterSnippet(r: ChapterRow): string {
+/** Номер главы для промпта. Порядковый, а не `order_index`: нумерация
+ *  разрежённая (шаг 10), и «Глава #30» рядом с «Глава 3» заставляла модель
+ *  считать несуществующие расстояния (С4 ревью 2026-09-19). Без справочника
+ *  печатается прежнее число: вызывающие вне сборки контекста его не строят. */
+export type ChapterPositionOf = (orderIndex: number) => number | null;
+
+function chapterLabel(orderIndex: number, positionOf?: ChapterPositionOf): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `#${orderIndex}` : String(pos);
+}
+
+function chapterSnippet(r: ChapterRow, positionOf?: ChapterPositionOf): string {
   const snippet =
     r.summary && r.summary.length > 0
       ? r.summary
       : r.content_text
         ? r.content_text.slice(0, 1200)
         : "(пусто)";
-  return `Глава #${r.order_index} «${r.title}»:\n${snippet}`;
+  return `Глава ${chapterLabel(r.order_index, positionOf)} «${r.title}»:\n${snippet}`;
 }
 
 /**
@@ -55,8 +66,12 @@ export function loadRollingChapterContext(
   sqlite: DatabaseType,
   bookId: number,
   beforeOrderIndex: number,
-  window: number = ROLLING_WINDOW,
+  windowOrOpts: number | { window?: number; positionOf?: ChapterPositionOf } = ROLLING_WINDOW,
 ): string | null {
+  const window =
+    typeof windowOrOpts === "number" ? windowOrOpts : windowOrOpts.window ?? ROLLING_WINDOW;
+  const positionOf =
+    typeof windowOrOpts === "number" ? undefined : windowOrOpts.positionOf;
   const rows = sqlite
     .prepare(
       `SELECT c.title, c.order_index, v.content_text, v.summary
@@ -104,24 +119,24 @@ export function loadRollingChapterContext(
     if (usableMeta && usableMeta.covers_to_order >= olderMax) {
       // Meta fully covers the older run.
       parts.push(
-        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
+        `### Сводка ранних глав (главы ${chapterLabel(usableMeta.covers_from_order, positionOf)}–${chapterLabel(usableMeta.covers_to_order, positionOf)})\n${usableMeta.summary_text}`,
       );
     } else if (usableMeta) {
       // Meta covers a prefix; remaining older chapters fall back verbatim.
       parts.push(
-        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
+        `### Сводка ранних глав (главы ${chapterLabel(usableMeta.covers_from_order, positionOf)}–${chapterLabel(usableMeta.covers_to_order, positionOf)})\n${usableMeta.summary_text}`,
       );
       const uncovered = older.filter(
         (r) => r.order_index > usableMeta.covers_to_order,
       );
-      for (const r of uncovered) parts.push(chapterSnippet(r));
+      for (const r of uncovered) parts.push(chapterSnippet(r, positionOf));
     } else {
       // No meta yet — graceful fallback to per-chapter (nothing lost).
-      for (const r of older) parts.push(chapterSnippet(r));
+      for (const r of older) parts.push(chapterSnippet(r, positionOf));
     }
   }
 
-  for (const r of recent) parts.push(chapterSnippet(r));
+  for (const r of recent) parts.push(chapterSnippet(r, positionOf));
 
   return parts.join("\n\n---\n\n");
 }

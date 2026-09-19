@@ -226,3 +226,59 @@ describe("characterContextToPrompt", () => {
     expect(characterContextToPrompt(ctx(), names)).not.toContain("Сейчас с ним");
   });
 });
+
+describe("поля профиля V2 доходят до промпта (С3)", () => {
+  const rich = ctx({
+    characters: [
+      {
+        character: {
+          id: 1, bookId: 3, canonicalName: "Рин", revision: 0,
+          profile: normalizeCharacterProfile({
+            description: "Инженер.",
+            role: "напарница",
+            age: "за тридцать",
+            background: "выросла на станции",
+            principles: [{ rule: "не бросает своих", cost: "теряет работу" }],
+            contradictions: ["боится высоты, а лезет первой"],
+            goals: [
+              { goal: "починить маяк", horizon: "long", conflictsWith: "обещание брату" },
+            ],
+            strategies: { refuses: "молчит и уходит" },
+            perception: { noticesFirst: "руки собеседника" },
+            everyday: { habits: "крутит гайку в кармане" },
+            voiceProfile: { lineLength: "короткие фразы", jargon: "техника" },
+            authorPlan: { arc: "от упрямства к доверию" },
+          }),
+          createdAt: "", updatedAt: "",
+        },
+        knowledge: [],
+      },
+    ],
+  });
+
+  it("печатает роль, принципы, противоречия и профиль голоса", () => {
+    const text = characterContextToPrompt(rich, names);
+    expect(text).toContain("напарница");
+    expect(text).toContain("не бросает своих");
+    expect(text).toContain("боится высоты");
+    expect(text).toContain("короткие фразы");
+    expect(text).toContain("починить маяк");
+    expect(text).toContain("обещание брату");
+    expect(text).toContain("молчит и уходит");
+    expect(text).toContain("руки собеседника");
+    expect(text).toContain("крутит гайку");
+  });
+
+  it("план автора виден Писателю и не виден критике", () => {
+    expect(characterContextToPrompt(rich, names)).toContain("от упрямства к доверию");
+    expect(
+      characterContextToPrompt(rich, names, { includeAuthorPlan: false }),
+    ).not.toContain("от упрямства к доверию");
+  });
+
+  it("пустые группы не печатаются вовсе", () => {
+    const text = characterContextToPrompt(bare, names);
+    expect(text).not.toContain("Принципы");
+    expect(text).not.toContain("Голос:");
+  });
+});

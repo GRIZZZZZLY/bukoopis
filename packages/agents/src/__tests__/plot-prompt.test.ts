@@ -86,6 +86,9 @@ describe("plot tool schemas", () => {
               expectedRevelations: [],
               allowedCanonSupersessions: [],
             },
+            // Регистр диалога обязателен на выходе по той же причине: без
+            // него образцы речи героев молча отбираются как нейтральные.
+            dialogueRegister: "conflict",
           },
         ],
       }).success,

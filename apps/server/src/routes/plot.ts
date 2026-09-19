@@ -351,6 +351,10 @@ export function createPlotRoute(
       // текста, который автор сейчас переписывает. Канон для Писателя
       // кончается ДО неё.
       factsBoundary: "before_chapter",
+      // Регистр сцены из плана — по нему отбираются образцы речи (С3).
+      ...(beatSheet.dialogueRegister
+        ? { dialogueRegister: beatSheet.dialogueRegister }
+        : {}),
       label: `writer ch#${ch.order_index}`,
     });
     if (assembled.compiled.requiredOverflow) {

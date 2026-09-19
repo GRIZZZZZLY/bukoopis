@@ -9,6 +9,7 @@ import {
   arcOutlineSchema,
   bookOutlineVariantSchema,
   chapterBeatSheetVariantSchema,
+  voiceSampleSituationSchema,
   chapterClosingSchema,
   chapterContractSchema,
   narrativeArchitectureSchema,
@@ -53,6 +54,9 @@ export const chapterBeatSheetToolSchema = z.object({
         // обязан определиться. «Не задано» и «ничего не запрещено» для
         // критиков неразличимы, а цена различия — заблокированный поворот.
         contract: chapterContractSchema,
+        // Тот же приём: в хранилище необязателен, на выходе обязателен.
+        // Без регистра отбор образцов речи молча берёт нейтральные.
+        dialogueRegister: voiceSampleSituationSchema,
       }),
     )
     .min(1)
@@ -100,7 +104,9 @@ export const SYSTEM_CHAPTER_PLAN = `Ты — Plot Agent. Работаешь на
 — expectedRevelations: что читатель узнаёт именно здесь. Попавшее сюда не считается упоминанием без подготовки.
 — allowedCanonSupersessions: факты канона, которые эта глава вправе отменить. Каждый: statement (что перестаёт быть верным), becomes (чем становится) и factId вида fact_<число>, если факт есть в списке действующих выше. Это ЕДИНСТВЕННЫЙ способ разрешить главе противоречить канону: критик канона блокирует любое расхождение, которого здесь нет, — включая поворот, ради которого глава и пишется. Если глава ничего не отменяет, оставляй список пустым.
 
-Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats, closing, contract.`;
+dialogueRegister — преобладающий регистр диалога в этой главе: neutral (обычный разговор), conflict (ссора, допрос, столкновение), vulnerable (признание, слабость), authority (приказ, отчёт старшему), intimate (близкие, наедине), stranger (с чужим). По нему подбираются образцы речи героев, поэтому он про то, КАК герои говорят в этой сцене, а не про то, чем она кончается.
+
+Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats, closing, contract, dialogueRegister.`;
 
 // ─────────── Outline ───────────
 

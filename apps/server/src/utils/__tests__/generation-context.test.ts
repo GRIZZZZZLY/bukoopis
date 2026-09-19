@@ -299,3 +299,52 @@ describe("граница фактов (В7)", () => {
     expect(forCritic.characterContext).toContain("ранена");
   });
 });
+
+describe("состав сцены (С1) и приоритеты бюджета (С6)", () => {
+  it("герой из аутлайна и пересказов не становится участником сцены", async () => {
+    insertCharacter("Рин");
+    insertCharacter("Кассий");
+    // Кассий действует в первой главе и назван в плане книги, но в этой
+    // сцене его нет. Прежде карточки собирались сканированием аутлайна и
+    // всех пересказов — и в обязательный слой попадала почти вся книга.
+    insertChapter(10, "Первая глава. Кассий у ворот.");
+    insertChapter(20, "Вторая. Рин идёт.");
+    const third = insertChapter(30, "Третья.");
+    sqlite
+      .prepare("UPDATE books SET outline_json = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          variants: [
+            {
+              id: "v1",
+              logline: "Кассий предаёт Рин",
+              synopsis: "Кассий и Рин идут через горы",
+              selected: true,
+            },
+          ],
+          selectedVariantId: "v1",
+        }),
+        bookId,
+      );
+
+    const ctx = await assemble(third, { scanTexts: ["беат-лист: Рин у ручья"] });
+
+    expect(ctx.characterContext).toContain("Рин");
+    expect(ctx.characterContext ?? "").not.toContain("Кассий");
+  });
+
+  it("поиск и стиль вытесняются позже принятых разделов Мастерской", async () => {
+    insertCharacter("Рин");
+    const first = insertChapter(10, "Первая глава. Рин у ручья.");
+    expect(first).toBeGreaterThan(0);
+    const second = insertChapter(20, "Вторая.");
+
+    const ctx = await assemble(second, { budgetTokens: 400 });
+
+    // Мир и лор — фон; поиск по прошлым главам и стиль держат
+    // непротиворечивость и голос, и уходить первыми должны не они.
+    const order = ctx.compiled.includedIds;
+    expect(order.includes("studio") && !order.includes("style")).toBe(false);
+  });
+});
+
