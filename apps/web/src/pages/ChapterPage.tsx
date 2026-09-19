@@ -43,6 +43,7 @@ import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
+import { PanelBoundary } from "@/components/PanelBoundary";
 import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
 import {
   MemoryStatusBadge,
@@ -170,9 +171,10 @@ export function ChapterPage() {
         baselineJsonRef.current = JSON.stringify(json);
         setSaveError(null);
         setDirty((d) => {
-          // recompute via title — content now baseline
-          const titleStillChanged =
-            titleBaselineRef.current.trim() !== titleBaselineRef.current.trim();
+          // Название сравнивается с сохранённым, а не само с собой (С13):
+          // прежнее выражение было тождественно false, и правка одного лишь
+          // названия молча теряла признак несохранённого.
+          const titleStillChanged = title.trim() !== titleBaselineRef.current.trim();
           return titleStillChanged ? d : false;
         });
       } catch (err) {
@@ -445,8 +447,21 @@ export function ChapterPage() {
     if (!chapter) return;
     if (v.id === chapter.currentVersionId) {
       setPreviewVersionId(null);
-      const doc = parseDoc(chapter.currentVersion?.contentJson ?? null);
+      // В редактор возвращается то же, что и при открытии главы: черновик,
+      // если он новее принятой версии (С13 ревью 2026-09-19). Прежде сюда
+      // всегда ложился текст версии, и первый же автосейв записывал его
+      // поверх черновика — незакоммиченная работа исчезала от одного
+      // захода в предпросмотр и обратно.
+      const draftIsNewer =
+        chapter.draft != null &&
+        (!chapter.currentVersion ||
+          chapter.draft.updatedAt > chapter.currentVersion.createdAt);
+      const json = draftIsNewer
+        ? chapter.draft!.contentJson
+        : (chapter.currentVersion?.contentJson ?? null);
+      const doc = parseDoc(json);
       editor?.commands.setContent(doc as never, false);
+      baselineJsonRef.current = JSON.stringify(doc);
       editor?.setEditable(true);
       return;
     }
@@ -960,7 +975,11 @@ export function ChapterPage() {
             </div>
           </div>
 
-          {!isPreview && <InlineCommandPanel editor={editor} chapterId={id} />}
+          {!isPreview && (
+            <PanelBoundary title="Правка фрагмента">
+              <InlineCommandPanel editor={editor} chapterId={id} />
+            </PanelBoundary>
+          )}
 
           <div className="flex gap-2 px-6 pb-6">
             <Button onClick={onSave} disabled={saving} aria-busy={saving || undefined}>
@@ -991,14 +1010,16 @@ export function ChapterPage() {
           aria-label="Разбор и материалы"
         >
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
-            <CritiquePanel
-              versionId={chapter.currentVersionId}
-              expectedVersionId={chapter.currentVersionId}
-              expectedDraftRevision={chapter.draft?.revision ?? null}
-              onRereadProposal={rereadForProposal}
-              onRepairDone={load}
-            />
-            {sidebar}
+            <PanelBoundary title="Разбор критиков">
+              <CritiquePanel
+                versionId={chapter.currentVersionId}
+                expectedVersionId={chapter.currentVersionId}
+                expectedDraftRevision={chapter.draft?.revision ?? null}
+                onRereadProposal={rereadForProposal}
+                onRepairDone={load}
+              />
+            </PanelBoundary>
+            <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>
         </aside>
       </div>
@@ -1278,6 +1299,19 @@ function AutosaveStatus({
       />
     );
     label = "Автосохранение…";
+  } else if (dirty) {
+    // Набранное после последнего автосейва важнее времени этого автосейва
+    // (С13 ревью 2026-09-19): «Сохранено 14:05» поверх несохранённых правок
+    // читается как «всё на месте», и автор закрывает вкладку.
+    icon = (
+      <AlertCircle
+        className="size-3.5 text-[var(--color-muted-foreground)]"
+        aria-hidden="true"
+      />
+    );
+    label = lastSavedAt
+      ? "Есть несохранённые правки · сохранится через несколько секунд"
+      : "Изменено · ещё не сохранено";
   } else if (lastSavedAt) {
     icon = (
       <Check

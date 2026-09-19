@@ -211,6 +211,27 @@ export function IntakePanel({ bookId, onIntake }: Props) {
       setResult({ ...out, failures: [...unread, ...out.failures] });
       onIntake();
     } catch (e) {
+      // Оборвался поток — не значит, что оборвался разбор: он живёт в
+      // процессе сервера (С14 ревью 2026-09-19). Прежде вкладка забывала о
+      // нём и рисовала зону перетаскивания, приглашая начать второй прогон
+      // поверх идущего.
+      let stillRunning = null;
+      try {
+        stillRunning = await api.intakeInflight(bookId);
+      } catch {
+        /* реестр не ответил — ведём себя как раньше */
+      }
+      if (stillRunning) {
+        setRequestKey(stillRunning.requestKey);
+        setTotal(stillRunning.total);
+        setStartedAt(stillRunning.startedAt);
+        setAdopted(true);
+        setStreaming(true);
+        setError(
+          "Связь с сервером оборвалась, но разбор продолжается. Показываем его ход.",
+        );
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
       setStreaming(false);

@@ -649,6 +649,28 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     const concept = loadConceptOr404(c, id);
     if (concept instanceof Response) return concept;
 
+    // Второй разбор той же книги отклоняется, а не забирает слот реестра
+    // (С14 ревью 2026-09-19). Реестр в памяти ключуется одной книгой — это
+    // нужно `GET /intake/inflight`, которому нечем спросить про конкретный
+    // прогон, — и перезапись делала идущий разбор невидимым: его нельзя
+    // было ни показать, ни остановить, а он продолжал писать в те же этапы.
+    const running = intakeInFlight.get(id);
+    if (running) {
+      return c.json(
+        {
+          error: "intake_in_progress",
+          details: {
+            requestKey: running.requestKey,
+            startedAt: running.startedAt,
+            message:
+              "Разбор этой книги уже идёт. Дождитесь его конца или остановите" +
+              " в той вкладке, где он запущен.",
+          },
+        },
+        409,
+      );
+    }
+
     return streamSSE(c, async (stream) => {
       // onFile синхронный, а stream.writeSSE — асинхронный запись; без
       // цепочки промисов события файлов и begin/done перемешались бы.

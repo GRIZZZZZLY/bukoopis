@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import type { ProseChange, ProseProposal } from "@book-forge/shared";
@@ -80,6 +80,23 @@ export function ProposalPanel({
   const requestIdRef = useRef(
     `accept-${proposal.id}-${Math.random().toString(36).slice(2, 10)}`,
   );
+  // Смена кандидата обнуляет всё местное состояние (С13 ревью 2026-09-19).
+  // Панель переиспользуется при новом прогоне, а ключ идемпотентности,
+  // выбранные абзацы и запомненная попытка оставались от прежнего: повтор
+  // принятия уходил с чужим requestId и возвращал чужую версию.
+  const proposalIdRef = useRef(proposal.id);
+  if (proposalIdRef.current !== proposal.id) {
+    proposalIdRef.current = proposal.id;
+    requestIdRef.current = `accept-${proposal.id}-${Math.random().toString(36).slice(2, 10)}`;
+    lastAttemptRef.current = undefined;
+  }
+  useEffect(() => {
+    setSelected(new Set());
+    setError(null);
+    setRecovery(null);
+    setBusy(false);
+  }, [proposal.id]);
+
   const unconfirmed = proposal.completion === "unconfirmed";
   // С5 ревью 2026-09-19: бэкенд подписки причину остановки не сообщает
   // вовсе, и красное «Завершение не подтверждено» горело на каждой главе.

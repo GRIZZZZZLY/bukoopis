@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { Button } from "@/components/ui/button";
 import { streamInlineCommand } from "@/api/client";
@@ -41,6 +41,28 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
   const [hasSelection, setHasSelection] = useState(false);
   const [active, setActive] = useState<ActiveSuggestion | null>(null);
   const [guidance, setGuidance] = useState("");
+  // Куда вставлять результат. Позиции запоминаются на старте команды, а
+  // модель пишет десятки секунд, и автор всё это время правит текст выше:
+  // по исходным позициям вставка ложилась мимо и затирала чужой абзац
+  // (С13 ревью 2026-09-19). ProseMirror умеет переносить позицию через
+  // изменения — `tr.mapping.map`; этим и пользуемся.
+  const targetRef = useRef<{ from: number; to: number } | null>(null);
+
+  useEffect(() => {
+    if (!editor) return;
+    const onTransaction = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map: (pos: number) => number } } }) => {
+      const target = targetRef.current;
+      if (target === null || !transaction.docChanged) return;
+      targetRef.current = {
+        from: transaction.mapping.map(target.from),
+        to: transaction.mapping.map(target.to),
+      };
+    };
+    editor.on("transaction", onTransaction as never);
+    return () => {
+      editor.off("transaction", onTransaction as never);
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -100,6 +122,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
     const payload = buildPayload(command);
     if (!payload) return;
     const g = prevGuidance ?? guidance;
+    targetRef.current = { from: payload.selectionFrom, to: payload.selectionTo };
     setActive({
       command,
       ...payload,
@@ -154,19 +177,22 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
       type: "paragraph",
       content: [{ type: "text", text: p }],
     }));
-    editor
-      .chain()
-      .focus()
-      .insertContentAt(
-        { from: active.selectionFrom, to: active.selectionTo },
-        nodes,
-      )
-      .run();
+    // Позиции, перенесённые через все правки, сделанные пока модель писала.
+    const target = targetRef.current ?? {
+      from: active.selectionFrom,
+      to: active.selectionTo,
+    };
+    const docSize = editor.state.doc.content.size;
+    const from = Math.min(Math.max(target.from, 0), docSize);
+    const to = Math.min(Math.max(target.to, from), docSize);
+    editor.chain().focus().insertContentAt({ from, to }, nodes).run();
+    targetRef.current = null;
     setActive(null);
     setGuidance("");
   }
 
   function reject() {
+    targetRef.current = null;
     setActive(null);
   }
 

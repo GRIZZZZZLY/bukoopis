@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("@book-forge/agents/intake/classifier", () => ({
+  runMaterialClassifier: vi.fn(),
+}));
+
+import { runMaterialClassifier } from "@book-forge/agents/intake/classifier";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
 /** Средние замечания ревью 2026-09-19: С2 (тёзки), С10 (удаление молчит),
@@ -146,5 +152,41 @@ describe("повторный импорт (С11)", () => {
       },
     );
     expect(second.created.map((ch) => ch.title)).toEqual(["Глава вторая"]);
+  });
+});
+
+describe("второй разбор той же книги (С14)", () => {
+  it("отклоняется, пока идёт первый", async () => {
+    // Реестр прогонов живёт в памяти процесса и ключуется одной книгой.
+    // Второй поток прежде забирал слот, и идущий разбор становился
+    // невидимым: ни показать, ни остановить.
+    let release = (): void => {};
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    vi.mocked(runMaterialClassifier).mockImplementation(async () => {
+      await held;
+      return { fragments: [] } as never;
+    });
+
+    const first = send(t.app, `/api/books/${bookId}/intake-stream`, "POST", {
+      files: [{ filename: "а.md", content: "Мир держится на соли." }],
+    });
+    // Ждём, пока первый прогон встанет в реестр.
+    for (let i = 0; i < 50; i += 1) {
+      const probe = await send(t.app, `/api/books/${bookId}/intake/inflight`, "GET");
+      if (probe.status === 200) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    const second = await send(t.app, `/api/books/${bookId}/intake-stream`, "POST", {
+      files: [{ filename: "б.md", content: "Другой файл." }],
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: string };
+    expect(body.error).toBe("intake_in_progress");
+
+    release();
+    await first;
   });
 });
