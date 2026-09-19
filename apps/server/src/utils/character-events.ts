@@ -446,7 +446,6 @@ export function makeCharacterBoundaryReaders(
       loadKnowledgeAtBoundary(sqlite, characterId, boundary).map((e) => {
         const d = normalizeEventData("knowledge", e.data);
         return {
-          eventId: e.id,
           fact: d.fact,
           acquisition: d.acquisition,
           source: d.source,

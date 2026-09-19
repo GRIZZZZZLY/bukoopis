@@ -131,8 +131,26 @@ describe("assembleGenerationContext", () => {
     expect(asWriter.characterContext).toBe(asCritic.characterContext);
     expect(asWriter.characterContext).toContain("Рин");
     expect(asWriter.povCharacterId).toBe(asCritic.povCharacterId);
-    // Ссылки на источники — те же: отпечаток задачи 5 совпадёт.
+    // Ссылки на источники — те же: отпечаток совпадёт.
     expect(asWriter.sourceRefs).toEqual(asCritic.sourceRefs);
+  });
+
+  it("разные карточки при той же базе не меняют набор источников", async () => {
+    // Writer сканирует план, критика — текст главы. Глава ввела героя,
+    // которого в плане не было: карточки разные, база та же. Отпечаток по
+    // карточкам кричал бы «база уехала» на каждой второй главе.
+    insertCharacter("Рин");
+    insertCharacter("Сарек");
+    insertChapter(10, "Первая.");
+    const second = insertChapter(20, "Вторая.");
+
+    const asWriter = await assemble(second, { scanTexts: ["план: Рин ждёт"] });
+    const asCritic = await assemble(second, { scanTexts: ["текст: Рин ждёт, Сарек входит"] });
+
+    expect(asWriter.characterContext).not.toContain("Сарек");
+    expect(asCritic.characterContext).toContain("Сарек");
+    expect(asWriter.sourceRefs).toEqual(asCritic.sourceRefs);
+    expect(asWriter.sourceRefs.filter((r) => r.kind === "character")).toHaveLength(2);
   });
 
   it("граница исключающая: знание из поздней главы не попадает в раннюю", async () => {
@@ -147,7 +165,8 @@ describe("assembleGenerationContext", () => {
     const ctx = await assemble(fourth);
     expect(ctx.characterContext).toContain("ЗНАНИЕ_ИЗ_ПЕРВОЙ");
     expect(ctx.characterContext).not.toContain("СЕКРЕТ_ИЗ_ВОСЬМОЙ");
-    // И в ссылках на источники — только то, что реально вошло.
+    // И в ссылках на источники — только события до границы: секрет из
+    // восьмой не должен менять отпечаток четвёртой.
     const eventIds = ctx.sourceRefs.filter((r) => r.kind === "event").map((r) => r.id);
     expect(eventIds).toHaveLength(1);
   });

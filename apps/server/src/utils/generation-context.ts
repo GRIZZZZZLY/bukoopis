@@ -6,7 +6,7 @@ import {
   gatherLoreContext,
   loreContextToPrompt,
 } from "@book-forge/agents";
-import { makeCharacterBoundaryReaders } from "./character-events.js";
+import { loadEventsAtBoundary, makeCharacterBoundaryReaders } from "./character-events.js";
 import { renderActiveFactsPrompt } from "./book-facts.js";
 import { gatherRelevantNotes, renderOpenNotesPrompt } from "./book-notes.js";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
@@ -237,9 +237,13 @@ export async function assembleGenerationContext(
   console.warn(describeCompiledContext(compiled, args.label));
   const inc = new Set(compiled.includedIds);
 
-  // Ссылки на источники — сырьё для отпечатка (задача 5). Всё, что здесь
-  // перечислено, версионировано или ревизионировано, поэтому текст промпта
-  // хранить не нужно: по ссылкам он восстанавливается.
+  // Ссылки на источники — сырьё для отпечатка. Считаются по БАЗЕ КНИГИ на
+  // этой границе, а не по тому, что попало в карточки: Writer сканирует
+  // план, критика — текст главы, и глава, введя героя, которого в плане не
+  // было, давала бы разные наборы карточек при той же базе. Отпечаток по
+  // карточкам кричал бы «база уехала» на каждой второй главе, и автор
+  // перестал бы ему верить. Всё перечисленное версионировано или
+  // ревизионировано, поэтому текст промпта хранить не нужно.
   const sourceRefs: ContextSourceRefLite[] = [];
   const prevVersions = sqlite
     .prepare(
@@ -251,15 +255,21 @@ export async function assembleGenerationContext(
   for (const p of prevVersions) {
     sourceRefs.push({ kind: "chapter_version", id: p.id, versionId: p.current_version_id, revision: null });
   }
-  for (const cc of charResult.characters) {
-    sourceRefs.push({ kind: "character", id: cc.character.id, versionId: null, revision: cc.character.revision });
-    for (const k of cc.knowledge) {
-      if (k.eventId === undefined) continue;
-      sourceRefs.push({ kind: "event", id: k.eventId, versionId: null, revision: null });
-    }
+  const allCharacters = sqlite
+    .prepare("SELECT id, revision FROM characters WHERE book_id = ? ORDER BY id")
+    .all(book.id) as Array<{ id: number; revision: number }>;
+  for (const c of allCharacters) {
+    sourceRefs.push({ kind: "character", id: c.id, versionId: null, revision: c.revision });
   }
-  for (const rel of charResult.relationships) {
-    sourceRefs.push({ kind: "relationship", id: rel.id, versionId: null, revision: rel.revision });
+  const allRelationships = sqlite
+    .prepare("SELECT id, revision FROM relationships WHERE book_id = ? ORDER BY id")
+    .all(book.id) as Array<{ id: number; revision: number }>;
+  for (const r of allRelationships) {
+    sourceRefs.push({ kind: "relationship", id: r.id, versionId: null, revision: r.revision });
+  }
+  // События всех героев на границе сцены — та же SQL границы, что у карточек.
+  for (const e of loadEventsAtBoundary(sqlite, allCharacters.map((c) => c.id), boundary)) {
+    sourceRefs.push({ kind: "event", id: e.id, versionId: null, revision: null });
   }
   if (book.style_profile_id !== null) {
     sourceRefs.push({ kind: "style_profile", id: book.style_profile_id, versionId: null, revision: null });
