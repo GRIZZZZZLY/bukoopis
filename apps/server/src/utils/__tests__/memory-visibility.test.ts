@@ -193,6 +193,7 @@ describe("что видно о памяти главы", () => {
       duplicates: 0,
       rejectedEvidence: 1,
       unresolved: 0,
+      superseded: 0,
     });
 
     const status = chapterMemoryStatus(sqlite, chapterRow(ch));

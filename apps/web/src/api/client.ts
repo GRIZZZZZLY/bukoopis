@@ -51,6 +51,8 @@ export interface AppliedEventCounts {
   duplicates: number;
   rejectedEvidence: number;
   unresolved: number;
+  /** Снято с прежнего разбора этой же версии. Не потеря: заменено новым. */
+  superseded?: number;
 }
 
 export interface ChapterMemoryInfo {

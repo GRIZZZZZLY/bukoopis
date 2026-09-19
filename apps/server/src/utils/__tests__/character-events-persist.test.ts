@@ -104,6 +104,7 @@ describe("persistCharacterEvents", () => {
       rejectedEvidence: 0,
       unresolved: 0,
       duplicates: 0,
+      superseded: 0,
     });
     const row = t.sqlite
       .prepare("SELECT * FROM character_events")
@@ -151,9 +152,50 @@ describe("persistCharacterEvents", () => {
     expect(c.c).toBe(1);
   });
 
-  it("новый номер извлекателя разбирает ту же версию заново", () => {
+  it("новый извлекатель вытесняет прежний, а не встаёт рядом", () => {
     expect(persist([event()], 1).inserted).toBe(1);
-    expect(persist([event()], 2).inserted).toBe(1);
+    const second = persist([event()], 2);
+    expect(second).toMatchObject({ inserted: 1, superseded: 1 });
+    // `extractor_version` входит в уникальный ключ, поэтому без вытеснения
+    // повторный разбор давал параллельный набор: герой знал одно и то же
+    // дважды, и обе записи считались действующими.
+    const rows = t.sqlite
+      .prepare("SELECT extractor_version v FROM character_events")
+      .all() as Array<{ v: number }>;
+    expect(rows).toEqual([{ v: 2 }]);
+  });
+
+  it("вытесняются только машинные события, авторские остаются", () => {
+    const now = new Date().toISOString();
+    t.sqlite
+      .prepare(
+        `INSERT INTO character_events
+           (book_id, subject_character_id, kind, data_json, chapter_id,
+            source_version_id, origin, verification, extractor_version,
+            dedup_key, created_at)
+         VALUES (?, ?, 'knowledge', '{"fact":"авторское"}', ?, ?, 'manual',
+                 'confirmed', 1, 'k:author', ?)`,
+      )
+      .run(bookId, subjectId, chapterId, versionId, now);
+    persist([event()], 1);
+    const out = persist([event()], 2);
+    expect(out.superseded).toBe(1); // только машинное
+    const origins = t.sqlite
+      .prepare("SELECT origin FROM character_events ORDER BY origin")
+      .all() as Array<{ origin: string }>;
+    expect(origins.map((r) => r.origin)).toEqual(["llm", "manual"]);
+  });
+
+  it("пустой разбор ничего не вытесняет", () => {
+    // Ноль событий от модели — не доказательство, что их нет: так выглядит и
+    // сорванный вызов. Стереть по нему прежний разбор значит потерять память
+    // главы из-за одной неудачи.
+    persist([event()], 1);
+    expect(persist([], 2).superseded).toBe(0);
+    const c = t.sqlite
+      .prepare("SELECT COUNT(*) c FROM character_events")
+      .get() as { c: number };
+    expect(c.c).toBe(1);
   });
 
   it("сдвиги отношения к разным адресатам не гасят друг друга", async () => {
@@ -232,6 +274,7 @@ describe("persistCharacterEvents", () => {
       rejectedEvidence: 0,
       unresolved: 0,
       duplicates: 0,
+      superseded: 0,
     });
   });
 

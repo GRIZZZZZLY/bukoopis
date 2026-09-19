@@ -41,6 +41,8 @@ export interface AppliedEventCounts {
   duplicates: number;
   rejectedEvidence: number;
   unresolved: number;
+  /** Событий прежнего извлекателя по этой же версии, снятых новым разбором. */
+  superseded: number;
 }
 export interface StagedNotesResult {
   newCount: number;
@@ -57,6 +59,7 @@ interface JobLite {
   kind: MemoryJobKind;
   status: string;
   result_json: string | null;
+  pipeline_version: number;
 }
 
 export function tryActivateMemoryVersion(
@@ -66,7 +69,7 @@ export function tryActivateMemoryVersion(
 ): ActivationOutcome {
   const jobs = sqlite
     .prepare(
-      `SELECT id, kind, status, result_json FROM memory_jobs
+      `SELECT id, kind, status, result_json, pipeline_version FROM memory_jobs
        WHERE chapter_version_id = ?
        ORDER BY pipeline_version DESC, id DESC`,
     )
@@ -124,7 +127,11 @@ export function tryActivateMemoryVersion(
         chapterId,
         sourceVersionId: versionId,
         events: staged.characterEvents,
-        extractorVersion: MEMORY_PIPELINE_VERSION,
+        // Версия ЗАДАНИЯ, а не текущая: разбор мог отстояться в очереди
+        // через повышение конвейера, и пометить его новым номером значит
+        // приписать старому результату чужое происхождение — а по этому же
+        // номеру новый разбор потом вытесняет прежний.
+        extractorVersion: factsJob.pipeline_version,
       });
       // Итог ложится в result_json задания, а не только в консоль: задание к
       // этому моменту уже `done`, других следов не остаётся, и экран главы без
@@ -140,6 +147,7 @@ export function tryActivateMemoryVersion(
               duplicates: outcome.duplicates,
               rejectedEvidence: outcome.rejectedEvidence,
               unresolved: outcome.unresolved,
+              superseded: outcome.superseded,
             } satisfies AppliedEventCounts,
           }),
           factsJob.id,
