@@ -116,10 +116,19 @@ export async function runQuickStart(
     emit(onStage, started);
 
     const state: StudioState = repo.loadStudioState(bookId);
+    // В12 ревью 2026-09-19: «здесь уже есть черновики» считалось по числу
+    // разделов, а список разделов пишется ДО генерации вариантов. Если
+    // варианты не собрались (упал бэкенд, конфликт ревизии), этап оставался
+    // с пустыми заголовками — и повторный сбор его пропускал, потому что
+    // «разделы есть». Автор получал оглавление без содержимого и никакой
+    // кнопки, чтобы это доделать. Черновиком считается раздел, у которого
+    // есть варианты или решение автора, а не одно имя.
     const already =
       stageId === "plot"
         ? planAlreadyThere(sqlite, bookId)
-        : (state.stages[stageId]?.aspects.length ?? 0) > 0;
+        : (state.stages[stageId]?.aspects ?? []).some(
+            (a) => a.variants.length > 0 || a.status !== "pending",
+          );
     if (already) {
       const skipped: QuickStartStageEvent = {
         index,
@@ -181,6 +190,18 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
   const concept: BookConcept = repo.loadConcept(bookId);
   const isEntity = ENTITY_STAGES.has(stageId);
 
+  // Разделы без вариантов остались от прогона, чья генерация не дошла до
+  // конца. Второй список поверх них был бы дублем заголовков: доделываем
+  // именно эти (В12).
+  const existing = repo.loadStudioState(bookId).stages[stageId]?.aspects ?? [];
+  const unfinished = existing.filter(
+    (a) => a.variants.length === 0 && a.status === "pending",
+  );
+  if (unfinished.length > 0) {
+    await fillVariants(deps, stageId, concept, unfinished);
+    return;
+  }
+
   // 1. План разделов этапа. Тот же вызов, что за кнопкой «Составить план
   //    разделов»; вид payload по стадии решает сервер, как и в маршруте.
   const playbook = await runAspectPlaybook({
@@ -222,6 +243,19 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
 
   // 3. Варианты каждого раздела. Накопленного контекста нет: ничего ещё не
   //    принято, и принимать за автора мы не собираемся.
+  await fillVariants(deps, stageId, concept, aspects);
+}
+
+/** Собирает варианты для перечисленных разделов и кладёт их в состояние.
+ *  Вынесено, потому что зовётся с двух сторон: на свежем этапе и при
+ *  догенерации разделов, оставшихся без вариантов (В12). */
+async function fillVariants(
+  deps: QuickStartDeps,
+  stageId: StageId,
+  concept: BookConcept,
+  aspects: StageAspect[],
+): Promise<void> {
+  if (aspects.length === 0) return;
   const results = new Map<string, AspectVariant[]>();
   let cursor = 0;
   const worker = async (): Promise<void> => {
@@ -239,9 +273,10 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
   if (results.size === 0) return;
   patchStage(deps, stageId, (stage) => ({
     ...stage,
+    status: stage.status === "not_started" ? "in_progress" : stage.status,
     aspects: stage.aspects.map((a) => {
       const variants = results.get(a.id);
-      if (!variants) return a;
+      if (!variants || variants.length === 0) return a;
       // `reviewing` — то самое состояние, из которого AspectRunner принимает
       // одной кнопкой. Ничего не принято и никакого finalPayload.
       return { ...a, status: "reviewing" as const, variants };

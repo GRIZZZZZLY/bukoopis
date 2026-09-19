@@ -6,6 +6,8 @@ import { indexChapterVersion } from "@book-forge/retrieval";
 import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "../utils/memory-queue.js";
 import {
   toBook,
+  toChapter,
+  parseJsonOrNull,
   type BookRow,
   type ChapterRow,
 } from "../db/rows.js";
@@ -282,6 +284,105 @@ export function createImportExportRoute(
     return c.json({ created });
   });
 
+  // ─────── Export .json (полная выгрузка) ───────
+
+  /**
+   * В8 ревью 2026-09-19: `.md` и `.epub` несли только название, премису и
+   * текст принятых версий. Всё остальное — черновики (то есть незакоммиченная
+   * работа), состояние Мастерской, замысел, герои с профилями V2, отношения,
+   * события, факты, заметки, образцы речи, история версий — наружу не
+   * выходило вовсе. Для локального инструмента без облака это значило, что
+   * единственная страховка — сам файл базы.
+   *
+   * Здесь выгружается всё, что привязано к книге, включая полную историю
+   * версий: выгрузка нужна именно тогда, когда база потеряна.
+   */
+  r.get("/books/:id/export.json", (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT * FROM books WHERE id = ?")
+      .get(id) as BookRow | undefined;
+    if (!book) return notFound(c, "book");
+
+    const all = <T>(sql: string, ...params: unknown[]): T[] =>
+      sqlite.prepare(sql).all(...params) as T[];
+
+    const chapterRows = all<ChapterRow>(
+      "SELECT * FROM chapters WHERE book_id = ? ORDER BY order_index ASC, id ASC",
+      id,
+    );
+    const chapters = chapterRows.map((ch) => ({
+      ...toChapter(ch),
+      versions: all(
+        "SELECT * FROM chapter_versions WHERE chapter_id = ? ORDER BY id ASC",
+        ch.id,
+      ),
+      draft:
+        sqlite
+          .prepare("SELECT * FROM chapter_drafts WHERE chapter_id = ?")
+          .get(ch.id) ?? null,
+      plan: parseJsonOrNull(ch.plan_json),
+    }));
+
+    const characters = all<{ id: number; canonical_name: string; profile_json: string }>(
+      "SELECT * FROM characters WHERE book_id = ? ORDER BY id ASC",
+      id,
+    ).map((row) => ({
+      ...row,
+      canonicalName: row.canonical_name,
+      profile: parseJsonOrNull(row.profile_json),
+    }));
+
+    return c.json({
+      exportedAt: new Date().toISOString(),
+      schema: "book-forge/full-export@1",
+      book: toBook(book),
+      concept: parseJsonOrNull(book.concept),
+      studioState: parseJsonOrNull(book.studio_state),
+      outline: parseJsonOrNull(book.outline_json),
+      chapters,
+      characters,
+      relationships: all("SELECT * FROM relationships WHERE book_id = ? ORDER BY id", id),
+      characterEvents: all(
+        "SELECT * FROM character_events WHERE book_id = ? ORDER BY id",
+        id,
+      ),
+      voiceSamples: all(
+        "SELECT * FROM character_voice_samples WHERE book_id = ? ORDER BY id",
+        id,
+      ),
+      locations: all("SELECT * FROM locations WHERE book_id = ? ORDER BY id", id),
+      items: all("SELECT * FROM items WHERE book_id = ? ORDER BY id", id),
+      hooks: all("SELECT * FROM hooks WHERE book_id = ? ORDER BY id", id),
+      entityAliases: all("SELECT * FROM entity_aliases WHERE book_id = ? ORDER BY id", id),
+      facts: all("SELECT * FROM book_facts WHERE book_id = ? ORDER BY id", id),
+      notes: all(
+        `SELECT id, book_id, kind, chapter_order_introduced, chapter_order_resolved,
+                title, body, tags, related_note_ids, source_version_id, origin, created_at
+         FROM book_notes WHERE book_id = ? ORDER BY id`,
+        id,
+      ),
+      metaSummaries: all(
+        "SELECT * FROM book_meta_summaries WHERE book_id = ? ORDER BY covers_to_order",
+        id,
+      ),
+      profileVersions: all(
+        "SELECT * FROM entity_profile_versions WHERE book_id = ? ORDER BY id",
+        id,
+      ),
+      styleProfile:
+        book.style_profile_id === null
+          ? null
+          : (sqlite
+              .prepare("SELECT * FROM style_profiles WHERE id = ?")
+              .get(book.style_profile_id) ?? null),
+      studioEvents: all(
+        "SELECT * FROM studio_events WHERE book_id = ? ORDER BY id",
+        id,
+      ),
+    });
+  });
+
   // ─────── Export .md ───────
 
   r.get("/books/:id/export.md", (c) => {
@@ -291,15 +392,22 @@ export function createImportExportRoute(
       .get(id) as BookRow | undefined;
     if (!book) return notFound(c, "book");
 
+    // Черновик новее принятой версии — это последняя работа автора, и в
+    // выгрузке должна быть именно она (В8). Прежде `.md` отдавал версию, и
+    // всё несохранённое в файл не попадало.
     const chapters = sqlite
       .prepare(
-        `SELECT c.*, v.content_text AS content_text
+        `SELECT c.*, v.content_text AS content_text,
+                d.content_text AS draft_text
          FROM chapters c
          LEFT JOIN chapter_versions v ON v.id = c.current_version_id
+         LEFT JOIN chapter_drafts d ON d.chapter_id = c.id
          WHERE c.book_id = ?
          ORDER BY c.order_index ASC`,
       )
-      .all(id) as Array<ChapterRow & { content_text: string | null }>;
+      .all(id) as Array<
+      ChapterRow & { content_text: string | null; draft_text: string | null }
+    >;
 
     const lines: string[] = [];
     lines.push("---");
@@ -317,9 +425,19 @@ export function createImportExportRoute(
       lines.push("");
     }
     for (const ch of chapters) {
+      const version = ch.content_text ?? "";
+      const draft = ch.draft_text ?? "";
+      // «Новее» считается по содержимому, а не по времени: автосейв и
+      // принятие версии ложатся в одну секунду, и сравнение отметок времени
+      // врало бы ровно в этом случае.
+      const useDraft = draft.trim().length > 0 && draft !== version;
       lines.push(`## ${ch.title}`);
       lines.push("");
-      lines.push(ch.content_text ?? "");
+      if (useDraft) {
+        lines.push("*(черновик: не сохранён версией)*");
+        lines.push("");
+      }
+      lines.push(useDraft ? draft : version);
       lines.push("");
     }
 
