@@ -9,6 +9,7 @@ import {
   unlockConcept,
   PITCH_MIX_FIELDS,
   entityCandidateProfileSchema,
+  mergeCharacterProfile,
   normalizeCharacterProfile,
   type BookConcept,
   type CanonSummary,
@@ -21,6 +22,7 @@ import {
   StudioBookNotFoundError,
   StudioConflictError,
 } from "../db/studio.js";
+import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
@@ -161,6 +163,11 @@ const materializeBodySchema = z.object({
         /** Кандидат, уже заведённый в канон прошлой материализацией.
          *  Обновляем его строку, а не вставляем вторую (раздел 5.1 ТЗ). */
         materializedEntityId: z.number().int().positive().optional(),
+        /** Ревизия карточки на момент, когда вкладка её видела. Не совпала —
+         *  карточку правили после материализации, и переписать её молча
+         *  нельзя (К4). Необязательна: вкладки, не знающие о ревизии,
+         *  по-прежнему обновляют строку, но уже слиянием, а не заменой. */
+        expectedRevision: z.number().int().nonnegative().optional(),
         mergedIntoId: z.number().int().positive().optional(),
       }),
     )
@@ -234,6 +241,31 @@ interface IntakeInFlightRow {
   status: "started" | "done" | "failed";
   targets?: IntakeFileEvent["targets"];
   message?: string;
+}
+
+/** Ключи, которые кандидат действительно прислал. `null` — это «не знаю»
+ *  генератора, а не команда стереть уже заведённое значение. */
+function definedOnly(profile: Record<string, unknown>): Record<string, unknown> {
+  // `Object.create(null)` — иначе литеральный ключ `__proto__` из разобранного
+  // JSON меняет прототип аккумулятора вместо того, чтобы стать свойством, и
+  // значение исчезает молча (тот же разбор, что в `normalizeCharacterProfile`).
+  const out: Record<string, unknown> = Object.create(null);
+  for (const [key, value] of Object.entries(profile)) {
+    if (value === undefined || value === null) continue;
+    out[key] = value;
+  }
+  return { ...out };
+}
+
+/** Карточку правили после того, как вкладка Мастерской её прочитала. */
+class MaterializeConflictError extends Error {
+  constructor(
+    readonly entityId: number,
+    readonly currentRevision: number,
+  ) {
+    super(`entity ${entityId} revision is ${currentRevision}`);
+    this.name = "MaterializeConflictError";
+  }
 }
 
 interface IntakeInFlightRun {
@@ -459,7 +491,13 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     }
     const fresh = toPitches(out.pitches, () => randomUUID());
     try {
-      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, ...fresh] });
+      // К3: концепт перечитывается после вызова модели — он идёт десятками
+      // секунд, и `concept` выше уже мог устареть. Дописываем только питчи.
+      const latest = repo.loadConcept(id);
+      const next = repo.patchConcept(id, {
+        ...latest,
+        pitches: [...latest.pitches, ...fresh],
+      });
       return c.json({
         concept: next,
         questions: out.questions,
@@ -507,7 +545,12 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       );
     }
     try {
-      const next = repo.patchConcept(id, { ...concept, pitches: [...concept.pitches, blended] });
+      // К3: то же, что и у генератора питчей — пишем поверх свежего концепта.
+      const latest = repo.loadConcept(id);
+      const next = repo.patchConcept(id, {
+        ...latest,
+        pitches: [...latest.pitches, blended],
+      });
       return c.json({ concept: next, pitchId: blended.id });
     } catch (e) {
       if (e instanceof StudioBookNotFoundError) return notFound(c, "book");
@@ -1310,6 +1353,10 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           tempId: c.tempId,
           decision: c.decision,
           materializedEntityId: c.materializedEntityId,
+          // Ревизия входит в ключ: иначе повтор того же тела ПОСЛЕ правки
+          // карточки автором доставал бы из журнала кэшированный успех и
+          // прятал конфликт, о котором тело как раз и спрашивает (К4).
+          expectedRevision: c.expectedRevision,
           mergedIntoId: c.mergedIntoId,
           profile: JSON.parse(stableSortedStringify(c.profile)),
         }))
@@ -1354,7 +1401,10 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
        VALUES (?, ?, ?, ?, ?)`,
     );
     const selectCharRevision = sqlite.prepare(
-      "SELECT revision FROM characters WHERE id = ?",
+      "SELECT revision, canonical_name, profile_json FROM characters WHERE id = ?",
+    );
+    const selectItemProfile = sqlite.prepare(
+      "SELECT name, profile_json FROM items WHERE id = ?",
     );
     const updateChar = sqlite.prepare(
       `UPDATE characters
@@ -1410,6 +1460,9 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         tempId: string;
         decision: "accept" | "reject";
         materializedEntityId?: number;
+        /** Ревизия карточки после этой материализации: вкладка вернёт её
+         *  следующим запросом, и сервер увидит, правил ли автора кто-то ещё. */
+        materializedRevision?: number;
         mergedIntoId?: number;
       }> = [];
 
@@ -1427,37 +1480,77 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           continue;
         }
 
-        const profile =
-          parsed.data.stageId === "characters"
-            ? normalizeCharacterProfile(cand.profile)
-            : cand.profile;
-        const profileJson = JSON.stringify(profile);
-        const name =
+        const candidateName =
           typeof cand.profile.name === "string" && cand.profile.name.trim()
             ? cand.profile.name.trim()
-            : "Без имени";
+            : null;
 
         let entityId: number;
+        let entityRevision = 0;
         if (cand.materializedEntityId !== undefined) {
           entityId = cand.materializedEntityId;
           if (parsed.data.stageId === "characters") {
             const current = selectCharRevision.get(entityId) as
-              | { revision: number }
+              | { revision: number; canonical_name: string; profile_json: string }
               | undefined;
-            const nextRevision = (current?.revision ?? 0) + 1;
-            updateChar.run(name, profileJson, nextRevision, now, entityId);
+            const currentRevision = current?.revision ?? 0;
+            // К4: карточку могли править во вкладках знаний после того, как
+            // Мастерская её завела. Молча переписать её поверх — потеря того,
+            // что автор написал руками.
+            if (
+              cand.expectedRevision !== undefined &&
+              cand.expectedRevision !== currentRevision
+            ) {
+              throw new MaterializeConflictError(entityId, currentRevision);
+            }
+            // Слияние, а не замена: кандидат несёт пять полей, карточка — все.
+            const mergedProfile = mergeCharacterProfile(
+              normalizeCharacterProfile(parseJsonOrNull(current?.profile_json ?? null)),
+              cand.profile,
+            );
+            const mergedJson = JSON.stringify(mergedProfile);
+            const nextRevision = currentRevision + 1;
+            updateChar.run(
+              candidateName ?? current?.canonical_name ?? "Без имени",
+              mergedJson,
+              nextRevision,
+              now,
+              entityId,
+            );
             recordProfileVersion(sqlite, {
               bookId: id,
               entityType: "character",
               entityId,
               revision: nextRevision,
-              profileJson,
+              profileJson: mergedJson,
               origin: "materialize",
             });
+            entityRevision = nextRevision;
           } else {
-            updateItem.run(name, profileJson, now, entityId);
+            const current = selectItemProfile.get(entityId) as
+              | { name: string; profile_json: string }
+              | undefined;
+            // У предметов нет схемы V2 и своей ревизии, но правка автора
+            // через `PATCH /items/:id` теряется тем же способом — сливаем.
+            const existing = parseJsonOrNull(current?.profile_json ?? null);
+            const merged =
+              existing !== null && typeof existing === "object" && !Array.isArray(existing)
+                ? { ...(existing as Record<string, unknown>), ...definedOnly(cand.profile) }
+                : cand.profile;
+            updateItem.run(
+              candidateName ?? current?.name ?? "Без имени",
+              JSON.stringify(merged),
+              now,
+              entityId,
+            );
           }
         } else {
+          const profile =
+            parsed.data.stageId === "characters"
+              ? normalizeCharacterProfile(cand.profile)
+              : cand.profile;
+          const profileJson = JSON.stringify(profile);
+          const name = candidateName ?? "Без имени";
           const info =
             parsed.data.stageId === "characters"
               ? insertChar.run(id, name, profileJson, now, now)
@@ -1480,6 +1573,9 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           tempId: cand.tempId,
           decision: "accept",
           materializedEntityId: entityId,
+          ...(parsed.data.stageId === "characters"
+            ? { materializedRevision: entityRevision }
+            : {}),
         });
       }
 
@@ -1506,7 +1602,21 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       return response;
     });
 
-    return c.json(tx.immediate());
+    try {
+      return c.json(tx.immediate());
+    } catch (e) {
+      if (e instanceof MaterializeConflictError) {
+        return c.json(
+          {
+            error: "revision_conflict",
+            message: "карточка изменилась, обновите состав и повторите",
+            details: { entityId: e.entityId, currentRevision: e.currentRevision },
+          },
+          409,
+        );
+      }
+      throw e;
+    }
   });
 
   return r;

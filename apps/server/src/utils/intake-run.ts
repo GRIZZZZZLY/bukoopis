@@ -428,16 +428,25 @@ export async function runIntake(
   }
 
   let ideaSet = false;
-  if (idea.length > 0) {
-    log(`book ${bookId}: замысел не трогаем — в концепте уже ${idea.length} символов`);
-  } else if (foundIdea === undefined) {
+  if (foundIdea === undefined) {
     log(`book ${bookId}: замысел не заполнен — в материалах его формулировки не нашлось`);
-  }
-  if (idea.length === 0 && foundIdea !== undefined) {
+  } else {
     try {
-      repo.patchConcept(bookId, { ...concept, idea: foundIdea });
-      ideaSet = true;
-      log(`book ${bookId}: замысел заполнен из материалов (${foundIdea.length} символов)`);
+      // К3: концепт перечитывается ПЕРЕД записью. `concept` прочитан до
+      // разбора, который идёт минутами, и автор за это время мог сгенерировать
+      // питчи, утвердить замысел или напечатать его сам. Снимок начала прогона
+      // вернул бы концепт к тому, чем он был до всей этой работы.
+      const fresh = repo.loadConcept(bookId);
+      const freshIdea = (fresh.idea ?? "").trim();
+      if (freshIdea.length > 0) {
+        log(
+          `book ${bookId}: замысел не трогаем — в концепте уже ${freshIdea.length} символов`,
+        );
+      } else {
+        repo.patchConcept(bookId, { ...fresh, idea: foundIdea });
+        ideaSet = true;
+        log(`book ${bookId}: замысел заполнен из материалов (${foundIdea.length} символов)`);
+      }
     } catch (e) {
       failures.push({
         filename: "Задумка",

@@ -4,11 +4,13 @@ import {
   createBookInputSchema,
   updateBookInputSchema,
   createChapterInputSchema,
+  reorderChaptersInputSchema,
   emptyBookConcept,
   DEFAULT_BOOK_TITLE,
 } from "@book-forge/shared";
 import { toBook, toChapter, type BookRow, type ChapterRow } from "../db/rows.js";
 import { notFound, validationFailed } from "../utils/errors.js";
+import { reorderChapters, ChapterReorderError } from "../utils/chapter-reorder.js";
 import {
   enqueueMemoryJobs,
   COMMIT_JOB_KINDS,
@@ -233,6 +235,38 @@ export function createBooksRoute(
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(info.lastInsertRowid) as ChapterRow;
     return c.json(toChapter(row), 201);
+  });
+
+  /** Единственный путь, меняющий порядок глав. Список приходит целиком:
+   *  перестановка N запросами по одной главе оставляла бы книгу в
+   *  промежуточных раскладках, а перенос производной памяти (К1) считается
+   *  от карты «весь старый порядок → весь новый». */
+  r.post("/:id/chapters/reorder", async (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT id FROM books WHERE id = ?")
+      .get(id) as { id: number } | undefined;
+    if (!book) return notFound(c, "book");
+    const body = await c.req.json().catch(() => null);
+    const parsed = reorderChaptersInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    try {
+      const result = reorderChapters(sqlite, id, parsed.data.chapterIds);
+      const chapters = sqlite
+        .prepare(
+          "SELECT * FROM chapters WHERE book_id = ? ORDER BY order_index ASC, id ASC",
+        )
+        .all(id) as ChapterRow[];
+      return c.json({ ...result, chapters: chapters.map(toChapter) });
+    } catch (e) {
+      if (e instanceof ChapterReorderError) {
+        return c.json(
+          { error: "reorder_failed", details: { reason: e.reason, message: e.message } },
+          400,
+        );
+      }
+      throw e;
+    }
   });
 
   // ADR 0002 (I6): rebuild derived memory from a chapter onward. Deletes the

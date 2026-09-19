@@ -216,6 +216,14 @@ export const api = {
     }),
   deleteChapter: (id: number) =>
     req<void>(`/api/chapters/${id}`, { method: "DELETE" }),
+  /** Перестановка глав целиком, одним запросом: сервер переносит вместе с
+   *  порядком и производную память — чанки поиска, факты, заметки, образцы
+   *  речи (К1). По одной главе порядок больше не меняется. */
+  reorderChapters: (bookId: number, chapterIds: number[]) =>
+    req<{ moved: number; staleFrom: number | null; chapters: Chapter[] }>(
+      `/api/books/${bookId}/chapters/reorder`,
+      { method: "POST", body: JSON.stringify({ chapterIds }) },
+    ),
 
   listVersions: (chapterId: number) =>
     req<ChapterVersion[]>(`/api/chapters/${chapterId}/versions`),
@@ -782,6 +790,7 @@ export const api = {
         decision: "accept" | "reject";
         profile: unknown;
         materializedEntityId?: number;
+        expectedRevision?: number;
         mergedIntoId?: number;
       }>;
     },
@@ -793,6 +802,7 @@ export const api = {
         tempId: string;
         decision: "accept" | "reject";
         materializedEntityId?: number;
+        materializedRevision?: number;
         mergedIntoId?: number;
       }>;
     }>(`/api/books/${bookId}/aspects/${aspectId}/materialize`, {

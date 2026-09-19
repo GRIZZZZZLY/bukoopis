@@ -22,6 +22,7 @@ interface EntitySetPayload {
     profile: EntityCandidateProfile;
     status: "proposed" | "accepted" | "rejected" | "merged";
     materializedEntityId?: number;
+    materializedRevision?: number;
     mergedIntoEntityId?: number;
   }>;
 }
@@ -46,6 +47,7 @@ interface MaterializeResult {
     tempId: string;
     decision: "accept" | "reject";
     materializedEntityId?: number;
+    materializedRevision?: number;
     mergedIntoId?: number;
   }>;
 }
@@ -68,6 +70,8 @@ interface Props {
         tempId: string;
         decision: "accept" | "reject";
         profile: unknown;
+        materializedEntityId?: number;
+        expectedRevision?: number;
       }>;
     },
   ) => Promise<MaterializeResult>;
@@ -404,6 +408,12 @@ export function EntityStageRunner({
         ...(c.materializedEntityId !== undefined
           ? { materializedEntityId: c.materializedEntityId }
           : {}),
+        // Ревизия карточки, которую эта вкладка в последний раз видела.
+        // Не совпала с базой — сервер ответит 409, а не перепишет то, что
+        // автор дописал в карточке руками (К4).
+        ...(c.materializedRevision !== undefined
+          ? { expectedRevision: c.materializedRevision }
+          : {}),
       }));
       const result = await onMaterialize(aspect.id, {
         stageId,
@@ -424,6 +434,9 @@ export function EntityStageRunner({
           status: "accepted" as const,
           ...(r.materializedEntityId !== undefined
             ? { materializedEntityId: r.materializedEntityId }
+            : {}),
+          ...(r.materializedRevision !== undefined
+            ? { materializedRevision: r.materializedRevision }
             : {}),
           ...(r.mergedIntoId !== undefined
             ? { mergedIntoEntityId: r.mergedIntoId }

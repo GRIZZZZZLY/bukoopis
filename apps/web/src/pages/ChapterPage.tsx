@@ -476,6 +476,15 @@ export function ChapterPage() {
     setError(null);
     try {
       if (contentChanged) {
+        // Отложенный автосейв досылается ДО коммита, иначе на сервере
+        // остаётся черновик десятисекундной давности, и он честно становится
+        // отдельной версией — две версии на один осознанный Ctrl+S (К2).
+        // В предпросмотре не досылаем: там в редакторе текст старой версии, и
+        // автосейв затёр бы настоящий черновик.
+        if (!isPreview) {
+          debouncedSave.mark(json);
+          await debouncedSave.flushNow();
+        }
         // Manual save is the deliberate commit: index + run memory extractors.
         await api.createVersion(id, json);
       }
