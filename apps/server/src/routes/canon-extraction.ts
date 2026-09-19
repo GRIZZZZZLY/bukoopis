@@ -1,3 +1,4 @@
+import { resolveEntity } from "../utils/entity-resolve.js";
 import { Hono } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -543,11 +544,14 @@ function createRelationshipFromCandidate(
   bookId: number,
   c: StoredRelationshipCandidate,
 ): number {
-  const lookup = sqlite.prepare(
-    "SELECT id FROM characters WHERE book_id = ? AND canonical_name = ? LIMIT 1",
-  );
-  const fromRow = lookup.get(bookId, c.fromName) as { id: number } | undefined;
-  const toRow = lookup.get(bookId, c.toName) as { id: number } | undefined;
+  // Через резолвер, а не точным `canonical_name = ?` (низкое замечание
+  // ревью 2026-09-19): классификатор возвращает имя так, как оно стоит в
+  // тексте, то есть в падеже и иногда псевдонимом, — и принятие связи
+  // падало с «character not found» на герое, который в каноне есть.
+  const fromResolved = resolveEntity(sqlite, bookId, "character", c.fromName);
+  const toResolved = resolveEntity(sqlite, bookId, "character", c.toName);
+  const fromRow = fromResolved ? { id: fromResolved.entityId } : undefined;
+  const toRow = toResolved ? { id: toResolved.entityId } : undefined;
   if (!fromRow) {
     throw new Error(
       `relationship accept: character "${c.fromName}" not found in book — accept the character candidate first`,

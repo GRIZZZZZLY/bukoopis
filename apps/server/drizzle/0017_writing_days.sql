@@ -1,4 +1,4 @@
--- Migration 0016_writing_days
+-- Migration 0017_writing_days
 -- Daily manual-writing ledger ("candle" goal). Counts only positive deltas
 -- from PUT /chapters/:id/draft — agent-generated versions are not counted.
 

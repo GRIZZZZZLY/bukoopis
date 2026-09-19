@@ -24,9 +24,7 @@
   "dependencies": {
     "@book-forge/llm": "workspace:*",
     "@book-forge/shared": "workspace:*",
-    "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "^1.3.0",
-    "@langchain/langgraph-checkpoint-sqlite": "^1.0.1",
     "better-sqlite3": "^12.11.1",
     "zod": "^4.0.0"
   },

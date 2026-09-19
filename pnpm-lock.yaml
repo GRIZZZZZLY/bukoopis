@@ -38,15 +38,6 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.18)
-      '@langchain/core':
-        specifier: ^1.0.1
-        version: 1.1.45(ws@8.20.0)
-      '@langchain/langgraph':
-        specifier: ^1.3.0
-        version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
-      '@langchain/langgraph-checkpoint-sqlite':
-        specifier: ^1.0.1
-        version: 1.0.1(@langchain/core@1.1.45(ws@8.20.0))(@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0)))
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -196,15 +187,9 @@ importers:
       '@book-forge/shared':
         specifier: workspace:*
         version: link:../shared
-      '@langchain/core':
-        specifier: ^1.0.1
-        version: 1.1.45(ws@8.20.0)
       '@langchain/langgraph':
         specifier: ^1.3.0
         version: 1.3.0(@langchain/core@1.1.45(ws@8.20.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.0)(zod-to-json-schema@3.25.2(zod@4.4.3))(zod@4.4.3)
-      '@langchain/langgraph-checkpoint-sqlite':
-        specifier: ^1.0.1
-        version: 1.0.1(@langchain/core@1.1.45(ws@8.20.0))(@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0)))
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -1449,13 +1434,6 @@ packages:
   '@langchain/core@1.1.45':
     resolution: {integrity: sha512-Y/wvuglLTMKJahkl4QD9dBIdF/z/CxZJWdTfHJF/q2jtlJtoFf6Mb5JpGxZfsi3mBY6NSG941FSLTcqhCKrhBA==}
     engines: {node: '>=20'}
-
-  '@langchain/langgraph-checkpoint-sqlite@1.0.1':
-    resolution: {integrity: sha512-zGKqa4QpKMi2ntffoGVrkpDg5cnYtXYoFphyhTquZv+ys+sFxwfQTzf4dQu21TwCC1IpVDmYsPifJueKb1ARdQ==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@langchain/core': ^1.0.1
-      '@langchain/langgraph-checkpoint': ^1.0.0
 
   '@langchain/langgraph-checkpoint@1.0.2':
     resolution: {integrity: sha512-F4E5Tr0nt8FGghgdscJtHw+ABzChOHeI80R7Y1pjIHdiJom6c2ieo76vL+FWiny80JmoGqhrVAEIWrw0cXKPxg==}
@@ -4575,12 +4553,6 @@ snapshots:
       - '@opentelemetry/sdk-trace-base'
       - openai
       - ws
-
-  '@langchain/langgraph-checkpoint-sqlite@1.0.1(@langchain/core@1.1.45(ws@8.20.0))(@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0)))':
-    dependencies:
-      '@langchain/core': 1.1.45(ws@8.20.0)
-      '@langchain/langgraph-checkpoint': 1.0.2(@langchain/core@1.1.45(ws@8.20.0))
-      better-sqlite3: 12.11.1
 
   '@langchain/langgraph-checkpoint@1.0.2(@langchain/core@1.1.45(ws@8.20.0))':
     dependencies:

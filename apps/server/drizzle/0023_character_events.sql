@@ -1,6 +1,4 @@
 -- Migration 0023_character_events
--- Hand-written SQL. Separate statements with the breakpoint marker
--- (see prior migrations); never put that marker inside a comment.
 
 -- Этап 3 ТЗ индивидуальности персонажей: слой событий персонажа.
 -- Знание — это вид события, а не отдельная таблица: два источника истины
