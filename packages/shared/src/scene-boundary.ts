@@ -20,6 +20,12 @@ export const sceneBoundarySchema = z.object({
 });
 export type SceneBoundary = z.infer<typeof sceneBoundarySchema>;
 
+/** Фабрика, а не проверка: аргументы не валидируются намеренно, и
+ *  `boundaryForChapter(0, -1, null)` вернёт объект, который схема отвергнет.
+ *  Идентификаторы приходят из базы, а не от пользователя; страж здесь
+ *  проверял бы то, что уже проверено, и прятал бы настоящую ошибку —
+ *  «откуда взялся нулевой id» — за аккуратным сообщением. Записано, чтобы
+ *  следующий читатель не принял это за недосмотр. */
 export function boundaryForChapter(
   bookId: number,
   chapterId: number,
