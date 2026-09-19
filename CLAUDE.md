@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`book-forge` — single-user, local-first AI-assisted novel-writing tool. Russian-language MVP. pnpm workspaces monorepo, Node 22 LTS, ESM only, TypeScript strict (`noUncheckedIndexedAccess`).
+`book-forge` — single-user, local-first AI-assisted novel-writing tool. Russian-language MVP. pnpm workspaces monorepo, Node 22+ (проверено на 24), ESM only, TypeScript strict (`noUncheckedIndexedAccess`).
+
+**Node и `better-sqlite3`.** Единственная нативная зависимость — `better-sqlite3`. Её авторы публикуют готовые сборки под каждую ABI, и версия 11.x кончалась на ABI 127 (Node 22): на Node 24 установка срывалась в node-gyp, которому нужен Visual Studio, и база не открывалась вовсе. Поэтому зависимость поднята до `^12.11.1` — 12.x заявляет Node 20–26 и публикует сборку под ABI 137. Понижать Node не нужно. Если `pnpm install` всё же уходит в node-gyp, значит `prebuild-install` не достучался до GitHub; сборку можно положить руками в `node_modules/.pnpm/better-sqlite3@<версия>/node_modules/better-sqlite3/build/Release/`, взяв её из релиза `better-sqlite3-v<версия>-node-v<ABI>-win32-x64.tar.gz` (ABI — `node -p process.versions.modules`).
 
 ## Commands
 

@@ -26,7 +26,7 @@
     "@langchain/core": "^1.0.1",
     "@langchain/langgraph": "^1.3.0",
     "@langchain/langgraph-checkpoint-sqlite": "^1.0.1",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.2",
     "hono": "^4.6.13",
