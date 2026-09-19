@@ -142,6 +142,9 @@ export async function dispatchStructured<I, O>(
     payload: input.payload,
     model: input.model,
     ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+    // Предел длины ответа доезжает и сюда: на подписке он раньше терялся, и
+    // агент, у которого длинный ответ — нормальная работа, обрывался молча.
+    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
     ...(input.onProgress !== undefined ? { onProgress: emit } : {}),
   });
   const validated = outputSchema.safeParse(sub.raw);

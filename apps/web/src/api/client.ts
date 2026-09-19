@@ -45,6 +45,16 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 
 // ADR 0002 — computed per-chapter memory state returned by GET /api/chapters/:id.
+/** Сколько событий героев легло при активации версии и сколько отброшено. */
+export interface AppliedEventCounts {
+  inserted: number;
+  duplicates: number;
+  rejectedEvidence: number;
+  unresolved: number;
+  /** Снято с прежнего разбора этой же версии. Не потеря: заменено новым. */
+  superseded?: number;
+}
+
 export interface ChapterMemoryInfo {
   state: "fresh" | "updating" | "error" | "none";
   memoryVersionId: number | null;
@@ -52,6 +62,17 @@ export interface ChapterMemoryInfo {
   bookStaleFromPosition: number | null;
   /** Positions of earlier chapters whose derived memory hasn't landed yet. */
   pendingEarlierChapters: number[];
+  /** Версия конвейера, которой разобрана текущая версия главы. */
+  pipelineVersion: number | null;
+  /** Память числится свежей, но собрана прежней версией конвейера. */
+  outdatedPipeline: boolean;
+  /** `short` — глава короче 80 слов и не разбиралась вовсе. */
+  skipped: string | null;
+  events: AppliedEventCounts | null;
+  /** Строк ответа модели, которые схема не приняла. */
+  malformed: number;
+  /** Сколько глав книги ещё разобрано прежней версией конвейера. */
+  outdatedPipelineChapters: number;
 }
 export type ChapterWithMemory = ChapterWithCurrentVersion & {
   memory?: ChapterMemoryInfo;

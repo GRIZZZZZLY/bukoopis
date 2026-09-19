@@ -37,6 +37,13 @@ export interface McpSubmitToolInput<I> {
   maxTurnsOverride?: number;
   /** Свой предел ожидания вместо общего `LLM_TIMEOUT_MS`; 0 — без предела. */
   timeoutMs?: number;
+  /** Предел длины ответа. У SDK нет такого поля в `Options`, но CLI, который
+   *  он запускает, читает `CLAUDE_CODE_MAX_OUTPUT_TOKENS` из окружения —
+   *  поэтому предел едет туда. Без этого `maxTokens` работал только на прямом
+   *  API, а на подписке молча игнорировался: длинный ответ обрывался, и обрыв
+   *  приходил как «инструмент не вызван», без `stop_reason` и без подсказки,
+   *  что дело в длине. */
+  maxTokens?: number;
   /** Прогресс-хук; синхронный, ошибки внутри не должны ломать вызов. */
   onProgress?: (event: McpProgressEvent) => void;
 }
@@ -169,6 +176,9 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     ...process.env,
   };
   delete subscriptionEnv.ANTHROPIC_API_KEY;
+  if (input.maxTokens !== undefined) {
+    subscriptionEnv.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(input.maxTokens);
+  }
   const options: Options = {
     model: resolveModelId(input.model),
     systemPrompt: input.systemPromptOverride ?? contract.systemPrompt,

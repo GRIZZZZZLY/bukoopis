@@ -716,6 +716,12 @@ export const characterEvents = sqliteTable(
       { onDelete: "cascade" },
     ),
     // Доказательство в неизменяемом content_text указанной версии.
+    //
+    // Тройка не связана constraint'ом: цитата без смещений вставится. Этот
+    // путь закрыт кодом — `persistCharacterEvents` находит цитату сам и
+    // пишет все три поля разом, — а SQLite не умеет добавлять CHECK
+    // существующей таблице: связать их значило бы перестроить её целиком
+    // ради случая, достижимого только рукописным SQL.
     evidenceQuote: text("evidence_quote"),
     evidenceStart: integer("evidence_start"),
     evidenceEnd: integer("evidence_end"),

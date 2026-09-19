@@ -4,18 +4,27 @@ import {
   MemoryStatusBadge,
   MemoryStaleBanner,
   MemoryLagWarning,
+  MemoryPipelineBanner,
 } from "./MemoryStatus";
 import type { ChapterMemoryInfo } from "@/api/client";
 
 function mem(
   state: ChapterMemoryInfo["state"],
   bookStaleFromPosition: number | null = null,
+  extra: Partial<ChapterMemoryInfo> = {},
 ): ChapterMemoryInfo {
   return {
     state,
     memoryVersionId: null,
     bookStaleFromPosition,
     pendingEarlierChapters: [],
+    pipelineVersion: 2,
+    outdatedPipeline: false,
+    skipped: null,
+    events: null,
+    malformed: 0,
+    outdatedPipelineChapters: 0,
+    ...extra,
   };
 }
 
@@ -36,6 +45,45 @@ describe("MemoryStatusBadge", () => {
       />,
     );
     expect(screen.getByText("Память актуальна")).toBeInTheDocument();
+  });
+
+  it("не называет короткую главу разобранной", () => {
+    // Пропуск засчитан как успех задания, поэтому состояние честно «свежая» —
+    // и подпись «Память актуальна» тут была бы неправдой о содержимом.
+    render(
+      <MemoryStatusBadge
+        memory={mem("fresh", null, { skipped: "short" })}
+        onRetry={() => {}}
+        retrying={false}
+      />,
+    );
+    expect(screen.queryByText("Память актуальна")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Глава короче 80 слов — в память не попала"),
+    ).toBeInTheDocument();
+  });
+
+  it("называет записи, которые не прижились", () => {
+    render(
+      <MemoryStatusBadge
+        memory={mem("fresh", null, {
+          events: {
+            inserted: 3,
+            duplicates: 0,
+            rejectedEvidence: 2,
+            unresolved: 1,
+          },
+          malformed: 1,
+        })}
+        onRetry={() => {}}
+        retrying={false}
+      />,
+    );
+    // 2 отвергнутых доказательства + 1 неразрешённое имя + 1 непринятая
+    // схемой строка. Принятые и повторы в число потерь не входят.
+    expect(
+      screen.getByText("Память актуальна · не прижилось записей: 4"),
+    ).toBeInTheDocument();
   });
 
   it("shows updating state", () => {
@@ -131,5 +179,65 @@ describe("MemoryStaleBanner", () => {
       screen.getByRole("button", { name: "Перестроить с главы #4" }),
     );
     expect(onRebuild).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MemoryPipelineBanner", () => {
+  it("молчит, когда вся книга разобрана нынешней версией", () => {
+    const { container } = render(
+      <MemoryPipelineBanner
+        outdatedChapters={0}
+        onRebuild={() => {}}
+        rebuilding={false}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("называет число глав и то, чего у них нет", () => {
+    render(
+      <MemoryPipelineBanner
+        outdatedChapters={12}
+        onRebuild={() => {}}
+        rebuilding={false}
+      />,
+    );
+    const banner = screen.getByRole("status");
+    expect(banner).toHaveTextContent(/12/);
+    expect(banner).toHaveTextContent(/события героев/i);
+  });
+
+  it("не запускает платный разбор с одного нажатия", () => {
+    const onRebuild = vi.fn();
+    render(
+      <MemoryPipelineBanner
+        outdatedChapters={12}
+        onRebuild={onRebuild}
+        rebuilding={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Разобрать заново" }));
+    expect(onRebuild).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent(/платные вызовы/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Да, разобрать" }));
+    expect(onRebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("отмена оставляет всё как было", () => {
+    const onRebuild = vi.fn();
+    render(
+      <MemoryPipelineBanner
+        outdatedChapters={3}
+        onRebuild={onRebuild}
+        rebuilding={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Разобрать заново" }));
+    fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(onRebuild).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Разобрать заново" }),
+    ).toBeInTheDocument();
   });
 });

@@ -64,11 +64,23 @@ describe("промпт извлекателя", () => {
     expect(line).toMatch(/Ивану.*Иван/);
   });
 
-  it("называет настоящую цену ошибки, а не пропуск одного события", () => {
-    // Одно негодное событие валит safeParse целиком, вместе с фактами.
-    // Модель, которой обещан дешёвый отказ, рискнёт сомнительным событием.
-    const matches = CANON_FACT_EXTRACTOR_SYSTEM.match(/ВЕСЬ ответ, вместе с фактами/g);
-    expect(matches?.length ?? 0).toBeGreaterThanOrEqual(3);
+  it("называет настоящую цену ошибки и не завышает её", () => {
+    // Цена изменилась: негодное событие больше не валит весь ответ, его
+    // выбрасывают поштучно (иначе глава теряла и факты, и заметки). Обещать
+    // модели катастрофу там, где её нет, — такая же ложь, как обещать
+    // дешёвый отказ там, где она есть.
+    const whole = CANON_FACT_EXTRACTOR_SYSTEM.match(
+      /ВЕСЬ ответ, вместе с фактами/g,
+    );
+    expect(whole).toHaveLength(1);
+    // Единственное, что и правда валит ответ целиком, — превышение предела.
+    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(
+      /Не более 30 событий\. Превышение отвергает ВЕСЬ ответ/,
+    );
+    const acquisitionLine = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+      l.includes("acquisition ОБЯЗАТЕЛЬНО"),
+    );
+    expect(acquisitionLine).toMatch(/отбрасывается целиком/);
   });
 
   it("называет предел числа событий", () => {
@@ -78,6 +90,27 @@ describe("промпт извлекателя", () => {
 
 describe("контракт извлекателя", () => {
   const evidence = { evidenceQuote: "— Станцию закрывают" };
+  const GOOD_EVENT = {
+    subjectName: "Сарек",
+    kind: "knowledge",
+    data: { fact: "Станцию закрывают", acquisition: "told" },
+    ...evidence,
+  };
+
+  /** Негодное событие в канон не попадает, но и остального не уносит: схема
+   *  отдаёт его как `null`, а отсеивает `extractFactsPayload`. Проверяем обе
+   *  половины разом — иначе «не принято» легко спутать с «ответ отвергнут»,
+   *  что и было раньше и стоило главе фактов и заметок. */
+  function expectEventDropped(event: unknown): void {
+    const r = canonFactExtractionSchema.safeParse({
+      facts: [],
+      characterEvents: [event, GOOD_EVENT],
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.characterEvents[0]).toBeNull();
+    expect(r.data.characterEvents[1]?.subjectName).toBe("Сарек");
+  }
 
   it("ответ без событий по-прежнему валиден", () => {
     const r = canonFactExtractionSchema.safeParse({ facts: [] });
@@ -102,64 +135,51 @@ describe("контракт извлекателя", () => {
     expect(r.success && r.data.characterEvents).toHaveLength(1);
   });
 
-  it("событие без цитаты отвергается", () => {
-    const r = canonFactExtractionSchema.safeParse({
-      facts: [],
-      characterEvents: [
-        {
-          subjectName: "Рин",
-          kind: "knowledge",
-          data: { fact: "X", acquisition: "told" },
-        },
-      ],
+  it("событие без цитаты в канон не попадает", () => {
+    expectEventDropped({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "X", acquisition: "told" },
     });
-    expect(r.success).toBe(false);
   });
 
-  it("выдуманные имена полей в data отвергаются", () => {
+  it("выдуманные имена полей в data в канон не попадают", () => {
     // `z.object` срезает незнакомые ключи, а известные имеют умолчания, так
     // что без явной проверки такое событие легло бы пустой карточкой.
-    const r = canonFactExtractionSchema.safeParse({
-      facts: [],
-      characterEvents: [
-        {
-          subjectName: "Рин",
-          kind: "knowledge",
-          data: { описание: "Станцию закрывают" },
-          ...evidence,
-        },
-      ],
+    expectEventDropped({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { описание: "Станцию закрывают" },
+      ...evidence,
     });
-    expect(r.success).toBe(false);
   });
 
-  it("knowledge без acquisition отвергается, а не считается увиденным", () => {
-    const r = canonFactExtractionSchema.safeParse({
-      facts: [],
-      characterEvents: [
-        {
-          subjectName: "Рин",
-          kind: "knowledge",
-          data: { fact: "Станцию закрывают" },
-          ...evidence,
-        },
-      ],
+  it("knowledge без acquisition не становится увиденным", () => {
+    expectEventDropped({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "Станцию закрывают" },
+      ...evidence,
     });
-    expect(r.success).toBe(false);
   });
 
-  it("сдвиг отношения без quality отвергается", () => {
+  it("сдвиг отношения без quality в канон не попадает", () => {
+    expectEventDropped({
+      subjectName: "Рин",
+      addresseeName: "Сарек",
+      kind: "relation_shift",
+      data: { from: "ровно", to: "холодно" },
+      ...evidence,
+    });
+  });
+
+  it("превышение предела по-прежнему отвергает ответ целиком", () => {
+    // Единственный случай, где всё или ничего остаётся правильным: тридцать
+    // одно событие значит, что модель не поняла контракт, и тихо срезать
+    // хвост хуже, чем повторить вызов.
     const r = canonFactExtractionSchema.safeParse({
       facts: [],
-      characterEvents: [
-        {
-          subjectName: "Рин",
-          addresseeName: "Сарек",
-          kind: "relation_shift",
-          data: { from: "ровно", to: "холодно" },
-          ...evidence,
-        },
-      ],
+      characterEvents: Array.from({ length: 31 }, () => GOOD_EVENT),
     });
     expect(r.success).toBe(false);
   });

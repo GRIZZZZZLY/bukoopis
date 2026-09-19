@@ -48,6 +48,7 @@ import {
   MemoryStatusBadge,
   MemoryStaleBanner,
   MemoryLagWarning,
+  MemoryPipelineBanner,
 } from "@/components/memory/MemoryStatus";
 import type { ChapterMemoryInfo, ChapterWithMemory } from "@/api/client";
 import { useHotkeys } from "@/lib/useHotkeys";
@@ -229,11 +230,11 @@ export function ChapterPage() {
     }
   }, [id]);
 
-  const onRebuildMemory = useCallback(async () => {
+  const onRebuildMemory = useCallback(async (fromOrder?: number) => {
     if (!bookId) return;
     setMemoryRebuilding(true);
     try {
-      const r = await api.rebuildBookMemory(Number(bookId));
+      const r = await api.rebuildBookMemory(Number(bookId), fromOrder);
       toast.info(
         `Перестроение памяти: ${r.enqueuedChapters} глав, начиная с #${r.fromOrder}`,
       );
@@ -768,6 +769,15 @@ export function ChapterPage() {
             <MemoryStaleBanner
               staleFromPosition={memory?.bookStaleFromPosition ?? null}
               onRebuild={() => void onRebuildMemory()}
+              rebuilding={memoryRebuilding}
+            />
+
+            <MemoryPipelineBanner
+              outdatedChapters={memory?.outdatedPipelineChapters ?? 0}
+              // С первой главы, а не с отметки устаревания: прежним разбором
+              // собрана вся книга, и частичное перестроение оставило бы её
+              // наполовину без событий героев.
+              onRebuild={() => void onRebuildMemory(1)}
               rebuilding={memoryRebuilding}
             />
 

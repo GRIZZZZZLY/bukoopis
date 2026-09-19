@@ -20,12 +20,29 @@ import { persistCharacterEvents } from "./character-events.js";
 export interface StagedFactsResult {
   factCount: number;
   eventCount?: number;
+  /** Строки, которые схема извлекателя не приняла и выбросила поштучно. */
+  malformedFacts?: number;
+  malformedEvents?: number;
   skipped?: string;
   staged?: {
     facts: ExtractedFact[];
     /** Необязательные: staged-результаты версии конвейера 1 их не несут. */
     characterEvents?: ExtractedCharacterEvent[];
   };
+  /** Дописывается активацией: что из стадированного действительно легло.
+   *  До этого поля единственным следом отброшенного был `console.warn`, а
+   *  экран главы показывал «память актуальна» и для версии, где не прижилось
+   *  ни одно событие. */
+  applied?: AppliedEventCounts;
+}
+
+export interface AppliedEventCounts {
+  inserted: number;
+  duplicates: number;
+  rejectedEvidence: number;
+  unresolved: number;
+  /** Событий прежнего извлекателя по этой же версии, снятых новым разбором. */
+  superseded: number;
 }
 export interface StagedNotesResult {
   newCount: number;
@@ -38,9 +55,11 @@ export interface StagedNotesResult {
 export type ActivationOutcome = "activated" | "pending" | "obsolete" | "already";
 
 interface JobLite {
+  id: number;
   kind: MemoryJobKind;
   status: string;
   result_json: string | null;
+  pipeline_version: number;
 }
 
 export function tryActivateMemoryVersion(
@@ -50,7 +69,7 @@ export function tryActivateMemoryVersion(
 ): ActivationOutcome {
   const jobs = sqlite
     .prepare(
-      `SELECT kind, status, result_json FROM memory_jobs
+      `SELECT id, kind, status, result_json, pipeline_version FROM memory_jobs
        WHERE chapter_version_id = ?
        ORDER BY pipeline_version DESC, id DESC`,
     )
@@ -108,12 +127,33 @@ export function tryActivateMemoryVersion(
         chapterId,
         sourceVersionId: versionId,
         events: staged.characterEvents,
-        extractorVersion: MEMORY_PIPELINE_VERSION,
+        // Версия ЗАДАНИЯ, а не текущая: разбор мог отстояться в очереди
+        // через повышение конвейера, и пометить его новым номером значит
+        // приписать старому результату чужое происхождение — а по этому же
+        // номеру новый разбор потом вытесняет прежний.
+        extractorVersion: factsJob.pipeline_version,
       });
+      // Итог ложится в result_json задания, а не только в консоль: задание к
+      // этому моменту уже `done`, других следов не остаётся, и экран главы без
+      // этих чисел показывает «память актуальна» даже когда не прижилось
+      // ничего. Тем же UPDATE, что и активация, — в одной транзакции.
+      sqlite
+        .prepare("UPDATE memory_jobs SET result_json = ? WHERE id = ?")
+        .run(
+          JSON.stringify({
+            ...factsResult,
+            applied: {
+              inserted: outcome.inserted,
+              duplicates: outcome.duplicates,
+              rejectedEvidence: outcome.rejectedEvidence,
+              unresolved: outcome.unresolved,
+              superseded: outcome.superseded,
+            } satisfies AppliedEventCounts,
+          }),
+          factsJob.id,
+        );
       if (outcome.rejectedEvidence > 0 || outcome.unresolved > 0) {
         // Не ошибка активации: остальные слои версии обязаны активироваться.
-        // Но молчать нельзя — это единственное место, где видно, сколько
-        // извлечённого отброшено и почему.
         console.warn(
           `[memory] v${versionId}: принято событий ${outcome.inserted}, повторов ${outcome.duplicates}; отброшено — доказательство ${outcome.rejectedEvidence}, имя героя или адресата не разрешилось ${outcome.unresolved}`,
         );
@@ -230,6 +270,55 @@ export function maybeClearMemoryStale(
 export interface ChapterMemoryStatus {
   state: "fresh" | "updating" | "error" | "none";
   memoryVersionId: number | null;
+  /** Версия конвейера, которой разобрана текущая версия главы; null — задания
+   *  `facts` для неё нет. */
+  pipelineVersion: number | null;
+  /** Память числится свежей, но собрана прежней версией конвейера: то, что
+   *  появилось позже (события героев), по этой главе не извлекалось вовсе.
+   *  Без этого признака экран уверял «память актуальна» у всей книги,
+   *  написанной до выпуска, и автор никогда не узнавал, что нужен разбор
+   *  заново. */
+  outdatedPipeline: boolean;
+  /** Почему разбор ничего не дал: `short` — глава короче 80 слов, `missing` —
+   *  версия исчезла. Пропуск считается успехом задания, поэтому без этого поля
+   *  он неотличим от разбора, нашедшего пустоту. */
+  skipped: string | null;
+  /** Что из извлечённых событий действительно легло (пишет активация). */
+  events: AppliedEventCounts | null;
+  /** Строк ответа модели, которые схема не приняла (факты + события). */
+  malformed: number;
+}
+
+interface FactsJobLite {
+  pipeline_version: number;
+  result_json: string | null;
+}
+
+/**
+ * Сколько глав книги разобрано прежней версией конвейера. Повышение
+ * `MEMORY_PIPELINE_VERSION` само по себе не ставит ни одного задания — они
+ * создаются только на свежую версию главы, — поэтому у книги, написанной до
+ * выпуска, новых слоёв памяти не появится никогда, пока автор не нажмёт
+ * «Перестроить». Это число и есть цена ожидания; без него автору неоткуда
+ * узнать, что перестраивать вообще надо.
+ */
+export function outdatedPipelineChapters(
+  sqlite: DatabaseType,
+  bookId: number,
+): number {
+  const row = sqlite
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT c.id AS id, MAX(j.pipeline_version) AS pv
+         FROM chapters c
+         JOIN memory_jobs j
+           ON j.chapter_version_id = c.current_version_id AND j.kind = 'facts'
+         WHERE c.book_id = ? AND c.current_version_id IS NOT NULL
+         GROUP BY c.id
+       ) WHERE pv < ?`,
+    )
+    .get(bookId, MEMORY_PIPELINE_VERSION) as { n: number };
+  return row.n;
 }
 
 /** Per-chapter memory state for the UI (computed, not stored). */
@@ -239,9 +328,41 @@ export function chapterMemoryStatus(
 ): ChapterMemoryStatus {
   const memoryVersionId =
     (chapter as { memory_version_id?: number | null }).memory_version_id ?? null;
-  if (!chapter.current_version_id) return { state: "none", memoryVersionId };
+  const base = {
+    memoryVersionId,
+    pipelineVersion: null,
+    outdatedPipeline: false,
+    skipped: null,
+    events: null,
+    malformed: 0,
+  } satisfies Omit<ChapterMemoryStatus, "state">;
+  if (!chapter.current_version_id) return { state: "none", ...base };
+
+  // Разбор фактов — единственное задание, чей результат говорит о содержимом:
+  // пропуск, отброшенные строки и итог записи событий лежат в его result_json.
+  const factsJob = sqlite
+    .prepare(
+      `SELECT pipeline_version, result_json FROM memory_jobs
+       WHERE chapter_version_id = ? AND kind = 'facts'
+       ORDER BY pipeline_version DESC, id DESC LIMIT 1`,
+    )
+    .get(chapter.current_version_id) as FactsJobLite | undefined;
+  const staged = factsJob
+    ? parseJson<StagedFactsResult>(factsJob.result_json)
+    : null;
+  const detail = {
+    memoryVersionId,
+    pipelineVersion: factsJob?.pipeline_version ?? null,
+    outdatedPipeline:
+      factsJob !== undefined &&
+      factsJob.pipeline_version < MEMORY_PIPELINE_VERSION,
+    skipped: staged?.skipped ?? null,
+    events: staged?.applied ?? null,
+    malformed: (staged?.malformedFacts ?? 0) + (staged?.malformedEvents ?? 0),
+  } satisfies Omit<ChapterMemoryStatus, "state">;
+
   if (memoryVersionId === chapter.current_version_id) {
-    return { state: "fresh", memoryVersionId };
+    return { state: "fresh", ...detail };
   }
   const jobs = sqlite
     .prepare(
@@ -250,9 +371,9 @@ export function chapterMemoryStatus(
     )
     .all(chapter.current_version_id) as Array<{ status: string; n: number }>;
   const has = (s: string): boolean => jobs.some((j) => j.status === s && j.n > 0);
-  if (has("error")) return { state: "error", memoryVersionId };
+  if (has("error")) return { state: "error", ...detail };
   if (has("pending") || has("running") || has("retry")) {
-    return { state: "updating", memoryVersionId };
+    return { state: "updating", ...detail };
   }
-  return { state: "none", memoryVersionId };
+  return { state: "none", ...detail };
 }

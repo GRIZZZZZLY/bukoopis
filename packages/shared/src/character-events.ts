@@ -53,7 +53,12 @@ export type EventOrigin = z.infer<typeof eventOriginSchema>;
 
 /** `derived` — извлечено из принятого текста и активно. `proposed` — гипотеза,
  *  ждёт автора и в контекст не идёт. `confirmed` — автор подтвердил.
- *  `rejected` — автор отклонил либо доказательство не сошлось (AC-25). */
+ *  `rejected` — автор отклонил.
+ *
+ *  `rejected` сегодня не пишет НИКТО, и это не упущение: событие с
+ *  несошедшимся доказательством строки не получает вовсе (`persistCharacterEvents`
+ *  считает его в `rejectedEvidence` и не вставляет). Значение ждёт ручного
+ *  отклонения на экране персонажа. */
 export const EVENT_VERIFICATIONS = ["derived", "proposed", "confirmed", "rejected"] as const;
 export const eventVerificationSchema = z.enum(EVENT_VERIFICATIONS);
 export type EventVerification = z.infer<typeof eventVerificationSchema>;
@@ -67,6 +72,14 @@ export function defaultVerificationFor(kind: CharacterEventKind): EventVerificat
 
 const line = z.string().nullable().default(null);
 
+/** Позиция главы (как её видит автор: первая — 1), необязательная. Поля с
+ *  суффиксом `ChapterOrder` по всей ветке означают позицию, а не разрежённый
+ *  `order_index`; общий конструктор держит их одинаковыми — три копии одного
+ *  описания разъезжаются на первой же правке. */
+const chapterOrderField = (): z.ZodDefault<
+  z.ZodNullable<z.ZodNumber>
+> => z.number().int().nonnegative().nullable().default(null);
+
 export const knowledgeDataSchema = z.object({
   fact: z.string().default(""),
   acquisition: acquisitionModeSchema.default("unknown"),
@@ -76,7 +89,7 @@ export const knowledgeDataSchema = z.object({
    *  существовать и без него: герой верит тому, чего не было. */
   canonFactId: z.number().int().positive().nullable().default(null),
   /** Порядок главы, с которой сведение опровергнуто. */
-  disprovedFromChapterOrder: z.number().int().nonnegative().nullable().default(null),
+  disprovedFromChapterOrder: chapterOrderField(),
 });
 export type KnowledgeData = z.infer<typeof knowledgeDataSchema>;
 
@@ -89,7 +102,7 @@ export const stateScopeSchema = z.enum(STATE_SCOPES);
 export const stateDataSchema = z.object({
   state: z.string().default(""),
   scope: stateScopeSchema.default("unknown"),
-  endsAtChapterOrder: z.number().int().nonnegative().nullable().default(null),
+  endsAtChapterOrder: chapterOrderField(),
   endCondition: line,
 });
 export type StateData = z.infer<typeof stateDataSchema>;
@@ -104,7 +117,7 @@ export type RelationShiftData = z.infer<typeof relationShiftDataSchema>;
 export const commitmentDataSchema = z.object({
   commitment: z.string().default(""),
   toWhom: line,
-  dueByChapterOrder: z.number().int().nonnegative().nullable().default(null),
+  dueByChapterOrder: chapterOrderField(),
 });
 export type CommitmentData = z.infer<typeof commitmentDataSchema>;
 
@@ -150,6 +163,11 @@ export const characterEventSchema = z.object({
   subjectCharacterId: z.number().int().positive(),
   addresseeCharacterId: z.number().int().positive().nullable(),
   kind: characterEventKindSchema,
+  /** Форма зависит от вида, поэтому здесь `unknown`, а читают через
+   *  `normalizeEventData`. Побочный эффект, о который спотыкаются: в выводе
+   *  TypeScript ключ выходит необязательным (`data?: unknown`) — так zod
+   *  описывает `unknown`, хотя при разборе поле требуется. Менять тип ради
+   *  этого нечем: всё, что даёт обязательный ключ, ломает `z.toJSONSchema`. */
   data: z.unknown(),
   chapterId: z.number().int().positive().nullable(),
   sceneOrdinal: z.number().int().nonnegative(),

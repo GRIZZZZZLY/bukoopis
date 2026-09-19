@@ -41,6 +41,12 @@ export function makeTestApp(): TestApp {
 
   const handle = createApp(dbPath);
   const reopenedSqlite = new Database(dbPath);
+  // Второе соединение — то, через которое тесты сеют и читают данные, — жило
+  // без внешних ключей: PRAGMA ставится на соединение, а не на файл. Тест,
+  // который сеет строку с чужим id, проходил бы там, где приложение упало
+  // бы, а единственный отказ, который `INSERT OR IGNORE` не глотает (как раз
+  // внешний ключ), был из этих тестов недостижим.
+  reopenedSqlite.pragma("foreign_keys = ON");
 
   return {
     ...handle,

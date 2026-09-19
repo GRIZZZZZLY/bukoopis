@@ -132,6 +132,28 @@ describe("события персонажа", () => {
     expect(r.success).toBe(false);
   });
 
+  it("лишний ключ в data не мешает событию пройти, а на чтении отпадает", () => {
+    // На этом держится терпимость к модели, дописавшей своё поле: проверка на
+    // соответствие виду идёт по `z.object`, который незнакомые ключи срезает,
+    // так что событие проходит. В сыром `data` ключ остаётся — он и ложится
+    // в `data_json`, — а из чтения его убирает `normalizeEventData`.
+    const r = extractedCharacterEventSchema.safeParse({
+      subjectName: "Рин",
+      kind: "knowledge",
+      data: { fact: "Станцию закрывают", acquisition: "told", уверенность: 0.9 },
+      evidenceQuote: QUOTE,
+    });
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect("уверенность" in (r.data.data as object)).toBe(true);
+    expect("уверенность" in normalizeEventData("knowledge", r.data.data)).toBe(
+      false,
+    );
+    expect(normalizeEventData("knowledge", r.data.data).fact).toBe(
+      "Станцию закрывают",
+    );
+  });
+
   it("knowledge без acquisition отвергается", () => {
     // Умолчание — `unknown`: происхождения нет. Забытое поле сделало бы
     // героя свидетелем всего, о чём он только слышал.

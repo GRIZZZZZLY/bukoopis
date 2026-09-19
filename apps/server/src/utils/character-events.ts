@@ -101,6 +101,10 @@ export interface PersistEventsOutcome {
   unresolved: number;
   /** Уже было — повторная обработка (AC-21). */
   duplicates: number;
+  /** Снято прежним извлекателем по этой же версии главы и вытеснено новым
+   *  разбором. Ноль при обычном повторе: вытесняет только БОЛЕЕ НОВАЯ версия
+   *  извлекателя. */
+  superseded: number;
 }
 
 export interface PersistEventsArgs {
@@ -130,6 +134,7 @@ export function persistCharacterEvents(
     rejectedEvidence: 0,
     unresolved: 0,
     duplicates: 0,
+    superseded: 0,
   };
   // `INSERT OR IGNORE` гасит и нарушения CHECK, а не только конфликт
   // уникального индекса: с extractorVersion = 0 весь прогон вернул бы
@@ -154,6 +159,23 @@ export function persistCharacterEvents(
     );
   }
   const contentText = version.content_text;
+
+  // Новый извлекатель вытесняет прежний по этой же версии главы. Без этого
+  // `extractor_version` в уникальном ключе разводил повторный разбор в
+  // ПАРАЛЛЕЛЬНЫЙ набор строк: герой знал одно и то же дважды, разными
+  // словами, и обе записи считались действующими. Трогаются только машинные
+  // (`origin = 'llm'`) события: авторские и перенесённые извлекатель не
+  // ставил и снимать не вправе. Пустой разбор ничего не вытесняет — модель,
+  // вернувшая ноль событий, не доказательство, что их нет.
+  if (args.events.length > 0) {
+    out.superseded = sqlite
+      .prepare(
+        `DELETE FROM character_events
+         WHERE source_version_id = ? AND origin = 'llm' AND extractor_version < ?`,
+      )
+      .run(args.sourceVersionId, args.extractorVersion).changes;
+  }
+
   const insert = sqlite.prepare(
     `INSERT OR IGNORE INTO character_events
        (book_id, subject_character_id, addressee_character_id, kind, data_json,
@@ -200,6 +222,12 @@ export function persistCharacterEvents(
       subject.entityId,
       addresseeId,
       e.kind,
+      // Хранится ответ модели как есть, а ключ считается по нормализованной
+      // форме. Отсюда следствие, которое стоит знать: если тот же смысл
+      // придёт второй раз с более полными данными, ключ совпадёт и запись
+      // останется прежней, победнее. Это и есть идемпотентность AC-21 —
+      // «то же событие не плодит строк»; предпочесть более полный вариант
+      // значило бы переписывать уже показанное автору при каждом разборе.
       JSON.stringify(e.data),
       args.chapterId,
       // Одна неявная сцена на главу (этап 3). В ключ порядковый номер не

@@ -32,6 +32,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   ),
 }));
 
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { callViaSdkMcpSubmitTool } from "../clients/mcp-submit-tool.js";
 import {
   LLMAuthError,
@@ -71,6 +72,19 @@ function asyncGen<T>(
   })();
 }
 
+/** Опции последнего вызова SDK: единственный способ увидеть, что уехало в
+ *  запускаемый им процесс. */
+function lastQueryOptions(): {
+  env?: Record<string, string | undefined>;
+  maxTurns?: number;
+} {
+  const calls = vi.mocked(query).mock.calls;
+  const last = calls[calls.length - 1]?.[0] as
+    | { options?: { env?: Record<string, string | undefined>; maxTurns?: number } }
+    | undefined;
+  return last?.options ?? {};
+}
+
 const successResult = {
   type: "result",
   subtype: "success",
@@ -103,6 +117,50 @@ describe("callViaSdkMcpSubmitTool", () => {
     expect(result.diagnostics.modelId).toMatch(/^subscription:/);
     expect(result.diagnostics.inputTokens).toBe(100);
     expect(result.diagnostics.outputTokens).toBe(20);
+  });
+
+  it("предел длины ответа доезжает до подписочного бэкенда", async () => {
+    // У SDK нет поля под это в `Options`, поэтому предел едет переменной
+    // окружения, которую читает запускаемый им CLI. Без неё `maxTokens`
+    // молча терялся на подписке, и обрыв длинного ответа приходил как
+    // «инструмент не вызван».
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Paris", n: 42 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "test" },
+      model: "sonnet",
+      maxTokens: 32000,
+    });
+    const opts = lastQueryOptions();
+    expect(opts.env?.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("32000");
+    // Ключ API по-прежнему вычищен — подписка не должна свалиться на него.
+    expect(opts.env?.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it("без предела переменная не выставляется вовсе", async () => {
+    // Пустое значение CLI прочитает как предел, поэтому «не задано» обязано
+    // означать отсутствие ключа, а не пустую строку.
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Paris", n: 42 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "test" },
+      model: "sonnet",
+    });
+    expect(
+      "CLAUDE_CODE_MAX_OUTPUT_TOKENS" in (lastQueryOptions().env ?? {}),
+    ).toBe(false);
   });
 
   it("throws LLMNoToolCallError when model never invokes tool", async () => {

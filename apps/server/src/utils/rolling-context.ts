@@ -23,6 +23,7 @@ interface MetaRow {
   covers_from_order: number;
   covers_to_order: number;
   summary_text: string;
+  source_fingerprint: string | null;
 }
 
 function chapterSnippet(r: ChapterRow): string {
@@ -63,21 +64,31 @@ export function loadRollingChapterContext(
   const parts: string[] = [];
 
   if (older.length > 0) {
+    // Сводка, покрывающая главы ПОЗЖЕ границы, пересказывает ещё не
+    // написанное с точки зрения этой сцены (AC-10), поэтому границу ставит
+    // сам запрос. Сводок у книги несколько — по одной на пройденный рубеж, —
+    // и берётся самая полная из подходящих.
     const meta = sqlite
       .prepare(
-        `SELECT covers_from_order, covers_to_order, summary_text
-         FROM book_meta_summaries WHERE book_id = ?`,
+        `SELECT covers_from_order, covers_to_order, summary_text, source_fingerprint
+         FROM book_meta_summaries
+         WHERE book_id = ? AND covers_to_order < ?
+         ORDER BY covers_to_order DESC LIMIT 1`,
       )
-      .get(bookId) as MetaRow | undefined;
+      .get(bookId, beforeOrderIndex) as MetaRow | undefined;
     const olderMax = older[older.length - 1]!.order_index;
 
-    // Сводка, покрывающая главы ПОЗЖЕ границы, пересказывает ещё не
-    // написанное с точки зрения этой сцены. Раньше она бралась без проверки,
-    // и при генерации главы 10 в промпт уходил пересказ вплоть до двадцатой
-    // (AC-10). Такую сводку не используем вовсе — ранние главы отдаются
-    // поглавно, это дороже по месту, но не лжёт.
+    // Отпечаток сверяется и на чтении: главу внутри диапазона могли
+    // переписать после того, как сводка была составлена, и тогда она
+    // описывает текст, которого больше нет. Такую не берём — ранние главы
+    // уходят поглавно, это дороже по месту, но не лжёт.
     const usableMeta =
-      meta && meta.covers_to_order < beforeOrderIndex ? meta : undefined;
+      meta &&
+      (meta.source_fingerprint === null ||
+        meta.source_fingerprint ===
+          currentSourceFingerprint(sqlite, bookId, meta.covers_to_order))
+        ? meta
+        : undefined;
 
     if (usableMeta && usableMeta.covers_to_order >= olderMax) {
       // Meta fully covers the older run.
@@ -148,17 +159,60 @@ export interface MetaSummaryResult {
   skipped?: "window" | "covered" | "missing" | "empty";
 }
 
-/** Отпечаток источников сводки: какие главы и КАКИЕ ИХ ВЕРСИИ в неё вошли.
- *  Сравнение по диапазону не ловит правку внутри него — именно так сводка
- *  и оставалась описывать старый текст главы 3 навсегда. */
+/** Отпечаток источников сводки: какие главы, КАКИЕ ИХ ВЕРСИИ и под какими
+ *  названиями в неё вошли. Сравнение по диапазону не ловит правку внутри
+ *  него — именно так сводка и оставалась описывать старый текст главы 3
+ *  навсегда. Название входит в отпечаток, потому что входит и в промпт
+ *  сводки: переименованная глава упоминается в ней прежним именем.
+ *  `JSON.stringify` — не украшение: название вправе содержать и `:`, и `|`. */
 function metaSourceFingerprint(
-  rows: Array<{ order_index: number; version_id: number }>,
+  rows: Array<{ order_index: number; version_id: number; title: string }>,
 ): string {
   return rows
     .slice()
     .sort((a, b) => a.order_index - b.order_index)
-    .map((r) => `${r.order_index}:${r.version_id}`)
+    .map((r) => `${r.order_index}:${r.version_id}:${JSON.stringify(r.title)}`)
     .join("|");
+}
+
+/** Главы, из которых сводка на этот рубеж собиралась бы СЕЙЧАС. Тот же набор
+ *  и тот же порядок, что у `runMetaSummary`, иначе сравнение отпечатков
+ *  всегда давало бы «устарело». */
+function summarizedChaptersUpTo(
+  sqlite: DatabaseType,
+  bookId: number,
+  coversToOrder: number,
+): Array<{
+  order_index: number;
+  title: string;
+  summary: string;
+  version_id: number;
+}> {
+  return sqlite
+    .prepare(
+      `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary, v.id AS version_id
+       FROM chapters c
+       JOIN chapter_versions v ON v.id = c.current_version_id
+       WHERE c.book_id = ?
+         AND c.order_index <= ?
+         AND v.summary IS NOT NULL
+         AND length(v.summary) > 0
+       ORDER BY c.order_index ASC`,
+    )
+    .all(bookId, coversToOrder) as Array<{
+    order_index: number;
+    title: string;
+    summary: string;
+    version_id: number;
+  }>;
+}
+
+function currentSourceFingerprint(
+  sqlite: DatabaseType,
+  bookId: number,
+  coversToOrder: number,
+): string {
+  return metaSourceFingerprint(summarizedChaptersUpTo(sqlite, bookId, coversToOrder));
 }
 
 /**
@@ -173,22 +227,13 @@ export async function runMetaSummary(
   window: number = ROLLING_WINDOW,
 ): Promise<MetaSummaryResult> {
   {
-    const summarized = sqlite
-      .prepare(
-        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary, v.id AS version_id
-         FROM chapters c
-         JOIN chapter_versions v ON v.id = c.current_version_id
-         WHERE c.book_id = ?
-           AND v.summary IS NOT NULL
-           AND length(v.summary) > 0
-         ORDER BY c.order_index ASC`,
-      )
-      .all(bookId) as Array<{
-      order_index: number;
-      title: string;
-      summary: string;
-      version_id: number;
-    }>;
+    // Тот же набор, что сверяется на чтении: разойдись они — отпечаток не
+    // совпал бы никогда, и сводка была бы бесполезна с первого дня.
+    const summarized = summarizedChaptersUpTo(
+      sqlite,
+      bookId,
+      Number.MAX_SAFE_INTEGER,
+    );
 
     if (summarized.length <= window) {
       return { updated: false, skipped: "window" }; // nothing older than the window
@@ -199,18 +244,15 @@ export async function runMetaSummary(
     const coversTo = older[older.length - 1]!.order_index;
 
     const fingerprint = metaSourceFingerprint(older);
+    // Ищется строка ровно этого рубежа: сводки живут по одной на covers_to,
+    // и «есть сводка подальше» больше не означает, что эта не нужна.
     const existing = sqlite
       .prepare(
-        `SELECT covers_to_order, source_fingerprint FROM book_meta_summaries WHERE book_id = ?`,
+        `SELECT source_fingerprint FROM book_meta_summaries
+         WHERE book_id = ? AND covers_to_order = ?`,
       )
-      .get(bookId) as
-      | { covers_to_order: number; source_fingerprint: string | null }
-      | undefined;
-    if (
-      existing &&
-      existing.covers_to_order >= coversTo &&
-      existing.source_fingerprint === fingerprint
-    ) {
+      .get(bookId, coversTo) as { source_fingerprint: string | null } | undefined;
+    if (existing && existing.source_fingerprint === fingerprint) {
       return { updated: false, coversTo, skipped: "covered" }; // up to date
     }
 
@@ -238,9 +280,8 @@ export async function runMetaSummary(
         `INSERT INTO book_meta_summaries
            (book_id, covers_from_order, covers_to_order, summary_text, model_id, source_fingerprint, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(book_id) DO UPDATE SET
+         ON CONFLICT(book_id, covers_to_order) DO UPDATE SET
            covers_from_order = excluded.covers_from_order,
-           covers_to_order   = excluded.covers_to_order,
            summary_text      = excluded.summary_text,
            model_id          = excluded.model_id,
            source_fingerprint = excluded.source_fingerprint,

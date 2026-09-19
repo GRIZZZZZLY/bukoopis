@@ -60,13 +60,30 @@ export const extractedFactSchema = z.object({
 });
 export type ExtractedFact = z.infer<typeof extractedFactSchema>;
 
+/**
+ * Элемент, который схема не приняла, приходит как `null` и не валит весь
+ * ответ. Строгий массив стоил слишком дорого: одно негодное событие — и
+ * `safeParse` отвергал ВЕСЬ ответ, задание `facts` уходило в `error`, а глава
+ * оставалась без фактов, без событий и без заметок. Отсев и подсчёт
+ * отброшенного — на сервере (`extractFactsPayload`), потому что здесь, внутри
+ * схемы, `.transform` представить в JSON Schema нечем, а по ней строится
+ * инструмент модели.
+ *
+ * Предел длины массива намеренно остался жёстким: превышение означает, что
+ * модель не поняла контракт, и тихо срезать хвост хуже, чем повторить вызов.
+ */
+const lenient = <T extends z.ZodType>(item: T) => item.nullable().catch(null);
+
 export const canonFactExtractionSchema = z.object({
-  facts: z.array(extractedFactSchema).max(40),
+  facts: z.array(lenient(extractedFactSchema)).max(40),
   /** События персонажей идут тем же вызовом: отдельный вид задания потребовал
    *  бы пересборки `memory_jobs` (список видов зашит в SQL CHECK, решение 6
    *  ТЗ). Необязательное с умолчанием — старые staged-результаты в
    *  `result_json` продолжают разбираться. */
-  characterEvents: z.array(extractedCharacterEventSchema).max(30).default([]),
+  characterEvents: z
+    .array(lenient(extractedCharacterEventSchema))
+    .max(30)
+    .default([]),
   notes: z.string().nullable().optional(),
 });
 export type CanonFactExtraction = z.infer<typeof canonFactExtractionSchema>;
