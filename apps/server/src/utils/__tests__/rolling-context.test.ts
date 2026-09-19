@@ -130,6 +130,39 @@ describe("loadRollingChapterContext", () => {
     expect(out).toContain("Глава #3 «Глава 3»");
     expect(out).toContain("Глава #5 «Глава 5»");
   });
+
+  it("AC-10: сводка, покрывающая главы позже границы, не используется", () => {
+    const bookId = insertBook();
+    // Книга из 12 глав, сводка покрывает 1–20 (сохранена, когда книга была длиннее).
+    for (let i = 1; i <= 12; i++) insertChapter(bookId, i, `Сводка ${i}`);
+    sqlite
+      .prepare(
+        `INSERT INTO book_meta_summaries
+           (book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)
+         VALUES (?, 1, 20, ?, 'sonnet', ?)`,
+      )
+      .run(bookId, "СВОДКА_ДО_ДВАДЦАТОЙ", NOW);
+    // Готовим контекст для главы 10.
+    const ctx = loadRollingChapterContext(sqlite, bookId, 10)!;
+    // Сводка из будущего не должна попасть в контекст.
+    expect(ctx).not.toContain("СВОДКА_ДО_ДВАДЦАТОЙ");
+    // Ранние главы при этом не пропадают — они возвращаются поглавно.
+    expect(ctx).toContain("Глава #1 «Глава 1»");
+  });
+
+  it("сводка в пределах границы по-прежнему используется", () => {
+    const bookId = insertBook();
+    for (let i = 1; i <= 12; i++) insertChapter(bookId, i, `Сводка ${i}`);
+    sqlite
+      .prepare(
+        `INSERT INTO book_meta_summaries
+           (book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)
+         VALUES (?, 1, 9, ?, 'sonnet', ?)`,
+      )
+      .run(bookId, "СВОДКА_ДО_ДЕВЯТОЙ", NOW);
+    const ctx = loadRollingChapterContext(sqlite, bookId, 12)!;
+    expect(ctx).toContain("СВОДКА_ДО_ДЕВЯТОЙ");
+  });
 });
 
 describe("triggerMetaSummary", () => {

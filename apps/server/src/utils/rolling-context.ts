@@ -71,18 +71,26 @@ export function loadRollingChapterContext(
       .get(bookId) as MetaRow | undefined;
     const olderMax = older[older.length - 1]!.order_index;
 
-    if (meta && meta.covers_to_order >= olderMax) {
+    // Сводка, покрывающая главы ПОЗЖЕ границы, пересказывает ещё не
+    // написанное с точки зрения этой сцены. Раньше она бралась без проверки,
+    // и при генерации главы 10 в промпт уходил пересказ вплоть до двадцатой
+    // (AC-10). Такую сводку не используем вовсе — ранние главы отдаются
+    // поглавно, это дороже по месту, но не лжёт.
+    const usableMeta =
+      meta && meta.covers_to_order < beforeOrderIndex ? meta : undefined;
+
+    if (usableMeta && usableMeta.covers_to_order >= olderMax) {
       // Meta fully covers the older run.
       parts.push(
-        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
       );
-    } else if (meta) {
+    } else if (usableMeta) {
       // Meta covers a prefix; remaining older chapters fall back verbatim.
       parts.push(
-        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
       );
       const uncovered = older.filter(
-        (r) => r.order_index > meta.covers_to_order,
+        (r) => r.order_index > usableMeta.covers_to_order,
       );
       for (const r of uncovered) parts.push(chapterSnippet(r));
     } else {
