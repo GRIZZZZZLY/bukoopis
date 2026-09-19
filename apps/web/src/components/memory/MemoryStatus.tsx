@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AlertCircle, BookCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ChapterMemoryInfo } from "@/api/client";
@@ -25,7 +26,7 @@ export function MemoryStatusBadge({
           role="status"
         >
           <BookCheck className="size-3.5" aria-hidden="true" />
-          Память актуальна
+          {freshLabel(memory)}
         </span>
       );
     case "updating":
@@ -72,6 +73,26 @@ export function MemoryStatusBadge({
 }
 
 /**
+ * «Память актуальна» само по себе говорит только то, что задания дошли до
+ * конца. Оно оставалось верным и когда глава не разбиралась вовсе (короткая),
+ * и когда из разобранного не прижилось ничего. Подпись называет обе.
+ */
+function freshLabel(memory: ChapterMemoryInfo): string {
+  if (memory.skipped === "short") {
+    return "Глава короче 80 слов — в память не попала";
+  }
+  const dropped =
+    (memory.events
+      ? memory.events.rejectedEvidence + memory.events.unresolved
+      : 0) + memory.malformed;
+  if (dropped > 0) {
+    return `Память актуальна · не прижилось записей: ${dropped}`;
+  }
+  if (memory.outdatedPipeline) return "Память собрана прежним разбором";
+  return "Память актуальна";
+}
+
+/**
  * Forward-lag warning: earlier chapters are committed but their derived memory
  * hasn't landed yet. Writing this chapter now still works — its prompt would
  * just be assembled without those chapters' facts, notes and chunks.
@@ -96,6 +117,89 @@ export function MemoryLagWarning({ chapters }: { chapters: number[] }) {
         {subject} ещё обновляется. Если начать писать сейчас, эти главы не
         попадут в контекст генерации.
       </span>
+    </div>
+  );
+}
+
+/**
+ * Книга разобрана прежней версией конвейера. Повышение версии само по себе не
+ * ставит ни одного задания — они создаются только на свежую версию главы, —
+ * поэтому у книги, написанной раньше, новых слоёв памяти (событий героев) не
+ * появится никогда, а экран при этом честно показывает «память актуальна».
+ * Единственное лекарство — разбор заново, и он платный: подтверждение здесь
+ * не формальность, а цена в вызовах модели, умноженная на число глав.
+ */
+export function MemoryPipelineBanner({
+  outdatedChapters,
+  onRebuild,
+  rebuilding,
+}: {
+  outdatedChapters: number;
+  onRebuild: () => void;
+  rebuilding: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  if (outdatedChapters === 0) return null;
+  return (
+    <div
+      role="status"
+      className="card flex items-center justify-between gap-3 flex-wrap"
+      style={{
+        borderLeft: "3px solid var(--color-ink-amber)",
+        fontSize: 13,
+        padding: "10px 14px",
+      }}
+    >
+      <span>
+        {outdatedChapters === 1
+          ? "Одна глава разобрана прежней версией: "
+          : `Глав, разобранных прежней версией: ${outdatedChapters}. `}
+        события героев — кто что знает, видел или обещал — по ним не собраны и
+        сами не соберутся.
+      </span>
+      {confirming ? (
+        <span className="inline-flex items-center gap-2">
+          <span>Разобрать заново {outdatedChapters} глав? Это платные вызовы модели.</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setConfirming(false);
+              onRebuild();
+            }}
+            disabled={rebuilding}
+          >
+            Да, разобрать
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirming(false)}
+          >
+            Отмена
+          </Button>
+        </span>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setConfirming(true)}
+          disabled={rebuilding}
+          aria-busy={rebuilding || undefined}
+        >
+          {rebuilding ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Разбор…
+            </>
+          ) : (
+            "Разобрать заново"
+          )}
+        </Button>
+      )}
     </div>
   );
 }
