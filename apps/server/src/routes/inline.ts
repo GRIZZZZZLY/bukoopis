@@ -4,6 +4,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   runInlineCommandInputSchema,
   INLINE_COMMANDS_REQUIRING_SELECTION,
+  boundaryForChapter,
 } from "@book-forge/shared";
 import {
   runInlineCommand,
@@ -14,6 +15,7 @@ import {
 } from "@book-forge/agents";
 import type { ChapterRow, BookRow } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
+import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import { logUsage } from "../utils/usageLogger.js";
 import {
   loadStudioContext,
@@ -84,7 +86,19 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
       parsed.data.selectionText,
       parsed.data.afterText,
     ];
-    const charResult = gatherCharacterContext(sqlite, book.id, contextTexts);
+    // Правка идёт по прозе ТОЙ ЖЕ главы, что и починка с критикой, поэтому
+    // и граница та же. Без неё блок «Знает» приходил пустым: модель знала,
+    // кто герой и как он говорит, и не знала ничего из того, что он знает.
+    const charResult = gatherCharacterContext(
+      sqlite,
+      book.id,
+      contextTexts,
+      [],
+      makeCharacterBoundaryReaders(
+        sqlite,
+        boundaryForChapter(book.id, ch.id, ch.current_version_id),
+      ),
+    );
     const charNameById = new Map(
       charResult.characters.map((cc) => [
         cc.character.id,

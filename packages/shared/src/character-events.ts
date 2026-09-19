@@ -245,8 +245,10 @@ export interface ActiveState {
   subjectCharacterId: number;
   state: string;
   endCondition: string | null;
-  /** Порядок главы, в которой было наблюдаемо. */
-  observedAtChapterOrder: number;
+  /** Порядковый номер главы, где состояние наблюдалось: 1 — первая глава
+   *  книги. Не `order_index`: тот разрежённый, у девятой главы он 90.
+   *  `null` — состояние введено вручную и к главе не привязано. */
+  observedAtChapterOrder: number | null;
   /** Определяет, как состояние описывается в контексте. */
   certainty: "fresh" | "stale";
 }

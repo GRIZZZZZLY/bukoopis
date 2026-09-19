@@ -11,6 +11,7 @@ import {
 } from "@book-forge/shared";
 import { toCharacterEvent, type CharacterEventRow } from "../db/rows.js";
 import { resolveEntity } from "./entity-resolve.js";
+import { chapterPositionLookup } from "./chapter-position.js";
 import type { CharacterBoundaryReaders } from "@book-forge/agents";
 
 /** Слой событий персонажа (ТЗ индивидуальности, разделы 6, 12). */
@@ -318,6 +319,12 @@ export function loadActiveStates(
     .prepare("SELECT order_index FROM chapters WHERE id = ?")
     .get(boundary.chapterId) as { order_index: number } | undefined;
 
+  // `order_index` разрежённый — главы идут с шагом 10. Считать по нему
+  // расстояние в главах нельзя: соседняя глава отличается на 10, и порог в
+  // три главы не срабатывал никогда после четвёртой. Считаем по позициям.
+  const positionOf = chapterPositionLookup(sqlite, boundary.bookId);
+  const boundaryPosition = boundaryOrder ? positionOf(boundaryOrder.order_index) : null;
+
   const result: ActiveState[] = [];
   const seen = new Set<number>();
 
@@ -338,10 +345,14 @@ export function loadActiveStates(
 
     if (!state) continue;
 
-    const observedAtChapterOrder = row.chapter_order ?? 0;
+    // Состояние без главы — ручное или перенесённое. Номера у него нет, и
+    // «наблюдалось в главе 0» было бы выдумкой: отдаём `null`.
+    const observedAtChapterOrder =
+      row.chapter_order === null ? null : positionOf(row.chapter_order);
     const isFresh =
-      boundaryOrder &&
-      observedAtChapterOrder >= boundaryOrder.order_index - FRESHNESS_THRESHOLD;
+      boundaryPosition !== null &&
+      observedAtChapterOrder !== null &&
+      observedAtChapterOrder >= boundaryPosition - FRESHNESS_THRESHOLD;
 
     result.push({
       subjectCharacterId: row.subject_character_id,

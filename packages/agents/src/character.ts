@@ -256,11 +256,18 @@ export function characterContextToPrompt(
     if (myStates.length > 0) {
       lines.push("- Сейчас с ним:");
       for (const s of myStates) {
-        const desc =
-          s.certainty === "stale"
-            ? `${s.state} (наблюдалось в главе ${s.observedAtChapterOrder})`
-            : s.state;
-        lines.push(`  · ${desc}`);
+        const notes: string[] = [];
+        // Давнее состояние подписывается главой, чтобы Писатель не принял его
+        // за нынешнее. Номер — порядковый, а не `order_index`.
+        if (s.certainty === "stale" && s.observedAtChapterOrder !== null) {
+          notes.push(`наблюдалось в главе ${s.observedAtChapterOrder}`);
+        } else if (s.certainty === "stale") {
+          notes.push("наблюдалось давно");
+        }
+        // Условие завершения — половина смысла эпизодического состояния
+        // (AC-34): без него «устала» читается как черта характера.
+        if (s.endCondition) notes.push(`до тех пор, пока ${s.endCondition}`);
+        lines.push(`  · ${s.state}${notes.length > 0 ? ` (${notes.join("; ")})` : ""}`);
       }
     }
 
