@@ -1,5 +1,6 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
+  boundaryForChapter,
   chapterClosingSchema,
   extractNarrativeArchitecture,
   renderChapterClosing,
@@ -161,7 +162,8 @@ export async function loadChapterProseContext(
     chapterText,
     prevSummary,
   ];
-  const charResult = gatherCharacterContext(sqlite, book.id, contextTexts);
+  const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id);
+  const charResult = gatherCharacterContext(sqlite, book.id, contextTexts, [], boundary);
   const charNameById = new Map(
     charResult.characters.map((cc) => [
       cc.character.id,

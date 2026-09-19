@@ -7,6 +7,7 @@ import {
   type ExtractedCharacterEvent,
   type SceneBoundary,
   type CharacterEvent,
+  type ActiveState,
 } from "@book-forge/shared";
 import { toCharacterEvent, type CharacterEventRow } from "../db/rows.js";
 import { resolveEntity } from "./entity-resolve.js";
@@ -273,4 +274,82 @@ export function loadKnowledgeAtBoundary(
     if (d.disprovedFromChapterOrder === null || !order) return true;
     return d.disprovedFromChapterOrder > order.order_index;
   });
+}
+
+/**
+ * Эпизодические состояния персонажей на границе сцены. Состояние считается
+ * свежим, если наблюдалось в одной из последних трёх глав относительно
+ * границы, иначе — давним.
+ *
+ * Ponytail: пороговая константа 3 выбрана произвольно и должна быть
+ * настраиваемой параметром, если появятся сцены с более длинной памятью.
+ */
+export function loadActiveStates(
+  sqlite: DatabaseType,
+  subjectIds: number[],
+  boundary: SceneBoundary,
+): ActiveState[] {
+  if (subjectIds.length === 0) return [];
+  const FRESHNESS_THRESHOLD = 3; // главы
+  const placeholders = subjectIds.map(() => "?").join(",");
+  const rows = sqlite
+    .prepare(
+      `SELECT e.*, ec.order_index as chapter_order
+       FROM character_events e
+       LEFT JOIN chapters ec ON ec.id = e.chapter_id
+       WHERE e.subject_character_id IN (${placeholders})
+         AND e.kind = 'state'
+         AND e.verification IN ('derived','confirmed')
+         AND (
+           e.chapter_id IS NULL
+           OR ec.order_index < (SELECT order_index FROM chapters WHERE id = ?)
+         )
+       ORDER BY e.id DESC`,
+    )
+    .all(...subjectIds, boundary.chapterId) as Array<{
+    subject_character_id: number;
+    chapter_order: number | null;
+    data_json: string;
+    id: number;
+  }>;
+
+  const boundaryOrder = sqlite
+    .prepare("SELECT order_index FROM chapters WHERE id = ?")
+    .get(boundary.chapterId) as { order_index: number } | undefined;
+
+  const result: ActiveState[] = [];
+  const seen = new Set<number>();
+
+  for (const row of rows) {
+    if (seen.has(row.subject_character_id)) continue;
+    seen.add(row.subject_character_id);
+
+    let data: unknown;
+    try {
+      data = JSON.parse(row.data_json);
+    } catch {
+      data = {};
+    }
+
+    const d = data as { state?: unknown; endCondition?: unknown };
+    const state = typeof d.state === "string" ? d.state : "";
+    const endCondition = typeof d.endCondition === "string" ? d.endCondition : null;
+
+    if (!state) continue;
+
+    const observedAtChapterOrder = row.chapter_order ?? 0;
+    const isFresh =
+      boundaryOrder &&
+      observedAtChapterOrder >= boundaryOrder.order_index - FRESHNESS_THRESHOLD;
+
+    result.push({
+      subjectCharacterId: row.subject_character_id,
+      state,
+      endCondition,
+      observedAtChapterOrder,
+      certainty: isFresh ? "fresh" : "stale",
+    });
+  }
+
+  return result;
 }
