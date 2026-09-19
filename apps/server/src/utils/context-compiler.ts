@@ -27,6 +27,12 @@ export interface CompiledContext {
   dropped: Array<{ id: string; tokens: number }>;
   totalTokens: number;
   budgetTokens: number;
+  /** Обязательные секции сами по себе не влезли в бюджет. Молчать об этом
+   *  нельзя (раздел 8.4 ТЗ): вызывающий обязан либо уменьшить задачу, либо
+   *  отказаться — генерация с незаметно потерянными ограничениями хуже
+   *  отказа. Необязательные секции при этом не добавляются вовсе. */
+  requiredOverflow: boolean;
+  requiredTokens: number;
 }
 
 /**
@@ -66,6 +72,8 @@ export function compileContext(
     included.add(s.id);
     total += estimateTokens(s.text);
   }
+  const requiredTokens = total;
+  const requiredOverflow = requiredTokens > opts.maxTokens;
 
   // Optional by ascending priority; ties keep input order (stable sort).
   const optional = present
@@ -75,7 +83,7 @@ export function compileContext(
 
   for (const { s } of optional) {
     const tokens = estimateTokens(s.text);
-    if (total + tokens <= opts.maxTokens) {
+    if (!requiredOverflow && total + tokens <= opts.maxTokens) {
       included.add(s.id);
       total += tokens;
     } else {
@@ -88,6 +96,8 @@ export function compileContext(
     dropped,
     totalTokens: total,
     budgetTokens: opts.maxTokens,
+    requiredOverflow,
+    requiredTokens,
   };
 }
 
@@ -100,5 +110,10 @@ export function describeCompiledContext(
     compiled.dropped.length > 0
       ? ` | dropped ${compiled.dropped.map((d) => `${d.id}(~${d.tokens}t)`).join(", ")}`
       : "";
-  return `[context] ${label}: ~${compiled.totalTokens}/${compiled.budgetTokens}t · included ${compiled.includedIds.join(", ")}${dropped}`;
+  // Переполнение — первым словом: строка читается в логе по началу, а это
+  // единственный случай, когда числа дальше означают отказ, не диагностику.
+  const overflow = compiled.requiredOverflow
+    ? ` REQUIRED OVERFLOW (~${compiled.requiredTokens}t obligatory)`
+    : "";
+  return `[context]${overflow} ${label}: ~${compiled.totalTokens}/${compiled.budgetTokens}t · included ${compiled.includedIds.join(", ")}${dropped}`;
 }

@@ -488,7 +488,11 @@ export function createPlotRoute(
     // always sent (passed separately); these are the trimmable layers.
     const compiled = compileContext(
       [
-        { id: "characters", text: characterContextFinal, priority: 1 },
+        // Обязательный слой (раздел 8.4 ТЗ): кто в сцене, что знает, что
+        // обещал, какие факты действуют. Раньше шёл первым приоритетом, но
+        // НЕ обязательным — при тесном бюджете выпадал молча, и глава
+        // писалась без ограничений, которых никто не видел.
+        { id: "characters", text: characterContextFinal, priority: 1, required: true },
         { id: "prevTail", text: prevTail, priority: 2 },
         { id: "rolling", text: prevSummary, priority: 2 },
         { id: "lore", text: loreContext, priority: 3 },
@@ -499,6 +503,15 @@ export function createPlotRoute(
       { maxTokens: MAX_WRITER_CONTEXT_TOKENS },
     );
     console.warn(describeCompiledContext(compiled, `writer ch#${ch.order_index}`));
+    if (compiled.requiredOverflow) {
+      // Отказ до первого токена и до создания кандидата. Генерировать с
+      // урезанным обязательным слоем значило бы выдать текст, нарушающий
+      // ограничения, о которых модели не сказали, — и ничем это не пометить.
+      return badRequest(
+        c,
+        `обязательный контекст сцены (~${compiled.requiredTokens} токенов) не помещается в бюджет (${compiled.budgetTokens}); сократите состав сцены или план`,
+      );
+    }
     const inc = new Set(compiled.includedIds);
 
     return streamSSE(c, async (stream) => {
