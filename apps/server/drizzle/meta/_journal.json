@@ -183,6 +183,13 @@
       "when": 1789813646946,
       "tag": "0025_meta_summary_per_range",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1789821282668,
+      "tag": "0026_context_manifests",
+      "breakpoints": true
     }
   ]
 }

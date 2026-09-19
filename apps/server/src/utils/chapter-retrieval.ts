@@ -38,12 +38,14 @@ export interface GatherRetrievedChunksOptions {
    */
   candidateK?: number;
   /**
-   * ADR 0003 slice 3 — drop chunks from chapters at/after this order. The
-   * rolling window already injects the last N chapters VERBATIM, so retrieving
-   * their chunks is pure duplication; older summarized chapters still benefit
-   * from concrete-prose retrieval. Pass `currentOrder - ROLLING_WINDOW`.
+   * Главы, чей текст уже подан в промпт ДОСЛОВНО (хвост предыдущей главы).
+   * Их фрагменты — чистое повторение, и они отбрасываются. Всё остальное
+   * ищется, включая последние главы окна: окно даёт их ПЕРЕСКАЗ, а не текст,
+   * и деталь, не попавшая в пересказ, иначе недостижима ничем (AC-12).
+   * Прежний параметр исключал целое окно «потому что оно подано дословно» —
+   * это было неправдой.
    */
-  excludeFromChapterOrder?: number;
+  verbatimChapterOrders?: ReadonlyArray<number>;
 }
 
 export async function gatherRetrievedChunks(
@@ -77,17 +79,12 @@ export async function gatherRetrievedChunks(
   // chapter so the block spreads across chapters instead of one dominating.
   // When the reranker is enabled we keep a larger pool, then narrow to topK.
   const poolCap = rerankEnabled() ? (opts.candidateK ?? topK * 4) : topK;
+  const verbatim = new Set(opts.verbatimChapterOrders ?? []);
   const seen = new Set<number>();
   const pool: RetrievedChunk[] = [];
   for (const h of hits) {
-    // Skip chapters already served verbatim by the rolling window (dedup).
-    if (
-      opts.excludeFromChapterOrder !== undefined &&
-      h.chapterOrder !== null &&
-      h.chapterOrder >= opts.excludeFromChapterOrder
-    ) {
-      continue;
-    }
+    // Текст этой главы уже в промпте целиком — фрагмент из неё повторение.
+    if (h.chapterOrder !== null && verbatim.has(h.chapterOrder)) continue;
     const key = h.chapterId ?? -1;
     if (seen.has(key)) continue;
     seen.add(key);

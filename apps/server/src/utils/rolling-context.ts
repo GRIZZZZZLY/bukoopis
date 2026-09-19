@@ -131,26 +131,43 @@ export function loadPreviousChapterTail(
   beforeOrderIndex: number,
   maxChars: number = PREV_TAIL_MAX_CHARS,
 ): string | null {
+  return loadPreviousChapterTailWithOrder(sqlite, bookId, beforeOrderIndex, maxChars)?.text ?? null;
+}
+
+/** Тот же хвост плюс `order_index` главы, откуда он взят: поиску по тексту
+ *  нужно знать, чья проза уже подана дословно, чтобы не повторять её
+ *  фрагментами (AC-12). Всё остальное он вправе искать. */
+export function loadPreviousChapterTailWithOrder(
+  sqlite: DatabaseType,
+  bookId: number,
+  beforeOrderIndex: number,
+  maxChars: number = PREV_TAIL_MAX_CHARS,
+): { text: string; chapterOrder: number } | null {
   const row = sqlite
     .prepare(
-      `SELECT v.content_text AS content_text
+      `SELECT v.content_text AS content_text, c.order_index AS order_index
        FROM chapters c
        JOIN chapter_versions v ON v.id = c.current_version_id
        WHERE c.book_id = ? AND c.order_index < ?
        ORDER BY c.order_index DESC
        LIMIT 1`,
     )
-    .get(bookId, beforeOrderIndex) as { content_text: string | null } | undefined;
+    .get(bookId, beforeOrderIndex) as
+    | { content_text: string | null; order_index: number }
+    | undefined;
 
   const text = row?.content_text?.trim();
-  if (!text) return null;
-  if (text.length <= maxChars) return text;
+  if (!row || !text) return null;
+  if (text.length <= maxChars) return { text, chapterOrder: row.order_index };
 
   const slice = text.slice(-maxChars);
   const para = slice.indexOf("\n\n");
-  if (para !== -1) return slice.slice(para + 2).trim();
+  if (para !== -1) return { text: slice.slice(para + 2).trim(), chapterOrder: row.order_index };
   const space = slice.indexOf(" ");
-  return space !== -1 ? slice.slice(space + 1).trim() : slice.trim();
+  return {
+    text: space !== -1 ? slice.slice(space + 1).trim() : slice.trim(),
+    chapterOrder: row.order_index,
+  };
 }
 
 export interface MetaSummaryResult {

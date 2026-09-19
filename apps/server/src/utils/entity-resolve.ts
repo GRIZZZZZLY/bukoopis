@@ -23,44 +23,57 @@ export function normalizeEntityName(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/** Исход разбора имени. `ambiguous` и `unknown` для вызывающего — разные
+ *  вещи: первое надо показать автору (два героя с одним именем — его
+ *  решение), второе просто значит «в каноне такого нет». `resolveEntity`
+ *  схлопывает оба в `null`, чего сборке контекста мало (раздел 8.2 ТЗ). */
+export type EntityResolution =
+  | { status: "resolved"; entity: ResolvedEntity }
+  | { status: "ambiguous"; candidates: string[] }
+  | { status: "unknown" };
+
 export function resolveEntity(
   sqlite: DatabaseType,
   bookId: number,
   entityType: FactEntityType,
   name: string,
 ): ResolvedEntity | null {
-  if (entityType === "world") return null;
+  const r = resolveEntityDetailed(sqlite, bookId, entityType, name);
+  return r.status === "resolved" ? r.entity : null;
+}
+
+export function resolveEntityDetailed(
+  sqlite: DatabaseType,
+  bookId: number,
+  entityType: FactEntityType,
+  name: string,
+): EntityResolution {
+  if (entityType === "world") return { status: "unknown" };
   const norm = normalizeEntityName(name);
-  if (!norm) return null;
+  if (!norm) return { status: "unknown" };
 
   // Case-insensitive compare in JS — SQLite's built-in lower() is ASCII-only
   // and leaves Cyrillic untouched, so "Айрис" would never match "айрис".
   // Две сущности с одинаковым нормализованным именем — это неоднозначность,
   // а не «возьмём первого». Тихий выбор пришивает факт чужой сущности и
   // обнаруживается только в готовой главе (AC-04).
-  if (entityType === "character") {
-    const rows = sqlite
-      .prepare(
-        `SELECT id, canonical_name AS name FROM characters WHERE book_id = ?`,
-      )
-      .all(bookId) as Array<{ id: number; name: string }>;
-    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
-    if (hits.length === 1) {
-      const hit = hits[0]!;
-      return { entityId: hit.id, canonicalName: hit.name };
-    }
-    if (hits.length > 1) return null;
-  } else {
-    const table = entityType === "location" ? "locations" : "items";
-    const rows = sqlite
-      .prepare(`SELECT id, name FROM ${table} WHERE book_id = ?`)
-      .all(bookId) as Array<{ id: number; name: string }>;
-    const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
-    if (hits.length === 1) {
-      const hit = hits[0]!;
-      return { entityId: hit.id, canonicalName: hit.name };
-    }
-    if (hits.length > 1) return null;
+  const rows =
+    entityType === "character"
+      ? (sqlite
+          .prepare(`SELECT id, canonical_name AS name FROM characters WHERE book_id = ?`)
+          .all(bookId) as Array<{ id: number; name: string }>)
+      : (sqlite
+          .prepare(
+            `SELECT id, name FROM ${entityType === "location" ? "locations" : "items"} WHERE book_id = ?`,
+          )
+          .all(bookId) as Array<{ id: number; name: string }>);
+  const hits = rows.filter((r) => normalizeEntityName(r.name) === norm);
+  if (hits.length === 1) {
+    const hit = hits[0]!;
+    return { status: "resolved", entity: { entityId: hit.id, canonicalName: hit.name } };
+  }
+  if (hits.length > 1) {
+    return { status: "ambiguous", candidates: hits.map((h) => h.name) };
   }
 
   // Alias fallback (author-registered).
@@ -70,8 +83,9 @@ export function resolveEntity(
        WHERE book_id = ? AND entity_type = ? AND alias = ?`,
     )
     .get(bookId, entityType, norm) as { entity_id: number } | undefined;
-  if (!alias) return null;
-  return canonicalNameOf(sqlite, entityType, alias.entity_id);
+  if (!alias) return { status: "unknown" };
+  const entity = canonicalNameOf(sqlite, entityType, alias.entity_id);
+  return entity ? { status: "resolved", entity } : { status: "unknown" };
 }
 
 function canonicalNameOf(

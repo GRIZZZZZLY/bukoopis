@@ -90,3 +90,55 @@ describe("describeCompiledContext", () => {
     expect(line).toContain("dropped drop");
   });
 });
+
+describe("переполнение обязательного слоя (AC-14)", () => {
+  it("сообщает, что обязательный слой не влез, а не молчит", () => {
+    // Раньше `required` умел только «всегда включить»: totalTokens тихо
+    // превышал бюджет, и вызывающий генерировал с потерянными ограничениями,
+    // ничего об этом не зная.
+    const compiled = compileContext(
+      [
+        { id: "must", text: "я".repeat(3000), priority: 1, required: true },
+        { id: "extra", text: "б".repeat(300), priority: 2 },
+      ],
+      { maxTokens: 100 },
+    );
+    expect(compiled.includedIds).toContain("must");
+    expect(compiled.requiredOverflow).toBe(true);
+    expect(compiled.requiredTokens).toBeGreaterThan(100);
+    // Необязательное при переполнении не добавляется: места нет уже под
+    // обязательное, и любой довесок только углубляет яму.
+    expect(compiled.includedIds).not.toContain("extra");
+    expect(compiled.dropped.map((d) => d.id)).toContain("extra");
+  });
+
+  it("при нормальном бюджете флаг опущен, а счёт обязательного точен", () => {
+    const compiled = compileContext(
+      [
+        { id: "must", text: "коротко", priority: 1, required: true },
+        { id: "extra", text: "ещё", priority: 2 },
+      ],
+      { maxTokens: 1000 },
+    );
+    expect(compiled.requiredOverflow).toBe(false);
+    expect(compiled.requiredTokens).toBe(estimateTokens("коротко"));
+    expect(compiled.includedIds).toEqual(["must", "extra"]);
+  });
+
+  it("без обязательных секций переполнения не бывает", () => {
+    const compiled = compileContext([S("a", 1, 30000)], { maxTokens: 10 });
+    expect(compiled.requiredOverflow).toBe(false);
+    expect(compiled.requiredTokens).toBe(0);
+    expect(compiled.includedIds).toEqual([]);
+  });
+
+  it("инспектор ставит переполнение первым словом", () => {
+    const compiled = compileContext(
+      [{ id: "must", text: "я".repeat(3000), priority: 1, required: true }],
+      { maxTokens: 100 },
+    );
+    const line = describeCompiledContext(compiled, "writer ch#5");
+    expect(line.startsWith("[context] REQUIRED OVERFLOW")).toBe(true);
+    expect(line).toContain("writer ch#5");
+  });
+});

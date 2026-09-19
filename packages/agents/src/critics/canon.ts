@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { type CriticInput } from "./base.js";
+import { renderHistoryBlocks, type CriticInput } from "./base.js";
 
 const SYSTEM = `Ты — Canon Guard, критик канона художественной книги. Работаешь на русском.
 
@@ -27,12 +27,10 @@ const canonOutputSchema = criticReportSchema.omit({ critic: true });
 type CanonCriticOutput = z.infer<typeof canonOutputSchema>;
 
 function buildCanonPrompt(input: CriticInput): string {
-  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
+  const stableParts: string[] = [
+    `Книга/контекст:\n${input.bookContext}`,
+    ...renderHistoryBlocks(input),
+  ];
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 

@@ -259,7 +259,7 @@ export async function runMemoryEval(
   const q = async (
     queryText: string,
     currentOrder: number,
-    extra?: { excludeFromChapterOrder?: number },
+    extra?: { verbatimChapterOrders?: number[] },
   ) =>
     (
       await gatherRetrievedChunks(sqlite, {
@@ -286,13 +286,15 @@ export async function runMemoryEval(
     `chapters=${noFuture.map((c) => c.chapterOrder).join(",")}`,
   );
 
-  // Dedup: chapters inside the rolling window are excluded from retrieval.
+  // Dedup: only the chapter whose prose is already in the prompt verbatim is
+  // excluded; the rest of the window is still searchable (AC-12).
   const deduped = await q("Иван Мария дракон", 5, {
-    excludeFromChapterOrder: 2, // window covers ch2,ch3,ch4
+    verbatimChapterOrders: [3],
   });
   check(
-    "retrieval-dedup: window chapters excluded from retrieval",
-    deduped.every((c) => (c.chapterOrder ?? 0) < 2),
+    "retrieval-dedup: verbatim chapter excluded, other recent chapters kept",
+    deduped.every((c) => c.chapterOrder !== 3) &&
+      deduped.some((c) => c.chapterOrder === 2),
     `chapters=${deduped.map((c) => c.chapterOrder).join(",")}`,
   );
 

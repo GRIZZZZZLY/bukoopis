@@ -11,6 +11,15 @@
  * separate follow-up (slice 3b); this slice does budgeting + dedup + inspector.
  */
 
+/**
+ * Потолок собранного контекста прозы — общий для Writer, критики и Reviser:
+ * они обязаны видеть одну историю, значит и обрезать её одинаково. Щедрый —
+ * это предохранитель на очень длинных книгах и видимость в инспекторе, не
+ * агрессивная обрезка обычной главы. Бюджет по возможностям конкретной
+ * модели — отдельная работа; пока одна константа.
+ */
+export const MAX_PROSE_CONTEXT_TOKENS = 80_000;
+
 export interface ContextSection {
   /** Stable id for diagnostics + caller mapping ("retrieval", "canon", …). */
   id: string;
@@ -27,6 +36,12 @@ export interface CompiledContext {
   dropped: Array<{ id: string; tokens: number }>;
   totalTokens: number;
   budgetTokens: number;
+  /** Обязательные секции сами по себе не влезли в бюджет. Молчать об этом
+   *  нельзя (раздел 8.4 ТЗ): вызывающий обязан либо уменьшить задачу, либо
+   *  отказаться — генерация с незаметно потерянными ограничениями хуже
+   *  отказа. Необязательные секции при этом не добавляются вовсе. */
+  requiredOverflow: boolean;
+  requiredTokens: number;
 }
 
 /**
@@ -66,6 +81,8 @@ export function compileContext(
     included.add(s.id);
     total += estimateTokens(s.text);
   }
+  const requiredTokens = total;
+  const requiredOverflow = requiredTokens > opts.maxTokens;
 
   // Optional by ascending priority; ties keep input order (stable sort).
   const optional = present
@@ -75,7 +92,7 @@ export function compileContext(
 
   for (const { s } of optional) {
     const tokens = estimateTokens(s.text);
-    if (total + tokens <= opts.maxTokens) {
+    if (!requiredOverflow && total + tokens <= opts.maxTokens) {
       included.add(s.id);
       total += tokens;
     } else {
@@ -88,7 +105,15 @@ export function compileContext(
     dropped,
     totalTokens: total,
     budgetTokens: opts.maxTokens,
+    requiredOverflow,
+    requiredTokens,
   };
+}
+
+/** Текст отказа при переполнении обязательного слоя — один для Writer,
+ *  критики и Reviser, чтобы автор читал одно и то же, откуда бы оно ни пришло. */
+export function requiredOverflowMessage(compiled: CompiledContext): string {
+  return `обязательный контекст сцены (~${compiled.requiredTokens} токенов) не помещается в бюджет (${compiled.budgetTokens}); сократите состав сцены или план`;
 }
 
 /** One-line Context Inspector summary for logs. */
@@ -100,5 +125,10 @@ export function describeCompiledContext(
     compiled.dropped.length > 0
       ? ` | dropped ${compiled.dropped.map((d) => `${d.id}(~${d.tokens}t)`).join(", ")}`
       : "";
-  return `[context] ${label}: ~${compiled.totalTokens}/${compiled.budgetTokens}t · included ${compiled.includedIds.join(", ")}${dropped}`;
+  // Переполнение — первым словом: строка читается в логе по началу, а это
+  // единственный случай, когда числа дальше означают отказ, не диагностику.
+  const overflow = compiled.requiredOverflow
+    ? ` REQUIRED OVERFLOW (~${compiled.requiredTokens}t obligatory)`
+    : "";
+  return `[context]${overflow} ${label}: ~${compiled.totalTokens}/${compiled.budgetTokens}t · included ${compiled.includedIds.join(", ")}${dropped}`;
 }

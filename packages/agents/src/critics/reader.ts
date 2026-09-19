@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { CRITIC_CALIBRATION_RULE, type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, type CriticInput } from "./base.js";
 
 export const READER_CRITIC_SYSTEM = `Ты — Reader-Experience критик. Твоя задача — представить себя обычным читателем и оценить эмоциональный отклик на текст.
 
@@ -40,12 +40,10 @@ const readerOutputSchema = criticReportSchema.omit({ critic: true });
 type ReaderCriticOutput = z.infer<typeof readerOutputSchema>;
 
 function buildReaderPrompt(input: CriticInput): string {
-  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
+  const stableParts: string[] = [
+    `Книга/контекст:\n${input.bookContext}`,
+    ...renderHistoryBlocks(input),
+  ];
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 

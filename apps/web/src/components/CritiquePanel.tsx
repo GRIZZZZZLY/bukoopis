@@ -273,6 +273,22 @@ export function CritiquePanel({
         </div>
       )}
 
+      {report && report.report?.baseChanged === true && (
+        <div
+          role="status"
+          className="card"
+          style={{
+            borderLeft: "3px solid var(--color-ink-amber)",
+            fontSize: 13,
+            padding: "10px 14px",
+          }}
+        >
+          Глава написана на прежней базе: с тех пор изменились герои, план или
+          предыдущие главы. Часть замечаний может быть следствием этого, а не
+          ошибкой текста.
+        </div>
+      )}
+
       {report && report.status !== "error" && report.report && (
         <CritiqueResults report={report} />
       )}

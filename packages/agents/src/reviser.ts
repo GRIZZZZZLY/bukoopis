@@ -1,4 +1,5 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
+import { renderHistoryBlocks } from "./critics/base.js";
 import {
   renderClicheRule,
   RU_DIALOGUE_RULE,
@@ -47,6 +48,12 @@ export interface ReviseChapterInput {
   styleContext: string | null;
   fatigueWords: string[];
   previousChaptersSummary: string | null;
+  /** Та же история, что у Writer и критиков (AC-36): финал предыдущей главы
+   *  дословно и найденные фрагменты. Правка — последний проход по прозе, и
+   *  без них она могла «починить» стык с предыдущей главой, которого не
+   *  видела. */
+  previousChapterTail?: string | null;
+  retrievedContext?: string | null;
   originalText: string;
   critics: CriticReport[];
   severityFilter?: IssueSeverity[]; // default: all
@@ -94,11 +101,7 @@ export function buildReviserStableSystem(input: ReviseChapterInput): string {
       `Архитектура книги (решения Plot Agent, правка не должна их менять):\n${input.architectureContext}`,
     );
   }
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
+  stableParts.push(...renderHistoryBlocks(input));
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);

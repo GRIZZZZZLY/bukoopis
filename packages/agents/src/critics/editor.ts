@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { type CriticInput } from "./base.js";
+import { renderHistoryBlocks, type CriticInput } from "./base.js";
 
 const SYSTEM = `Ты — Editor, литературный редактор русскоязычной художественной прозы.
 
@@ -37,12 +37,10 @@ const editorOutputSchema = criticReportSchema.omit({ critic: true });
 type EditorCriticOutput = z.infer<typeof editorOutputSchema>;
 
 export function buildEditorPrompt(input: CriticInput): string {
-  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
+  const stableParts: string[] = [
+    `Книга/контекст:\n${input.bookContext}`,
+    ...renderHistoryBlocks(input),
+  ];
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 

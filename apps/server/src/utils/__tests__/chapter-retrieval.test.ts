@@ -94,6 +94,36 @@ describe("gatherRetrievedChunks", () => {
   // with the identical mockRejectedValue pattern). Codebase convention
   // (CLAUDE.md): failure paths covered indirectly via route tests.
 
+  it("AC-12: недавняя глава ищется, если её текст не подан дословно", async () => {
+    // Раньше исключалось целое окно последних глав «потому что оно подано
+    // дословно». Окно даёт пересказ, и деталь, не попавшая в него, была
+    // недостижима ничем. Дословно подаётся один хвост предыдущей главы —
+    // только её фрагменты и есть повторение.
+    hybridSearchMock.mockResolvedValue([
+      hit(1, 15, 50, "Медальон лежал под половицей", 9),
+      hit(2, 14, 40, "Сарек вернулся к ручью", 8),
+      hit(3, 11, 10, "Далёкое начало", 7),
+    ]);
+    const withTail = await gatherRetrievedChunks(fakeDb, {
+      bookId: 1,
+      queryText: "медальон",
+      currentChapterOrder: 60,
+      hasVec: true,
+      verbatimChapterOrders: [50],
+    });
+    expect(withTail.chunks.map((c) => c.chapterOrder)).toEqual([40, 10]);
+
+    const noTail = await gatherRetrievedChunks(fakeDb, {
+      bookId: 1,
+      queryText: "медальон",
+      currentChapterOrder: 60,
+      hasVec: true,
+      verbatimChapterOrders: [],
+    });
+    expect(noTail.chunks.map((c) => c.chapterOrder)).toEqual([50, 40, 10]);
+    expect(noTail.promptBlock).toContain("Медальон лежал под половицей");
+  });
+
   it("returns null promptBlock when no hits", async () => {
     hybridSearchMock.mockResolvedValue([]);
     const r = await gatherRetrievedChunks(fakeDb, {

@@ -1,21 +1,15 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
-  boundaryForChapter,
   chapterClosingSchema,
   extractNarrativeArchitecture,
   renderChapterClosing,
   renderNarrativeArchitecture,
 } from "@book-forge/shared";
 import {
-  gatherCharacterContext,
-  characterContextToPrompt,
-  gatherLoreContext,
-  loreContextToPrompt,
-} from "@book-forge/agents";
-import { makeCharacterBoundaryReaders } from "./character-events.js";
-import { renderActiveFactsPrompt } from "./book-facts.js";
-import { gatherRelevantNotes, renderOpenNotesPrompt } from "./book-notes.js";
-import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
+  assembleGenerationContext,
+  type AssembledContext,
+} from "./generation-context.js";
+import type { CompiledContext } from "./context-compiler.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
 /**
@@ -26,6 +20,11 @@ import type { BookRow, ChapterRow } from "../db/rows.js";
  * critics silently failed to reach the Reviser (the narrative architecture
  * sheet was missed exactly this way), so repair could undo a structural
  * decision it never saw. One function, both call sites.
+ *
+ * С этапа 4 это тонкий адаптер над общей сборкой (`generation-context.ts`):
+ * история, участники, факты и бюджет — те же, что у Writer (AC-36). Здесь
+ * остаётся только то, что нужно именно критике: план главы в отрендеренном
+ * виде, архитектурный лист и склейка `bookContext` в одну строку.
  */
 export interface ChapterProseContext {
   /** POV of the accepted beat-sheet, or "—" when no plan is selected. */
@@ -37,11 +36,22 @@ export interface ChapterProseContext {
   outlineSelected: string | null;
   /** Narrative architecture sheet of that variant, rendered in Russian. */
   architectureContext: string | null;
+  /** Сводки по рубежам + окно последних глав — то, что видит Writer. */
   previousChaptersSummary: string | null;
+  /** Финал предыдущей главы дословно. */
+  previousChapterTail: string | null;
+  /** Найденные фрагменты ранних глав. */
+  retrievedContext: string | null;
+  /** Карточки участников + действующие факты. */
   characterContext: string | null;
   loreContext: string | null;
-  /** Premise + outline + studio + active facts + open threads. */
+  /** Premise + outline + studio + open threads. Факты — в characterContext. */
   bookContext: string;
+  /** Что вошло в бюджет и что выпало; `requiredOverflow` — сигнал отказа. */
+  compiled: CompiledContext;
+  /** Имена, которые резолвер не привязал однозначно (раздел 8.2). */
+  ambiguousNames: string[];
+  assembled: AssembledContext;
 }
 
 interface PlanVariantLite {
@@ -94,44 +104,17 @@ function selectedOutlineJson(book: BookRow): string | null {
   return null;
 }
 
-function previousChaptersSummary(
-  sqlite: DatabaseType,
-  book: BookRow,
-  ch: ChapterRow,
-): string | null {
-  const rows = sqlite
-    .prepare(
-      `SELECT c.id, c.title, c.order_index, v.content_text
-       FROM chapters c
-       LEFT JOIN chapter_versions v ON v.id = c.current_version_id
-       WHERE c.book_id = ? AND c.order_index < ?
-       ORDER BY c.order_index ASC`,
-    )
-    .all(book.id, ch.order_index) as Array<{
-    id: number;
-    title: string;
-    order_index: number;
-    content_text: string | null;
-  }>;
-  if (rows.length === 0) return null;
-  return rows
-    .map((r) => {
-      const snip = r.content_text ? r.content_text.slice(0, 1200) : "(пусто)";
-      return `Глава #${r.order_index} «${r.title}»:\n${snip}`;
-    })
-    .join("\n\n---\n\n");
-}
-
 export async function loadChapterProseContext(
   sqlite: DatabaseType,
   book: BookRow,
   ch: ChapterRow,
   chapterText: string,
+  opts: { hasVec: boolean },
 ): Promise<ChapterProseContext> {
   const outlineSelected = selectedOutlineJson(book);
   const architecture = extractNarrativeArchitecture(outlineSelected);
 
-  let pov = "—";
+  let planPov: string | null = null;
   let emotionalGoal = "—";
   let beatSheet: string | null = null;
   if (ch.plan_json) {
@@ -142,7 +125,7 @@ export async function loadChapterProseContext(
       };
       if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
         const sel = p.variants[p.selectedIndex]!;
-        pov = sel.pov;
+        planPov = sel.pov;
         emotionalGoal = sel.emotionalGoal;
         beatSheet = renderBeatSheetBlock(sel);
       }
@@ -151,99 +134,42 @@ export async function loadChapterProseContext(
     }
   }
 
-  const prevSummary = previousChaptersSummary(sqlite, book, ch);
+  // Критика сканирует сам текст главы (кто в нём есть), а ищет по плану —
+  // тому, с чем глава должна сходиться, а не тому, что она уже сказала.
+  const assembled = await assembleGenerationContext(sqlite, {
+    book,
+    chapter: ch,
+    hasVec: opts.hasVec,
+    scanTexts: [emotionalGoal, chapterText],
+    retrievalQuery: beatSheet ?? `${ch.title}\n${emotionalGoal}`,
+    povName: planPov,
+    // Критик стиля судит по отпечатку; дословные образцы звали бы его искать
+    // совпадения с ними, а не стиль.
+    styleFewShot: 0,
+    notesQuery: `${ch.title}\n${emotionalGoal}`,
+    label: `prose ch#${ch.order_index}`,
+  });
 
-  const contextTexts = [
-    ch.intent,
-    book.title,
-    book.premise,
-    outlineSelected,
-    pov,
-    emotionalGoal,
-    chapterText,
-    prevSummary,
-  ];
-  const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id);
-  const charResult = gatherCharacterContext(
-    sqlite,
-    book.id,
-    contextTexts,
-    [],
-    makeCharacterBoundaryReaders(sqlite, boundary),
-  );
-  const charNameById = new Map(
-    charResult.characters.map((cc) => [
-      cc.character.id,
-      cc.character.canonicalName,
-    ]),
-  );
-  const characterContext =
-    charResult.characters.length > 0
-      ? characterContextToPrompt(charResult, charNameById, { chapterOrder: ch.order_index })
-      : null;
-  const loreResult = gatherLoreContext(
-    sqlite,
-    book.id,
-    contextTexts,
-    ch.order_index,
-  );
-  const loreContext =
-    loreResult.locations.length > 0 ||
-    loreResult.items.length > 0 ||
-    loreResult.openHooks.length > 0
-      ? loreContextToPrompt(loreResult)
-      : null;
-
-  const bookContextLines: string[] = [
-    `Название: "${book.title}"`,
-    `Премиса: ${book.premise ?? "(не задана)"}`,
-  ];
-  if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
-  const baseBookContext = bookContextLines.join("\n");
-  const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, book.id));
-  // Phase 3: feed temporal canon facts to the Canon Guard critic so it can
-  // flag contradictions against what is *currently* true.
-  const factEntityNames = [
-    ...charResult.characters.map((cc) => cc.character.canonicalName),
-    ...loreResult.locations.map((l) => l.name),
-    ...loreResult.items.map((i) => i.name),
-  ];
-  const factsPrompt = renderActiveFactsPrompt(
-    sqlite,
-    book.id,
-    ch.order_index,
-    factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
-  );
-  // Phase 4: surface relevant open threads/foreshadowing so the
-  // Reader-Experience critic can flag forgotten payoffs.
-  const relevantNotes = await gatherRelevantNotes(
-    sqlite,
-    book.id,
-    `${ch.title}\n${emotionalGoal}`,
-    ch.order_index,
-  );
-  const notesPrompt = renderOpenNotesPrompt(
-    relevantNotes,
-    "Открытые линии",
-    ch.order_index,
-  );
-  const bookContext = `${baseBookContext}${
-    studioCtx ? `\n\n${studioCtx}` : ""
-  }${factsPrompt ? `\n\n${factsPrompt}` : ""}${
-    notesPrompt ? `\n\n${notesPrompt}` : ""
-  }`;
+  const bookContext = `${assembled.bookContextBase}${
+    assembled.studioContext ? `\n\n${assembled.studioContext}` : ""
+  }${assembled.notesPrompt ? `\n\n${assembled.notesPrompt}` : ""}`;
 
   return {
-    pov,
+    pov: planPov === null ? "—" : assembled.pov,
     emotionalGoal,
     beatSheet,
     outlineSelected,
     architectureContext: architecture
       ? renderNarrativeArchitecture(architecture)
       : null,
-    previousChaptersSummary: prevSummary,
-    characterContext,
-    loreContext,
+    previousChaptersSummary: assembled.previousChapters,
+    previousChapterTail: assembled.previousTail,
+    retrievedContext: assembled.retrieval,
+    characterContext: assembled.characterContext,
+    loreContext: assembled.loreContext,
     bookContext,
+    compiled: assembled.compiled,
+    ambiguousNames: assembled.ambiguousNames,
+    assembled,
   };
 }
