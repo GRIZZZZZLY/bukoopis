@@ -8,7 +8,7 @@ import {
 } from "@book-forge/llm";
 import { renderHistoryBlocks, type CriticInput } from "./base.js";
 
-const SYSTEM = `Ты — Canon Guard, критик канона художественной книги. Работаешь на русском.
+export const CANON_SYSTEM = `Ты — Canon Guard, критик канона художественной книги. Работаешь на русском.
 
 Твоя единственная цель — найти противоречия канону: персонажу/локации/предмету/прежним главам/правилам мира. Ты не оцениваешь стиль, ритм или эмоции — только факты и непрерывность.
 
@@ -16,6 +16,11 @@ Severity:
 - "blocking": явное противоречие установленному факту (имя, родственники, способности, географическое положение, прежние события). Блокирует публикацию.
 - "suggestion": возможное несоответствие, требует проверки автором (двусмысленность, спорная интерпретация).
 - "nit": мелкая неточность стиля повествования (например, упоминание объекта без подготовки).
+
+Контракт главы (если он передан) — это разрешения автора, а не текст для проверки:
+— Факт, названный в «Факты канона, которые эта глава вправе отменить», глава меняет НАМЕРЕННО. Это не замечание. Не предлагай вернуть прежнее значение и не требуй согласовать его с каноном: канон здесь и меняется.
+— Расхождение с фактом, которого в контракте нет, — замечание прежней тяжести. Разрешение на один факт не снимает проверку с остальных.
+— Сведение из «Что раскрывается именно здесь» раскрывается по плану: не отмечай его как упоминание без подготовки.
 
 Каждое замечание — короткое, с цитатой из текста и конкретной правкой.`;
 
@@ -26,11 +31,12 @@ const TASK = `Проверь главу на противоречия канон
 const canonOutputSchema = criticReportSchema.omit({ critic: true });
 type CanonCriticOutput = z.infer<typeof canonOutputSchema>;
 
-function buildCanonPrompt(input: CriticInput): string {
+export function buildCanonPrompt(input: CriticInput): string {
   const stableParts: string[] = [
     `Книга/контекст:\n${input.bookContext}`,
     ...renderHistoryBlocks(input),
   ];
+  if (input.chapterContract) stableParts.push(input.chapterContract);
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 
@@ -48,7 +54,7 @@ function buildCanonPrompt(input: CriticInput): string {
 const canonCriticContract: AgentStructuredContract<CriticInput, CanonCriticOutput> = {
   agentName: "critic_canon",
   getOutputSchema: () => canonOutputSchema,
-  systemPrompt: SYSTEM,
+  systemPrompt: CANON_SYSTEM,
   buildPrompt: buildCanonPrompt,
   defaultMode: "mcp_submit_tool",
   mcp: {

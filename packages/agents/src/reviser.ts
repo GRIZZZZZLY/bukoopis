@@ -43,6 +43,10 @@ export interface ReviseChapterInput {
    * decision (partial ending, withheld theme) can be quietly undone.
    */
   architectureContext?: string | null;
+  /** Контракт главы (слайс 4.5). Правка — последний проход по прозе, и
+   *  замечание критика вполне может предложить убрать то, что план объявил
+   *  обязательным, или дописать запрещённое: критик видит текст, а не план. */
+  chapterContract?: string | null;
   characterContext: string | null;
   loreContext: string | null;
   styleContext: string | null;
@@ -99,6 +103,11 @@ export function buildReviserStableSystem(input: ReviseChapterInput): string {
   if (input.architectureContext) {
     stableParts.push(
       `Архитектура книги (решения Plot Agent, правка не должна их менять):\n${input.architectureContext}`,
+    );
+  }
+  if (input.chapterContract) {
+    stableParts.push(
+      `${input.chapterContract}\n\nКонтракт сильнее замечаний: не убирай обязательное и не вписывай запрещённое, даже если замечание критика этого просит.`,
     );
   }
   stableParts.push(...renderHistoryBlocks(input));

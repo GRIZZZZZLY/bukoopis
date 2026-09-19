@@ -163,6 +163,7 @@ export function createCritiqueRoute(
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
       previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext, compiled, assembled,
+      chapterContract,
     } = await loadChapterProseContext(sqlite, book, ch, version.content_text, { hasVec });
     if (compiled.requiredOverflow) {
       return badRequest(c, requiredOverflowMessage(compiled));
@@ -203,6 +204,7 @@ export function createCritiqueRoute(
       previousChaptersSummary: prevSummary,
       previousChapterTail,
       retrievedContext,
+      chapterContract,
       characterContext,
       loreContext,
       styleContext: criticStyleContext,
@@ -342,7 +344,7 @@ export function createCritiqueRoute(
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
       previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext,
-      architectureContext, compiled, assembled,
+      architectureContext, compiled, assembled, chapterContract,
     } = await loadChapterProseContext(sqlite, book, ch, v.content_text, { hasVec });
     if (compiled.requiredOverflow) {
       return badRequest(c, requiredOverflowMessage(compiled));
@@ -399,6 +401,7 @@ export function createCritiqueRoute(
           emotionalGoal,
           beatSheet,
           architectureContext,
+          chapterContract,
           characterContext,
           loreContext,
           styleContext: styleCtx.prompt,

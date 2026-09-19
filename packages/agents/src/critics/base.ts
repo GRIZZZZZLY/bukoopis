@@ -26,6 +26,10 @@ export interface CriticInput {
    *  предложение или рвёт незакрытое действие. */
   previousChapterTail?: string | null;
   retrievedContext?: string | null;
+  /** Контракт главы (слайс 4.5), уже отрендеренный: что обязано случиться,
+   *  чего быть не должно, что раскрывается и какие факты канона глава вправе
+   *  отменить. Без него критик канона блокирует запланированный поворот. */
+  chapterContract?: string | null;
   characterContext: string | null;
   loreContext: string | null;
   /**
