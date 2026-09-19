@@ -31,12 +31,8 @@ import {
   loadPreviousChapterTailWithOrder,
   loadRollingChapterContext,
 } from "../utils/rolling-context.js";
-import {
-  compileContext,
-  describeCompiledContext,
-  MAX_PROSE_CONTEXT_TOKENS,
-  requiredOverflowMessage,
-} from "../utils/context-compiler.js";
+import { requiredOverflowMessage } from "../utils/context-compiler.js";
+import { assembleGenerationContext } from "../utils/generation-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import { resolveEntity } from "../utils/entity-resolve.js";
@@ -64,62 +60,8 @@ import {
 import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
-export interface BookContext {
-  title: string;
-  premise: string;
-  language: string;
-  outlineSelected: string | null;
-  styleProfileId: number | null;
-  writerModel: "sonnet" | "opus";
-  plotModel: "sonnet" | "opus";
-  criticModel: "sonnet" | "opus";
-  writerProvider: "anthropic" | "ollama";
-  writerLocalModel: string | null;
-}
-
-/** Экспортируется ради быстрого сбора ([utils/quick-start-run.ts]): он обязан
- *  собирать вход плана ровно так же, как маршрут генерации, а копия этой
- *  сборки разошлась бы с оригиналом при первой же правке. */
-export function loadBookContext(
-  sqlite: DatabaseType,
-  bookId: number,
-): BookContext | null {
-  const row = sqlite
-    .prepare("SELECT * FROM books WHERE id = ?")
-    .get(bookId) as BookRow | undefined;
-  if (!row) return null;
-  let outlineSelected: string | null = null;
-  if (row.outline_json) {
-    try {
-      const parsed = JSON.parse(row.outline_json) as BookOutline;
-      if (
-        parsed.selectedIndex !== null &&
-        parsed.variants[parsed.selectedIndex]
-      ) {
-        outlineSelected = JSON.stringify(parsed.variants[parsed.selectedIndex]);
-      }
-    } catch {
-      /* ignore corrupt outline */
-    }
-  }
-  const storedPremise = row.premise?.trim() ? row.premise : null;
-  const conceptPremise =
-    storedPremise === null
-      ? derivePremiseFromConcept(loadStudioContext(sqlite, bookId).concept)
-      : null;
-  return {
-    title: row.title,
-    premise: storedPremise ?? conceptPremise ?? "(премиса не задана)",
-    language: row.language,
-    outlineSelected,
-    styleProfileId: row.style_profile_id,
-    writerModel: row.writer_model as "sonnet" | "opus",
-    plotModel: row.plot_model as "sonnet" | "opus",
-    criticModel: row.critic_model as "sonnet" | "opus",
-    writerProvider: (row.writer_provider as "anthropic" | "ollama") ?? "anthropic",
-    writerLocalModel: row.writer_local_model,
-  };
-}
+export { loadBookContext, type BookContext } from "../utils/book-context.js";
+import { loadBookContext } from "../utils/book-context.js";
 
 // Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
@@ -371,146 +313,36 @@ export function createPlotRoute(
 
     const ctx = loadBookContext(sqlite, ch.book_id);
     if (!ctx) return notFound(c, "book");
-    const prevSummary = loadRollingChapterContext(
-      sqlite,
-      ch.book_id,
-      ch.order_index,
-    );
+    const book = sqlite
+      .prepare("SELECT * FROM books WHERE id = ?")
+      .get(ch.book_id) as BookRow;
 
-    // Build character + lore context from intent / plan / previous chapters.
-    // Etap 3: knowledge nodes (deterministic, no LLM call).
+    // Одна сборка на все роли (этап 4): история, участники на границе сцены,
+    // лор, факты, студия, стиль, бюджет — и ссылки на источники для
+    // отпечатка. Writer сканирует план и беат-лист, ищет по беат-листу.
     const beatBlob = beatSheet.beats
       .map((b) => `${b.summary} ${b.goal} ${b.conflict} ${b.outcome}`)
       .join("\n");
-    const contextTexts = [
-      ch.intent,
-      ctx.title,
-      ctx.premise,
-      ctx.outlineSelected,
-      beatSheet.pov,
-      beatSheet.emotionalGoal,
-      beatBlob,
-      prevSummary,
-    ];
-    // Граница обязательна: без неё в третью главу приезжали факты из
-    // двадцатой — список знаний собирался по всей книге сразу.
-    //
-    // POV идёт отдельным идентификатором, а не надеждой на совпадение имени в
-    // тексте: беат-лист может назвать его псевдонимом, а резолвер знает
-    // псевдонимы. Прежде его знания шли ВТОРЫМ блоком промпта («Известно
-    // POV-персонажу») из тех же событий и той же границы — одно и то же
-    // платилось дважды из одного бюджета.
-    const povEntity = resolveEntity(sqlite, ch.book_id, "character", beatSheet.pov);
-    const povId = povEntity?.entityId;
-    // Беат-лист может звать POV псевдонимом, а карточка идёт под каноническим
-    // именем. «POV: Ваня» и «### Иван» — для модели два человека, и знания
-    // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
-    const beatSheetForWriter = povEntity
-      ? { ...beatSheet, pov: povEntity.canonicalName }
-      : beatSheet;
-    const charResult = gatherCharacterContext(
-      sqlite,
-      ch.book_id,
-      contextTexts,
-      povId ? [povId] : [],
-      makeCharacterBoundaryReaders(
-        sqlite,
-        boundaryForChapter(ch.book_id, ch.id, ch.current_version_id ?? null),
-      ),
-    );
-    const charNameById = new Map(
-      charResult.characters.map((cc) => [cc.character.id, cc.character.canonicalName]),
-    );
-    const characterContext =
-      charResult.characters.length > 0
-        ? characterContextToPrompt(charResult, charNameById, { chapterOrder: ch.order_index })
-        : null;
-    const loreResult = gatherLoreContext(
-      sqlite,
-      ch.book_id,
-      contextTexts,
-      ch.order_index,
-    );
-    const loreContext =
-      loreResult.locations.length > 0 ||
-      loreResult.items.length > 0 ||
-      loreResult.openHooks.length > 0
-        ? loreContextToPrompt(loreResult)
-        : null;
-
-    // Phase 3: temporal canon facts for the entities in this scene. Injected
-    // at the route layer (not inside gatherCharacterContext) to keep the
-    // agents package free of the server-only book_facts table.
-    const factEntityNames = [
-      ...charResult.characters.map((cc) => cc.character.canonicalName),
-      ...loreResult.locations.map((l) => l.name),
-      ...loreResult.items.map((i) => i.name),
-    ];
-    const factsPrompt = renderActiveFactsPrompt(
-      sqlite,
-      ch.book_id,
-      ch.order_index,
-      factEntityNames.length > 0
-        ? { entityNames: factEntityNames }
-        : undefined,
-    );
-    const characterContextFinal =
-      factsPrompt !== null
-        ? `${characterContext ? `${characterContext}\n\n` : ""}${factsPrompt}`
-        : characterContext;
-
-    const styleCtx = loadStyleContext(sqlite, ctx.styleProfileId);
-    const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
-    // Verbatim close of the preceding chapter — carries intonation and
-    // unfinished action across the seam, which summaries drop.
-    const prevTailRow = loadPreviousChapterTailWithOrder(
-      sqlite,
-      ch.book_id,
-      ch.order_index,
-    );
-    const prevTail = prevTailRow?.text ?? null;
-
-    const writerRetrieved = await gatherRetrievedChunks(sqlite, {
-      bookId: ch.book_id,
-      queryText: beatBlob,
-      currentChapterOrder: ch.order_index,
+    const assembled = await assembleGenerationContext(sqlite, {
+      book,
+      chapter: ch,
       hasVec,
-      // Дословно подана ровно одна глава — та, чей хвост едет отдельным
-      // блоком; её фрагменты повторение. Окно даёт остальным главам пересказ,
-      // и деталь, не попавшая в него, достаётся только поиском (AC-12).
-      // Хвост может ещё выпасть по бюджету ниже — тогда его глава окажется
-      // исключённой из поиска зря; это редкий случай тесного бюджета, где
-      // фрагменты (приоритет 5) всё равно выпали бы первыми.
-      verbatimChapterOrders: prevTailRow ? [prevTailRow.chapterOrder] : [],
+      scanTexts: [beatSheet.emotionalGoal, beatBlob],
+      retrievalQuery: beatBlob,
+      povName: beatSheet.pov,
+      label: `writer ch#${ch.order_index}`,
     });
-
-    // ADR 0003 slice 3: bound the assembled context under a token budget and
-    // log what was included/dropped (Context Inspector). The beat-sheet is
-    // always sent (passed separately); these are the trimmable layers.
-    const compiled = compileContext(
-      [
-        // Обязательный слой (раздел 8.4 ТЗ): кто в сцене, что знает, что
-        // обещал, какие факты действуют. Раньше шёл первым приоритетом, но
-        // НЕ обязательным — при тесном бюджете выпадал молча, и глава
-        // писалась без ограничений, которых никто не видел.
-        { id: "characters", text: characterContextFinal, priority: 1, required: true },
-        { id: "prevTail", text: prevTail, priority: 2 },
-        { id: "rolling", text: prevSummary, priority: 2 },
-        { id: "lore", text: loreContext, priority: 3 },
-        { id: "studio", text: studioCtx, priority: 4 },
-        { id: "retrieval", text: writerRetrieved.promptBlock, priority: 5 },
-        { id: "style", text: styleCtx.prompt, priority: 6 },
-      ],
-      { maxTokens: MAX_PROSE_CONTEXT_TOKENS },
-    );
-    console.warn(describeCompiledContext(compiled, `writer ch#${ch.order_index}`));
-    if (compiled.requiredOverflow) {
+    if (assembled.compiled.requiredOverflow) {
       // Отказ до первого токена и до создания кандидата. Генерировать с
       // урезанным обязательным слоем значило бы выдать текст, нарушающий
       // ограничения, о которых модели не сказали, — и ничем это не пометить.
-      return badRequest(c, requiredOverflowMessage(compiled));
+      return badRequest(c, requiredOverflowMessage(assembled.compiled));
     }
-    const inc = new Set(compiled.includedIds);
+    // Беат-лист может звать POV псевдонимом, а карточка идёт под каноническим
+    // именем. «POV: Ваня» и «### Иван» — для модели два человека, и знания
+    // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
+    const beatSheetForWriter =
+      assembled.povCharacterId !== null ? { ...beatSheet, pov: assembled.pov } : beatSheet;
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -548,14 +380,14 @@ export function createPlotRoute(
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
           beatSheet: beatSheetForWriter,
-          previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
-          previousChapterTail: inc.has("prevTail") ? prevTail : null,
-          characterContext: inc.has("characters") ? characterContextFinal : null,
-          loreContext: inc.has("lore") ? loreContext : null,
-          styleContext: inc.has("style") ? styleCtx.prompt : null,
-          studioContext: inc.has("studio") ? studioCtx : null,
-          retrievedContext: inc.has("retrieval") ? writerRetrieved.promptBlock : null,
-          fatigueWords: styleCtx.fatigueBlacklist,
+          previousChaptersSummary: assembled.previousChapters,
+          previousChapterTail: assembled.previousTail,
+          characterContext: assembled.characterContext,
+          loreContext: assembled.loreContext,
+          styleContext: assembled.styleContext.prompt,
+          studioContext: assembled.studioContext,
+          retrievedContext: assembled.retrieval,
+          fatigueWords: assembled.styleContext.fatigueBlacklist,
           config: {
             variants: 1,
             ...parsed.data.config,

@@ -111,6 +111,11 @@ function rowToVoiceSample(r: CharacterVoiceSampleRow): CharacterVoiceSample {
 }
 
 export interface CharacterKnowledge {
+  /** Идентификатор события-источника. Нужен отпечатку контекста (этап 4):
+   *  знание может появиться или исчезнуть без смены версии главы, и без
+   *  ссылки на событие такое изменение базы осталось бы незамеченным.
+   *  Необязателен только ради рукописных фикстур — читатель ставит всегда. */
+  eventId?: number;
   fact: string;
   acquisition: string;
   source: string | null;
