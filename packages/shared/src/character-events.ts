@@ -234,3 +234,19 @@ export const extractedCharacterEventSchema = z
     }
   });
 export type ExtractedCharacterEvent = z.infer<typeof extractedCharacterEventSchema>;
+
+/**
+ * Эпизодическое состояние для контекста персонажа. Читается на границе сцены.
+ * Состояния подразделяются на свежие (наблюдались в поздней главе) и давние
+ * (давно). Давнее состояние выглядит как наблюдение из прошлого, свежее —
+ * как текущее положение дел.
+ */
+export interface ActiveState {
+  subjectCharacterId: number;
+  state: string;
+  endCondition: string | null;
+  /** Порядок главы, в которой было наблюдаемо. */
+  observedAtChapterOrder: number;
+  /** Определяет, как состояние описывается в контексте. */
+  certainty: "fresh" | "stale";
+}
