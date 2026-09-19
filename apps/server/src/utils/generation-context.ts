@@ -54,6 +54,19 @@ export interface AssembleContextArgs {
   styleFewShot?: number;
   /** Запрос по открытым линиям (заметкам); null — не собирать. */
   notesQuery?: string | null;
+  /**
+   * Где кончается канон для этой сборки (В7 ревью 2026-09-19).
+   *
+   * `at_chapter` (по умолчанию) — вместе с фактами и заметками самой главы.
+   * Так нужно критике: она проверяет главу против того, что глава же и
+   * утверждает.
+   *
+   * `before_chapter` — строго до неё. Так нужно Писателю и планировщику: у
+   * главы может быть уже принятая версия, и её факты — это утверждения
+   * текста, который автор сейчас переписывает. Подавать их как действующий
+   * канон значит заставить новую версию повторить старую.
+   */
+  factsBoundary?: "at_chapter" | "before_chapter";
   budgetTokens?: number;
   /** Подпись для инспектора контекста в логе. */
   label: string;
@@ -191,10 +204,16 @@ export async function assembleGenerationContext(
     ...loreResult.locations.map((l) => l.name),
     ...loreResult.items.map((i) => i.name),
   ];
+  // Разрежённая нумерация (шаг 10) делает `order - 1` точным «строго до»:
+  // между соседними главами других номеров не бывает.
+  const factsOrder =
+    args.factsBoundary === "before_chapter"
+      ? Math.max(0, ch.order_index - 1)
+      : ch.order_index;
   const factsPrompt = renderActiveFactsPrompt(
     sqlite,
     book.id,
-    ch.order_index,
+    factsOrder,
     factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
   );
   const characterContext =
@@ -210,9 +229,9 @@ export async function assembleGenerationContext(
   );
   const notesPrompt = args.notesQuery
     ? renderOpenNotesPrompt(
-        await gatherRelevantNotes(sqlite, book.id, args.notesQuery, ch.order_index),
+        await gatherRelevantNotes(sqlite, book.id, args.notesQuery, factsOrder),
         "Открытые линии",
-        ch.order_index,
+        factsOrder,
       )
     : null;
 

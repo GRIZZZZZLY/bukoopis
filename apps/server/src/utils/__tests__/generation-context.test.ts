@@ -258,3 +258,44 @@ describe("assembleGenerationContext", () => {
     expect(ctx.previousChapters).toBeNull();
   });
 });
+
+/** В7 независимого ревью 2026-09-19: факты и заметки читались ВКЛЮЧАЮЩЕ по
+ *  номеру самой главы. У главы с уже принятой версией это значит, что в
+ *  промпт её же перегенерации возвращаются факты, извлечённые из версии,
+ *  которую автор как раз выбрасывает. Извлекатели ту же границу считают
+ *  исключающей — расхождение было и в комментарии маршрута. */
+describe("граница фактов (В7)", () => {
+  function seedFact(order: number, name: string, object: string): void {
+    sqlite
+      .prepare(
+        `INSERT INTO book_facts
+           (book_id, entity_type, entity_name, predicate, object_text,
+            valid_from_chapter, valid_to_chapter, source_version_id, confidence,
+            origin, assertion_mode, created_at)
+         VALUES (?, 'character', ?, 'состояние', ?, ?, NULL, NULL, 0.9, 'extracted', 'narrated_as_fact', ?)`,
+      )
+      .run(bookId, name, object, order, NOW);
+  }
+
+  it("Писатель не получает фактов из версии главы, которую переписывает", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья.");
+    const second = insertChapter(20, "Вторая глава. Рин в лесу.");
+    seedFact(10, "Рин", "цела");
+    seedFact(20, "Рин", "ранена в отброшенной версии");
+
+    const forWriter = await assemble(second, { factsBoundary: "before_chapter" });
+    expect(forWriter.characterContext).toContain("цела");
+    expect(forWriter.characterContext).not.toContain("ранена в отброшенной версии");
+  });
+
+  it("критика по-прежнему видит факты своей главы: их она и проверяет", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья.");
+    const second = insertChapter(20, "Вторая глава. Рин в лесу.");
+    seedFact(20, "Рин", "ранена");
+
+    const forCritic = await assemble(second);
+    expect(forCritic.characterContext).toContain("ранена");
+  });
+});

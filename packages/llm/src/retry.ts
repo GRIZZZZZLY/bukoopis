@@ -21,7 +21,7 @@ interface MaybeStatusError {
   message?: string;
 }
 
-function shouldRetry(err: unknown): boolean {
+export function shouldRetry(err: unknown): boolean {
   const e = err as MaybeStatusError;
   if (typeof e?.status !== "number") {
     // Network errors with no status — assume transient, retry.

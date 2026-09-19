@@ -206,25 +206,30 @@ export function createPlotRoute(
       // нет — значит, и повторять нечего: ищем по всем предыдущим главам.
       verbatimChapterOrders: [],
     });
+    // Граница планировщика — строго ДО главы (В7): у неё может быть принятая
+    // версия, и её заметки с фактами описывают текст, который план как раз
+    // и переписывает.
+    const planBoundary = Math.max(0, ch.order_index - 1);
     const planNotes = await gatherRelevantNotes(
       sqlite,
       ch.book_id,
       `${ch.title}\n${parsed.data.intent}`,
-      ch.order_index,
+      planBoundary,
     );
     const planOpenThreads = renderOpenNotesPrompt(
       planNotes,
       "Открытые линии",
-      ch.order_index,
+      planBoundary,
     );
     // Слайс 4.5: планировщик впервые видит действующий канон — иначе он может
     // назвать отменяемый факт только словами, без ссылки, и критику нечего
     // сопоставить. Граница та же, что у Writer: факты по состоянию ДО этой
-    // главы (`order_index`), иначе план опирался бы на то, что сам изменит.
+    // главы — и это `order_index - 1`, а не сам `order_index`, который
+    // включал бы факты уже принятой её версии (В7).
     const planActiveFacts = renderActiveFactsPrompt(
       sqlite,
       ch.book_id,
-      ch.order_index,
+      planBoundary,
       { withIds: true },
     );
     const variants = await runChapterPlan({
@@ -342,6 +347,10 @@ export function createPlotRoute(
       scanTexts: [beatSheet.emotionalGoal, beatBlob],
       retrievalQuery: beatBlob,
       povName: beatSheet.pov,
+      // В7: у главы может быть принятая версия, и её факты — утверждения
+      // текста, который автор сейчас переписывает. Канон для Писателя
+      // кончается ДО неё.
+      factsBoundary: "before_chapter",
       label: `writer ch#${ch.order_index}`,
     });
     if (assembled.compiled.requiredOverflow) {

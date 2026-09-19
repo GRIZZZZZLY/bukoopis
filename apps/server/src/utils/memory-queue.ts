@@ -51,9 +51,19 @@ export type MemoryJobStatus =
   | "obsolete";
 
 /** Kinds that write to ACTIVE tables and depend on prior chapters' state.
- *  They are claimed strictly in chapter order and blocked by any unfinished
+ *  They are claimed strictly in chapter order and blocked by an unfinished
  *  earlier-chapter stateful job (ADR 0002, I5). */
 const STATEFUL_KINDS: ReadonlyArray<MemoryJobKind> = ["facts", "notes"];
+
+/** Статусы ранней главы, которые задерживают её соседей.
+ *
+ *  `error` сюда НЕ входит (В3 ревью 2026-09-19): задание, исчерпавшее пять
+ *  попыток, не «вот-вот доделается» — оно стоит, пока автор не нажмёт
+ *  «Повторить». Считая его блокирующим, очередь останавливала факты и
+ *  заметки ВСЕЙ книги из-за одной главы, и починить это можно было только
+ *  вручную. Порядок при этом остаётся: упавшая глава просто перестаёт
+ *  держать остальные, а автор видит её в `pendingEarlierMemoryChapters`. */
+const BLOCKING_STATUSES = "('pending','running','retry')";
 
 export interface MemoryJobRow {
   id: number;
@@ -172,7 +182,7 @@ export function claimNextMemoryJob(
              JOIN chapters c2 ON c2.id = j2.chapter_id
              WHERE j2.book_id = j.book_id
                AND j2.kind IN (${statefulList})
-               AND j2.status IN ('pending','running','retry','error')
+               AND j2.status IN ${BLOCKING_STATUSES}
                AND c2.order_index < c.order_index
            )
          )
@@ -225,15 +235,28 @@ export function retryBackoffMs(attempts: number): number {
   return Math.min(5_000 * 2 ** Math.max(0, attempts - 1), 300_000);
 }
 
-/** Terminal LLM failures that a blind retry cannot fix (ADR retry policy). */
+/** Terminal LLM failures that a blind retry cannot fix (ADR retry policy).
+ *
+ *  Отдельно — отказ авторизации от ПРЯМОГО API: он приходит не классом
+ *  `LLMAuthError`, а ошибкой SDK со `status: 401`, и попадал в «временные».
+ *  Пять попыток с растущей паузой на неверном ключе — это пять одинаковых
+ *  отказов и час ожидания вместо честного «ключ не подходит» (В3 ревью
+ *  2026-09-19). */
 export function isRetryableMemoryError(e: unknown): boolean {
-  return !(
+  if (
     e instanceof LLMAuthError ||
     e instanceof LLMValidationError ||
     e instanceof LLMNoToolCallError ||
     e instanceof LLMMultipleToolCallsError ||
     e instanceof LLMSchemaRetryExhaustedError
-  );
+  ) {
+    return false;
+  }
+  const status = (e as { status?: unknown } | null)?.status;
+  if (typeof status === "number" && (status === 401 || status === 403)) {
+    return false;
+  }
+  return true;
 }
 
 export function failMemoryJob(

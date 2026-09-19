@@ -3,6 +3,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import JSZip from "jszip";
 import { z } from "zod";
 import { indexChapterVersion } from "@book-forge/retrieval";
+import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "../utils/memory-queue.js";
 import {
   toBook,
   type BookRow,
@@ -190,6 +191,15 @@ export async function insertChapters(
       );
       const versionId = Number(vinfo.lastInsertRowid);
       updateChapter.run(versionId, now, chapterId);
+      // Принесённая глава разбирается тем же конвейером, что написанная:
+      // иначе у книги нет ни сводок, ни фактов, ни заметок, ни событий, а
+      // экран уверяет, что память актуальна (В1).
+      enqueueMemoryJobs(sqlite, {
+        bookId,
+        chapterId,
+        chapterVersionId: versionId,
+        kinds: COMMIT_JOB_KINDS,
+      });
       created.push({
         chapterId,
         title: ch.title,
@@ -204,11 +214,16 @@ export async function insertChapters(
   });
   tx();
 
-  // Index chunks outside transaction (async + best-effort). Import keeps
-  // the cheap synchronous path (no LLM extractors for bulk import); once a
-  // chapter's chunks land we point memory_version_id at the imported
-  // version so retrieval (which reads by memory_version_id, ADR 0002 I2)
-  // sees it immediately.
+  // Index chunks outside transaction (async + best-effort): поиск должен
+  // видеть принесённые главы сразу, а индексация модели не требует.
+  //
+  // Раньше здесь же ставился `memory_version_id`, и это была ложь: он значит
+  // «производная память этой версии активирована», а её не собирали вовсе.
+  // Экран главы показывал «память актуальна» у книги, где нет ни сводки, ни
+  // фактов, ни заметок, ни событий, и автор никогда не узнавал, что Писателю
+  // одиннадцатой главы подают первые 1200 символов каждой предыдущей вместо
+  // пересказов (В1 ревью 2026-09-19). Теперь ставится `indexed_version_id` —
+  // ровно то, что правда, — а разбор идёт обычной очередью.
   for (const item of created) {
     try {
       await indexChapterVersion(sqlite, hasVec, {
@@ -220,7 +235,7 @@ export async function insertChapters(
         text: item.body,
       });
       sqlite
-        .prepare("UPDATE chapters SET memory_version_id = ? WHERE id = ?")
+        .prepare("UPDATE chapters SET indexed_version_id = ? WHERE id = ?")
         .run(item.versionId, item.chapterId);
     } catch (e) {
       console.warn("[import] indexing failed for chapter", item.chapterId, e);

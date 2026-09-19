@@ -215,14 +215,15 @@ export function createChaptersRoute(
   r.delete("/:id", (c) => {
     const id = Number(c.req.param("id"));
     const existing = sqlite
-      .prepare("SELECT book_id FROM chapters WHERE id = ?")
-      .get(id) as { book_id: number } | undefined;
+      .prepare("SELECT book_id, order_index FROM chapters WHERE id = ?")
+      .get(id) as { book_id: number; order_index: number } | undefined;
     if (!existing) return notFound(c, "chapter");
     // `character_events.chapter_id` — ON DELETE CASCADE (иначе удалённая глава
     // раскрывала бы свой секрет всем предыдущим). Значит вместе с главой молча
     // уходят и записи знаний, введённые автором вручную. Считаем их ДО
     // удаления и называем в ответе: восстановить их нечем, и узнать о потере
     // постфактум неоткуда.
+    const removed = sqlite.transaction(() => {
     const lost = sqlite
       .prepare(
         `SELECT COUNT(*) AS total,
@@ -230,14 +231,47 @@ export function createChaptersRoute(
          FROM character_events WHERE chapter_id = ?`,
       )
       .get(id) as { total: number; authored: number | null };
+    // В4: `book_facts` и `book_notes` не ссылаются на главу — только на
+    // книгу, — поэтому CASCADE их не трогал, и факты удалённой главы
+    // оставались действующим каноном навсегда. Связь с главой у них всё же
+    // есть: версия-источник. Машинные записи уходят вместе с главой,
+    // авторские (`manual`, `studio`) остаются — их автор писал сам.
+    const factsDeleted = sqlite
+      .prepare(
+        `DELETE FROM book_facts
+         WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN
+           (SELECT id FROM chapter_versions WHERE chapter_id = ?)`,
+      )
+      .run(existing.book_id, id).changes;
+    const notesDeleted = sqlite
+      .prepare(
+        `DELETE FROM book_notes
+         WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN
+           (SELECT id FROM chapter_versions WHERE chapter_id = ?)`,
+      )
+      .run(existing.book_id, id).changes;
+    // Сводка, в которую входила удалённая глава, пересказывает текст,
+    // которого больше нет. Отпечаток её и так отверг бы при чтении — но
+    // строка мешала бы выбрать более раннюю пригодную.
+    sqlite
+      .prepare(
+        "DELETE FROM book_meta_summaries WHERE book_id = ? AND covers_to_order >= ?",
+      )
+      .run(existing.book_id, existing.order_index);
     sqlite.prepare("DELETE FROM chapters WHERE id = ?").run(id);
+    // Память последующих глав собиралась в мире, где эта глава была.
+    markMemoryStaleOnCommit(sqlite, existing.book_id, existing.order_index);
     sqlite
       .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), existing.book_id);
-    return c.json({
+    return {
       deletedCharacterEvents: lost.total,
       deletedAuthoredEvents: lost.authored ?? 0,
-    });
+      deletedFacts: factsDeleted,
+      deletedNotes: notesDeleted,
+    };
+    })();
+    return c.json(removed);
   });
 
   r.get("/:id/versions", (c) => {
