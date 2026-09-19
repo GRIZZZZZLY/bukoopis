@@ -9,6 +9,7 @@ import {
   writeChapterInputSchema,
   type BookOutline,
   type ChapterPlan,
+  boundaryForChapter,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -40,6 +41,7 @@ import {
   renderPovKnowledgePrompt,
 } from "../utils/pov-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
+import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import {
   gatherRelevantNotes,
   renderOpenNotesPrompt,
@@ -397,7 +399,18 @@ export function createPlotRoute(
       beatBlob,
       prevSummary,
     ];
-    const charResult = gatherCharacterContext(sqlite, ch.book_id, contextTexts);
+    // Граница обязательна: без неё в третью главу приезжали факты из
+    // двадцатой — список знаний собирался по всей книге сразу.
+    const charResult = gatherCharacterContext(
+      sqlite,
+      ch.book_id,
+      contextTexts,
+      [],
+      makeCharacterBoundaryReaders(
+        sqlite,
+        boundaryForChapter(ch.book_id, ch.id, ch.current_version_id ?? null),
+      ),
+    );
     const charNameById = new Map(
       charResult.characters.map((cc) => [cc.character.id, cc.character.canonicalName]),
     );

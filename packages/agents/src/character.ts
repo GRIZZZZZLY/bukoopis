@@ -13,10 +13,7 @@ import {
   type VoiceSampleOrigin,
   type VoiceSampleStatus,
   type RelationshipQualityKey,
-  type SceneBoundary,
   type ActiveState,
-  type CharacterEvent,
-  type CharacterEventKind,
 } from "@book-forge/shared";
 
 interface CharacterRow {
@@ -113,188 +110,6 @@ function rowToVoiceSample(r: CharacterVoiceSampleRow): CharacterVoiceSample {
   };
 }
 
-/**
- * События персонажа на начало сцены (читаются только если boundary задана).
- * Граница ИСКЛЮЧАЮЩАЯ: начальный контекст строится из событий ДО неё.
- */
-function loadCharacterEventsAtBoundary(
-  sqlite: DatabaseType,
-  characterId: number,
-  boundary: SceneBoundary,
-): CharacterEvent[] {
-  const placeholders = "?";
-  const rows = sqlite
-    .prepare(
-      `SELECT e.* FROM character_events e
-       LEFT JOIN chapters ec ON ec.id = e.chapter_id
-       WHERE e.subject_character_id = ?
-         AND e.verification IN ('derived','confirmed')
-         AND (
-           e.chapter_id IS NULL
-           OR ec.order_index < (SELECT order_index FROM chapters WHERE id = ?)
-         )
-       ORDER BY e.id ASC`,
-    )
-    .all(characterId, boundary.chapterId) as Array<{
-    id: number;
-    book_id: number;
-    subject_character_id: number;
-    addressee_character_id: number | null;
-    kind: string;
-    data_json: string;
-    chapter_id: number | null;
-    scene_ordinal: number;
-    source_version_id: number | null;
-    evidence_quote: string | null;
-    evidence_start: number | null;
-    evidence_end: number | null;
-    origin: string;
-    verification: string;
-    created_at: string;
-  }>;
-
-  return rows.map((r) => {
-    let data: unknown;
-    try {
-      data = JSON.parse(r.data_json);
-    } catch {
-      data = {};
-    }
-    return {
-      id: r.id,
-      bookId: r.book_id,
-      subjectCharacterId: r.subject_character_id,
-      addresseeCharacterId: r.addressee_character_id,
-      kind: r.kind as CharacterEventKind,
-      data,
-      chapterId: r.chapter_id,
-      sceneOrdinal: r.scene_ordinal,
-      sourceVersionId: r.source_version_id,
-      evidenceQuote: r.evidence_quote,
-      evidenceStart: r.evidence_start,
-      evidenceEnd: r.evidence_end,
-      origin: r.origin,
-      verification: r.verification,
-      createdAt: r.created_at,
-    } as CharacterEvent;
-  });
-}
-
-/**
- * Знания персонажа на границе сцены. Опровергнутое знание не возвращается.
- */
-function loadCharacterKnowledgeAtBoundary(
-  sqlite: DatabaseType,
-  characterId: number,
-  boundary: SceneBoundary,
-): CharacterKnowledge[] {
-  const events = loadCharacterEventsAtBoundary(sqlite, characterId, boundary);
-  const order = sqlite
-    .prepare("SELECT order_index FROM chapters WHERE id = ?")
-    .get(boundary.chapterId) as { order_index: number } | undefined;
-
-  return events
-    .filter((e) => {
-      if (e.kind !== "knowledge") return false;
-      const d = e.data as { disprovedFromChapterOrder: number | null };
-      if (d.disprovedFromChapterOrder === null || !order) return true;
-      return d.disprovedFromChapterOrder > order.order_index;
-    })
-    .map((e) => {
-      const d = e.data as {
-        fact?: unknown;
-        acquisition?: unknown;
-        source?: unknown;
-        canonFactId?: unknown;
-        disprovedFromChapterOrder?: unknown;
-      };
-      return {
-        fact: typeof d.fact === "string" ? d.fact : "",
-        acquisition: typeof d.acquisition === "string" ? d.acquisition : "unknown",
-        source: typeof d.source === "string" ? d.source : null,
-        canonFactId: typeof d.canonFactId === "number" ? d.canonFactId : null,
-        disprovedFromChapterOrder: typeof d.disprovedFromChapterOrder === "number" ? d.disprovedFromChapterOrder : null,
-      };
-    });
-}
-
-/**
- * Эпизодические состояния персонажа на границе сцены.
- * Состояние считается свежим, если наблюдалось в одной из последних трёх глав.
- */
-function loadCharacterStatesAtBoundary(
-  sqlite: DatabaseType,
-  characterIds: number[],
-  boundary: SceneBoundary,
-): ActiveState[] {
-  if (characterIds.length === 0) return [];
-  const FRESHNESS_THRESHOLD = 3;
-  const placeholders = characterIds.map(() => "?").join(",");
-  const rows = sqlite
-    .prepare(
-      `SELECT e.*, ec.order_index as chapter_order
-       FROM character_events e
-       LEFT JOIN chapters ec ON ec.id = e.chapter_id
-       WHERE e.subject_character_id IN (${placeholders})
-         AND e.kind = 'state'
-         AND e.verification IN ('derived','confirmed')
-         AND (
-           e.chapter_id IS NULL
-           OR ec.order_index < (SELECT order_index FROM chapters WHERE id = ?)
-         )
-       ORDER BY e.id DESC`,
-    )
-    .all(...characterIds, boundary.chapterId) as Array<{
-    subject_character_id: number;
-    chapter_order: number | null;
-    data_json: string;
-  }>;
-
-  const boundaryOrder = sqlite
-    .prepare("SELECT order_index FROM chapters WHERE id = ?")
-    .get(boundary.chapterId) as { order_index: number } | undefined;
-
-  const result: ActiveState[] = [];
-  const seen = new Set<number>();
-
-  for (const row of rows) {
-    if (seen.has(row.subject_character_id)) continue;
-    seen.add(row.subject_character_id);
-
-    let data: unknown;
-    try {
-      data = JSON.parse(row.data_json);
-    } catch {
-      data = {};
-    }
-
-    const d = data as { state?: unknown; endCondition?: unknown };
-    const state = typeof d.state === "string" ? d.state : "";
-    const endCondition = typeof d.endCondition === "string" ? d.endCondition : null;
-
-    if (!state) continue;
-
-    const observedAtChapterOrder = row.chapter_order ?? 0;
-    const isFresh =
-      boundaryOrder &&
-      observedAtChapterOrder >= boundaryOrder.order_index - FRESHNESS_THRESHOLD;
-
-    result.push({
-      subjectCharacterId: row.subject_character_id,
-      state,
-      endCondition,
-      observedAtChapterOrder,
-      certainty: isFresh ? "fresh" : "stale",
-    });
-  }
-
-  return result;
-}
-
-/**
- * Знание персонажа как событие (ТЗ этап 3, раздел 12). Форма, которую
- * читает контекст из таблицы знаний, теперь замена на события.
- */
 export interface CharacterKnowledge {
   fact: string;
   acquisition: string;
@@ -317,6 +132,23 @@ export interface CharacterAgentResult {
   states: ActiveState[];
 }
 
+/**
+ * Чтение знаний и состояний на границе сцены. Передаётся снаружи, а не
+ * делается здесь: эти запросы уже живут в сервере вместе со своими тестами
+ * (`loadKnowledgeAtBoundary`, `loadActiveStates`), а `packages/agents` до
+ * `apps/server` не дотягивается. Второй экземпляр той же SQL разошёлся бы с
+ * первым на первой же правке — и разошёлся бы молча, потому что именно этот
+ * путь идёт в Писателя.
+ *
+ * Не передали — знаний и состояний не будет. Это намеренно: неограниченный
+ * список, каким он был до этапа 3, приносил в третью главу факты из
+ * двадцатой.
+ */
+export interface CharacterBoundaryReaders {
+  knowledge(characterId: number): CharacterKnowledge[];
+  states(characterIds: number[]): ActiveState[];
+}
+
 // Detect characters mentioned in any of the provided text blobs by canonical
 // name substring match (case-insensitive). `alwaysIncludeIds` covers protagonist/POV.
 export function gatherCharacterContext(
@@ -324,7 +156,7 @@ export function gatherCharacterContext(
   bookId: number,
   texts: Array<string | null | undefined>,
   alwaysIncludeIds: number[] = [],
-  boundary?: SceneBoundary,
+  readers?: CharacterBoundaryReaders,
 ): CharacterAgentResult {
   const allCharacters = sqlite
     .prepare("SELECT * FROM characters WHERE book_id = ?")
@@ -353,10 +185,7 @@ export function gatherCharacterContext(
     .all(...ids) as CharacterRow[];
 
   const characters: CharacterContext[] = rows.map((r) => {
-    let knowledge: CharacterKnowledge[] = [];
-    if (boundary) {
-      knowledge = loadCharacterKnowledgeAtBoundary(sqlite, r.id, boundary);
-    }
+    const knowledge = readers ? readers.knowledge(r.id) : [];
     return {
       character: rowToCharacter(r),
       knowledge,
@@ -379,10 +208,7 @@ export function gatherCharacterContext(
     )
     .all(...ids) as CharacterVoiceSampleRow[];
 
-  let states: ActiveState[] = [];
-  if (boundary) {
-    states = loadCharacterStatesAtBoundary(sqlite, ids, boundary);
-  }
+  const states = readers ? readers.states(ids) : [];
 
   return {
     characters,

@@ -12,6 +12,7 @@ import {
   gatherLoreContext,
   loreContextToPrompt,
 } from "@book-forge/agents";
+import { makeCharacterBoundaryReaders } from "./character-events.js";
 import { renderActiveFactsPrompt } from "./book-facts.js";
 import { gatherRelevantNotes, renderOpenNotesPrompt } from "./book-notes.js";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
@@ -163,7 +164,13 @@ export async function loadChapterProseContext(
     prevSummary,
   ];
   const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id);
-  const charResult = gatherCharacterContext(sqlite, book.id, contextTexts, [], boundary);
+  const charResult = gatherCharacterContext(
+    sqlite,
+    book.id,
+    contextTexts,
+    [],
+    makeCharacterBoundaryReaders(sqlite, boundary),
+  );
   const charNameById = new Map(
     charResult.characters.map((cc) => [
       cc.character.id,

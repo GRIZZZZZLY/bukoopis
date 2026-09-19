@@ -11,6 +11,7 @@ import {
 } from "@book-forge/shared";
 import { toCharacterEvent, type CharacterEventRow } from "../db/rows.js";
 import { resolveEntity } from "./entity-resolve.js";
+import type { CharacterBoundaryReaders } from "@book-forge/agents";
 
 /** Слой событий персонажа (ТЗ индивидуальности, разделы 6, 12). */
 
@@ -352,4 +353,31 @@ export function loadActiveStates(
   }
 
   return result;
+}
+
+/**
+ * Читатели границы для `gatherCharacterContext`. Существуют потому, что
+ * `packages/agents` до `apps/server` не дотягивается, а второй экземпляр той
+ * же SQL там уже появлялся: те же запросы, свой разбор строки, своя копия
+ * фильтра опровергнутого. Разошлись бы они молча, и именно на том пути,
+ * который идёт в Писателя.
+ */
+export function makeCharacterBoundaryReaders(
+  sqlite: DatabaseType,
+  boundary: SceneBoundary,
+): CharacterBoundaryReaders {
+  return {
+    knowledge: (characterId) =>
+      loadKnowledgeAtBoundary(sqlite, characterId, boundary).map((e) => {
+        const d = normalizeEventData("knowledge", e.data);
+        return {
+          fact: d.fact,
+          acquisition: d.acquisition,
+          source: d.source,
+          canonFactId: d.canonFactId,
+          disprovedFromChapterOrder: d.disprovedFromChapterOrder,
+        };
+      }),
+    states: (ids) => loadActiveStates(sqlite, ids, boundary),
+  };
 }
