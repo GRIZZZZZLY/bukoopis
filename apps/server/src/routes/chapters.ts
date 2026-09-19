@@ -25,6 +25,7 @@ import {
   outdatedPipelineChapters,
 } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
+import { preserveDraftAsVersion } from "../utils/chapter-drafts.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
 
 export function createChaptersRoute(
@@ -193,16 +194,15 @@ export function createChaptersRoute(
       .get(id) as ChapterRow | undefined;
     if (!existing) return notFound(c, "chapter");
     const now = new Date().toISOString();
+    // Порядок здесь не меняется: он переезжает вместе с производной памятью
+    // через `POST /books/:id/chapters/reorder` (К1).
     const next = {
       title: parsed.data.title ?? existing.title,
       status: parsed.data.status ?? existing.status,
-      orderIndex: parsed.data.orderIndex ?? existing.order_index,
     };
     sqlite
-      .prepare(
-        "UPDATE chapters SET title=?, status=?, order_index=?, updated_at=? WHERE id=?",
-      )
-      .run(next.title, next.status, next.orderIndex, now, id);
+      .prepare("UPDATE chapters SET title=?, status=?, updated_at=? WHERE id=?")
+      .run(next.title, next.status, now, id);
     sqlite
       .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
       .run(now, existing.book_id);
@@ -274,13 +274,27 @@ export function createChaptersRoute(
     // version row, its memory jobs and the draft cleanup happen in ONE
     // transaction (or none of them). Autosaves never reach this route.
     const tx = sqlite.transaction(() => {
+      // К2: коммит из предпросмотра старой версии шлёт текст ВЕРСИИ, а не
+      // черновика, и `DELETE FROM chapter_drafts` ниже уносил работу автора.
+      // Совпал с коммитимым содержимым — снимок не делается.
+      const draftVersionId = preserveDraftAsVersion(sqlite, id, {
+        committedContentJson: contentJson,
+        committedContentText: contentText,
+      });
       const info = sqlite
         .prepare(
           `INSERT INTO chapter_versions
            (chapter_id, parent_version_id, content_json, content_text, word_count, source, created_at)
            VALUES (?, ?, ?, ?, ?, 'manual', ?)`,
         )
-        .run(id, parentVersionId, contentJson, contentText, wordCount, now);
+        .run(
+          id,
+          draftVersionId ?? parentVersionId,
+          contentJson,
+          contentText,
+          wordCount,
+          now,
+        );
       const versionId = Number(info.lastInsertRowid);
       sqlite
         .prepare(
@@ -322,14 +336,20 @@ export function createChaptersRoute(
       .get(versionId, id) as { id: number } | undefined;
     if (!v) return notFound(c, "version");
     const now = new Date().toISOString();
-    sqlite
-      .prepare(
-        "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
-      )
-      .run(versionId, now, id);
-    // Restoring an old version is explicit — a lingering draft (based on the
-    // previous current version) would silently override it on next load.
-    sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(id);
+    sqlite.transaction(() => {
+      // К2: черновик здесь — часы работы, которых нет ни в одной версии.
+      // Сначала он становится версией, и только потом его место занимает
+      // восстанавливаемая.
+      preserveDraftAsVersion(sqlite, id);
+      sqlite
+        .prepare(
+          "UPDATE chapters SET current_version_id = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(versionId, now, id);
+      // Restoring an old version is explicit — a lingering draft (based on the
+      // previous current version) would silently override it on next load.
+      sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(id);
+    })();
     const row = sqlite
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(id) as ChapterRow;

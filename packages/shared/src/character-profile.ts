@@ -205,6 +205,53 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
   return { ...characterProfileV2Schema.parse(salvaged), extra: { ...extra } };
 }
 
+/**
+ * Накладывает профиль кандидата Мастерской на уже заведённую карточку.
+ *
+ * Кандидат несёт пять полей (`name/role/age/background/description`), а
+ * карточка V2 — ещё цели, ценности, принципы, профиль голоса и план автора,
+ * которые автор заполняет руками. Замена целиком стирала всё, чего у
+ * кандидата нет (К4 ревью 2026-09-19), поэтому накладываются только те ключи,
+ * которые кандидат ДЕЙСТВИТЕЛЬНО прислал.
+ *
+ * `null` считается «не знаю», а не «сотри»: генератор сущностей штатно
+ * возвращает `null` вместо отсутствующего поля, и принять это за команду на
+ * очистку значило бы терять авторские сведения при каждой материализации.
+ * Стереть поле автор может правкой карточки.
+ */
+export function mergeCharacterProfile(
+  existing: CharacterProfileV2,
+  rawCandidate: unknown,
+): CharacterProfileV2 {
+  if (rawCandidate === null || typeof rawCandidate !== "object" || Array.isArray(rawCandidate)) {
+    return existing;
+  }
+  const source = rawCandidate as Record<string, unknown>;
+  const candidate = normalizeCharacterProfile(source);
+  const merged: Record<string, unknown> = { ...existing };
+  for (const key of Object.keys(source)) {
+    if (key === "extra" || key === "schemaVersion") continue;
+    const value = source[key];
+    if (value === undefined || value === null) continue;
+    if (!KNOWN_KEYS.has(key)) continue;
+    // Значение не той формы нормализация увозит в `extra`, а на его месте
+    // оставляет умолчание схемы (пустой массив, `null`). Наложить умолчание
+    // значило бы стереть то, что автор заполнил руками, — а прислал модель
+    // вовсе не это.
+    if (key in candidate.extra) continue;
+    const next = (candidate as unknown as Record<string, unknown>)[key];
+    if (next === null || next === undefined) continue;
+    // Пустой список — не сведение: кандидат Мастерской таких полей не несёт
+    // вовсе, и пустота у него означает «не знаю», а не «целей нет».
+    if (Array.isArray(next) && next.length === 0) continue;
+    merged[key] = next;
+  }
+  // Незнакомые схеме ключи кандидата живут в его `extra` — их дописываем, а
+  // не заменяем: `extra` карточки мог наполнить прошлый импорт.
+  merged.extra = { ...existing.extra, ...candidate.extra };
+  return merged as unknown as CharacterProfileV2;
+}
+
 /** Принимает V1, V2 и то, что прислал автор; возвращает V2 или список
  *  нарушенных пределов. Единственная дверь на запись профиля. */
 export function parseCharacterProfileForWrite(

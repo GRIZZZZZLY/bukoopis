@@ -16,6 +16,7 @@ import {
 import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "./memory-queue.js";
 import { markMemoryStaleOnCommit } from "./memory-activation.js";
 import { attachManifestToVersion } from "./context-manifests.js";
+import { preserveDraftAsVersion } from "./chapter-drafts.js";
 import { extractText, countWords } from "./prosemirror.js";
 
 export interface ProseProposalRow {
@@ -370,6 +371,11 @@ export function acceptProposal(
       proposal.kind === "repair"
         ? `${REPAIR_BRANCH_PREFIX}${countRepairAncestors(sqlite, ch.current_version_id) + 1}`
         : null;
+    // К2: черновик автора уходил в `DELETE` ниже, так и не став версией —
+    // текст версии здесь кандидат, а не то, что автор напечатал сам. Снимок
+    // делается ПОСЛЕ слияния выбранных правок (оно считается от той версии,
+    // которую видел автор) и становится родителем кандидата.
+    const draftVersionId = preserveDraftAsVersion(sqlite, ch.id);
     const now = new Date().toISOString();
     const info = sqlite
       .prepare(
@@ -379,7 +385,7 @@ export function acceptProposal(
       )
       .run(
         ch.id,
-        ch.current_version_id,
+        draftVersionId ?? ch.current_version_id,
         contentJson,
         contentText,
         countWords(contentText),

@@ -30,13 +30,24 @@ export const createChapterInputSchema = z.object({
 });
 export type CreateChapterInput = z.infer<typeof createChapterInputSchema>;
 
+/** Порядок глав здесь НЕ меняется: у него свой маршрут
+ *  `POST /books/:id/chapters/reorder`, который одной транзакцией переносит и
+ *  производную память (К1 ревью 2026-09-19). Поле оставлено запрещённым явно,
+ *  а не просто убрано: вкладка старой версии, пославшая `orderIndex` сюда,
+ *  должна получить отказ, а не молча ничего не переставить. */
 export const updateChapterInputSchema = z
-  .object({
+  .strictObject({
     title: z.string().min(1).max(500).optional(),
     status: chapterStatusSchema.optional(),
-    orderIndex: z.number().int().nonnegative().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "at least one field required",
   });
 export type UpdateChapterInput = z.infer<typeof updateChapterInputSchema>;
+
+export const reorderChaptersInputSchema = z.object({
+  /** Все главы книги в новом порядке. Неполный список отвергается: половина
+   *  перестановки хуже, чем её отсутствие. */
+  chapterIds: z.array(z.number().int().positive()).min(1).max(2000),
+});
+export type ReorderChaptersInput = z.infer<typeof reorderChaptersInputSchema>;

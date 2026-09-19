@@ -140,6 +140,10 @@ export const entityCandidateSchema = z.object({
   profile: entityCandidateProfileSchema,
   status: entityCandidateStatusSchema,
   materializedEntityId: z.number().int().positive().optional(),
+  /** Ревизия карточки на момент материализации. Вкладка возвращает её
+   *  следующим «Добавить в канон», и сервер отвечает 409, если карточку
+   *  правили во вкладках знаний (К4 ревью 2026-09-19). */
+  materializedRevision: z.number().int().nonnegative().optional(),
   mergedIntoEntityId: z.number().int().positive().optional(),
 });
 export type EntityCandidate = z.infer<typeof entityCandidateSchema>;

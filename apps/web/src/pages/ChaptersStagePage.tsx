@@ -290,16 +290,19 @@ function SortableChapterList({
     onReordered(renumbered);
 
     try {
-      const changed = renumbered.filter((c) => {
-        const prev = chapters.find((p) => p.id === c.id);
-        return !prev || prev.orderIndex !== c.orderIndex;
-      });
-      await Promise.all(
-        changed.map((c) =>
-          api.updateChapter(c.id, { orderIndex: c.orderIndex }),
-        ),
+      // Один запрос на всю книгу: сервер переносит вместе с порядком и
+      // производную память. Прежние N запросов по главе оставляли книгу в
+      // промежуточных раскладках, а память — с номерами прошлой (К1).
+      const res = await api.reorderChapters(
+        bookId,
+        renumbered.map((c) => c.id),
       );
-      toast.success("Порядок глав обновлён");
+      onReordered(res.chapters);
+      toast.success(
+        res.staleFrom === null
+          ? "Порядок глав обновлён"
+          : "Порядок глав обновлён. Память книги придётся перестроить: порядок событий изменился.",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       onPersistError(msg);
