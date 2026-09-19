@@ -4,6 +4,7 @@ import {
   chapterBeatSheetToolSchema,
   SYSTEM_BOOK_OUTLINE,
   SYSTEM_CHAPTER_PLAN,
+  buildChapterPlanPrompt,
 } from "../plot.js";
 
 // The stored schemas keep architecture/closing optional so old outline_json
@@ -52,7 +53,7 @@ describe("plot tool schemas", () => {
     expect(r.success).toBe(false);
   });
 
-  it("beat-sheet tool output requires a closing", () => {
+  it("beat-sheet tool output requires a closing and a contract", () => {
     const beatSheet = {
       label: "v1",
       pov: "p",
@@ -65,11 +66,71 @@ describe("plot tool schemas", () => {
       ],
     };
     expect(chapterBeatSheetToolSchema.safeParse({ variants: [beatSheet] }).success).toBe(false);
+    // Contract is required on the way out for the same reason closing is: a
+    // fresh plan must commit, and «не задано» is indistinguishable from
+    // «ничего не запрещено» once it reaches the critics.
     expect(
       chapterBeatSheetToolSchema.safeParse({
         variants: [{ ...beatSheet, closing: { mode: "open", note: "n" } }],
       }).success,
+    ).toBe(false);
+    expect(
+      chapterBeatSheetToolSchema.safeParse({
+        variants: [
+          {
+            ...beatSheet,
+            closing: { mode: "open", note: "n" },
+            contract: {
+              mustHappen: ["Рин находит медальон"],
+              mustNotHappen: [],
+              expectedRevelations: [],
+              allowedCanonSupersessions: [],
+            },
+          },
+        ],
+      }).success,
     ).toBe(true);
+  });
+});
+
+describe("контракт главы в промпте планировщика", () => {
+  it("объясняет все четыре поля контракта", () => {
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/mustHappen/);
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/mustNotHappen/);
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/expectedRevelations/);
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/allowedCanonSupersessions/);
+  });
+
+  it("называет форму ссылки на факт и цену её отсутствия", () => {
+    // Без разрешения критик канона блокирует запланированный поворот; модель
+    // должна знать, что это единственный способ его разрешить.
+    const line = SYSTEM_CHAPTER_PLAN.split("\n").find((l) =>
+      l.includes("allowedCanonSupersessions"),
+    );
+    expect(line).toBeDefined();
+    expect(line).toMatch(/fact_/);
+    const block = SYSTEM_CHAPTER_PLAN.slice(
+      SYSTEM_CHAPTER_PLAN.indexOf("allowedCanonSupersessions"),
+    );
+    expect(block).toMatch(/критик канона/i);
+  });
+
+  it("действующие факты попадают в промпт, когда они переданы", () => {
+    const base = {
+      bookTitle: "К",
+      bookPremise: "П",
+      bookOutline: null,
+      chapterTitle: "Глава",
+      intent: "намерение",
+      previousChaptersSummary: null,
+    };
+    const withFacts = buildChapterPlanPrompt({
+      ...base,
+      activeFacts: "## Действующие факты\n- fact_12: брат погиб",
+    });
+    expect(withFacts).toContain("fact_12");
+    // Без фактов промпт прежний — старый вызывающий ничего не теряет.
+    expect(buildChapterPlanPrompt(base)).not.toContain("Действующие факты");
   });
 });
 

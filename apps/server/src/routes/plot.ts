@@ -217,6 +217,16 @@ export function createPlotRoute(
       "Открытые линии",
       ch.order_index,
     );
+    // Слайс 4.5: планировщик впервые видит действующий канон — иначе он может
+    // назвать отменяемый факт только словами, без ссылки, и критику нечего
+    // сопоставить. Граница та же, что у Writer: факты по состоянию ДО этой
+    // главы (`order_index`), иначе план опирался бы на то, что сам изменит.
+    const planActiveFacts = renderActiveFactsPrompt(
+      sqlite,
+      ch.book_id,
+      ch.order_index,
+      { withIds: true },
+    );
     const variants = await runChapterPlan({
       bookTitle: ctx.title,
       bookPremise: ctx.premise,
@@ -229,6 +239,7 @@ export function createPlotRoute(
         ? { retrievedContext: planRetrieved.promptBlock }
         : {}),
       ...(planOpenThreads !== null ? { openThreads: planOpenThreads } : {}),
+      ...(planActiveFacts !== null ? { activeFacts: planActiveFacts } : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
       onUsage: (usage) =>
         logUsage(sqlite, {
