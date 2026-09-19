@@ -279,14 +279,31 @@ export async function runMetaSummary(
   // отпечаток каждого диапазона, куда она входит, а пересобирался только
   // последний (В6 ревью 2026-09-19). Читатель после этого не находил ни
   // одной пригодной сводки и на всей книге переходил на поглавные пересказы.
-  const stale = sqlite
-    .prepare(
-      `SELECT covers_to_order AS t, source_fingerprint AS fp
-       FROM book_meta_summaries
-       WHERE book_id = ? AND covers_to_order < ?
-       ORDER BY covers_to_order DESC`,
-    )
-    .all(bookId, coversTo) as Array<{ t: number; fp: string | null }>;
+  //
+  // Но только когда по книге больше нечего пересказывать. «Перестроить
+  // память» ставит задание на каждую главу, и каждое завершённое цепляет
+  // свой `rollup`: добор на каждом из них умножал платные вызовы на число
+  // глав, а отпечатки всё равно плыли на каждом шаге. Своё задание здесь не
+  // мешает — оно `running`, а ждём мы `pending`/`retry`.
+  const queueBusy =
+    sqlite
+      .prepare(
+        `SELECT 1 FROM memory_jobs
+         WHERE book_id = ? AND kind IN ('summary','rollup')
+           AND status IN ('pending','retry')
+         LIMIT 1`,
+      )
+      .get(bookId) !== undefined;
+  const stale = queueBusy
+    ? []
+    : (sqlite
+        .prepare(
+          `SELECT covers_to_order AS t, source_fingerprint AS fp
+           FROM book_meta_summaries
+           WHERE book_id = ? AND covers_to_order < ?
+           ORDER BY covers_to_order DESC`,
+        )
+        .all(bookId, coversTo) as Array<{ t: number; fp: string | null }>);
   let rebuilt = 0;
   for (const row of stale) {
     if (rebuilt >= MAX_STALE_REBUILDS_PER_RUN) break;

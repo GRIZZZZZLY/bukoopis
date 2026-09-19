@@ -123,7 +123,6 @@ export function ChapterPage() {
   const [memoryRebuilding, setMemoryRebuilding] = useState(false);
 
   const isPreviewRef = useRef(false);
-  const writingRef = useRef(false);
   const baselineJsonRef = useRef<string>(JSON.stringify(EMPTY_DOC));
   const titleBaselineRef = useRef<string>("");
   const writerAbortRef = useRef<AbortController | null>(null);
@@ -364,9 +363,6 @@ export function ChapterPage() {
   useEffect(() => {
     isPreviewRef.current = isPreview;
   }, [isPreview]);
-  useEffect(() => {
-    writingRef.current = writing;
-  }, [writing]);
 
   // Recompute dirty when title changes.
   useEffect(() => {

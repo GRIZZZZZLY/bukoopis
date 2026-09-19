@@ -93,4 +93,42 @@ describe("consumeSse", () => {
     expect(onEvent).toHaveBeenCalledTimes(2);
     expect(res.sawTerminal).toBe(true);
   });
+
+  it("понимает кадры с CRLF", async () => {
+    const seen: SseEvent[] = [];
+    const res = await consumeSse(
+      streamOf(
+        'event: token\r\ndata: {"text":"раз"}\r\n\r\n',
+        'event: done\r\ndata: {}\r\n\r\n',
+      ),
+      (e) => seen.push(e),
+      { terminalEvents: ["done"] },
+    );
+    expect(seen.map((e) => e.event)).toEqual(["token", "done"]);
+    expect(seen[0]!.data).toEqual({ text: "раз" });
+    expect(res.sawTerminal).toBe(true);
+  });
+
+  it("склеивает кадр из нескольких строк data", async () => {
+    const seen: SseEvent[] = [];
+    await consumeSse(
+      streamOf('event: token\ndata: {"text":\ndata: "раз"}\n\n'),
+      (e) => seen.push(e),
+      { terminalEvents: ["done"] },
+    );
+    expect(seen[0]?.data).toEqual({ text: "раз" });
+  });
+
+  it("отпускает поток, когда чтение упало", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("сеть отвалилась"));
+      },
+    });
+    await expect(
+      consumeSse(stream, () => {}, { terminalEvents: ["done"] }),
+    ).rejects.toThrow();
+    // Освобождённый поток можно взять заново; заблокированный — нет.
+    expect(() => stream.getReader()).not.toThrow();
+  });
 });

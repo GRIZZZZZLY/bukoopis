@@ -174,13 +174,22 @@ describe("импортированные главы (В1)", () => {
     expect(res.created).toHaveLength(2);
     const chapterId = res.created[0]!.chapterId;
 
+    // Три задания, не четыре: чанки маршрут кладёт сам, синхронно, чтобы
+    // поиск видел главы сразу, и второе задание `index` означало бы повторную
+    // индексацию той же версии.
     const jobs = t.sqlite
       .prepare(
-        `SELECT COUNT(*) c FROM memory_jobs
-         WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
+        `SELECT kind FROM memory_jobs WHERE chapter_version_id = ? ORDER BY kind`,
       )
-      .get(versionOf(chapterId)) as { c: number };
-    expect(jobs.c).toBe(4);
+      .all(versionOf(chapterId)) as Array<{ kind: string }>;
+    expect(jobs.map((j) => j.kind)).toEqual(["facts", "notes", "summary"]);
+    expect(
+      (
+        t.sqlite
+          .prepare("SELECT indexed_version_id v FROM chapters WHERE id = ?")
+          .get(chapterId) as { v: number | null }
+      ).v,
+    ).toBe(versionOf(chapterId));
 
     const ch = await sendJson<{ memory: { state: string } }>(
       t.app,
@@ -329,5 +338,111 @@ describe("страховка очереди", () => {
       )
       .get(versionOf(ch)) as { c: number };
     expect(jobs.c).toBe(4);
+  });
+});
+
+/** Закрытый факт: предшественник + отменивший его, связанные `superseded_by`.
+ *  Возвращает id предшественника. */
+function seedSupersededPair(
+  fromOrder: number,
+  closedAt: number,
+  laterOrder: number,
+  sourceVersionId: number | null,
+  origin: "extracted" | "manual" = "extracted",
+): number {
+  const now = new Date().toISOString();
+  const later = Number(
+    t.sqlite
+      .prepare(
+        `INSERT INTO book_facts
+           (book_id, entity_type, entity_name, predicate, object_text,
+            valid_from_chapter, valid_to_chapter, source_version_id, confidence,
+            origin, assertion_mode, created_at)
+         VALUES (?, 'character', 'Анна', 'местоположение', 'в столице', ?, NULL, ?, 0.9, 'extracted', 'narrated_as_fact', ?)`,
+      )
+      .run(bookId, laterOrder, sourceVersionId, now).lastInsertRowid,
+  );
+  const earlier = Number(
+    t.sqlite
+      .prepare(
+        `INSERT INTO book_facts
+           (book_id, entity_type, entity_name, predicate, object_text,
+            valid_from_chapter, valid_to_chapter, source_version_id, confidence,
+            origin, assertion_mode, created_at, superseded_by)
+         VALUES (?, 'character', 'Анна', 'местоположение', 'в порту', ?, ?, NULL, 0.9, ?, 'narrated_as_fact', ?, ?)`,
+      )
+      .run(bookId, fromOrder, closedAt, origin, now, later).lastInsertRowid,
+  );
+  return earlier;
+}
+
+const factBounds = (factId: number): { to: number | null; by: number | null } => {
+  const row = t.sqlite
+    .prepare("SELECT valid_to_chapter t, superseded_by b FROM book_facts WHERE id = ?")
+    .get(factId) as { t: number | null; b: number | null };
+  return { to: row.t, by: row.b };
+};
+
+describe("перестроение и удаление открывают обратно только своё", () => {
+  it("перестроение не реанимирует факт, закрытый не удаляемым", async () => {
+    const first = await chapter("Первая", long("ПЕРВАЯ"));
+    await chapter("Вторая", long("ВТОРАЯ"));
+    // Факт закрыт вручную автором: отменившего нет, ссылки нет. Такой
+    // интервал ставит и перестановка глав.
+    const manual = Number(
+      t.sqlite
+        .prepare(
+          `INSERT INTO book_facts
+             (book_id, entity_type, entity_name, predicate, object_text,
+              valid_from_chapter, valid_to_chapter, source_version_id, confidence,
+              origin, assertion_mode, created_at)
+           VALUES (?, 'character', 'Борис', 'звание', 'капитан', 10, 19, ?, 1.0, 'manual', 'narrated_as_fact', ?)`,
+        )
+        .run(bookId, versionOf(first), new Date().toISOString()).lastInsertRowid,
+    );
+
+    await send(t.app, `/api/books/${bookId}/memory/rebuild`, "POST", { fromOrder: 10 });
+
+    expect(factBounds(manual).to).toBe(19);
+  });
+
+  it("перестроение открывает обратно факт, чей отменивший стёрт", async () => {
+    const first = await chapter("Первая", long("ПЕРВАЯ"));
+    await chapter("Вторая", long("ВТОРАЯ"));
+    const earlier = seedSupersededPair(10, 19, 20, versionOf(first));
+
+    await send(t.app, `/api/books/${bookId}/memory/rebuild`, "POST", { fromOrder: 20 });
+
+    expect(factBounds(earlier)).toEqual({ to: null, by: null });
+  });
+
+  it("удаление главы открывает обратно факт, который её факт отменял", async () => {
+    const first = await chapter("Первая", long("ПЕРВАЯ"));
+    const second = await chapter("Вторая", long("ВТОРАЯ"));
+    const earlier = seedSupersededPair(10, 19, 20, versionOf(second));
+
+    await send(t.app, `/api/chapters/${second}`, "DELETE");
+
+    expect(factBounds(earlier)).toEqual({ to: null, by: null });
+    expect(first).toBeGreaterThan(0);
+  });
+
+  it("перестроение не открывает обратно авторскую нить", async () => {
+    const first = await chapter("Первая", long("ПЕРВАЯ"));
+    t.sqlite
+      .prepare(
+        `INSERT INTO book_notes
+           (book_id, kind, chapter_order_introduced, chapter_order_resolved,
+            title, body, tags, related_note_ids, source_version_id, origin, created_at)
+         VALUES (?, 'thread', 10, 10, 'Авторская нить', 'тело', '[]', '[]', ?, 'manual', ?)`,
+      )
+      .run(bookId, versionOf(first), new Date().toISOString());
+
+    await send(t.app, `/api/books/${bookId}/memory/rebuild`, "POST", { fromOrder: 10 });
+
+    const row = t.sqlite
+      .prepare("SELECT chapter_order_resolved r FROM book_notes WHERE book_id = ?")
+      .get(bookId) as { r: number | null };
+    expect(row.r).toBe(10);
   });
 });

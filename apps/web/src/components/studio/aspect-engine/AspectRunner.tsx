@@ -123,8 +123,18 @@ export function AspectRunner<TPayload>({
         try {
           const fresh = await onReloadStage();
           const mine = next.aspects.find((a) => a.id === aspectId);
-          const exists = fresh.stage.aspects.some((a) => a.id === aspectId);
-          if (mine && exists) {
+          const before = stage.aspects.find((a) => a.id === aspectId);
+          const theirs = fresh.stage.aspects.find((a) => a.id === aspectId);
+          // Повторяем, только если ЭТОТ раздел за это время не трогали.
+          // Конфликт вызывает и правка соседнего раздела — её мы бережём, —
+          // и правка этого же, из второй вкладки или быстрого сбора. Во
+          // втором случае молчаливая запись поверх стирает чужую работу,
+          // ровно ту, о которой конфликт и предупреждает.
+          const sameBase =
+            before !== undefined &&
+            theirs !== undefined &&
+            JSON.stringify(before) === JSON.stringify(theirs);
+          if (mine && sameBase) {
             const merged: StageState = {
               ...fresh.stage,
               aspects: fresh.stage.aspects.map((a) =>
@@ -135,6 +145,14 @@ export function AspectRunner<TPayload>({
             await onPatch(fresh.revision, merged);
             return true;
           }
+          setErrorByAspect((p) => ({
+            ...p,
+            [aspectId]:
+              "Этот раздел изменили в другом месте, пока вы правили. Ваш текст" +
+              " остался на экране: скопируйте его, обновите страницу и вставьте" +
+              " заново — иначе пропадёт чужая правка.",
+          }));
+          return false;
         } catch (retryError) {
           const msg =
             retryError instanceof Error ? retryError.message : String(retryError);

@@ -139,4 +139,28 @@ describe("useDebouncedSave", () => {
     });
     expect(result.current.lastSavedAt).not.toBeNull();
   });
+
+  /** Повторы не вечны: на отказе, который сам не пройдёт (глава удалена,
+   *  конфликт ревизии), бесконечный стук раз в 30 секунд ничего не спасает и
+   *  сыплет тостами. После последней паузы хук останавливается; текст
+   *  остаётся в ожидании и уйдёт со следующей правкой или по Ctrl+S. */
+  it("перестаёт повторять, когда паузы кончились", async () => {
+    const save = vi.fn().mockRejectedValue(new Error("глава удалена"));
+    const { result } = renderHook(() =>
+      useDebouncedSave(save, { delayMs: 50, retryDelaysMs: [100, 200] }),
+    );
+
+    act(() => {
+      result.current.mark("текст");
+    });
+    for (const step of [60, 120, 220, 400, 400]) {
+      await act(async () => {
+        vi.advanceTimersByTime(step);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    // Первая попытка плюс две по списку пауз — и всё.
+    expect(save).toHaveBeenCalledTimes(3);
+  });
 });

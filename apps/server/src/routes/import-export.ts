@@ -196,11 +196,16 @@ export async function insertChapters(
       // Принесённая глава разбирается тем же конвейером, что написанная:
       // иначе у книги нет ни сводок, ни фактов, ни заметок, ни событий, а
       // экран уверяет, что память актуальна (В1).
+      // Всё, кроме `index`: чанки маршрут кладёт сам, сразу после
+      // транзакции, чтобы поиск видел принесённые главы немедленно. Задание
+      // `index` вдобавок к этому означало бы вторую индексацию той же
+      // версии, а `indexChapterVersion` перед вставкой чистит прежние чанки:
+      // совпади они по времени, часть чанков осталась бы удвоенной.
       enqueueMemoryJobs(sqlite, {
         bookId,
         chapterId,
         chapterVersionId: versionId,
-        kinds: COMMIT_JOB_KINDS,
+        kinds: COMMIT_JOB_KINDS.filter((k) => k !== "index"),
       });
       created.push({
         chapterId,
@@ -241,6 +246,14 @@ export async function insertChapters(
         .run(item.versionId, item.chapterId);
     } catch (e) {
       console.warn("[import] indexing failed for chapter", item.chapterId, e);
+      // Синхронная индексация не удалась — отдаём главу очереди, иначе она
+      // не найдётся поиском никогда.
+      enqueueMemoryJobs(sqlite, {
+        bookId,
+        chapterId: item.chapterId,
+        chapterVersionId: item.versionId,
+        kinds: ["index"],
+      });
     }
   }
 

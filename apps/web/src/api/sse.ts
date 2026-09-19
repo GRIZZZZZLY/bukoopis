@@ -43,12 +43,19 @@ export async function consumeSse(
     while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
       const raw = buffer.slice(0, sepIdx);
       buffer = buffer.slice(sepIdx + 2);
-      const dataMatch = raw.match(/^data: (.+)$/m);
-      if (!dataMatch) continue;
-      const event = raw.match(/^event: (.+)$/m)?.[1] ?? "message";
+      // Кадр SSE вправе нести несколько строк `data:`; они склеиваются через
+      // перевод строки. Наши маршруты шлют одну, но брать только первую
+      // значит молча терять кадр, если когда-нибудь пошлют две.
+      const dataLines: string[] = [];
+      let event = "message";
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^ /, ""));
+        else if (line.startsWith("event:")) event = line.slice(6).trim();
+      }
+      if (dataLines.length === 0) continue;
       let data: unknown;
       try {
-        data = JSON.parse(dataMatch[1]!);
+        data = JSON.parse(dataLines.join("\n"));
       } catch {
         // Один битый кадр — не повод ронять поток: дальше может прийти
         // и `done`, и остаток текста.
@@ -63,18 +70,31 @@ export async function consumeSse(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    flushFrames();
-  }
-  // Хвост без завершающего разделителя: сервер мог закрыть соединение сразу
-  // после последнего кадра.
-  buffer += decoder.decode();
-  if (buffer.length > 0) {
-    buffer += "\n\n";
-    flushFrames();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // CRLF нормализуется сразу: разделитель кадров ищется как "\n\n", и на
+      // потоке с \r\n он не находился бы ни разу — экран молчал бы до конца
+      // генерации, а потом сообщил об обрыве.
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      flushFrames();
+    }
+    // Хвост без завершающего разделителя: сервер мог закрыть соединение сразу
+    // после последнего кадра.
+    buffer += decoder.decode().replace(/\r\n/g, "\n");
+    if (buffer.length > 0) {
+      buffer += "\n\n";
+      flushFrames();
+    }
+  } finally {
+    // Оборванное чтение бросает. Без этого поток остаётся заблокированным
+    // читателем, которого уже никто не держит.
+    try {
+      reader.releaseLock();
+    } catch {
+      // Отпускать нечего — читатель уже освобождён.
+    }
   }
   return { sawTerminal };
 }

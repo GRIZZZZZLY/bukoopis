@@ -123,12 +123,16 @@ export async function runQuickStart(
     // «разделы есть». Автор получал оглавление без содержимого и никакой
     // кнопки, чтобы это доделать. Черновиком считается раздел, у которого
     // есть варианты или решение автора, а не одно имя.
+    //
+    // Считается по НЕзаполненным, а не по заполненным: «хотя бы один раздел
+    // с вариантами» пропускало этап, где собрались три раздела из пяти, и
+    // недобранные два не догенерировались никогда.
+    const stageAspects = state.stages[stageId]?.aspects ?? [];
     const already =
       stageId === "plot"
         ? planAlreadyThere(sqlite, bookId)
-        : (state.stages[stageId]?.aspects ?? []).some(
-            (a) => a.variants.length > 0 || a.status !== "pending",
-          );
+        : stageAspects.length > 0 &&
+          !stageAspects.some((a) => a.variants.length === 0 && a.status === "pending");
     if (already) {
       const skipped: QuickStartStageEvent = {
         index,

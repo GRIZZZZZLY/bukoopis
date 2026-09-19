@@ -597,4 +597,44 @@ describe("AspectRunner — сохранность авторской работ�
       expect(screen.queryByRole("textbox", { name: /Текст раздела/ })).toBeNull(),
     );
   });
+
+  it("конфликт по ЭТОМУ же разделу не затирает чужую правку", async () => {
+    const conflict = Object.assign(new Error("revision_conflict"), { status: 409 });
+    const onPatch = vi.fn().mockRejectedValueOnce(conflict);
+    // Свежее состояние: этот самый раздел переписан за это время — вторая
+    // вкладка или быстрый сбор. Молча положить поверх значит стереть работу.
+    const freshStage = makeStage([
+      makeAspect({
+        id: "a1",
+        name: "география",
+        status: "accepted",
+        finalPayload: "Чужая редакция.",
+      }),
+    ]);
+    const onReloadStage = vi.fn(async () => ({ stage: freshStage, revision: 7 }));
+
+    render(
+      <AspectRunner
+        stage={makeStage([acceptedAspect()])}
+        revision={0}
+        adapter={adapter}
+        generator={generator}
+        onPatch={onPatch}
+        onReloadStage={onReloadStage}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Редактировать текст" }),
+    );
+    const area = screen.getByRole("textbox", { name: /Текст раздела/ });
+    await userEvent.clear(area);
+    await userEvent.type(area, "Моя правка");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить правку" }));
+
+    await waitFor(() => expect(onReloadStage).toHaveBeenCalledTimes(1));
+    // Второй записи нет, и окно правки открыто: текст автора при нём.
+    expect(onPatch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("textbox", { name: /Текст раздела/ })).toBeTruthy();
+  });
 });

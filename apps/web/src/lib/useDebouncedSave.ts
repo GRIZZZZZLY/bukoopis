@@ -53,11 +53,16 @@ export function useDebouncedSave<T>(
     } catch (e) {
       // Сохранение упало — пробуем снова сами. Иначе о нём узнают только по
       // следующей клавише, а текст всё это время нигде не лежит.
-      const delay =
-        retryDelays[Math.min(attemptRef.current, retryDelays.length - 1)] ??
-        30_000;
-      attemptRef.current += 1;
-      scheduleRef.current(delay);
+      //
+      // Но ровно столько раз, сколько пауз в списке. Отказ, который сам не
+      // пройдёт (главу удалили, конфликт ревизии), иначе стучал бы раз в
+      // полминуты до закрытия вкладки, сыпля тостами и ничего не спасая.
+      // Текст остаётся в ожидании: его унесёт следующая правка или Ctrl+S.
+      const delay = retryDelays[attemptRef.current];
+      if (delay !== undefined) {
+        attemptRef.current += 1;
+        scheduleRef.current(delay);
+      }
       throw e;
     } finally {
       setSaving(false);

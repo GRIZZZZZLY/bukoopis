@@ -147,3 +147,55 @@ describe("пересчёт сводок (В6)", () => {
     expect(vi.mocked(metaSummarize).mock.calls.length).toBe(callsAfterFirst);
   });
 });
+
+describe("пересчёт сводок при перестроении памяти", () => {
+  it("не добирает устаревшие рубежи, пока в очереди книги есть пересказы", async () => {
+    let firstChapter = 0;
+    for (let i = 1; i <= 6; i++) {
+      const id = chapter(i * 10, `Пересказ главы ${i}`);
+      if (i === 1) firstChapter = id;
+    }
+    seedSummary(10, 20, "СТАРАЯ_СВОДКА", "устаревший-отпечаток");
+    vi.mocked(metaSummarize).mockImplementation(async (input) => ({
+      summary: `сводка до главы ${input.chapterSummaries.at(-1)?.order ?? 0}`,
+      modelId: "test",
+      tokens: { input: 1, output: 1, cacheCreation: 0, cacheRead: 0 },
+    }));
+    // «Перестроить память с главы 1» ставит по заданию на главу; каждое
+    // завершённое цепляет свой rollup. Добор устаревших рубежей на каждом из
+    // них умножал платные вызовы на число глав.
+    sqlite
+      .prepare(
+        `INSERT INTO memory_jobs
+           (book_id, chapter_id, chapter_version_id, kind, status, attempts,
+            pipeline_version, created_at, updated_at)
+         VALUES (?, ?, (SELECT current_version_id FROM chapters WHERE id = ?),
+                 'summary', 'pending', 0, 2, ?, ?)`,
+      )
+      .run(bookId, firstChapter, firstChapter, NOW, NOW);
+
+    await runMetaSummary(sqlite, bookId);
+
+    const stale = sqlite
+      .prepare("SELECT summary_text s FROM book_meta_summaries WHERE book_id = ? AND covers_to_order = 20")
+      .get(bookId) as { s: string };
+    expect(stale.s).toBe("СТАРАЯ_СВОДКА");
+  });
+
+  it("добирает их, когда очередь опустела", async () => {
+    for (let i = 1; i <= 6; i++) chapter(i * 10, `Пересказ главы ${i}`);
+    seedSummary(10, 20, "СТАРАЯ_СВОДКА", "устаревший-отпечаток");
+    vi.mocked(metaSummarize).mockImplementation(async (input) => ({
+      summary: `сводка до главы ${input.chapterSummaries.at(-1)?.order ?? 0}`,
+      modelId: "test",
+      tokens: { input: 1, output: 1, cacheCreation: 0, cacheRead: 0 },
+    }));
+
+    await runMetaSummary(sqlite, bookId);
+
+    const stale = sqlite
+      .prepare("SELECT summary_text s FROM book_meta_summaries WHERE book_id = ? AND covers_to_order = 20")
+      .get(bookId) as { s: string };
+    expect(stale.s).not.toBe("СТАРАЯ_СВОДКА");
+  });
+});

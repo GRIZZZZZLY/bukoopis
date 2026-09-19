@@ -313,33 +313,41 @@ export function createBooksRoute(
       // `llm` у событий). Ручное и студийное — авторские сведения, их
       // перестроение не трогает; `legacy` (до миграции 0014) тоже остаётся:
       // происхождение таких строк неизвестно.
+      // Факт, закрытый удаляемым сейчас фактом, иначе остался бы закрытым
+      // навсегда: ссылка на отменившего уйдёт в NULL по внешнему ключу, а
+      // граница действия — нет. Открывается ровно тот, кого закрывает
+      // удаляемый: прежде условие было «закрыт и ссылки нет», а ссылки нет
+      // и у интервалов, посчитанных перестановкой глав, у перенесённых и у
+      // закрытых автором — перестроение с первой главы реанимировало почти
+      // всё закрытое. Идёт ДО удаления, пока связь ещё цела.
+      sqlite
+        .prepare(
+          `UPDATE book_facts SET valid_to_chapter = NULL, superseded_by = NULL
+           WHERE book_id = ? AND superseded_by IN (
+             SELECT id FROM book_facts
+             WHERE book_id = ? AND origin = 'extracted' AND valid_from_chapter >= ?)`,
+        )
+        .run(id, id, fromOrder);
       const deletedFacts = sqlite
         .prepare(
           `DELETE FROM book_facts
            WHERE book_id = ? AND origin = 'extracted' AND valid_from_chapter >= ?`,
         )
         .run(id, fromOrder).changes;
-      // Факт, закрытый удалённым сейчас фактом, иначе остался бы закрытым
-      // навсегда: ссылка на отменившего ушла в NULL по внешнему ключу, а
-      // граница действия — нет.
-      sqlite
-        .prepare(
-          `UPDATE book_facts SET valid_to_chapter = NULL
-           WHERE book_id = ? AND superseded_by IS NULL
-             AND valid_to_chapter IS NOT NULL AND valid_to_chapter >= ?`,
-        )
-        .run(id, fromOrder - 1);
       const deletedNotes = sqlite
         .prepare(
           `DELETE FROM book_notes
            WHERE book_id = ? AND origin = 'extracted' AND chapter_order_introduced >= ?`,
         )
         .run(id, fromOrder).changes;
-      // Нить, закрытую удалённой заметкой, открываем обратно.
+      // Нить, закрытую в перестраиваемом диапазоне, открываем обратно —
+      // только машинную. Заметки автора закрыты его решением, а отличить
+      // «закрыл автор» от «закрыла модель» у заметки нечем: ссылки на
+      // закрывшего, как у фактов, у неё нет.
       sqlite
         .prepare(
           `UPDATE book_notes SET chapter_order_resolved = NULL
-           WHERE book_id = ? AND chapter_order_resolved >= ?`,
+           WHERE book_id = ? AND origin = 'extracted' AND chapter_order_resolved >= ?`,
         )
         .run(id, fromOrder);
       const deletedEvents = sqlite

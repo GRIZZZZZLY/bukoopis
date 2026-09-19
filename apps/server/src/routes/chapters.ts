@@ -236,6 +236,18 @@ export function createChaptersRoute(
     // оставались действующим каноном навсегда. Связь с главой у них всё же
     // есть: версия-источник. Машинные записи уходят вместе с главой,
     // авторские (`manual`, `studio`) остаются — их автор писал сам.
+    // Факт, который отменял факт этой главы, иначе остался бы закрытым
+    // навсегда: ссылка уйдёт в NULL по внешнему ключу, граница — нет.
+    // Зеркало того же шага в «Перестроить память»; идёт ДО удаления.
+    sqlite
+      .prepare(
+        `UPDATE book_facts SET valid_to_chapter = NULL, superseded_by = NULL
+         WHERE book_id = ? AND superseded_by IN (
+           SELECT id FROM book_facts
+           WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN
+             (SELECT id FROM chapter_versions WHERE chapter_id = ?))`,
+      )
+      .run(existing.book_id, existing.book_id, id);
     const factsDeleted = sqlite
       .prepare(
         `DELETE FROM book_facts
@@ -243,6 +255,13 @@ export function createChaptersRoute(
            (SELECT id FROM chapter_versions WHERE chapter_id = ?)`,
       )
       .run(existing.book_id, id).changes;
+    // Нить, закрытую в этой главе, открываем обратно — только машинную.
+    sqlite
+      .prepare(
+        `UPDATE book_notes SET chapter_order_resolved = NULL
+         WHERE book_id = ? AND origin = 'extracted' AND chapter_order_resolved = ?`,
+      )
+      .run(existing.book_id, existing.order_index);
     const notesDeleted = sqlite
       .prepare(
         `DELETE FROM book_notes

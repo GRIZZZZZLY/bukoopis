@@ -116,6 +116,67 @@ describe("повторный быстрый сбор (В12)", () => {
     expect(aspect?.status).toBe("reviewing");
   });
 
+  it("догенерирует уцелевший раздел, когда часть этапа уже собрана", async () => {
+    const state = repo.loadStudioState(bookId);
+    repo.patchStudioState(bookId, {
+      expectedRevision: state.revision,
+      next: {
+        ...state,
+        stages: {
+          ...state.stages,
+          world: {
+            status: "in_progress",
+            playbookGenerated: true,
+            aspects: [
+              {
+                id: "a1",
+                name: "география",
+                status: "reviewing",
+                order: 0,
+                required: true,
+                source: "llm",
+                payloadKind: "markdown",
+                variants: [
+                  {
+                    id: "v1",
+                    label: "вариант",
+                    payloadKind: "markdown",
+                    payload: "готовый текст",
+                    status: "generated",
+                    editSource: "llm",
+                    generatedAt: "2026-09-19T00:00:00.000Z",
+                  },
+                ],
+              },
+              {
+                id: "a2",
+                name: "климат",
+                status: "pending",
+                order: 1,
+                required: true,
+                source: "llm",
+                payloadKind: "markdown",
+                variants: [],
+              },
+            ],
+          },
+        },
+      },
+    });
+    vi.mocked(runAspectVariants).mockResolvedValue({
+      variants: [{ label: "вариант", payload: "текст климата" }],
+    } as never);
+
+    await runQuickStart({ sqlite, hasVec: false, repo, bookId }, {});
+
+    const after = repo.loadStudioState(bookId);
+    const climate = after.stages.world?.aspects.find((a) => a.name === "климат");
+    expect(climate?.variants.length).toBeGreaterThan(0);
+    // Уже собранный раздел не переписан.
+    const geo = after.stages.world?.aspects.find((a) => a.name === "география");
+    expect(geo?.variants[0]?.payload).toBe("готовый текст");
+  });
+
   it("этап с уже собранными вариантами пропускается по-прежнему", async () => {
     const state = repo.loadStudioState(bookId);
     repo.patchStudioState(bookId, {
