@@ -9,6 +9,7 @@ import {
   writeChapterInputSchema,
   type BookOutline,
   type ChapterPlan,
+  boundaryForChapter,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -35,11 +36,9 @@ import {
   compileContext,
   describeCompiledContext,
 } from "../utils/context-compiler.js";
-import {
-  loadPovKnowledge,
-  renderPovKnowledgePrompt,
-} from "../utils/pov-context.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
+import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
+import { resolveEntity } from "../utils/entity-resolve.js";
 import {
   gatherRelevantNotes,
   renderOpenNotesPrompt,
@@ -397,7 +396,32 @@ export function createPlotRoute(
       beatBlob,
       prevSummary,
     ];
-    const charResult = gatherCharacterContext(sqlite, ch.book_id, contextTexts);
+    // Граница обязательна: без неё в третью главу приезжали факты из
+    // двадцатой — список знаний собирался по всей книге сразу.
+    //
+    // POV идёт отдельным идентификатором, а не надеждой на совпадение имени в
+    // тексте: беат-лист может назвать его псевдонимом, а резолвер знает
+    // псевдонимы. Прежде его знания шли ВТОРЫМ блоком промпта («Известно
+    // POV-персонажу») из тех же событий и той же границы — одно и то же
+    // платилось дважды из одного бюджета.
+    const povEntity = resolveEntity(sqlite, ch.book_id, "character", beatSheet.pov);
+    const povId = povEntity?.entityId;
+    // Беат-лист может звать POV псевдонимом, а карточка идёт под каноническим
+    // именем. «POV: Ваня» и «### Иван» — для модели два человека, и знания
+    // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
+    const beatSheetForWriter = povEntity
+      ? { ...beatSheet, pov: povEntity.canonicalName }
+      : beatSheet;
+    const charResult = gatherCharacterContext(
+      sqlite,
+      ch.book_id,
+      contextTexts,
+      povId ? [povId] : [],
+      makeCharacterBoundaryReaders(
+        sqlite,
+        boundaryForChapter(ch.book_id, ch.id, ch.current_version_id ?? null),
+      ),
+    );
     const charNameById = new Map(
       charResult.characters.map((cc) => [cc.character.id, cc.character.canonicalName]),
     );
@@ -451,11 +475,6 @@ export function createPlotRoute(
       excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
     });
 
-    // ADR 0003 slice 3b: what the POV character knows so far (POV guard).
-    const povKnowledge = renderPovKnowledgePrompt(
-      loadPovKnowledge(sqlite, ch.book_id, beatSheet.pov, ch.order_index),
-    );
-
     // Verbatim close of the preceding chapter — carries intonation and
     // unfinished action across the seam, which summaries drop.
     const prevTail = loadPreviousChapterTail(
@@ -470,7 +489,6 @@ export function createPlotRoute(
     const compiled = compileContext(
       [
         { id: "characters", text: characterContextFinal, priority: 1 },
-        { id: "pov", text: povKnowledge, priority: 1 },
         { id: "prevTail", text: prevTail, priority: 2 },
         { id: "rolling", text: prevSummary, priority: 2 },
         { id: "lore", text: loreContext, priority: 3 },
@@ -518,11 +536,10 @@ export function createPlotRoute(
           bookPremise: ctx.premise,
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
-          beatSheet,
+          beatSheet: beatSheetForWriter,
           previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
           previousChapterTail: inc.has("prevTail") ? prevTail : null,
           characterContext: inc.has("characters") ? characterContextFinal : null,
-          povKnowledge: inc.has("pov") ? povKnowledge : null,
           loreContext: inc.has("lore") ? loreContext : null,
           styleContext: inc.has("style") ? styleCtx.prompt : null,
           studioContext: inc.has("studio") ? studioCtx : null,

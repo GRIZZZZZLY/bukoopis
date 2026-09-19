@@ -1,5 +1,6 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
+  boundaryForChapter,
   chapterClosingSchema,
   extractNarrativeArchitecture,
   renderChapterClosing,
@@ -11,6 +12,7 @@ import {
   gatherLoreContext,
   loreContextToPrompt,
 } from "@book-forge/agents";
+import { makeCharacterBoundaryReaders } from "./character-events.js";
 import { renderActiveFactsPrompt } from "./book-facts.js";
 import { gatherRelevantNotes, renderOpenNotesPrompt } from "./book-notes.js";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
@@ -161,7 +163,14 @@ export async function loadChapterProseContext(
     chapterText,
     prevSummary,
   ];
-  const charResult = gatherCharacterContext(sqlite, book.id, contextTexts);
+  const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id);
+  const charResult = gatherCharacterContext(
+    sqlite,
+    book.id,
+    contextTexts,
+    [],
+    makeCharacterBoundaryReaders(sqlite, boundary),
+  );
   const charNameById = new Map(
     charResult.characters.map((cc) => [
       cc.character.id,

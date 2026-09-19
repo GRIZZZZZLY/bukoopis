@@ -14,6 +14,7 @@ import type {
   Location,
   Relationship,
   CharacterVoiceSample,
+  CharacterEvent,
   LocationProfile,
   ItemProfile,
   WriterProvider,
@@ -26,6 +27,10 @@ import {
   itemProfileSchema,
   normalizeCharacterProfile,
   normalizeRelationshipProfile,
+  characterEventKindSchema,
+  eventOriginSchema,
+  eventVerificationSchema,
+  normalizeEventData,
   studioEventTypeSchema,
   studioEventPayloadSchema,
 } from "@book-forge/shared";
@@ -198,6 +203,26 @@ export interface CharacterKnowledgeRow {
   created_at: string;
 }
 
+export interface CharacterEventRow {
+  id: number;
+  book_id: number;
+  subject_character_id: number;
+  addressee_character_id: number | null;
+  kind: string;
+  data_json: string;
+  chapter_id: number | null;
+  scene_ordinal: number;
+  source_version_id: number | null;
+  evidence_quote: string | null;
+  evidence_start: number | null;
+  evidence_end: number | null;
+  origin: string;
+  verification: string;
+  extractor_version: number;
+  dedup_key: string;
+  created_at: string;
+}
+
 function safeProfile<T>(json: string, schema: { parse: (v: unknown) => T }): T {
   return schema.parse(JSON.parse(json));
 }
@@ -306,6 +331,30 @@ export function toCharacterKnowledge(r: CharacterKnowledgeRow): CharacterKnowled
     characterId: r.character_id,
     fact: r.fact,
     learnedInChapterId: r.learned_in_chapter_id,
+    createdAt: r.created_at,
+  };
+}
+
+/** Вид, происхождение и статус приходят из колонок с CHECK — их можно
+ *  разбирать схемой. `data_json` — свободный JSON, поэтому он идёт через
+ *  нормализатор, который не бросает. */
+export function toCharacterEvent(r: CharacterEventRow): CharacterEvent {
+  const kind = characterEventKindSchema.parse(r.kind);
+  return {
+    id: r.id,
+    bookId: r.book_id,
+    subjectCharacterId: r.subject_character_id,
+    addresseeCharacterId: r.addressee_character_id,
+    kind,
+    data: normalizeEventData(kind, parseJsonOrNull(r.data_json)),
+    chapterId: r.chapter_id,
+    sceneOrdinal: r.scene_ordinal,
+    sourceVersionId: r.source_version_id,
+    evidenceQuote: r.evidence_quote,
+    evidenceStart: r.evidence_start,
+    evidenceEnd: r.evidence_end,
+    origin: eventOriginSchema.parse(r.origin),
+    verification: eventVerificationSchema.parse(r.verification),
     createdAt: r.created_at,
   };
 }

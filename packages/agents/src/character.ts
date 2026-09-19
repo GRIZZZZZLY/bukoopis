@@ -5,14 +5,15 @@ import {
   selectVoiceSamples,
   VOICE_SITUATION_LABELS,
   RELATIONSHIP_QUALITY_LABELS,
+  ACQUISITION_LABELS,
   type Character,
-  type CharacterKnowledge,
   type Relationship,
   type CharacterVoiceSample,
   type VoiceSampleSituation,
   type VoiceSampleOrigin,
   type VoiceSampleStatus,
   type RelationshipQualityKey,
+  type ActiveState,
 } from "@book-forge/shared";
 
 interface CharacterRow {
@@ -23,13 +24,6 @@ interface CharacterRow {
   revision: number;
   created_at: string;
   updated_at: string;
-}
-interface KnowledgeRow {
-  id: number;
-  character_id: number;
-  fact: string;
-  learned_in_chapter_id: number | null;
-  created_at: string;
 }
 interface RelationshipRow {
   id: number;
@@ -83,15 +77,6 @@ function rowToCharacter(r: CharacterRow): Character {
     updatedAt: r.updated_at,
   };
 }
-function rowToKnowledge(r: KnowledgeRow): CharacterKnowledge {
-  return {
-    id: r.id,
-    characterId: r.character_id,
-    fact: r.fact,
-    learnedInChapterId: r.learned_in_chapter_id,
-    createdAt: r.created_at,
-  };
-}
 function rowToRelationship(r: RelationshipRow): Relationship {
   return {
     id: r.id,
@@ -125,6 +110,14 @@ function rowToVoiceSample(r: CharacterVoiceSampleRow): CharacterVoiceSample {
   };
 }
 
+export interface CharacterKnowledge {
+  fact: string;
+  acquisition: string;
+  source: string | null;
+  canonFactId: number | null;
+  disprovedFromChapterOrder: number | null;
+}
+
 export interface CharacterContext {
   character: Character;
   knowledge: CharacterKnowledge[];
@@ -135,6 +128,26 @@ export interface CharacterAgentResult {
   relationships: Relationship[];
   /** Принятые образцы речи всех участников, в стабильном порядке. */
   voiceSamples: CharacterVoiceSample[];
+  /** Эпизодические состояния персонажей. */
+  states: ActiveState[];
+}
+
+/**
+ * Чтение знаний и состояний на границе сцены. Передаётся снаружи, а не
+ * делается здесь: эти запросы уже живут в сервере вместе со своими тестами
+ * (`loadKnowledgeAtBoundary`, `loadActiveStates`), а `packages/agents` до
+ * `apps/server` не дотягивается. Второй экземпляр той же SQL разошёлся бы с
+ * первым на первой же правке — и разошёлся бы молча, потому что именно этот
+ * путь идёт в Писателя.
+ *
+ * Аргумент ОБЯЗАТЕЛЕН, хотя `null` и разрешён. Необязательный он означал бы,
+ * что четвёртый вызывающий, забывший его передать, молча теряет все знания и
+ * состояния: ни ошибки типов, ни падения теста, ни видимой разницы в промпте.
+ * `null` передаётся осознанно и значит «знаний в этом контексте нет».
+ */
+export interface CharacterBoundaryReaders {
+  knowledge(characterId: number): CharacterKnowledge[];
+  states(characterIds: number[]): ActiveState[];
 }
 
 // Detect characters mentioned in any of the provided text blobs by canonical
@@ -144,12 +157,13 @@ export function gatherCharacterContext(
   bookId: number,
   texts: Array<string | null | undefined>,
   alwaysIncludeIds: number[] = [],
+  readers: CharacterBoundaryReaders | null,
 ): CharacterAgentResult {
   const allCharacters = sqlite
     .prepare("SELECT * FROM characters WHERE book_id = ?")
     .all(bookId) as CharacterRow[];
   if (allCharacters.length === 0) {
-    return { characters: [], relationships: [], voiceSamples: [] };
+    return { characters: [], relationships: [], voiceSamples: [], states: [] };
   }
 
   const blob = texts.filter(Boolean).join("\n").toLowerCase();
@@ -160,7 +174,7 @@ export function gatherCharacterContext(
     if (blob.includes(name)) mentioned.add(c.id);
   }
   if (mentioned.size === 0) {
-    return { characters: [], relationships: [], voiceSamples: [] };
+    return { characters: [], relationships: [], voiceSamples: [], states: [] };
   }
 
   const ids = [...mentioned];
@@ -170,15 +184,12 @@ export function gatherCharacterContext(
       `SELECT * FROM characters WHERE id IN (${placeholders}) ORDER BY canonical_name ASC`,
     )
     .all(...ids) as CharacterRow[];
+
   const characters: CharacterContext[] = rows.map((r) => {
-    const knowledge = sqlite
-      .prepare(
-        "SELECT * FROM character_knowledge WHERE character_id = ? ORDER BY created_at ASC",
-      )
-      .all(r.id) as KnowledgeRow[];
+    const knowledge = readers ? readers.knowledge(r.id) : [];
     return {
       character: rowToCharacter(r),
-      knowledge: knowledge.map(rowToKnowledge),
+      knowledge,
     };
   });
 
@@ -198,10 +209,13 @@ export function gatherCharacterContext(
     )
     .all(...ids) as CharacterVoiceSampleRow[];
 
+  const states = readers ? readers.states(ids) : [];
+
   return {
     characters,
     relationships: rels.map(rowToRelationship),
     voiceSamples: voiceRows.map(rowToVoiceSample),
+    states,
   };
 }
 
@@ -212,9 +226,23 @@ export function characterContextToPrompt(
 ): string {
   if (result.characters.length === 0) return "";
   const lines: string[] = ["## Персонажи в сцене"];
+  // Правило приехало из отдельного блока «Известно POV-персонажу», который
+  // рисовал те же события из той же границы вторым списком и платился дважды
+  // из одного бюджета. Оно общее — верно для каждого героя, а не только для
+  // POV, — но печатается ТОЛЬКО если хоть у кого-то список есть: иначе оно
+  // утверждает, что герой не знает ничего, тогда как знаний просто не
+  // собрано.
+  if (result.characters.some((cc) => cc.knowledge.length > 0)) {
+    lines.push(
+      "Под «Знает» — то, что герой знает К НАЧАЛУ сцены. Думать и говорить как своё он может только это; остального он ещё не знает, даже если это правда. У героя без такого списка знания не собраны — это не значит, что он не знает ничего.",
+    );
+  }
 
   const samplesFor = (characterId: number) =>
     result.voiceSamples.filter((s) => s.characterId === characterId);
+
+  const statesFor = (characterId: number) =>
+    result.states.filter((s) => s.subjectCharacterId === characterId);
 
   for (const ctx of result.characters) {
     const c = ctx.character;
@@ -228,7 +256,34 @@ export function characterContextToPrompt(
       lines.push(`- Внешность: ${c.profile.appearance}`);
     if (ctx.knowledge.length > 0) {
       lines.push("- Знает:");
-      for (const k of ctx.knowledge) lines.push(`  · ${k.fact}`);
+      for (const k of ctx.knowledge) {
+        const acqLabel = ACQUISITION_LABELS[k.acquisition as keyof typeof ACQUISITION_LABELS] || "";
+        const sourceLabel = k.source ? k.source : null;
+        const tail = [acqLabel, sourceLabel].filter(Boolean).join(", ");
+        lines.push(`  · ${k.fact}${tail ? ` (${tail})` : ""}`);
+      }
+    }
+
+    const myStates = statesFor(c.id);
+    if (myStates.length > 0) {
+      lines.push("- Сейчас с ним:");
+      for (const s of myStates) {
+        const notes: string[] = [];
+        // Давнее состояние подписывается главой, чтобы Писатель не принял его
+        // за нынешнее. Номер — порядковый, а не `order_index`.
+        if (s.certainty === "stale" && s.observedAtChapterOrder !== null) {
+          notes.push(`наблюдалось в главе ${s.observedAtChapterOrder}`);
+        } else if (s.certainty === "stale") {
+          notes.push("наблюдалось давно");
+        }
+        // Условие завершения — половина смысла эпизодического состояния
+        // (AC-34): без него «устала» читается как черта характера.
+        // Условие подставляется как есть, без «до тех пор, пока»: значение
+        // свободное, и канонический пример плана — «пока Сарек не ответит»,
+        // который дал бы «до тех пор, пока пока Сарек не ответит».
+        if (s.endCondition) notes.push(`держится: ${s.endCondition}`);
+        lines.push(`  · ${s.state}${notes.length > 0 ? ` (${notes.join("; ")})` : ""}`);
+      }
     }
 
     const mine = selectVoiceSamples(samplesFor(c.id), {

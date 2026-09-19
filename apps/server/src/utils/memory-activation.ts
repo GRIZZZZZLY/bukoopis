@@ -1,8 +1,9 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import type { EpisodicNoteExtraction, ExtractedFact } from "@book-forge/shared";
-import { COMMIT_JOB_KINDS, type MemoryJobKind } from "./memory-queue.js";
+import type { EpisodicNoteExtraction, ExtractedFact, ExtractedCharacterEvent } from "@book-forge/shared";
+import { COMMIT_JOB_KINDS, MEMORY_PIPELINE_VERSION, type MemoryJobKind } from "./memory-queue.js";
 import { persistExtractedFacts } from "./book-facts.js";
 import { materializeEpisodicNotes } from "./book-notes.js";
+import { persistCharacterEvents } from "./character-events.js";
 
 /**
  * ADR 0002 (I4, I6) — atomic memory activation + book-level staleness.
@@ -18,8 +19,13 @@ import { materializeEpisodicNotes } from "./book-notes.js";
 /** Staged payload shapes written by the worker into result_json. */
 export interface StagedFactsResult {
   factCount: number;
+  eventCount?: number;
   skipped?: string;
-  staged?: { facts: ExtractedFact[] };
+  staged?: {
+    facts: ExtractedFact[];
+    /** Необязательные: staged-результаты версии конвейера 1 их не несут. */
+    characterEvents?: ExtractedCharacterEvent[];
+  };
 }
 export interface StagedNotesResult {
   newCount: number;
@@ -91,6 +97,27 @@ export function tryActivateMemoryVersion(
         versionId,
         factsResult.staged.facts,
       );
+    }
+    const staged = factsResult?.staged;
+    // `Array.isArray`, а не `.length`: `parseJson` — это `JSON.parse as T` без
+    // схемы, и строка или `{length: 1}` из испорченного result_json дошли бы
+    // до `for…of` и бросили внутри транзакции.
+    if (Array.isArray(staged?.characterEvents) && staged.characterEvents.length > 0) {
+      const outcome = persistCharacterEvents(sqlite, {
+        bookId: ch.book_id,
+        chapterId,
+        sourceVersionId: versionId,
+        events: staged.characterEvents,
+        extractorVersion: MEMORY_PIPELINE_VERSION,
+      });
+      if (outcome.rejectedEvidence > 0 || outcome.unresolved > 0) {
+        // Не ошибка активации: остальные слои версии обязаны активироваться.
+        // Но молчать нельзя — это единственное место, где видно, сколько
+        // извлечённого отброшено и почему.
+        console.warn(
+          `[memory] v${versionId}: принято событий ${outcome.inserted}, повторов ${outcome.duplicates}; отброшено — доказательство ${outcome.rejectedEvidence}, имя героя или адресата не разрешилось ${outcome.unresolved}`,
+        );
+      }
     }
     if (notesResult?.staged) {
       materializeEpisodicNotes(

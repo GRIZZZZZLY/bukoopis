@@ -1,6 +1,6 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { extractCanonFacts } from "@book-forge/agents";
-import type { ExtractedFact, FactEntityType } from "@book-forge/shared";
+import type { ExtractedFact, FactEntityType, ExtractedCharacterEvent } from "@book-forge/shared";
 import { logUsage } from "./usageLogger.js";
 import { resolveEntity, normalizeEntityName } from "./entity-resolve.js";
 
@@ -315,6 +315,8 @@ export interface FactsExtractionResult {
 
 export interface FactsPayload {
   facts: ExtractedFact[];
+  /** Личные события героев из того же вызова (раздел 12, решение 6). */
+  characterEvents: ExtractedCharacterEvent[];
   bookId: number;
   chapterId: number;
   chapterOrder: number;
@@ -345,6 +347,7 @@ export async function extractFactsPayload(
     | undefined;
   const missing: FactsPayload = {
     facts: [],
+    characterEvents: [],
     bookId: 0,
     chapterId: 0,
     chapterOrder: 0,
@@ -365,7 +368,7 @@ export async function extractFactsPayload(
     chapterId: ch.id,
     chapterOrder: ch.order_index,
   };
-  if (v.word_count < 80) return { ...base, facts: [], skipped: "short" };
+  if (v.word_count < 80) return { ...base, facts: [], characterEvents: [], skipped: "short" };
 
   const bk = sqlite
     .prepare("SELECT title, critic_model FROM books WHERE id = ?")
@@ -420,7 +423,7 @@ export async function extractFactsPayload(
       }),
   });
 
-  return { ...base, facts: result.facts };
+  return { ...base, facts: result.facts, characterEvents: result.characterEvents ?? [] };
 }
 
 /**

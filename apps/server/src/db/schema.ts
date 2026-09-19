@@ -680,6 +680,82 @@ export const characterVoiceSamples = sqliteTable(
   ],
 );
 
+/** Этап 3 ТЗ индивидуальности персонажей: слой событий персонажа.
+ *  Знание — это вид события, а не отдельная таблица: два источника истины
+ *  расходятся на первой же правке (раздел 6, решение 5). */
+export const characterEvents = sqliteTable(
+  "character_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    subjectCharacterId: integer("subject_character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    addresseeCharacterId: integer("addressee_character_id").references(
+      () => characters.id,
+      { onDelete: "set null" },
+    ),
+    kind: text("kind").notNull(),
+    dataJson: text("data_json").notNull(),
+    // Граница сцены. Номер главы НЕ денормализуется: перестановка глав
+    // оставила бы тихо неверную границу, а join к chapters всегда верен.
+    // CASCADE: пустая глава значит «известно с начала» и видно на любой
+    // границе. SET NULL превращал бы секрет удалённой главы 8 в такую
+    // запись, и он всплывал бы в подготовке главы 4.
+    chapterId: integer("chapter_id").references(() => chapters.id, {
+      onDelete: "cascade",
+    }),
+    sceneOrdinal: integer("scene_ordinal").notNull().default(0),
+    // CASCADE: доказательство события живёт в content_text этой версии. Без
+    // версии смещения показывают в пустоту, а событие остаётся активным —
+    // состояние, которое запрещает AC-25.
+    sourceVersionId: integer("source_version_id").references(
+      () => chapterVersions.id,
+      { onDelete: "cascade" },
+    ),
+    // Доказательство в неизменяемом content_text указанной версии.
+    evidenceQuote: text("evidence_quote"),
+    evidenceStart: integer("evidence_start"),
+    evidenceEnd: integer("evidence_end"),
+    origin: text("origin").notNull(),
+    verification: text("verification").notNull().default("derived"),
+    extractorVersion: integer("extractor_version").notNull().default(1),
+    // Стабильный ключ для идемпотентности повторной обработки (AC-21).
+    dedupKey: text("dedup_key").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    // NULL в `source_version_id` SQLite считает уникальным значением, поэтому
+    // строки без версии-источника (ручные, перенесённые миграцией) этим
+    // индексом не дедуплицируются. Так и задумано: идемпотентность нужна
+    // только повторной обработке версии (AC-21), а там версия есть всегда.
+    // `extractor_version` в ключе: без него повышение номера извлекателя
+    // гасилось бы индексом целиком, и колонка существовала бы ради случая,
+    // который ключ запрещает.
+    uniqueIndex("uq_character_events_dedup").on(
+      t.subjectCharacterId,
+      t.kind,
+      t.dedupKey,
+      t.sourceVersionId,
+      t.extractorVersion,
+    ),
+    index("idx_character_events_subject").on(t.subjectCharacterId),
+    index("idx_character_events_chapter").on(t.chapterId),
+    index("idx_character_events_book").on(t.bookId),
+    index("idx_character_events_version").on(t.sourceVersionId),
+    check("character_events_kind_check", sql`${t.kind} IN ('knowledge','state','relation_shift','commitment')`),
+    check("character_events_origin_check", sql`${t.origin} IN ('manual','llm','accepted_prose','migration')`),
+    check("character_events_verification_check", sql`${t.verification} IN ('derived','proposed','confirmed','rejected')`),
+    check("character_events_scene_ordinal_check", sql`${t.sceneOrdinal} >= 0`),
+    check("character_events_extractor_version_check", sql`${t.extractorVersion} >= 1`),
+    check("character_events_evidence_start_check", sql`${t.evidenceStart} IS NULL OR ${t.evidenceStart} >= 0`),
+    check("character_events_evidence_end_check", sql`${t.evidenceEnd} IS NULL OR ${t.evidenceEnd} >= 0`),
+    check("character_events_evidence_range_check", sql`${t.evidenceStart} IS NULL OR ${t.evidenceEnd} IS NULL OR ${t.evidenceEnd} > ${t.evidenceStart}`),
+  ],
+);
+
 /** Леджер дневного набора слов (свеча-цель). Пишется из PUT /chapters/:id/draft. */
 export const writingDays = sqliteTable("writing_days", {
   date: text("date").primaryKey(),

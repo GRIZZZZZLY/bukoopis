@@ -466,8 +466,13 @@ export function normalizeEventData<K extends CharacterEventKind>(
   if (parsed.success) return parsed.data as EventDataFor<K>;
 
   // Разбираем по полю: валидное сохраняем, невалидное заменяем умолчанием.
+  // `Object.hasOwn` обязателен: `schema.shape` — обычный объект, и ключ с
+  // именем из прототипа (`toString`, `valueOf`, `constructor`) вернул бы
+  // унаследованную функцию, у которой нет `safeParse`. Это уронило бы ровно
+  // ту функцию, которая написана, чтобы никогда не ронять.
   const salvaged: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(source)) {
+    if (!Object.hasOwn(schema.shape, key)) continue;
     const field = (schema.shape as Record<string, z.ZodTypeAny>)[key];
     if (field && field.safeParse(value).success) salvaged[key] = value;
   }
@@ -510,6 +515,19 @@ export const extractedCharacterEventSchema = z
   .refine((e) => e.evidenceEnd > e.evidenceStart, {
     message: "конец диапазона должен быть больше начала",
     path: ["evidenceEnd"],
+  })
+  // `data` объявлено свободной записью, потому что её форма зависит от вида
+  // события. Оставить её непроверенной значило бы принимать от модели что
+  // угодно — а докблок модуля обещает, что пределы живут именно здесь.
+  // Проверяем схемой соответствующего вида.
+  .superRefine((e, ctx) => {
+    if (!DATA_SCHEMAS[e.kind].safeParse(e.data).success) {
+      ctx.addIssue({
+        code: "custom",
+        message: `данные не подходят виду события ${e.kind}`,
+        path: ["data"],
+      });
+    }
   });
 export type ExtractedCharacterEvent = z.infer<typeof extractedCharacterEventSchema>;
 ```
@@ -579,7 +597,11 @@ CREATE TABLE character_events (
   -- оставила бы тихо неверную границу, а join к chapters всегда верен.
   chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL,
   scene_ordinal INTEGER NOT NULL DEFAULT 0,
-  source_version_id INTEGER REFERENCES chapter_versions(id) ON DELETE SET NULL,
+
+  -- CASCADE, а не SET NULL: доказательство события живёт в content_text этой
+  -- версии. Без версии смещения показывают в пустоту, событие остаётся
+  -- активным и непроверяемым — состояние, запрещённое AC-25.
+  source_version_id INTEGER REFERENCES chapter_versions(id) ON DELETE CASCADE,
 
   -- Доказательство в неизменяемом content_text указанной версии.
   evidence_quote TEXT,
@@ -607,9 +629,12 @@ CREATE TABLE character_events (
 
 -- Повторная обработка той же версии тем же извлекателем не плодит строк.
 -- Версия входит в ключ: то же событие, найденное в ДРУГОЙ версии главы, —
--- отдельная запись со своим доказательством.
+-- отдельная запись со своим доказательством. Номер извлекателя — по той же
+-- причине: без него повышение extractor_version гасилось бы индексом, и
+-- колонка существовала бы ради случая, который ключ запрещает.
 CREATE UNIQUE INDEX uq_character_events_dedup
-  ON character_events (subject_character_id, kind, dedup_key, source_version_id);
+  ON character_events (subject_character_id, kind, dedup_key,
+                       source_version_id, extractor_version);
 --> statement-breakpoint
 CREATE INDEX idx_character_events_subject ON character_events (subject_character_id);
 --> statement-breakpoint
@@ -830,7 +855,7 @@ git commit -m "feat(db): миграция 0023 — события персона
 
 **Interfaces:**
 - Consumes: `extractedCharacterEventSchema`, `defaultVerificationFor`, `normalizeEventData`, `toCharacterEvent`, `resolveEntity` (этап 2).
-- Produces: `verifyEvidence(contentText, quote, start, end)`, `dedupKeyFor(kind, data)`, `persistCharacterEvents(sqlite, args)`, тип `PersistEventsOutcome`. Задачи 5–8 зависят от них.
+- Produces: `locateEvidence(contentText, quote)`, `dedupKeyFor(kind, data, addresseeCharacterId?)`, `persistCharacterEvents(sqlite, args)`, тип `PersistEventsOutcome`. Задачи 5–8 зависят от них. (Изначально здесь значился `verifyEvidence(contentText, quote, start, end)`; ревью задачи 5 показало, что диапазон у модели просить нельзя — см. врезку в конце Step 3.)
 
 - [ ] **Step 1: Написать падающие тесты**
 
@@ -888,6 +913,24 @@ describe("dedupKeyFor", () => {
       dedupKeyFor("knowledge", { fact: "станцию закрывают" }),
     );
   });
+
+  it("сдвиг отношения к разным адресатам даёт разные ключи", () => {
+    // Адресат живёт колонкой, а не в data: relationShiftDataSchema — это
+    // {quality, from, to}. Без него два сдвига из одной версии к разным
+    // героям совпали бы ключом, и уникальный индекс молча выбросил бы
+    // второй (INSERT OR IGNORE).
+    const data = { quality: "доверие", from: "ровно", to: "холодно" };
+    expect(dedupKeyFor("relation_shift", data, 7)).not.toBe(
+      dedupKeyFor("relation_shift", data, 8),
+    );
+  });
+
+  it("отсутствие адресата — тоже значение ключа", () => {
+    const data = { fact: "X" };
+    expect(dedupKeyFor("knowledge", data, null)).toBe(
+      dedupKeyFor("knowledge", data),
+    );
+  });
 });
 ```
 
@@ -938,8 +981,17 @@ export function verifyEvidence(
  * той же версии тем же извлекателем не должна плодить долги и секреты, а
  * модель между прогонами переставляет ключи и меняет пробелы — поэтому
  * ключ считается по смыслу, а не по сырому JSON.
+ *
+ * Адресат входит в ключ отдельным аргументом, потому что он живёт колонкой
+ * `addressee_character_id`, а не в `data`: у `relation_shift` данные — это
+ * {quality, from, to}, и два сдвига из одной версии к разным героям без
+ * него совпали бы ключом, а `INSERT OR IGNORE` выбросил бы второй молча.
  */
-export function dedupKeyFor(kind: CharacterEventKind, data: unknown): string {
+export function dedupKeyFor(
+  kind: CharacterEventKind,
+  data: unknown,
+  addresseeCharacterId: number | null = null,
+): string {
   const norm = (v: unknown): unknown => {
     if (typeof v === "string") return v.trim().replace(/\s+/g, " ").toLowerCase();
     if (Array.isArray(v)) return v.map(norm);
@@ -952,7 +1004,7 @@ export function dedupKeyFor(kind: CharacterEventKind, data: unknown): string {
     }
     return v;
   };
-  return `${kind}:${JSON.stringify(norm(data))}`;
+  return `${kind}:${addresseeCharacterId ?? "-"}:${JSON.stringify(norm(data))}`;
 }
 
 export interface PersistEventsOutcome {
@@ -968,9 +1020,12 @@ export interface PersistEventsOutcome {
 export interface PersistEventsArgs {
   bookId: number;
   chapterId: number;
+  /**
+   * Версия-источник. Текст для сверки читается по ней внутри и параметром
+   * не принимается: гарантия AC-25 не должна зависеть от того, передал ли
+   * вызывающий текст ИМЕННО этой версии, а не черновик рядом с ней.
+   */
   sourceVersionId: number;
-  /** Текст ИМЕННО той версии, из которой извлекали. */
-  contentText: string;
   events: ExtractedCharacterEvent[];
   extractorVersion: number;
 }
@@ -1030,7 +1085,7 @@ export function persistCharacterEvents(
       e.evidenceEnd,
       defaultVerificationFor(e.kind),
       args.extractorVersion,
-      dedupKeyFor(e.kind, e.data),
+      dedupKeyFor(e.kind, e.data, addressee?.entityId ?? null),
       now,
     );
     if (info.changes > 0) out.inserted += 1;
@@ -1041,6 +1096,25 @@ export function persistCharacterEvents(
 ```
 
 `INSERT OR IGNORE` здесь **уместен и намеренно отличается** от `recordProfileVersion` этапа 2, где `OR IGNORE` был убран: там дубликат означал бы потерянное обновление, а здесь он означает ровно то, что AC-21 требует — повторная обработка той же версии не плодит строк. Написать это комментарием, иначе следующий читатель «поправит» по аналогии.
+
+> **Блок выше — исходный замысел; реализация ушла вперёд по итогам ревью.**
+> Живая ссылка — `apps/server/src/utils/character-events.ts`. Отличия, каждое
+> закрывает найденную дыру: текст читается по `sourceVersionId` внутри, а не
+> принимается параметром; `dedupKeyFor` хеширует `normalizeEventData(kind, data)`
+> и приводит строки к NFC, иначе дописанные моделью умолчания разводят одно
+> событие на два; доказательство проверяется раньше разбора имени; названный,
+> но неразрешённый адресат — отказ `unresolved`, а не `NULL`; `extractorVersion`
+> проверяется на входе, потому что `INSERT OR IGNORE` гасит и нарушения CHECK;
+> `verifyEvidence` отвергает цитату короче двух значащих символов.
+>
+> **Позже, по итогам ревью задачи 5, доказательство перестало нести диапазон.**
+> `extractedCharacterEventSchema` больше не имеет `evidenceStart`/`evidenceEnd`,
+> а `verifyEvidence` заменён на `locateEvidence(contentText, quote)`, который
+> ищет цитату сам и возвращает `{start, end}` либо `null`. Причина: модель не
+> считает позиции символов в главе на двадцать тысяч знаков, промах на единицу
+> отвергает событие, и весь разбор выглядел бы как «в главе ничего нет».
+> Цитата, встречающаяся дважды, тоже отвергается — неоднозначная привязка
+> хуже отсутствующей. В хранилище диапазон остался: его считает сервер.
 
 - [ ] **Step 4: Прогнать тесты**
 
@@ -1199,8 +1273,6 @@ it("staged-результат задания facts несёт события р�
         kind: "knowledge",
         data: { fact: "Станцию закрывают", acquisition: "told" },
         evidenceQuote: QUOTE,
-        evidenceStart: start,
-        evidenceEnd: start + QUOTE.length,
       },
     ],
   });
@@ -1214,7 +1286,6 @@ it("staged-результат задания facts несёт события р�
   const staged = JSON.parse(row.result_json);
   expect(staged.staged.facts).toHaveLength(1);
   expect(staged.staged.characterEvents).toHaveLength(1);
-  expect(staged.staged.contentText).toBe(CHAPTER_TEXT);
   expect(staged.eventCount).toBe(1);
 });
 ```
@@ -1245,8 +1316,6 @@ export interface FactsPayload {
   facts: ExtractedFact[];
   /** Личные события героев из того же вызова (раздел 12, решение 6). */
   characterEvents: ExtractedCharacterEvent[];
-  /** Текст ИМЕННО этой версии — активация сверяет по нему доказательства. */
-  contentText: string;
   bookId: number;
   chapterId: number;
   chapterOrder: number;
@@ -1254,7 +1323,7 @@ export interface FactsPayload {
 }
 ```
 
-Вернуть `characterEvents: result.characterEvents ?? []` и `contentText: v.content_text` из всех ветвей, включая обе ранние с пустым результатом — иначе тип не сойдётся, и заглушать это приведением было бы неверным исправлением.
+Вернуть `characterEvents: result.characterEvents ?? []` из всех ветвей, включая обе ранние с пустым результатом — иначе тип не сойдётся, и заглушать это приведением было бы неверным исправлением. Текста версии в стадированном результате нет намеренно: `persistCharacterEvents` читает его сам по `sourceVersionId`, и пронести сюда чужой текст больше нечем.
 
 В `apps/server/src/utils/memory-worker.ts`, `handleFacts`:
 
@@ -1265,7 +1334,6 @@ completeMemoryJob(sqlite, job.id, {
   staged: {
     facts: p.facts,
     characterEvents: p.characterEvents,
-    contentText: p.contentText,
   },
 });
 ```
@@ -1357,7 +1425,6 @@ export interface StagedFactsResult {
     facts: ExtractedFact[];
     /** Необязательные: staged-результаты версии конвейера 1 их не несут. */
     characterEvents?: ExtractedCharacterEvent[];
-    contentText?: string;
   };
 }
 ```
@@ -1366,12 +1433,11 @@ export interface StagedFactsResult {
 
 ```ts
     const staged = factsResult?.staged;
-    if (staged?.characterEvents?.length && staged.contentText) {
+    if (staged?.characterEvents?.length) {
       const outcome = persistCharacterEvents(sqlite, {
         bookId: ch.book_id,
         chapterId,
         sourceVersionId: versionId,
-        contentText: staged.contentText,
         events: staged.characterEvents,
         extractorVersion: MEMORY_PIPELINE_VERSION,
       });

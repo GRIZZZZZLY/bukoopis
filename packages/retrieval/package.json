@@ -15,7 +15,7 @@
   "dependencies": {
     "@book-forge/shared": "workspace:*",
     "@huggingface/transformers": "^3.3.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "sqlite-vec": "^0.1.7-alpha.2"
   },
   "devDependencies": {

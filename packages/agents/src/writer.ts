@@ -20,7 +20,7 @@ const SYSTEM_WRITER = `Ты — Writer Agent. Пишешь художестве�
 
 Требования:
 — Не пересказывай beats — превращай их в живую сцену с диалогами, действием, описаниями. Beats — каркас, не сценарий: не переноси их формулировки в текст дословно; отдельная деталь может прийти не по порядку или остаться за кадром, если исход beat'а сохранён.
-— Соблюдай POV из beat-sheet. Объективный канон мира используй для непротиворечивости, но НЕ вкладывай в мысли/речь POV-персонажа то, чего он ещё не знает. В его сознании допустимо лишь то, что перечислено в блоке «Известно POV-персонажу» (если он есть).
+— Соблюдай POV из beat-sheet. Объективный канон мира используй для непротиворечивости, но НЕ вкладывай в мысли/речь POV-персонажа то, чего он ещё не знает. Что каждый герой знает к началу сцены, перечислено под «Знает» в его карточке в блоке «Персонажи в сцене». Канон мира может быть шире: герой узнаёт не всё и не сразу.
 — Не объясняй тему и иронию словами нарратора: смысл несут события. Нарратор не подводит итог, герой не формулирует, что он понял и чему научился.
 — Регистр меняется от сцены к сцене: длина предложений, плотность описаний и доля диалога в сцене покоя и в сцене ужаса не должны совпадать. Одна каденция на всю главу — машинный признак.
 — Финал главы задан в блоке «Финал главы»; держи его. После кульминации не более одного абзаца рефлексии, последний абзац — действие, реплика или образ, не осмысление. Если финал не задан, заканчивай действием.
@@ -54,7 +54,6 @@ export interface WriteChapterInput {
   previousChapterTail?: string | null;
   characterContext: string | null;
   /** ADR 0003 slice 3b — what the POV character knows so far (POV guard). */
-  povKnowledge?: string | null;
   loreContext: string | null;
   styleContext: string | null; // fingerprint + few-shot from reference corpus
   fatigueWords: string[]; // additional avoid-list
@@ -133,7 +132,6 @@ export function buildWriterStableSystem(input: WriteChapterInput): string {
     );
   }
   if (input.characterContext) stableParts.push(input.characterContext);
-  if (input.povKnowledge) stableParts.push(input.povKnowledge);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {

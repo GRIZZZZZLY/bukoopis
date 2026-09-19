@@ -4,8 +4,9 @@ import {
   normalizeRelationshipProfile,
   type CharacterVoiceSample,
   type Relationship,
+  type ActiveState,
 } from "@book-forge/shared";
-import { characterContextToPrompt } from "../character.js";
+import { characterContextToPrompt, type CharacterAgentResult } from "../character.js";
 
 const names = new Map([
   [1, "Рин"],
@@ -18,6 +19,25 @@ function rel(id: number, from: number, to: number, profile: unknown): Relationsh
     type: "напарник", tension: 0, notes: null, revision: 0,
     profile: normalizeRelationshipProfile(profile),
     createdAt: "", updatedAt: "",
+  };
+}
+
+function ctx(over: Partial<CharacterAgentResult> = {}): CharacterAgentResult {
+  return {
+    characters: [
+      {
+        character: {
+          id: 1, bookId: 3, canonicalName: "Рин", revision: 0,
+          profile: normalizeCharacterProfile({ description: "Инженер." }),
+          createdAt: "", updatedAt: "",
+        },
+        knowledge: [],
+      },
+    ],
+    relationships: [],
+    voiceSamples: [],
+    states: [],
+    ...over,
   };
 }
 
@@ -49,6 +69,7 @@ const result = {
     voice({ id: 1, situation: "authority", text: "Так точно." }),
     voice({ id: 2, situation: "intimate", text: "Ты опять за своё." }),
   ],
+  states: [] as ActiveState[],
 };
 
 const bare = { ...result, relationships: [], voiceSamples: [] };
@@ -119,5 +140,89 @@ describe("characterContextToPrompt", () => {
     expect(text).toContain("доверие: верит на слово");
     expect(text).not.toContain("разногласия:");
     expect(text).not.toContain("умолчания:");
+  });
+
+  it("правило про «Знает» не печатается, когда списков нет", () => {
+    // Безусловная шапка утверждала бы, что герой не знает ничего, тогда как
+    // знания просто не собраны — например, на пути без границы.
+    const text = characterContextToPrompt(ctx(), names);
+    expect(text).not.toContain("К НАЧАЛУ сцены");
+  });
+
+  it("правило про «Знает» печатается, когда список есть", () => {
+    const text = characterContextToPrompt(
+      ctx({
+        characters: [
+          {
+            character: ctx().characters[0]!.character,
+            knowledge: [{ fact: "Станцию закрывают", acquisition: "told", source: null, canonFactId: null, disprovedFromChapterOrder: null }],
+          },
+        ],
+      }),
+      names,
+    );
+    expect(text).toContain("К НАЧАЛУ сцены");
+  });
+
+  it("знания рендерятся только те, что пришли в контекст", () => {
+    // Раньше этот тест назывался проверкой AC-07, но границы не касался:
+    // знание подаётся прямо в рендерер, и отсечь его тут нечему. Границу
+    // проверяет `character-context-boundary.test.ts` на стороне сервера,
+    // где живёт её SQL.
+    const text = characterContextToPrompt(
+      ctx({
+        characters: [
+          {
+            character: ctx().characters[0]!.character,
+            knowledge: [{ fact: "Станцию закрывают", acquisition: "told", source: null, canonFactId: null, disprovedFromChapterOrder: null }],
+          },
+        ],
+      }),
+      names,
+    );
+    expect(text).toContain("Станцию закрывают");
+    expect(text).not.toContain("Сарек");
+  });
+
+  it("состояние с неизвестным сроком показано как последнее наблюдение", () => {
+    const text = characterContextToPrompt(
+      ctx({
+        states: [
+          {
+            subjectCharacterId: 1,
+            state: "не простила смену",
+            endCondition: null,
+            observedAtChapterOrder: 2,
+            certainty: "stale",
+          },
+        ],
+      }),
+      names,
+    );
+    expect(text).toContain("не простила смену");
+    expect(text).toContain("наблюдалось в главе 2");
+  });
+
+  it("свежее состояние показано без оговорки о давности", () => {
+    const text = characterContextToPrompt(
+      ctx({
+        states: [
+          {
+            subjectCharacterId: 1,
+            state: "устала",
+            endCondition: null,
+            observedAtChapterOrder: 3,
+            certainty: "fresh",
+          },
+        ],
+      }),
+      names,
+    );
+    expect(text).toContain("устала");
+    expect(text).not.toContain("наблюдалось в главе");
+  });
+
+  it("без событий блок состояния не появляется", () => {
+    expect(characterContextToPrompt(ctx(), names)).not.toContain("Сейчас с ним");
   });
 });

@@ -71,18 +71,26 @@ export function loadRollingChapterContext(
       .get(bookId) as MetaRow | undefined;
     const olderMax = older[older.length - 1]!.order_index;
 
-    if (meta && meta.covers_to_order >= olderMax) {
+    // Сводка, покрывающая главы ПОЗЖЕ границы, пересказывает ещё не
+    // написанное с точки зрения этой сцены. Раньше она бралась без проверки,
+    // и при генерации главы 10 в промпт уходил пересказ вплоть до двадцатой
+    // (AC-10). Такую сводку не используем вовсе — ранние главы отдаются
+    // поглавно, это дороже по месту, но не лжёт.
+    const usableMeta =
+      meta && meta.covers_to_order < beforeOrderIndex ? meta : undefined;
+
+    if (usableMeta && usableMeta.covers_to_order >= olderMax) {
       // Meta fully covers the older run.
       parts.push(
-        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
       );
-    } else if (meta) {
+    } else if (usableMeta) {
       // Meta covers a prefix; remaining older chapters fall back verbatim.
       parts.push(
-        `### Сводка ранних глав (#${meta.covers_from_order}–#${meta.covers_to_order})\n${meta.summary_text}`,
+        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
       );
       const uncovered = older.filter(
-        (r) => r.order_index > meta.covers_to_order,
+        (r) => r.order_index > usableMeta.covers_to_order,
       );
       for (const r of uncovered) parts.push(chapterSnippet(r));
     } else {
@@ -140,6 +148,19 @@ export interface MetaSummaryResult {
   skipped?: "window" | "covered" | "missing" | "empty";
 }
 
+/** Отпечаток источников сводки: какие главы и КАКИЕ ИХ ВЕРСИИ в неё вошли.
+ *  Сравнение по диапазону не ловит правку внутри него — именно так сводка
+ *  и оставалась описывать старый текст главы 3 навсегда. */
+function metaSourceFingerprint(
+  rows: Array<{ order_index: number; version_id: number }>,
+): string {
+  return rows
+    .slice()
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((r) => `${r.order_index}:${r.version_id}`)
+    .join("|");
+}
+
 /**
  * Throwing core: collapse all summarized chapters older than the rolling
  * window into one meta-summary row. Idempotent — skips when the existing meta
@@ -154,7 +175,7 @@ export async function runMetaSummary(
   {
     const summarized = sqlite
       .prepare(
-        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary
+        `SELECT c.order_index AS order_index, c.title AS title, v.summary AS summary, v.id AS version_id
          FROM chapters c
          JOIN chapter_versions v ON v.id = c.current_version_id
          WHERE c.book_id = ?
@@ -166,6 +187,7 @@ export async function runMetaSummary(
       order_index: number;
       title: string;
       summary: string;
+      version_id: number;
     }>;
 
     if (summarized.length <= window) {
@@ -176,12 +198,19 @@ export async function runMetaSummary(
     const coversFrom = older[0]!.order_index;
     const coversTo = older[older.length - 1]!.order_index;
 
+    const fingerprint = metaSourceFingerprint(older);
     const existing = sqlite
       .prepare(
-        `SELECT covers_to_order FROM book_meta_summaries WHERE book_id = ?`,
+        `SELECT covers_to_order, source_fingerprint FROM book_meta_summaries WHERE book_id = ?`,
       )
-      .get(bookId) as { covers_to_order: number } | undefined;
-    if (existing && existing.covers_to_order >= coversTo) {
+      .get(bookId) as
+      | { covers_to_order: number; source_fingerprint: string | null }
+      | undefined;
+    if (
+      existing &&
+      existing.covers_to_order >= coversTo &&
+      existing.source_fingerprint === fingerprint
+    ) {
       return { updated: false, coversTo, skipped: "covered" }; // up to date
     }
 
@@ -207,16 +236,17 @@ export async function runMetaSummary(
     sqlite
       .prepare(
         `INSERT INTO book_meta_summaries
-           (book_id, covers_from_order, covers_to_order, summary_text, model_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (book_id, covers_from_order, covers_to_order, summary_text, model_id, source_fingerprint, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(book_id) DO UPDATE SET
            covers_from_order = excluded.covers_from_order,
            covers_to_order   = excluded.covers_to_order,
            summary_text      = excluded.summary_text,
            model_id          = excluded.model_id,
+           source_fingerprint = excluded.source_fingerprint,
            created_at        = excluded.created_at`,
       )
-      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, now);
+      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, fingerprint, now);
 
     if (result.modelId !== "noop") {
       logUsage(sqlite, {

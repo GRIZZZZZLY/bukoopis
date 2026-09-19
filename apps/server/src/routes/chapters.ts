@@ -11,6 +11,7 @@ import {
   type ChapterRow,
   type ChapterVersionRow,
 } from "../db/rows.js";
+import { chapterPositionLookup } from "../utils/chapter-position.js";
 import { notFound, validationFailed } from "../utils/errors.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import {
@@ -24,24 +25,6 @@ import {
 } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
-
-/**
- * Maps a chapter's `order_index` to its 1-based position in the book — the
- * number the author actually sees. Falls back to the raw value for an index
- * that no longer resolves to a chapter.
- */
-function chapterPositionLookup(
-  sqlite: DatabaseType,
-  bookId: number,
-): (orderIndex: number) => number {
-  const rows = sqlite
-    .prepare(
-      "SELECT order_index FROM chapters WHERE book_id = ? ORDER BY order_index ASC",
-    )
-    .all(bookId) as Array<{ order_index: number }>;
-  const positions = new Map(rows.map((r, i) => [r.order_index, i + 1]));
-  return (orderIndex) => positions.get(orderIndex) ?? orderIndex;
-}
 
 export function createChaptersRoute(
   sqlite: DatabaseType,

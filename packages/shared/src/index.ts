@@ -19,6 +19,8 @@ export * from "./prose-rules.js";
 export * from "./intake.js";
 export * from "./prose-diff.js";
 export * from "./proposal.js";
+export * from "./character-events.js";
 export * from "./character-profile.js";
 export * from "./character-voice.js";
 export * from "./relationship-profile.js";
+export * from "./scene-boundary.js";

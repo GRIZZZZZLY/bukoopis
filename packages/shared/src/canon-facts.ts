@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { extractedCharacterEventSchema } from "./character-events.js";
 
 /**
  * Phase 3 — temporal canon facts.
@@ -61,6 +62,11 @@ export type ExtractedFact = z.infer<typeof extractedFactSchema>;
 
 export const canonFactExtractionSchema = z.object({
   facts: z.array(extractedFactSchema).max(40),
+  /** События персонажей идут тем же вызовом: отдельный вид задания потребовал
+   *  бы пересборки `memory_jobs` (список видов зашит в SQL CHECK, решение 6
+   *  ТЗ). Необязательное с умолчанием — старые staged-результаты в
+   *  `result_json` продолжают разбираться. */
+  characterEvents: z.array(extractedCharacterEventSchema).max(30).default([]),
   notes: z.string().nullable().optional(),
 });
 export type CanonFactExtraction = z.infer<typeof canonFactExtractionSchema>;

@@ -33,6 +33,7 @@ import {
   retryBackoffMs,
   COMMIT_JOB_KINDS,
   MEMORY_MAX_ATTEMPTS,
+  MEMORY_PIPELINE_VERSION,
   type MemoryJobRow,
 } from "../memory-queue.js";
 import { startMemoryWorker, type MemoryWorker } from "../memory-worker.js";
@@ -450,5 +451,65 @@ describe("worker end-to-end (mocked LLM)", () => {
     await worker.drain({ kinds: ["notes"] });
     row = jobRows().find((j) => j.kind === "notes")!;
     expect(row.status).toBe("done");
+  });
+
+  it("версия конвейера поднята до 2 — старые версии переразбираются", () => {
+    expect(MEMORY_PIPELINE_VERSION).toBe(2);
+  });
+
+  it("staged-результат задания facts несёт события рядом с фактами", async () => {
+    const CHAPTER_TEXT =
+      "Рин молчала. — Станцию закрывают, — сказал Сарек. Она кивнула и вышла. " +
+      "Рин молчала. — Станцию закрывают, — сказал Сарек. Она кивнула и вышла. " +
+      "Рин молчала. — Станцию закрывают, — сказал Сарек. Она кивнула и вышла. ";
+    const QUOTE = "— Станцию закрывают";
+
+    const b = insertBook();
+    const ch = insertChapter(b, 1);
+    const vId = insertVersion(ch, 80);
+
+    // Update chapter version with CHAPTER_TEXT
+    sqlite
+      .prepare("UPDATE chapter_versions SET content_text = ? WHERE id = ?")
+      .run(CHAPTER_TEXT, vId);
+
+    factsMock.mockResolvedValue({
+      facts: [
+        {
+          entityType: "character",
+          entityName: "Рин",
+          statement: "Рин работает на станции",
+          assertionMode: "narrated_as_fact",
+        },
+      ],
+      characterEvents: [
+        {
+          subjectName: "Рин",
+          kind: "knowledge",
+          data: { fact: "Станцию закрывают", acquisition: "told" },
+          evidenceQuote: QUOTE,
+        },
+      ],
+    } as never);
+
+    enqueueMemoryJobs(sqlite, {
+      bookId: b,
+      chapterId: ch,
+      chapterVersionId: vId,
+      kinds: ["facts"],
+    });
+
+    await worker.drain({ kinds: ["facts"] });
+
+    const row = sqlite
+      .prepare("SELECT result_json FROM memory_jobs WHERE id = ? AND kind = ?")
+      .get(
+        jobRows().find((j) => j.kind === "facts")!.id,
+        "facts",
+      ) as { result_json: string };
+    const staged = JSON.parse(row.result_json);
+    expect(staged.staged.facts).toHaveLength(1);
+    expect(staged.staged.characterEvents).toHaveLength(1);
+    expect(staged.eventCount).toBe(1);
   });
 });

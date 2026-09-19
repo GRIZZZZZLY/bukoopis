@@ -204,7 +204,11 @@ export function startMemoryWorker(
     }
     completeMemoryJob(sqlite, job.id, {
       factCount: p.facts.length,
-      staged: { facts: p.facts },
+      eventCount: p.characterEvents.length,
+      staged: {
+        facts: p.facts,
+        characterEvents: p.characterEvents,
+      },
     });
   }
 
