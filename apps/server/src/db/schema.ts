@@ -23,9 +23,12 @@ export const books = sqliteTable(
     language: text("language").notNull().default("ru"),
     premise: text("premise"),
     outlineJson: text("outline_json"),
+    // ВНИМАНИЕ: в базе внешний ключ БЕЗ `ON DELETE` (миграция 0005), то есть
+    // поведение по умолчанию — RESTRICT. Здесь стояло `set null`, и это была
+    // неправда: удаление профиля, на который смотрит книга, отвечало 500,
+    // пока маршрут стиля не начал снимать ссылку сам, транзакцией (С12).
     styleProfileId: integer("style_profile_id").references(
       (): AnySQLiteColumn => styleProfiles.id,
-      { onDelete: "set null" },
     ),
     status: text("status").notNull().default("draft"),
     writerModel: text("writer_model").notNull().default("opus"),

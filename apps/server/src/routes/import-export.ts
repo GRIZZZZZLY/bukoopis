@@ -30,7 +30,10 @@ export function parseChapters(
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const h1Re = /^#\s+(.+?)\s*$/;
   const h2Re = /^##\s+(.+?)\s*$/;
-  const chapterRe = /^(Глава|Chapter)\s+([0-9IVX]+)([:.]\s*(.+))?$/i;
+  // Числами, римскими цифрами и словами: «Глава первая» — обычная запись в
+  // авторском файле, и без неё такой файл ложился одной главой (С11).
+  const chapterRe =
+    /^(Глава|Chapter)\s+([0-9IVX]+|перв(?:ая|ой)|втор(?:ая|ой)|треть(?:я|ей)|четв[её]рт(?:ая|ой)|пят(?:ая|ой)|шест(?:ая|ой)|седьм(?:ая|ой)|восьм(?:ая|ой)|девят(?:ая|ой)|десят(?:ая|ой)|одиннадцат(?:ая|ой)|двенадцат(?:ая|ой))(?:[:.]\s*(.+))?$/i;
 
   const splits: { idx: number; title: string }[] = [];
   let useH1 = false;
@@ -71,7 +74,7 @@ export function parseChapters(
       if (m)
         splits.push({
           idx: i,
-          title: m[4] ? `${m[1]} ${m[2]}: ${m[4]}` : `${m[1]} ${m[2]}`,
+          title: m[3] ? `${m[1]} ${m[2]}: ${m[3]}` : `${m[1]} ${m[2]}`,
         });
     }
   } else if (useH2) {
@@ -141,12 +144,41 @@ export interface InsertedChapter {
 /** Вставка разобранных глав в конец книги. Транзакция охватывает только записи
  *  в БД; индексация чанков идёт после неё и намеренно best-effort — сбой
  *  поиска не должен отменять уже сохранённый текст автора. */
+export interface InsertChaptersResult {
+  created: InsertedChapter[];
+  /** Главы, уже лежащие в книге под тем же названием (С11 ревью
+   *  2026-09-19). Прежде повторный импорт того же файла просто дописывал их
+   *  в конец, и книга удваивалась молча. */
+  skipped: Array<{ title: string; reason: string }>;
+}
+
 export async function insertChapters(
   sqlite: DatabaseType,
   hasVec: boolean,
   bookId: number,
   chapters: ParsedChapter[],
-): Promise<InsertedChapter[]> {
+): Promise<InsertChaptersResult> {
+  // Сопоставление по названию: текст автор правит, название держится. Точное
+  // совпадение после нормализации пробелов и регистра.
+  const existingTitles = new Set(
+    (
+      sqlite
+        .prepare("SELECT title FROM chapters WHERE book_id = ?")
+        .all(bookId) as Array<{ title: string }>
+    ).map((r) => r.title.trim().toLowerCase()),
+  );
+  const skipped: Array<{ title: string; reason: string }> = [];
+  const fresh: ParsedChapter[] = [];
+  for (const ch of chapters) {
+    if (existingTitles.has(ch.title.trim().toLowerCase())) {
+      skipped.push({ title: ch.title, reason: "в книге уже есть глава с таким названием" });
+      continue;
+    }
+    existingTitles.add(ch.title.trim().toLowerCase());
+    fresh.push(ch);
+  }
+  chapters = fresh;
+  if (chapters.length === 0) return { created: [], skipped };
   const max = sqlite
     .prepare("SELECT MAX(order_index) as m FROM chapters WHERE book_id = ?")
     .get(bookId) as { m: number | null };
@@ -257,11 +289,14 @@ export async function insertChapters(
     }
   }
 
-  return created.map(({ chapterId, title, words }) => ({
-    chapterId,
-    title,
-    words,
-  }));
+  return {
+    created: created.map(({ chapterId, title, words }) => ({
+      chapterId,
+      title,
+      words,
+    })),
+    skipped,
+  };
 }
 
 export function createImportExportRoute(
@@ -293,8 +328,8 @@ export function createImportExportRoute(
     const chapters = parseChapters(parsed.data.content, stem);
     if (chapters.length === 0) return badRequest(c, "no chapters detected");
 
-    const created = await insertChapters(sqlite, hasVec, id, chapters);
-    return c.json({ created });
+    const { created, skipped } = await insertChapters(sqlite, hasVec, id, chapters);
+    return c.json({ created, skipped });
   });
 
   // ─────── Export .json (полная выгрузка) ───────

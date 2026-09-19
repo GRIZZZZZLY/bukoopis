@@ -391,12 +391,12 @@ export async function runIntake(
   let chapters: InsertedChapter[] = [];
   if (chapterFragments.length > 0) {
     try {
-      chapters = await insertChapters(
+      ({ created: chapters } = await insertChapters(
         sqlite,
         hasVec,
         bookId,
         chapterFragments.map((f) => ({ title: f.title, body: f.body })),
-      );
+      ));
     } catch (e) {
       failures.push({
         filename: "Главы",

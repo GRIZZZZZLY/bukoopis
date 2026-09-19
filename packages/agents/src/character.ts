@@ -1,3 +1,4 @@
+import { mentionsEntityName } from "@book-forge/shared";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   normalizeCharacterProfile,
@@ -166,12 +167,15 @@ export function gatherCharacterContext(
     return { characters: [], relationships: [], voiceSamples: [], states: [] };
   }
 
-  const blob = texts.filter(Boolean).join("\n").toLowerCase();
+  // Поиск участников — по основе имени и границам слова (С2 ревью
+  // 2026-09-19). Подстрочное сравнение находило «Ян» в «январе», а «Анну»
+  // при герое «Анна» не находило вовсе: в косвенном падеже имя встречается
+  // чаще, чем в именительном.
+  const blob = texts.filter(Boolean).join("\n");
   const mentioned = new Set<number>(alwaysIncludeIds);
   for (const c of allCharacters) {
-    const name = c.canonical_name.toLowerCase();
-    if (!name) continue;
-    if (blob.includes(name)) mentioned.add(c.id);
+    if (!c.canonical_name) continue;
+    if (mentionsEntityName(blob, c.canonical_name)) mentioned.add(c.id);
   }
   if (mentioned.size === 0) {
     return { characters: [], relationships: [], voiceSamples: [], states: [] };

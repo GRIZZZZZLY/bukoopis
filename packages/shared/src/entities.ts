@@ -60,6 +60,9 @@ export type Character = z.infer<typeof characterSchema>;
 export const createCharacterInputSchema = z.object({
   canonicalName: z.string().min(1).max(200),
   profile: rawProfileSchema,
+  /** Завести тёзку осознанно. Без него сервер отвечает 409: два героя с
+   *  одним именем ломают привязку фактов и реплик к обоим (С2). */
+  allowDuplicateName: z.boolean().optional(),
 });
 export type CreateCharacterInput = z.infer<typeof createCharacterInputSchema>;
 

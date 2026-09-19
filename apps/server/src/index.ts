@@ -7,6 +7,7 @@ import {
 } from "@book-forge/style-engine";
 import { assertAllStructuredAgentsHaveContracts } from "@book-forge/llm";
 import { createApp } from "./app.js";
+import { runMigrations } from "./db/migrate.js";
 import { configureEmbeddingProvider } from "./utils/embedding-setup.js";
 
 // Register every structured-output agent contract before the app boots so
@@ -19,6 +20,12 @@ registerAllAgentContracts();
 registerStyleExtractorContract();
 registerStyleBlenderContract();
 assertAllStructuredAgentsHaveContracts();
+
+// Миграции применяются при старте (С12). Инструмент локальный и
+// однопользовательский: заставлять автора помнить отдельную команду после
+// каждого обновления значит менять понятный отказ на 500 «no such column»
+// посреди работы. Резервная копия делается там же, внутри.
+runMigrations();
 
 // Install the real (local ONNX) embedding provider for retrieval. The model is
 // loaded lazily on first embed; set EMBEDDING_PROVIDER=stub to skip it.

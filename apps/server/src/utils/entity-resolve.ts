@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import type { FactEntityType } from "@book-forge/shared";
+import { sameEntityName, type FactEntityType } from "@book-forge/shared";
 
 /**
  * ADR 0003 slice 2 — resolve a canon-fact entity name to a stable entity id.
@@ -74,6 +74,18 @@ export function resolveEntityDetailed(
   }
   if (hits.length > 1) {
     return { status: "ambiguous", candidates: hits.map((h) => h.name) };
+  }
+
+  // Падежная форма: «Анны» при герое «Анна». Сравнение по основе идёт
+  // ПОСЛЕ точного и только при единственном совпадении — иначе «Инна» и
+  // «Анна» слились бы (С2 ревью 2026-09-19).
+  const byStem = rows.filter((r) => sameEntityName(r.name, name));
+  if (byStem.length === 1) {
+    const hit = byStem[0]!;
+    return { status: "resolved", entity: { entityId: hit.id, canonicalName: hit.name } };
+  }
+  if (byStem.length > 1) {
+    return { status: "ambiguous", candidates: byStem.map((h) => h.name) };
   }
 
   // Alias fallback (author-registered).
