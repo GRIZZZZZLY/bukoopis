@@ -116,13 +116,53 @@ describe("chapters CRUD", () => {
       contentJson: SAMPLE_DOC,
     });
     const del = await send(t.app, `/api/chapters/${c.id}`, "DELETE");
-    expect(del.status).toBe(204);
+    expect(del.status).toBe(200);
     const versions = await send(
       t.app,
       `/api/chapters/${c.id}/versions`,
       "GET",
     );
     expect(versions.status).toBe(404);
+  });
+
+  it("DELETE называет записи знаний, которые уходят вместе с главой", async () => {
+    const c = await sendJson<ChapterJson>(
+      t.app,
+      `/api/books/${bookId}/chapters`,
+      "POST",
+      { title: "Глава со знанием" },
+    );
+    const now = new Date().toISOString();
+    const charId = Number(
+      t.sqlite
+        .prepare(
+          `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+           VALUES (?, 'Рин', '{"description":"герой"}', ?, ?)`,
+        )
+        .run(bookId, now, now).lastInsertRowid,
+    );
+    // Авторская запись и извлечённая — считаются обе, но названы раздельно:
+    // вернуть автору можно только то, что он вводил сам.
+    const insert = t.sqlite.prepare(
+      `INSERT INTO character_events
+         (book_id, subject_character_id, kind, data_json, chapter_id, origin,
+          verification, extractor_version, dedup_key, created_at)
+       VALUES (?, ?, 'knowledge', '{"fact":"x"}', ?, ?, 'confirmed', 1, ?, ?)`,
+    );
+    insert.run(bookId, charId, c.id, "manual", "k:manual", now);
+    insert.run(bookId, charId, c.id, "llm", "k:llm", now);
+
+    const del = await send(t.app, `/api/chapters/${c.id}`, "DELETE");
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({
+      deletedCharacterEvents: 2,
+      deletedAuthoredEvents: 1,
+    });
+    // И они действительно исчезли — счёт описывает потерю, а не намерение.
+    const left = t.sqlite
+      .prepare("SELECT COUNT(*) n FROM character_events WHERE book_id = ?")
+      .get(bookId) as { n: number };
+    expect(left.n).toBe(0);
   });
 });
 

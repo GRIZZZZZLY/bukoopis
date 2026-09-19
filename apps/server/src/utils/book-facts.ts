@@ -321,6 +321,23 @@ export interface FactsPayload {
   chapterId: number;
   chapterOrder: number;
   skipped?: "missing" | "short";
+  /** Сколько строк ответа схема не приняла и выбросила. Раньше такая строка
+   *  валила весь ответ, и это было видно хотя бы как ошибка задания; теперь
+   *  остальное выживает, поэтому число надо нести дальше — молчаливая потеря
+   *  хуже громкой. */
+  malformedFacts: number;
+  malformedEvents: number;
+}
+
+/** Схема отдаёт непринятый элемент как `null` (см. `canonFactExtractionSchema`).
+ *  Здесь он отсеивается и считается — это единственная точка, где видно,
+ *  сколько модель прислала мусора. */
+function dropMalformed<T>(items: ReadonlyArray<T | null>): {
+  kept: T[];
+  dropped: number;
+} {
+  const kept = items.filter((x): x is T => x !== null);
+  return { kept, dropped: items.length - kept.length };
 }
 
 /**
@@ -352,6 +369,8 @@ export async function extractFactsPayload(
     chapterId: 0,
     chapterOrder: 0,
     skipped: "missing",
+    malformedFacts: 0,
+    malformedEvents: 0,
   };
   if (!v) return missing;
 
@@ -368,7 +387,16 @@ export async function extractFactsPayload(
     chapterId: ch.id,
     chapterOrder: ch.order_index,
   };
-  if (v.word_count < 80) return { ...base, facts: [], characterEvents: [], skipped: "short" };
+  if (v.word_count < 80) {
+    return {
+      ...base,
+      facts: [],
+      characterEvents: [],
+      skipped: "short",
+      malformedFacts: 0,
+      malformedEvents: 0,
+    };
+  }
 
   const bk = sqlite
     .prepare("SELECT title, critic_model FROM books WHERE id = ?")
@@ -423,7 +451,20 @@ export async function extractFactsPayload(
       }),
   });
 
-  return { ...base, facts: result.facts, characterEvents: result.characterEvents ?? [] };
+  const facts = dropMalformed(result.facts);
+  const events = dropMalformed(result.characterEvents ?? []);
+  if (facts.dropped > 0 || events.dropped > 0) {
+    console.warn(
+      `[canon-facts] v${versionId}: схема не приняла ${facts.dropped} факт(ов) и ${events.dropped} событие(й) — остальное сохранено`,
+    );
+  }
+  return {
+    ...base,
+    facts: facts.kept,
+    characterEvents: events.kept,
+    malformedFacts: facts.dropped,
+    malformedEvents: events.dropped,
+  };
 }
 
 /**

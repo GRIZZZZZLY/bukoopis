@@ -22,6 +22,7 @@ import {
 import {
   markMemoryStaleOnCommit,
   chapterMemoryStatus,
+  outdatedPipelineChapters,
 } from "../utils/memory-activation.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
@@ -98,6 +99,9 @@ export function createChaptersRoute(
         ...memory,
         bookStaleFromPosition:
           staleRow?.s == null ? null : positionOf(staleRow.s),
+        // Главы, чья память собрана прежней версией конвейера: их придётся
+        // разобрать заново, иначе новых слоёв (событий героев) у них не будет.
+        outdatedPipelineChapters: outdatedPipelineChapters(sqlite, row.book_id),
         // Earlier chapters whose derived memory hasn't landed. Generating this
         // chapter now still works, but its prompt would miss their facts,
         // notes, summary and retrievable chunks.
@@ -214,11 +218,26 @@ export function createChaptersRoute(
       .prepare("SELECT book_id FROM chapters WHERE id = ?")
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "chapter");
+    // `character_events.chapter_id` — ON DELETE CASCADE (иначе удалённая глава
+    // раскрывала бы свой секрет всем предыдущим). Значит вместе с главой молча
+    // уходят и записи знаний, введённые автором вручную. Считаем их ДО
+    // удаления и называем в ответе: восстановить их нечем, и узнать о потере
+    // постфактум неоткуда.
+    const lost = sqlite
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN origin IN ('manual','migration') THEN 1 ELSE 0 END) AS authored
+         FROM character_events WHERE chapter_id = ?`,
+      )
+      .get(id) as { total: number; authored: number | null };
     sqlite.prepare("DELETE FROM chapters WHERE id = ?").run(id);
     sqlite
       .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), existing.book_id);
-    return c.body(null, 204);
+    return c.json({
+      deletedCharacterEvents: lost.total,
+      deletedAuthoredEvents: lost.authored ?? 0,
+    });
   });
 
   r.get("/:id/versions", (c) => {

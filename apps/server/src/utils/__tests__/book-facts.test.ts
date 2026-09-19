@@ -15,6 +15,7 @@ vi.mock("@book-forge/agents", async (orig) => ({
 
 import { extractCanonFacts } from "@book-forge/agents";
 import {
+  extractFactsPayload,
   loadActiveFacts,
   persistExtractedFacts,
   renderActiveFactsPrompt,
@@ -270,6 +271,25 @@ describe("triggerCanonFactExtraction", () => {
     const vId = seedChapter(b, 1, 40);
     await triggerCanonFactExtraction(sqlite, vId);
     expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("строку, которую схема не приняла, отсеивает и считает", async () => {
+    // Схема отдаёт непринятый элемент как `null` вместо того, чтобы отвергнуть
+    // весь ответ (одно негодное событие уносило и факты, и заметки главы).
+    // Здесь начинается вторая половина того решения: до активной таблицы
+    // `null` дойти не должен, а число обязано ехать дальше.
+    const b = insertBook();
+    const vId = seedChapter(b, 4, 500);
+    extractMock.mockResolvedValue({
+      facts: [fact("Аня", "умеет", "магия огня"), null],
+      characterEvents: [null, null],
+      notes: null,
+    });
+    const payload = await extractFactsPayload(sqlite, vId);
+    expect(payload.facts).toHaveLength(1);
+    expect(payload.characterEvents).toHaveLength(0);
+    expect(payload.malformedFacts).toBe(1);
+    expect(payload.malformedEvents).toBe(2);
   });
 });
 
