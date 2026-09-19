@@ -263,6 +263,83 @@ export function renderChapterClosing(c: ChapterClosing): string {
   return `${CLOSING_RU[c.mode]} — ${c.note}`;
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Контракт главы (слайс 4.5)
+// ──────────────────────────────────────────────────────────────────
+//
+// Беат-лист говорит, КАКИЕ сцены идут в главе. Контракт говорит, что глава
+// обязана сделать и чего делать не вправе. Без него критик канона блокирует
+// ровно тот поворот, ради которого глава писалась: «выясняется, что брат
+// жив» — противоречие действующему факту «брат погиб», и отличить
+// запланированную отмену от ошибки нечем.
+
+/** Отмена факта канона, запланированная автором сюжета.
+ *
+ *  `factId` в форме `fact_<id>` — та же ссылка, что у извлекателя канона; он
+ *  есть, только если планировщик видел этот факт в списке действующих.
+ *  `statement` обязателен всегда: по нему критик сопоставляет отмену, когда
+ *  идентификатора нет, и по нему же автор понимает, о чём речь. */
+export const canonSupersessionSchema = z.object({
+  factId: z
+    .string()
+    .regex(/^fact_\d+$/)
+    .nullable()
+    .default(null),
+  /** Что перестаёт быть верным. */
+  statement: z.string().min(1).max(300),
+  /** Чем это становится после главы. */
+  becomes: z.string().min(1).max(300),
+});
+export type CanonSupersession = z.infer<typeof canonSupersessionSchema>;
+
+export const chapterContractSchema = z.object({
+  /** Что обязано случиться. Не случилось — глава не выполнила план. */
+  mustHappen: z.array(z.string().min(1).max(300)).max(8).default([]),
+  /** Чего в этой главе быть не должно: рано раскрытая тайна, встреча,
+   *  назначенная позже, смерть, которая нужна живой. */
+  mustNotHappen: z.array(z.string().min(1).max(300)).max(8).default([]),
+  /** Что читатель узнаёт именно здесь. Упоминание такого без подготовки —
+   *  не дефект: оно запланировано. */
+  expectedRevelations: z.array(z.string().min(1).max(300)).max(8).default([]),
+  /** Факты канона, которые глава вправе отменить. */
+  allowedCanonSupersessions: z.array(canonSupersessionSchema).max(8).default([]),
+});
+export type ChapterContract = z.infer<typeof chapterContractSchema>;
+
+/** Контракт для промпта. `null`, когда все четыре списка пусты.
+ *
+ *  Пустые подсписки не печатаются намеренно: заголовок без строк читается
+ *  как «ничего не запрещено», тогда как на деле это «не задано», и модель
+ *  вправе принять одно за другое.
+ *
+ *  Принимает `unknown` и разбирает схемой, а не доверяет типу: `plan_json`
+ *  читается из базы через `JSON.parse(...) as ChapterPlan` — без проверки, —
+ *  и на всех трёх путях (Writer, критики, интерфейс) сюда может приехать что
+ *  угодно. Падение здесь уронило бы сборку контекста целиком: ни генерации,
+ *  ни критики. Испорченный контракт — это отсутствующий контракт. */
+export function renderChapterContract(raw: unknown): string | null {
+  const parsed = chapterContractSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const c = parsed.data;
+  const blocks: string[] = [];
+  const list = (title: string, items: string[]): void => {
+    if (items.length === 0) return;
+    blocks.push(`${title}:\n${items.map((i) => `- ${i}`).join("\n")}`);
+  };
+  list("Обязано случиться", c.mustHappen);
+  list("Чего быть не должно", c.mustNotHappen);
+  list("Что раскрывается именно здесь", c.expectedRevelations);
+  list(
+    "Факты канона, которые эта глава вправе отменить",
+    c.allowedCanonSupersessions.map(
+      (s) =>
+        `${s.factId === null ? "" : `${s.factId}: `}«${s.statement}» → «${s.becomes}»`,
+    ),
+  );
+  if (blocks.length === 0) return null;
+  return `## Контракт главы\n${blocks.join("\n\n")}`;
+}
+
 export const chapterBeatSheetVariantSchema = z.object({
   label: z.string().min(1),
   pov: z.string().min(1),
@@ -270,6 +347,9 @@ export const chapterBeatSheetVariantSchema = z.object({
   estimatedWords: z.number().int().positive().max(20000),
   beats: z.array(beatSchema).min(3).max(15),
   closing: chapterClosingSchema.optional(),
+  /** Необязателен в хранилище: планы, написанные до слайса 4.5, читаются без
+   *  него. На выходе планировщика обязателен — как `closing`. */
+  contract: chapterContractSchema.optional(),
 });
 export type ChapterBeatSheetVariant = z.infer<
   typeof chapterBeatSheetVariantSchema

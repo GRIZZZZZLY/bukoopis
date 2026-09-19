@@ -1,6 +1,7 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   chapterClosingSchema,
+  renderChapterContract,
   extractNarrativeArchitecture,
   renderChapterClosing,
   renderNarrativeArchitecture,
@@ -32,6 +33,10 @@ export interface ChapterProseContext {
   emotionalGoal: string;
   /** Rendered beats of the accepted plan variant, closing decision included. */
   beatSheet: string | null;
+  /** Контракт главы (слайс 4.5), отрендеренный тем же способом, что у
+   *  Писателя: критик канона отличает по нему запланированную отмену факта
+   *  от ошибки, редактор — невыполненное обязательство от выполненного. */
+  chapterContract: string | null;
   /** Selected outline variant as JSON — the shape the prose agents receive. */
   outlineSelected: string | null;
   /** Narrative architecture sheet of that variant, rendered in Russian. */
@@ -66,6 +71,7 @@ interface PlanVariantLite {
     outcome: string;
   }>;
   closing?: unknown;
+  contract?: import("@book-forge/shared").ChapterContract;
 }
 
 /**
@@ -117,6 +123,7 @@ export async function loadChapterProseContext(
   let planPov: string | null = null;
   let emotionalGoal = "—";
   let beatSheet: string | null = null;
+  let chapterContract: string | null = null;
   if (ch.plan_json) {
     try {
       const p = JSON.parse(ch.plan_json) as {
@@ -128,6 +135,7 @@ export async function loadChapterProseContext(
         planPov = sel.pov;
         emotionalGoal = sel.emotionalGoal;
         beatSheet = renderBeatSheetBlock(sel);
+        chapterContract = sel.contract ? renderChapterContract(sel.contract) : null;
       }
     } catch {
       /* ignore corrupt plan */
@@ -158,6 +166,7 @@ export async function loadChapterProseContext(
     pov: planPov === null ? "—" : assembled.pov,
     emotionalGoal,
     beatSheet,
+    chapterContract,
     outlineSelected,
     architectureContext: architecture
       ? renderNarrativeArchitecture(architecture)

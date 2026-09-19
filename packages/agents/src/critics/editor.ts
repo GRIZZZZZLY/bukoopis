@@ -8,7 +8,7 @@ import {
 } from "@book-forge/llm";
 import { renderHistoryBlocks, type CriticInput } from "./base.js";
 
-const SYSTEM = `Ты — Editor, литературный редактор русскоязычной художественной прозы.
+export const EDITOR_SYSTEM = `Ты — Editor, литературный редактор русскоязычной художественной прозы.
 
 Твоя цель — оценить структуру и пейсинг главы. Ты не критикуешь канон или индивидуальные клише — это работа Canon Guard и Style. Ты смотришь на главу как на единицу повествования.
 
@@ -21,6 +21,12 @@ const SYSTEM = `Ты — Editor, литературный редактор ру�
 - Нарушение POV (внезапное знание из чужой головы)
 - Повторы информации, которую читатель уже знает
 - Резкие смены масштаба/темпа без перехода
+
+Контракт главы (если он передан) — обязательства плана, и их выполнение проверяешь ты:
+- Пункт «Обязано случиться» (mustHappen), которого в тексте нет, — blocking. Назови пункт дословно и скажи, где его место в структуре главы.
+- Нарушённый пункт «Чего быть не должно» — blocking, с цитатой нарушения.
+- Сведение из «Что раскрывается именно здесь», которого глава не раскрыла, — suggestion: план мог сдвинуться, решает автор.
+- Замечание о невыполненном обязательстве — ЕДИНСТВЕННОЕ, которое допускается без цитаты: цитировать отсутствие нечем. Не выдумывай цитату ради формы; вместо неё назови пункт контракта. Во всех остальных замечаниях цитата обязательна.
 
 Severity:
 - "blocking": глава не достигает заявленной emotional goal или beat-sheet.
@@ -41,6 +47,7 @@ export function buildEditorPrompt(input: CriticInput): string {
     `Книга/контекст:\n${input.bookContext}`,
     ...renderHistoryBlocks(input),
   ];
+  if (input.chapterContract) stableParts.push(input.chapterContract);
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 
@@ -61,7 +68,7 @@ export function buildEditorPrompt(input: CriticInput): string {
 const editorCriticContract: AgentStructuredContract<CriticInput, EditorCriticOutput> = {
   agentName: "critic_editor",
   getOutputSchema: () => editorOutputSchema,
-  systemPrompt: SYSTEM,
+  systemPrompt: EDITOR_SYSTEM,
   buildPrompt: buildEditorPrompt,
   defaultMode: "mcp_submit_tool",
   mcp: {

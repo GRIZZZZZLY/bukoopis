@@ -85,6 +85,60 @@ describe("PlanPanel — chapter closing", () => {
   });
 });
 
+describe("PlanPanel — контракт главы", () => {
+  function renderPlan(contract: unknown): void {
+    const plan = {
+      variants: [{ ...beatSheet, ...(contract === undefined ? {} : { contract }) }],
+      selectedIndex: null,
+      generatedAt: "2026-09-04T00:00:00.000Z",
+    };
+    render(
+      <MemoryRouter>
+        <PlanPanel
+          chapter={makeChapter({ planJson: JSON.stringify(plan) })}
+          onUpdated={vi.fn()}
+          onPlanReady={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("показывает обязательства варианта до выбора", () => {
+    renderPlan({
+      mustHappen: ["Рин находит медальон"],
+      mustNotHappen: ["Сарек называет имя убийцы"],
+      expectedRevelations: [],
+      allowedCanonSupersessions: [
+        { factId: "fact_12", statement: "брат погиб", becomes: "брат жив" },
+      ],
+    });
+    expect(screen.getByText(/Обязано случиться:/)).toBeInTheDocument();
+    expect(screen.getByText(/Рин находит медальон/)).toBeInTheDocument();
+    expect(screen.getByText(/Чего быть не должно:/)).toBeInTheDocument();
+    expect(screen.getByText(/Отменяет в каноне:/)).toBeInTheDocument();
+    expect(screen.getByText(/брат жив/)).toBeInTheDocument();
+    // Пустой список не печатается: заголовок без строк читается как «ничего
+    // не раскрывается», тогда как это «не задано».
+    expect(screen.queryByText(/Раскрывается здесь:/)).not.toBeInTheDocument();
+  });
+
+  it("план без контракта не рисует заголовков", () => {
+    renderPlan(undefined);
+    expect(screen.queryByText(/Обязано случиться:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Чего быть не должно:/)).not.toBeInTheDocument();
+  });
+
+  it("контракт со всеми пустыми списками не рисует ничего", () => {
+    renderPlan({
+      mustHappen: [],
+      mustNotHappen: [],
+      expectedRevelations: [],
+      allowedCanonSupersessions: [],
+    });
+    expect(screen.queryByText(/Обязано случиться:/)).not.toBeInTheDocument();
+  });
+});
+
 describe("PlanPanel — намерение приходит из плана", () => {
   it("показывает намерение главы и не даёт поля ввода", () => {
     render(

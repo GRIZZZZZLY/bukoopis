@@ -10,6 +10,7 @@ import {
   bookOutlineVariantSchema,
   chapterBeatSheetVariantSchema,
   chapterClosingSchema,
+  chapterContractSchema,
   narrativeArchitectureSchema,
   type BookOutlineVariant,
   type ChapterBeatSheetVariant,
@@ -45,7 +46,15 @@ type BookOutlineToolResult = z.infer<typeof bookOutlineToolSchema>;
 
 export const chapterBeatSheetToolSchema = z.object({
   variants: z
-    .array(chapterBeatSheetVariantSchema.extend({ closing: chapterClosingSchema }))
+    .array(
+      chapterBeatSheetVariantSchema.extend({
+        closing: chapterClosingSchema,
+        // Обязателен на выходе по той же причине, что и closing: свежий план
+        // обязан определиться. «Не задано» и «ничего не запрещено» для
+        // критиков неразличимы, а цена различия — заблокированный поворот.
+        contract: chapterContractSchema,
+      }),
+    )
     .min(1)
     .max(5),
 });
@@ -85,7 +94,13 @@ export const SYSTEM_CHAPTER_PLAN = `Ты — Plot Agent. Работаешь на
 — В средней трети хотя бы один beat, которого начало главы не предсказывает: событие, а не рост ставок.
 — Меняй плотность между соседними beats: диалоговый рядом с описательным, быстрый после медленного.
 
-Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats, closing.`;
+Контракт главы (contract) обязателен. Это не пересказ beats, а обязательства главы — по ним её потом проверяют:
+— mustHappen: что обязано случиться. Не случилось — глава не выполнила план. 1-5 пунктов, каждый проверяем по тексту.
+— mustNotHappen: чего в этой главе быть не должно — тайна, назначенная позже, встреча не в срок, смерть, которая нужна живой. Пусто оставляй, только если запретов действительно нет.
+— expectedRevelations: что читатель узнаёт именно здесь. Попавшее сюда не считается упоминанием без подготовки.
+— allowedCanonSupersessions: факты канона, которые эта глава вправе отменить. Каждый: statement (что перестаёт быть верным), becomes (чем становится) и factId вида fact_<число>, если факт есть в списке действующих выше. Это ЕДИНСТВЕННЫЙ способ разрешить главе противоречить канону: критик канона блокирует любое расхождение, которого здесь нет, — включая поворот, ради которого глава и пишется. Если глава ничего не отменяет, оставляй список пустым.
+
+Указывай: label, POV-персонаж, эмоциональную цель сцены, оценку слов в готовой главе, последовательность beats, closing, contract.`;
 
 // ─────────── Outline ───────────
 
@@ -180,6 +195,10 @@ export interface GenerateChapterPlanInput {
   retrievedContext?: string | null;
   /** Phase 4 — relevant open episodic notes (threads/foreshadow). */
   openThreads?: string | null;
+  /** Слайс 4.5 — действующие факты канона с идентификаторами. Без них
+   *  планировщик может назвать отменяемый факт только словами, и критику
+   *  нечего сопоставлять по ссылке. */
+  activeFacts?: string | null;
   chapterTitle: string;
   intent: string;
   previousChaptersSummary: string | null;
@@ -187,7 +206,7 @@ export interface GenerateChapterPlanInput {
   onUsage?: UsageHandler;
 }
 
-function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
+export function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
   const variants = input.config?.variants ?? 2;
   const stableParts: string[] = [
     `Книга: "${input.bookTitle}"`,
@@ -209,6 +228,9 @@ function buildChapterPlanPrompt(input: GenerateChapterPlanInput): string {
   }
   if (input.openThreads) {
     stableParts.push(input.openThreads);
+  }
+  if (input.activeFacts) {
+    stableParts.push(input.activeFacts);
   }
   const volatileParts: string[] = [
     `Текущая глава: "${input.chapterTitle}"`,

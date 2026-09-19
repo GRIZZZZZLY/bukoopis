@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   bookOutlineVariantSchema,
+  canonSupersessionSchema,
   chapterBeatSheetVariantSchema,
+  chapterPlanSchema,
   extractNarrativeArchitecture,
   narrativeArchitectureSchema,
   outlineChapterSchema,
+  renderChapterContract,
   renderNarrativeArchitecture,
   renderChapterClosing,
   renderOutlineChapterIntent,
@@ -220,5 +223,134 @@ describe("chapterBeatSheetVariantSchema — closing", () => {
     });
     expect(text).toContain("обрыв посреди действия");
     expect(text).toContain("Обрыв на шаге через порог.");
+  });
+});
+
+/**
+ * Слайс 4.5: план главы говорит не только «какие сцены», но и «что обязано
+ * случиться, чего быть не должно, что раскрывается и какой факт канона глава
+ * вправе отменить». Без последнего критик канона блокирует ровно тот поворот,
+ * ради которого глава писалась.
+ */
+describe("контракт главы", () => {
+  const beats = [
+    { index: 0, type: "hook", summary: "s", goal: "g", conflict: "c", outcome: "o" },
+    { index: 1, type: "climax", summary: "s", goal: "g", conflict: "c", outcome: "o" },
+    { index: 2, type: "resolution", summary: "s", goal: "g", conflict: "c", outcome: "o" },
+  ];
+  const legacyBeatSheet = {
+    label: "v1",
+    pov: "Рин",
+    emotionalGoal: "страх",
+    estimatedWords: 1200,
+    beats,
+  };
+
+  it("старый план без контракта читается", () => {
+    const r = chapterPlanSchema.safeParse({
+      variants: [legacyBeatSheet],
+      selectedIndex: 0,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.variants[0]?.contract).toBeUndefined();
+  });
+
+  it("контракт принимается вариантом плана", () => {
+    const r = chapterBeatSheetVariantSchema.safeParse({
+      ...legacyBeatSheet,
+      contract: {
+        mustHappen: ["Рин находит медальон"],
+        mustNotHappen: ["Сарек называет имя убийцы"],
+        expectedRevelations: ["Станцию закрывают"],
+        allowedCanonSupersessions: [
+          { factId: "fact_12", statement: "брат погиб", becomes: "брат жив" },
+        ],
+      },
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.contract?.mustHappen).toEqual(["Рин находит медальон"]);
+  });
+
+  it("пустой контракт не рисует заголовка", () => {
+    expect(
+      renderChapterContract({
+        mustHappen: [],
+        mustNotHappen: [],
+        expectedRevelations: [],
+        allowedCanonSupersessions: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("печатает только непустые списки", () => {
+    const out = renderChapterContract({
+      mustHappen: ["Рин находит медальон"],
+      mustNotHappen: [],
+      expectedRevelations: [],
+      allowedCanonSupersessions: [
+        { factId: "fact_12", statement: "брат погиб", becomes: "брат жив" },
+      ],
+    })!;
+    expect(out).toContain("Контракт главы");
+    expect(out).toContain("Рин находит медальон");
+    expect(out).toContain("fact_12");
+    expect(out).toContain("брат жив");
+    // Пустое не печатается: заголовок без строк читается как «ничего не
+    // запрещено», тогда как на деле это «не задано».
+    expect(out).not.toMatch(/Чего быть не должно/);
+    expect(out).not.toMatch(/Что раскрывается/);
+  });
+
+  it("отмена без идентификатора печатается формулировкой", () => {
+    const out = renderChapterContract({
+      mustHappen: [],
+      mustNotHappen: [],
+      expectedRevelations: [],
+      allowedCanonSupersessions: [
+        { factId: null, statement: "станция заброшена", becomes: "станция жилая" },
+      ],
+    })!;
+    expect(out).toContain("станция заброшена");
+    expect(out).toContain("станция жилая");
+    expect(out).not.toContain("null");
+  });
+
+  it("отмена без формулировки отвергается, без идентификатора — нет", () => {
+    expect(
+      canonSupersessionSchema.safeParse({ statement: "", becomes: "x" }).success,
+    ).toBe(false);
+    const ok = canonSupersessionSchema.safeParse({
+      statement: "брат погиб",
+      becomes: "брат жив",
+    });
+    expect(ok.success).toBe(true);
+    // Планировщик не всегда видит факт в списке действующих; формулировка
+    // обязательна всегда, идентификатор — нет.
+    expect(ok.success && ok.data.factId).toBeNull();
+  });
+
+  it("испорченный контракт не роняет сборку контекста", () => {
+    // `plan_json` читается из базы через `JSON.parse(...) as ChapterPlan`, без
+    // проверки. Падение рендера уронило бы и генерацию, и критику: тип здесь
+    // ничего не гарантирует, поэтому разбор идёт схемой.
+    for (const junk of ["строка", 42, null, [], true, { mustHappen: "не список" }]) {
+      expect(() => renderChapterContract(junk)).not.toThrow();
+    }
+    expect(renderChapterContract("строка")).toBeNull();
+    // Частичный объект читается с умолчаниями, а не отбрасывается целиком.
+    expect(renderChapterContract({ mustHappen: ["Рин уходит"] })).toContain(
+      "Рин уходит",
+    );
+  });
+
+  it("идентификатор не в форме fact_<число> отвергается", () => {
+    expect(
+      canonSupersessionSchema.safeParse({
+        factId: "12",
+        statement: "s",
+        becomes: "b",
+      }).success,
+    ).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import {
   renderChapterClosing,
   type Chapter,
   type ChapterBeatSheetVariant,
+  type ChapterContract,
   type ChapterPlan,
 } from "@book-forge/shared";
 
@@ -132,6 +133,42 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
   );
 }
 
+/**
+ * Обязательства варианта: что глава обязана сделать и чего не вправе.
+ * Пустые списки не печатаются — заголовок без строк читается как «ничего не
+ * запрещено», тогда как на деле это «не задано». Правка контракта руками
+ * сюда не входит: план меняется выбором другого варианта или перегенерацией.
+ */
+function ChapterContractView({
+  contract,
+}: {
+  contract: ChapterContract | undefined;
+}) {
+  if (!contract) return null;
+  const rows: Array<[string, string[]]> = [
+    ["Обязано случиться", contract.mustHappen],
+    ["Чего быть не должно", contract.mustNotHappen],
+    ["Раскрывается здесь", contract.expectedRevelations],
+    [
+      "Отменяет в каноне",
+      contract.allowedCanonSupersessions.map(
+        (s) => `«${s.statement}» → «${s.becomes}»`,
+      ),
+    ],
+  ];
+  const filled = rows.filter(([, items]) => items.length > 0);
+  if (filled.length === 0) return null;
+  return (
+    <div className="text-sm flex flex-col gap-1">
+      {filled.map(([title, items]) => (
+        <p key={title}>
+          <strong>{title}:</strong> {items.join("; ")}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function BeatSheetCard({
   variant,
   isSelected,
@@ -172,6 +209,7 @@ function BeatSheetCard({
           <strong>Финал главы:</strong> {renderChapterClosing(variant.closing)}
         </p>
       )}
+      <ChapterContractView contract={variant.contract} />
       <p className="text-sm text-[var(--color-muted-foreground)]">
         ~{variant.estimatedWords} слов · {variant.beats.length} beats
       </p>
