@@ -330,6 +330,20 @@ describe("контракт главы", () => {
     expect(ok.success && ok.data.factId).toBeNull();
   });
 
+  it("испорченный контракт не роняет сборку контекста", () => {
+    // `plan_json` читается из базы через `JSON.parse(...) as ChapterPlan`, без
+    // проверки. Падение рендера уронило бы и генерацию, и критику: тип здесь
+    // ничего не гарантирует, поэтому разбор идёт схемой.
+    for (const junk of ["строка", 42, null, [], true, { mustHappen: "не список" }]) {
+      expect(() => renderChapterContract(junk)).not.toThrow();
+    }
+    expect(renderChapterContract("строка")).toBeNull();
+    // Частичный объект читается с умолчаниями, а не отбрасывается целиком.
+    expect(renderChapterContract({ mustHappen: ["Рин уходит"] })).toContain(
+      "Рин уходит",
+    );
+  });
+
   it("идентификатор не в форме fact_<число> отвергается", () => {
     expect(
       canonSupersessionSchema.safeParse({

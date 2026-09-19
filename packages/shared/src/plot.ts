@@ -310,8 +310,17 @@ export type ChapterContract = z.infer<typeof chapterContractSchema>;
  *
  *  Пустые подсписки не печатаются намеренно: заголовок без строк читается
  *  как «ничего не запрещено», тогда как на деле это «не задано», и модель
- *  вправе принять одно за другое. */
-export function renderChapterContract(c: ChapterContract): string | null {
+ *  вправе принять одно за другое.
+ *
+ *  Принимает `unknown` и разбирает схемой, а не доверяет типу: `plan_json`
+ *  читается из базы через `JSON.parse(...) as ChapterPlan` — без проверки, —
+ *  и на всех трёх путях (Writer, критики, интерфейс) сюда может приехать что
+ *  угодно. Падение здесь уронило бы сборку контекста целиком: ни генерации,
+ *  ни критики. Испорченный контракт — это отсутствующий контракт. */
+export function renderChapterContract(raw: unknown): string | null {
+  const parsed = chapterContractSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const c = parsed.data;
   const blocks: string[] = [];
   const list = (title: string, items: string[]): void => {
     if (items.length === 0) return;
