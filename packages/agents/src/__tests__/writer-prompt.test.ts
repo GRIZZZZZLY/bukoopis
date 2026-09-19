@@ -167,4 +167,14 @@ describe("buildWriterVolatilePrompt — chapter closing", () => {
     expect(prompt).toContain("Beats:");
     expect(prompt).not.toContain("Финал главы:");
   });
+
+  it("правило POV указывает на блок, который действительно печатается", () => {
+    // Раньше оно ссылалось на «Известно POV-персонажу» — блок, удалённый
+    // вместе с двойным рендером, — и добавляло «(если он есть)», то есть
+    // само же делало запрет необязательным.
+    const system = buildWriterStableSystem(base);
+    expect(system).toContain("«Знает»");
+    expect(system).not.toContain("Известно POV-персонажу");
+    expect(system).not.toContain("(если он есть)");
+  });
 });

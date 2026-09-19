@@ -142,6 +142,28 @@ describe("characterContextToPrompt", () => {
     expect(text).not.toContain("умолчания:");
   });
 
+  it("правило про «Знает» не печатается, когда списков нет", () => {
+    // Безусловная шапка утверждала бы, что герой не знает ничего, тогда как
+    // знания просто не собраны — например, на пути без границы.
+    const text = characterContextToPrompt(ctx(), names);
+    expect(text).not.toContain("К НАЧАЛУ сцены");
+  });
+
+  it("правило про «Знает» печатается, когда список есть", () => {
+    const text = characterContextToPrompt(
+      ctx({
+        characters: [
+          {
+            character: ctx().characters[0]!.character,
+            knowledge: [{ fact: "Станцию закрывают", acquisition: "told", source: null, canonFactId: null, disprovedFromChapterOrder: null }],
+          },
+        ],
+      }),
+      names,
+    );
+    expect(text).toContain("К НАЧАЛУ сцены");
+  });
+
   it("знания рендерятся только те, что пришли в контекст", () => {
     // Раньше этот тест назывался проверкой AC-07, но границы не касался:
     // знание подаётся прямо в рендерер, и отсечь его тут нечему. Границу

@@ -404,7 +404,14 @@ export function createPlotRoute(
     // псевдонимы. Прежде его знания шли ВТОРЫМ блоком промпта («Известно
     // POV-персонажу») из тех же событий и той же границы — одно и то же
     // платилось дважды из одного бюджета.
-    const povId = resolveEntity(sqlite, ch.book_id, "character", beatSheet.pov)?.entityId;
+    const povEntity = resolveEntity(sqlite, ch.book_id, "character", beatSheet.pov);
+    const povId = povEntity?.entityId;
+    // Беат-лист может звать POV псевдонимом, а карточка идёт под каноническим
+    // именем. «POV: Ваня» и «### Иван» — для модели два человека, и знания
+    // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
+    const beatSheetForWriter = povEntity
+      ? { ...beatSheet, pov: povEntity.canonicalName }
+      : beatSheet;
     const charResult = gatherCharacterContext(
       sqlite,
       ch.book_id,
@@ -529,7 +536,7 @@ export function createPlotRoute(
           bookPremise: ctx.premise,
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
-          beatSheet,
+          beatSheet: beatSheetForWriter,
           previousChaptersSummary: inc.has("rolling") ? prevSummary : null,
           previousChapterTail: inc.has("prevTail") ? prevTail : null,
           characterContext: inc.has("characters") ? characterContextFinal : null,
