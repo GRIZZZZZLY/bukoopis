@@ -165,7 +165,11 @@ export async function extractCanonFacts(
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),
-    maxTokens: 8192,
+    // 8192 не хватает на полный ответ: 40 фактов и 30 событий с дословными
+    // цитатами — это больше десяти тысяч токенов, а обрыв приходит сюда как
+    // «инструмент не вызван», без `stop_reason`. Пока предел не доезжал до
+    // подписки, его занижение ничего не стоило; теперь доезжает.
+    maxTokens: 16000,
   });
   if (input.onUsage) {
     try {
