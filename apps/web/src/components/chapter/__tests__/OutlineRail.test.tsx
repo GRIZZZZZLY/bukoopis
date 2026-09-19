@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { OutlineRail } from "../OutlineRail";
 
@@ -23,6 +23,11 @@ function renderRail(active = 2) {
 describe("OutlineRail", () => {
   /** Регрессия: шапка рукописи показывала order_index + 1 («Глава 21» для
       второй главы), номер должен браться из позиции в оглавлении. */
+  // Ожидание строится вокруг самой величины, а не вокруг появления ссылки.
+  // Позицию сообщает эффект, а он в React 18 выполняется ПОСЛЕ отрисовки:
+  // дождавшись ссылки, тест иногда успевал проверить значение до вызова
+  // колбэка и падал без всякой причины в коде. Проверка, которая иногда
+  // врёт, хуже отсутствующей.
   it("reports the active chapter position", async () => {
     const seen: (number | null)[] = [];
     render(
@@ -35,8 +40,7 @@ describe("OutlineRail", () => {
         />
       </MemoryRouter>,
     );
-    await screen.findByRole("link", { name: /Туман/ });
-    expect(seen.at(-1)).toBe(2);
+    await waitFor(() => expect(seen.at(-1)).toBe(2));
   });
 
   it("reports null when the active chapter is not in the outline", async () => {
@@ -51,7 +55,10 @@ describe("OutlineRail", () => {
         />
       </MemoryRouter>,
     );
+    // Тут `null` — и ответ, и начальное состояние, поэтому одного значения
+    // мало: ждём именно сообщения, отправленного ПОСЛЕ загрузки списка.
     await screen.findByRole("link", { name: /Туман/ });
+    await waitFor(() => expect(seen.length).toBeGreaterThan(1));
     expect(seen.at(-1)).toBeNull();
   });
 
@@ -75,5 +82,12 @@ describe("OutlineRail", () => {
       </MemoryRouter>,
     );
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    // Список грузится и в свёрнутом виде — номер главы нужен шапке рукописи.
+    // Без ожидания загрузка приземлялась уже после конца теста, и React
+    // ругался на состояние, изменённое вне act; следующий тест в файле
+    // получал это предупреждение в нагрузку.
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 });
