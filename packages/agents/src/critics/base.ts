@@ -20,6 +20,12 @@ export interface CriticInput {
   beatSheet?: string | null;
   bookContext: string; // premise + outline
   previousChaptersSummary: string | null;
+  /** Финал предыдущей главы дословно и найденные фрагменты ранних глав —
+   *  та же история, что видел Writer (AC-36). Без них критик сверял главу с
+   *  пересказами и не мог заметить, что она повторяет уже написанное
+   *  предложение или рвёт незакрытое действие. */
+  previousChapterTail?: string | null;
+  retrievedContext?: string | null;
   characterContext: string | null;
   loreContext: string | null;
   /**
@@ -51,6 +57,29 @@ export const CRITIC_CALIBRATION_RULE = `Калибровка:
 — Не считай дефектом: тире в диалоге и в пунктуации (норма русского текста); длинные периоды и плотную метафорику, если их предписывает блок «Стиль»; безупречную грамматику; формальный регистр; переходные слова сами по себе.
 — Не требуй противоположного полюса: цель — умеренность, а не вычистить все сравнения или раздробить все предложения. Если текст уже на пределе (фрагменты, стаккато, обрывы), отмечай перегиб отдельно как over-correction, не как ИИ-признак.`;
 
+/**
+ * История книги для критика или Reviser'а — одним местом. Этот блок был
+ * переписан шесть раз (четыре критика, база и Reviser), и каждая копия
+ * знала только о пересказе. Поле, добавленное в одну, молча не доходило до
+ * остальных — ровно так архитектурный лист когда-то дошёл до критиков и не
+ * дошёл до Reviser'а.
+ */
+export function renderHistoryBlocks(
+  input: Pick<CriticInput, "previousChaptersSummary" | "previousChapterTail" | "retrievedContext">,
+): string[] {
+  const parts: string[] = [];
+  if (input.retrievedContext) parts.push(input.retrievedContext);
+  if (input.previousChaptersSummary) {
+    parts.push(`Предыдущие главы (краткое):\n${input.previousChaptersSummary}`);
+  }
+  if (input.previousChapterTail) {
+    parts.push(
+      `Финал предыдущей главы (дословно, последние абзацы):\n${input.previousChapterTail}`,
+    );
+  }
+  return parts;
+}
+
 const criticOutputSchema = criticReportSchema.omit({ critic: true });
 
 export interface RunCriticOptions {
@@ -66,12 +95,8 @@ export async function runCritic(
 ): Promise<CriticReport> {
   const stableParts: string[] = [
     `Книга/контекст:\n${opts.input.bookContext}`,
+    ...renderHistoryBlocks(opts.input),
   ];
-  if (opts.input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${opts.input.previousChaptersSummary}`,
-    );
-  }
   if (opts.input.characterContext) stableParts.push(opts.input.characterContext);
   if (opts.input.loreContext) stableParts.push(opts.input.loreContext);
   const stableSystem = `${opts.system}\n\n---\n\n${stableParts.join("\n\n")}`;

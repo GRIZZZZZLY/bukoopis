@@ -66,7 +66,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createRetrievalRoute(sqlite, hasVec));
   app.route("/api", createImportExportRoute(sqlite, hasVec));
   app.route("/api", createEntitiesRoute(sqlite));
-  app.route("/api", createCritiqueRoute(sqlite, proposalCancels, memoryWorker));
+  app.route("/api", createCritiqueRoute(sqlite, hasVec, proposalCancels, memoryWorker));
   app.route("/api", createInlineRoute(sqlite));
   app.route("/api", createStyleRoute(sqlite));
   app.route("/api", createUsageRoute(sqlite));

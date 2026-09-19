@@ -34,6 +34,8 @@ import {
 import {
   compileContext,
   describeCompiledContext,
+  MAX_PROSE_CONTEXT_TOKENS,
+  requiredOverflowMessage,
 } from "../utils/context-compiler.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
@@ -122,11 +124,6 @@ export function loadBookContext(
 // Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
 
-// ADR 0003 slice 3: hard cap on assembled Writer context (trimmable layers,
-// excludes the always-sent beat-sheet + book premise/outline). Generous — the
-// point is a safety ceiling on very long books + Context Inspector visibility,
-// not aggressive trimming of normal chapters.
-const MAX_WRITER_CONTEXT_TOKENS = 80_000;
 
 export function createPlotRoute(
   sqlite: DatabaseType,
@@ -504,17 +501,14 @@ export function createPlotRoute(
         { id: "retrieval", text: writerRetrieved.promptBlock, priority: 5 },
         { id: "style", text: styleCtx.prompt, priority: 6 },
       ],
-      { maxTokens: MAX_WRITER_CONTEXT_TOKENS },
+      { maxTokens: MAX_PROSE_CONTEXT_TOKENS },
     );
     console.warn(describeCompiledContext(compiled, `writer ch#${ch.order_index}`));
     if (compiled.requiredOverflow) {
       // Отказ до первого токена и до создания кандидата. Генерировать с
       // урезанным обязательным слоем значило бы выдать текст, нарушающий
       // ограничения, о которых модели не сказали, — и ничем это не пометить.
-      return badRequest(
-        c,
-        `обязательный контекст сцены (~${compiled.requiredTokens} токенов) не помещается в бюджет (${compiled.budgetTokens}); сократите состав сцены или план`,
-      );
+      return badRequest(c, requiredOverflowMessage(compiled));
     }
     const inc = new Set(compiled.includedIds);
 

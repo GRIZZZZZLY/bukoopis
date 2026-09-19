@@ -58,6 +58,23 @@ describe("buildReviserStableSystem — narrative architecture", () => {
     expect(system).toContain("Тема: подразумевается");
   });
 
+  it("AC-36: хвост предыдущей главы и найденные фрагменты доходят до Reviser", () => {
+    // Правка — последний проход по прозе; без этих блоков она чинила стык с
+    // предыдущей главой, которого не видела.
+    const system = buildReviserStableSystem({
+      ...base,
+      previousChaptersSummary: "СВОДКА",
+      previousChapterTail: "ХВОСТ_ДЕВЯТОЙ",
+      retrievedContext: "## Релевантные фрагменты предыдущих глав\nФРАГМЕНТ",
+    });
+    expect(system).toContain("Предыдущие главы (краткое):\nСВОДКА");
+    expect(system).toContain("ХВОСТ_ДЕВЯТОЙ");
+    expect(system).toMatch(/Финал предыдущей главы \(дословно/);
+    expect(system).toContain("ФРАГМЕНТ");
+    // Фрагменты идут раньше сводки и хвоста — как у Writer.
+    expect(system.indexOf("ФРАГМЕНТ")).toBeLessThan(system.indexOf("СВОДКА"));
+  });
+
   it("omits the block when there is no architecture", () => {
     expect(buildReviserStableSystem(base)).not.toContain("Архитектура книги");
   });

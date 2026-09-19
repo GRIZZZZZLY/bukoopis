@@ -16,6 +16,17 @@ import { makeCharacterBoundaryReaders } from "./character-events.js";
 import { renderActiveFactsPrompt } from "./book-facts.js";
 import { gatherRelevantNotes, renderOpenNotesPrompt } from "./book-notes.js";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
+import {
+  loadPreviousChapterTailWithOrder,
+  loadRollingChapterContext,
+} from "./rolling-context.js";
+import { gatherRetrievedChunks } from "./chapter-retrieval.js";
+import {
+  compileContext,
+  describeCompiledContext,
+  MAX_PROSE_CONTEXT_TOKENS,
+  type CompiledContext,
+} from "./context-compiler.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
 /**
@@ -26,6 +37,12 @@ import type { BookRow, ChapterRow } from "../db/rows.js";
  * critics silently failed to reach the Reviser (the narrative architecture
  * sheet was missed exactly this way), so repair could undo a structural
  * decision it never saw. One function, both call sites.
+ *
+ * История книги здесь — ТА ЖЕ, что у Writer (AC-36): сводки по рубежам,
+ * дословный финал предыдущей главы, найденные фрагменты, один и тот же
+ * бюджет. Прежде критика собирала её сама: первые 1200 символов КАЖДОЙ
+ * предыдущей главы, без сводок, без хвоста, без поиска — глава писалась с
+ * одной памятью, а критиковалась и правилась с другой.
  */
 export interface ChapterProseContext {
   /** POV of the accepted beat-sheet, or "—" when no plan is selected. */
@@ -37,11 +54,18 @@ export interface ChapterProseContext {
   outlineSelected: string | null;
   /** Narrative architecture sheet of that variant, rendered in Russian. */
   architectureContext: string | null;
+  /** Сводки по рубежам + окно последних глав — то, что видит Writer. */
   previousChaptersSummary: string | null;
+  /** Финал предыдущей главы дословно. */
+  previousChapterTail: string | null;
+  /** Найденные фрагменты ранних глав. */
+  retrievedContext: string | null;
   characterContext: string | null;
   loreContext: string | null;
   /** Premise + outline + studio + active facts + open threads. */
   bookContext: string;
+  /** Что вошло в бюджет и что выпало; `requiredOverflow` — сигнал отказа. */
+  compiled: CompiledContext;
 }
 
 interface PlanVariantLite {
@@ -94,39 +118,12 @@ function selectedOutlineJson(book: BookRow): string | null {
   return null;
 }
 
-function previousChaptersSummary(
-  sqlite: DatabaseType,
-  book: BookRow,
-  ch: ChapterRow,
-): string | null {
-  const rows = sqlite
-    .prepare(
-      `SELECT c.id, c.title, c.order_index, v.content_text
-       FROM chapters c
-       LEFT JOIN chapter_versions v ON v.id = c.current_version_id
-       WHERE c.book_id = ? AND c.order_index < ?
-       ORDER BY c.order_index ASC`,
-    )
-    .all(book.id, ch.order_index) as Array<{
-    id: number;
-    title: string;
-    order_index: number;
-    content_text: string | null;
-  }>;
-  if (rows.length === 0) return null;
-  return rows
-    .map((r) => {
-      const snip = r.content_text ? r.content_text.slice(0, 1200) : "(пусто)";
-      return `Глава #${r.order_index} «${r.title}»:\n${snip}`;
-    })
-    .join("\n\n---\n\n");
-}
-
 export async function loadChapterProseContext(
   sqlite: DatabaseType,
   book: BookRow,
   ch: ChapterRow,
   chapterText: string,
+  opts: { hasVec: boolean },
 ): Promise<ChapterProseContext> {
   const outlineSelected = selectedOutlineJson(book);
   const architecture = extractNarrativeArchitecture(outlineSelected);
@@ -151,7 +148,18 @@ export async function loadChapterProseContext(
     }
   }
 
-  const prevSummary = previousChaptersSummary(sqlite, book, ch);
+  // История — теми же функциями, что у Writer, и в том же порядке.
+  const rolling = loadRollingChapterContext(sqlite, book.id, ch.order_index);
+  const tailRow = loadPreviousChapterTailWithOrder(sqlite, book.id, ch.order_index);
+  const retrieved = await gatherRetrievedChunks(sqlite, {
+    bookId: book.id,
+    // Запрос — план главы, как у Writer, а не весь её текст: искать надо то,
+    // с чем глава должна сходиться, а не то, что она уже сказала.
+    queryText: beatSheet ?? `${ch.title}\n${emotionalGoal}`,
+    currentChapterOrder: ch.order_index,
+    hasVec: opts.hasVec,
+    verbatimChapterOrders: tailRow ? [tailRow.chapterOrder] : [],
+  });
 
   const contextTexts = [
     ch.intent,
@@ -161,7 +169,7 @@ export async function loadChapterProseContext(
     pov,
     emotionalGoal,
     chapterText,
-    prevSummary,
+    rolling,
   ];
   const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id);
   const charResult = gatherCharacterContext(
@@ -233,6 +241,23 @@ export async function loadChapterProseContext(
     notesPrompt ? `\n\n${notesPrompt}` : ""
   }`;
 
+  // Тот же бюджет и те же приоритеты, что у Writer. Расхождение одно и
+  // названо: у критиков студийный контекст едет внутри bookContext, а не
+  // отдельной обрезаемой секцией — это уравнивается извлечением общей
+  // сборки (задача 4 плана этапа 4).
+  const compiled = compileContext(
+    [
+      { id: "characters", text: characterContext, priority: 1, required: true },
+      { id: "prevTail", text: tailRow?.text ?? null, priority: 2 },
+      { id: "rolling", text: rolling, priority: 2 },
+      { id: "lore", text: loreContext, priority: 3 },
+      { id: "retrieval", text: retrieved.promptBlock, priority: 5 },
+    ],
+    { maxTokens: MAX_PROSE_CONTEXT_TOKENS },
+  );
+  console.warn(describeCompiledContext(compiled, `prose ch#${ch.order_index}`));
+  const inc = new Set(compiled.includedIds);
+
   return {
     pov,
     emotionalGoal,
@@ -241,9 +266,12 @@ export async function loadChapterProseContext(
     architectureContext: architecture
       ? renderNarrativeArchitecture(architecture)
       : null,
-    previousChaptersSummary: prevSummary,
-    characterContext,
-    loreContext,
+    previousChaptersSummary: inc.has("rolling") ? rolling : null,
+    previousChapterTail: inc.has("prevTail") ? (tailRow?.text ?? null) : null,
+    retrievedContext: inc.has("retrieval") ? retrieved.promptBlock : null,
+    characterContext: inc.has("characters") ? characterContext : null,
+    loreContext: inc.has("lore") ? loreContext : null,
     bookContext,
+    compiled,
   };
 }

@@ -11,6 +11,15 @@
  * separate follow-up (slice 3b); this slice does budgeting + dedup + inspector.
  */
 
+/**
+ * Потолок собранного контекста прозы — общий для Writer, критики и Reviser:
+ * они обязаны видеть одну историю, значит и обрезать её одинаково. Щедрый —
+ * это предохранитель на очень длинных книгах и видимость в инспекторе, не
+ * агрессивная обрезка обычной главы. Бюджет по возможностям конкретной
+ * модели — отдельная работа; пока одна константа.
+ */
+export const MAX_PROSE_CONTEXT_TOKENS = 80_000;
+
 export interface ContextSection {
   /** Stable id for diagnostics + caller mapping ("retrieval", "canon", …). */
   id: string;
@@ -99,6 +108,12 @@ export function compileContext(
     requiredOverflow,
     requiredTokens,
   };
+}
+
+/** Текст отказа при переполнении обязательного слоя — один для Writer,
+ *  критики и Reviser, чтобы автор читал одно и то же, откуда бы оно ни пришло. */
+export function requiredOverflowMessage(compiled: CompiledContext): string {
+  return `обязательный контекст сцены (~${compiled.requiredTokens} токенов) не помещается в бюджет (${compiled.budgetTokens}); сократите состав сцены или план`;
 }
 
 /** One-line Context Inspector summary for logs. */

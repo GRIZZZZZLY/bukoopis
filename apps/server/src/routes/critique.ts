@@ -18,6 +18,7 @@ import {
 } from "@book-forge/agents";
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
+import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   createProposal,
@@ -116,6 +117,7 @@ void extractText; // keep import alive if unused
 
 export function createCritiqueRoute(
   sqlite: DatabaseType,
+  hasVec: boolean,
   cancels: ProposalCancelRegistry,
   memoryWorker?: Pick<MemoryWorker, "kick">,
 ): Hono {
@@ -156,9 +158,14 @@ export function createCritiqueRoute(
       .get(ch.book_id) as BookRow | undefined;
     if (!book) return notFound(c, "book");
 
-    // Build input context (mirror Writer's context-gathering).
-    const { pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext, previousChaptersSummary: prevSummary } =
-      await loadChapterProseContext(sqlite, book, ch, version.content_text);
+    // Та же история, что у Writer (AC-36): одна сборка, один бюджет.
+    const {
+      pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
+      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext, compiled,
+    } = await loadChapterProseContext(sqlite, book, ch, version.content_text, { hasVec });
+    if (compiled.requiredOverflow) {
+      return badRequest(c, requiredOverflowMessage(compiled));
+    }
 
     // Style critic judges the chapter against the book's target style, not a
     // generic prose bar. Few-shot samples are excluded (0) — the critic needs
@@ -183,6 +190,8 @@ export function createCritiqueRoute(
       beatSheet,
       bookContext,
       previousChaptersSummary: prevSummary,
+      previousChapterTail,
+      retrievedContext,
       characterContext,
       loreContext,
       styleContext: criticStyleContext,
@@ -309,8 +318,14 @@ export function createCritiqueRoute(
 
     // Same context the critics saw — one assembly, so a field added for them
     // cannot silently miss the Reviser.
-    const { pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext, previousChaptersSummary: prevSummary, architectureContext } =
-      await loadChapterProseContext(sqlite, book, ch, v.content_text);
+    const {
+      pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
+      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext,
+      architectureContext, compiled,
+    } = await loadChapterProseContext(sqlite, book, ch, v.content_text, { hasVec });
+    if (compiled.requiredOverflow) {
+      return badRequest(c, requiredOverflowMessage(compiled));
+    }
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
@@ -355,6 +370,8 @@ export function createCritiqueRoute(
           styleContext: styleCtx.prompt,
           fatigueWords: styleCtx.fatigueBlacklist,
           previousChaptersSummary: prevSummary,
+          previousChapterTail,
+          retrievedContext,
           originalText: v.content_text,
           critics: report.critics,
           severityFilter: parsed.data.severities,

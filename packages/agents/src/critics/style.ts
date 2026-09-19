@@ -10,7 +10,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { CRITIC_CALIBRATION_RULE, type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, type CriticInput } from "./base.js";
 
 export const STYLE_CRITIC_SYSTEM = `Ты — Style критик художественной прозы на русском языке.
 
@@ -47,12 +47,10 @@ const styleOutputSchema = criticReportSchema.omit({ critic: true });
 type StyleCriticOutput = z.infer<typeof styleOutputSchema>;
 
 export function buildStylePrompt(input: CriticInput): string {
-  const stableParts: string[] = [`Книга/контекст:\n${input.bookContext}`];
-  if (input.previousChaptersSummary) {
-    stableParts.push(
-      `Предыдущие главы (краткое):\n${input.previousChaptersSummary}`,
-    );
-  }
+  const stableParts: string[] = [
+    `Книга/контекст:\n${input.bookContext}`,
+    ...renderHistoryBlocks(input),
+  ];
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
