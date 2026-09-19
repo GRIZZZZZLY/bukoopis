@@ -168,6 +168,40 @@ describe("buildWriterVolatilePrompt — chapter closing", () => {
     expect(prompt).not.toContain("Финал главы:");
   });
 
+  it("печатает контракт главы после beats", () => {
+    const prompt = buildWriterVolatilePrompt({
+      ...base,
+      beatSheet: {
+        ...beatSheet,
+        contract: {
+          mustHappen: ["Рин находит медальон"],
+          mustNotHappen: ["Сарек называет имя убийцы"],
+          expectedRevelations: [],
+          allowedCanonSupersessions: [],
+        },
+      } as unknown as WriteChapterInput["beatSheet"],
+    });
+    expect(prompt).toContain("Контракт главы");
+    expect(prompt).toContain("Рин находит медальон");
+    expect(prompt).toContain("Сарек называет имя убийцы");
+    expect(prompt.indexOf("Контракт главы")).toBeGreaterThan(prompt.indexOf("Beats:"));
+  });
+
+  it("без контракта заголовка нет", () => {
+    expect(buildWriterVolatilePrompt({ ...base, beatSheet })).not.toContain(
+      "Контракт главы",
+    );
+  });
+
+  it("запрет из контракта сильнее беата", () => {
+    // Беат и запрет могут противоречить друг другу: план сгенерирован одной
+    // моделью, и она способна положить в beats то, что сама же запретила.
+    // Без правила Writer выберет более подробный источник — beats.
+    const system = buildWriterStableSystem(base);
+    expect(system).toMatch(/чего быть не должно/i);
+    expect(system).toMatch(/запрет/i);
+  });
+
   it("правило POV указывает на блок, который действительно печатается", () => {
     // Раньше оно ссылалось на «Известно POV-персонажу» — блок, удалённый
     // вместе с двойным рендером, — и добавляло «(если он есть)», то есть
