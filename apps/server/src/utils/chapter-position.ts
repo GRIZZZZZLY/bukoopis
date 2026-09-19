@@ -11,12 +11,15 @@ import type { Database as DatabaseType } from "better-sqlite3";
 export function chapterPositionLookup(
   sqlite: DatabaseType,
   bookId: number,
-): (orderIndex: number) => number {
+): (orderIndex: number) => number | null {
   const rows = sqlite
     .prepare(
       "SELECT order_index FROM chapters WHERE book_id = ? ORDER BY order_index ASC",
     )
     .all(bookId) as Array<{ order_index: number }>;
   const positions = new Map(rows.map((r, i) => [r.order_index, i + 1]));
-  return (orderIndex) => positions.get(orderIndex) ?? orderIndex;
+  // `null`, а не сам `order_index`: вернув его, функция подмешала бы
+  // разрежённое число (90) к позициям (10) — та самая ошибка, против которой
+  // она написана. Глава не из этой книги номера не получает.
+  return (orderIndex) => positions.get(orderIndex) ?? null;
 }

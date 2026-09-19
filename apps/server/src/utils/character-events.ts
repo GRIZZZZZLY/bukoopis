@@ -306,7 +306,10 @@ export function loadActiveStates(
            e.chapter_id IS NULL
            OR ec.order_index < (SELECT order_index FROM chapters WHERE id = ?)
          )
-       ORDER BY e.id DESC`,
+       -- Позднейшее наблюдение выигрывает, и «позднейшее» — по главе, а не
+       -- по порядку вставки: переразбор ранней главы после поздней записал бы
+       -- строку с большим id, и состояние героя откатилось бы назад во времени.
+       ORDER BY ec.order_index DESC, e.id DESC`,
     )
     .all(...subjectIds, boundary.chapterId) as Array<{
     subject_character_id: number;
@@ -339,16 +342,39 @@ export function loadActiveStates(
       data = {};
     }
 
-    const d = data as { state?: unknown; endCondition?: unknown };
-    const state = typeof d.state === "string" ? d.state : "";
-    const endCondition = typeof d.endCondition === "string" ? d.endCondition : null;
+    const d = normalizeEventData("state", data);
+    const state = d.state;
+    const endCondition = d.endCondition;
 
     if (!state) continue;
 
+    const observedPosition =
+      row.chapter_order === null ? null : positionOf(row.chapter_order);
+
+    // Явный срок вышел — состояние больше не действует (AC-34).
+    if (
+      d.endsAtChapterOrder !== null &&
+      boundaryPosition !== null &&
+      d.endsAtChapterOrder <= boundaryPosition
+    ) {
+      continue;
+    }
+    // «Сцена» и «глава» без явного срока действуют только там, где
+    // наблюдались. Граница исключающая, поэтому своя глава сюда и не
+    // попадает: такое состояние живёт ровно одну сцену и дальше не идёт.
+    if (
+      (d.scope === "scene" || d.scope === "chapter") &&
+      d.endsAtChapterOrder === null &&
+      observedPosition !== null &&
+      boundaryPosition !== null &&
+      observedPosition < boundaryPosition
+    ) {
+      continue;
+    }
+
     // Состояние без главы — ручное или перенесённое. Номера у него нет, и
     // «наблюдалось в главе 0» было бы выдумкой: отдаём `null`.
-    const observedAtChapterOrder =
-      row.chapter_order === null ? null : positionOf(row.chapter_order);
+    const observedAtChapterOrder = observedPosition;
     const isFresh =
       boundaryPosition !== null &&
       observedAtChapterOrder !== null &&

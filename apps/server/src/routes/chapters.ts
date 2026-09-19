@@ -26,11 +26,6 @@ import {
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
 
-/**
- * Maps a chapter's `order_index` to its 1-based position in the book — the
- * number the author actually sees. Falls back to the raw value for an index
- * that no longer resolves to a chapter.
- */
 export function createChaptersRoute(
   sqlite: DatabaseType,
   memoryWorker?: Pick<MemoryWorker, "kick">,

@@ -111,9 +111,12 @@ describe("loadActiveStates", () => {
     expect(s?.certainty).toBe("stale");
   });
 
-  it("у каждого героя остаётся только последнее состояние", () => {
-    state(rinId, "устала", 8);
+  it("у каждого героя остаётся состояние из ПОЗДНЕЙШЕЙ главы, а не позднейшая запись", () => {
+    // Записи вставлены в обратном порядке: так выглядит переразбор ранней
+    // главы после поздней. Побеждать должна девятая глава, хотя её строка
+    // старше по id — иначе состояние героя откатывается назад во времени.
     state(rinId, "отдохнула", 9);
+    state(rinId, "устала", 8);
     state(kaiId, "зол", 9);
     const out = at(10);
     expect(out).toHaveLength(2);
@@ -121,7 +124,7 @@ describe("loadActiveStates", () => {
     expect(out.find((s) => s.subjectCharacterId === kaiId)?.state).toBe("зол");
   });
 
-  it("гипотеза и отклонённое состояние в контекст не идут", () => {
+  it("гипотеза в контекст не идёт", () => {
     state(rinId, "настоящее", 9);
     t.sqlite
       .prepare(
@@ -145,5 +148,29 @@ describe("loadActiveStates", () => {
   it("условие завершения доезжает до вызывающего", () => {
     state(rinId, "держит вахту", 9, { endCondition: "сменят на посту" });
     expect(at(10)[0]?.endCondition).toBe("сменят на посту");
+  });
+
+  it("AC-34: состояние с истёкшим сроком не возвращается", () => {
+    state(rinId, "ранена", 2, { scope: "until_resolved", endsAtChapterOrder: 5 });
+    // До пятой главы рана при герое.
+    expect(at(4).map((s) => s.state)).toContain("ранена");
+    // С пятой — уже нет, и на десятой тоже.
+    expect(at(5).map((s) => s.state)).not.toContain("ранена");
+    expect(at(10).map((s) => s.state)).not.toContain("ранена");
+  });
+
+  it("AC-34: состояние на одну сцену не тянется в следующие главы", () => {
+    state(rinId, "в ярости", 2, { scope: "scene" });
+    state(rinId, "измотана", 2, { scope: "unknown" });
+    const out = at(10).map((s) => s.state);
+    expect(out).not.toContain("в ярости");
+    // «unknown» остаётся: выдумывать ему срок запрещено, и молча выбрасывать
+    // тоже — иначе пропадут все состояния, кроме явно бессрочных.
+    expect(out).toContain("измотана");
+  });
+
+  it("состояние на главу кончается вместе со своей главой", () => {
+    state(rinId, "простужена", 9, { scope: "chapter" });
+    expect(at(10).map((s) => s.state)).not.toContain("простужена");
   });
 });
