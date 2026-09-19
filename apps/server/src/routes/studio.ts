@@ -1,3 +1,4 @@
+import { resolveBackend, resolveModelId } from "@book-forge/llm";
 import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -276,6 +277,17 @@ interface IntakeInFlightRun {
    *  единственное, что отличает работу от зависания. */
   startedAt: string;
   rows: IntakeInFlightRow[];
+}
+
+/** Настоящая подпись модели для варианта (С7 ревью 2026-09-19).
+ *
+ *  Варианты Мастерской подписывались константой «subscription:claude-sonnet-4-6»
+ *  во всех восьми местах — независимо от бэкенда, от переопределения
+ *  `LLM_AGENT_BACKEND_MAP` и от выбранной модели. По такой подписи нельзя
+ *  ни понять, чем вариант написан, ни посчитать его стоимость. */
+export function aspectModelLabel(agent: "aspect_variants" | "aspect_playbook" | "aspect_entity_variants", model: "sonnet" | "opus" = "sonnet"): string {
+  const id = resolveModelId(model);
+  return resolveBackend(agent) === "subscription" ? `subscription:${id}` : id;
 }
 
 export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
@@ -960,7 +972,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         });
         const variants = toStoredEntityVariants(result, {
           contextRef: contextRefEntity,
-          modelId: "subscription:claude-sonnet-4-6",
+          modelId: aspectModelLabel("aspect_entity_variants"),
         });
         return c.json({ variants, contextRef: contextRefEntity });
       } catch (e) {
@@ -1006,7 +1018,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       });
       const variants = toStoredVariants(result, {
         contextRef,
-        modelId: "subscription:claude-sonnet-4-6",
+        modelId: aspectModelLabel("aspect_variants"),
       });
       return c.json({ variants, contextRef });
     } catch (e) {
@@ -1078,7 +1090,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
               contextRef,
-              modelId: "subscription:claude-sonnet-4-6",
+              modelId: aspectModelLabel("aspect_variants"),
             }),
             contextRef,
           }),
@@ -1124,7 +1136,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         buildDone: (result) => ({
           variants: toStoredVariants(result, {
             contextRef,
-            modelId: "subscription:claude-sonnet-4-6",
+            modelId: aspectModelLabel("aspect_variants"),
           }),
           contextRef,
         }),
@@ -1188,7 +1200,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           variant: toStoredRefinedVariant(result, {
             parentVariantId: payload.parentVariant.id,
             contextRef,
-            modelId: "subscription:claude-sonnet-4-6",
+            modelId: aspectModelLabel("aspect_variants"),
           }),
           contextRef,
         }),
@@ -1289,7 +1301,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       const variant = toStoredRefinedVariant(result, {
         parentVariantId: parsed.data.parentVariant.id,
         contextRef,
-        modelId: "subscription:claude-sonnet-4-6",
+        modelId: aspectModelLabel("aspect_variants"),
       });
       return c.json({ variant, contextRef });
     } catch (e) {

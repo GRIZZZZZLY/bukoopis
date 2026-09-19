@@ -17,7 +17,10 @@ import { createStudioRoute } from "./routes/studio.js";
 import { createProposalsRoute } from "./routes/proposals.js";
 import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
 import { createProposalCancelRegistry } from "./utils/proposal-cancel.js";
-import { recoverStaleCritiqueReports } from "./utils/critique-recovery.js";
+import {
+  recoverStaleCritiqueReports,
+  recoverStaleProseProposals,
+} from "./utils/critique-recovery.js";
 
 export interface AppHandle {
   app: Hono;
@@ -34,6 +37,15 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   if (staleReports > 0) {
     console.warn(
       `[critique] ${staleReports} отчёт(ов) остались от прошлого запуска — помечены ошибкой`,
+    );
+  }
+  // Кандидаты прозы, оставшиеся в `streaming` от прошлого запуска: писать в
+  // них некому, а экран их не показывает — автор платит за второй прогон
+  // того же текста (С8).
+  const staleProposals = recoverStaleProseProposals(sqlite);
+  if (staleProposals > 0) {
+    console.warn(
+      `[proposals] ${staleProposals} кандидат(ов) остались от прошлого запуска — помечены ошибкой`,
     );
   }
   const memoryWorker = startMemoryWorker(sqlite, hasVec);

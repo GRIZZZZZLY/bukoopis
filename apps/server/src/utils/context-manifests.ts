@@ -60,7 +60,45 @@ export function recordContextManifest(
       JSON.stringify(manifest),
       new Date().toISOString(),
     );
-  return { id: Number(info.lastInsertRowid), fingerprint, manifest };
+  const id = Number(info.lastInsertRowid);
+  pruneLooseManifests(sqlite, args.chapterId, args.purpose);
+  return { id, fingerprint, manifest };
+}
+
+/** Сколько неприкреплённых манифестов держим на (глава, цель). */
+const LOOSE_MANIFESTS_KEPT = 5;
+
+/**
+ * Манифест пишется на КАЖДУЮ сборку, в том числе на отклонённого кандидата и
+ * на каждый прогон критики, и не удалялся никогда (С9 ревью 2026-09-19).
+ * В `manifest_json` перечислены все герои, отношения и события книги, так
+ * что десяток попыток на главу — это мегабайты на ровном месте.
+ *
+ * Удаляются только те, что ни к чему не привязаны: манифест, прикреплённый к
+ * версии главы (`chapter_version_id`) или к кандидату
+ * (`prose_proposals.context_manifest_id`), — это доказательство, на какой
+ * базе текст написан, и оно живёт столько же, сколько сам текст.
+ */
+function pruneLooseManifests(
+  sqlite: DatabaseType,
+  chapterId: number,
+  purpose: ContextPurpose,
+): void {
+  sqlite
+    .prepare(
+      `DELETE FROM context_manifests
+       WHERE chapter_id = ? AND purpose = ? AND chapter_version_id IS NULL
+         AND id NOT IN (
+           SELECT context_manifest_id FROM prose_proposals
+           WHERE context_manifest_id IS NOT NULL
+         )
+         AND id NOT IN (
+           SELECT id FROM context_manifests
+           WHERE chapter_id = ? AND purpose = ? AND chapter_version_id IS NULL
+           ORDER BY id DESC LIMIT ?
+         )`,
+    )
+    .run(chapterId, purpose, chapterId, purpose, LOOSE_MANIFESTS_KEPT);
 }
 
 /** Принятие кандидата создало версию — манифест Writer'а теперь её. */

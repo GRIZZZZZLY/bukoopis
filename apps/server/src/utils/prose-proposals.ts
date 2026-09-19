@@ -157,6 +157,10 @@ export interface FinishProposalInput {
   errorMessage?: string | null;
 }
 
+/** Завершает кандидата — только из состояния `streaming` (С8 ревью
+ *  2026-09-19). Отменённый и упавший финал переписывать нельзя: поздний
+ *  ответ бэкенда приходит уже после отмены, и прежде защитой служило лишь
+ *  отсутствие `await` между проверкой реестра и записью. */
 export function finishProposal(
   sqlite: DatabaseType,
   id: number,
@@ -175,7 +179,7 @@ export function finishProposal(
          backend = ?,
          error_message = ?,
          updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'streaming'`,
     )
     .run(
       input.status,

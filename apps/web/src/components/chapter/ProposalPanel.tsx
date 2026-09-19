@@ -81,6 +81,12 @@ export function ProposalPanel({
     `accept-${proposal.id}-${Math.random().toString(36).slice(2, 10)}`,
   );
   const unconfirmed = proposal.completion === "unconfirmed";
+  // С5 ревью 2026-09-19: бэкенд подписки причину остановки не сообщает
+  // вовсе, и красное «Завершение не подтверждено» горело на каждой главе.
+  // Тревожиться стоит лишь тогда, когда обрыв назван бэкендом или виден по
+  // тексту — статус `incomplete` теперь означает именно это.
+  const looksCut = proposal.status === "incomplete";
+  const unknownEnding = unconfirmed && !looksCut;
   const paragraphs = useMemo(
     () => proposal.contentText.split(/\n\s*\n/).filter((p) => p.trim().length > 0),
     [proposal.contentText],
@@ -205,13 +211,19 @@ export function ProposalPanel({
       <p className="text-sm">
         Глава не изменена, пока вы не примете этот текст.
       </p>
-      {unconfirmed && (
+      {looksCut && (
         <p className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
-          Завершение не подтверждено
+          Похоже, текст оборван
           {proposal.stopReason === "max_tokens"
             ? ": модель упёрлась в предел длины ответа."
-            : ": модель не сообщила, дописала ли она до конца."}{" "}
-          Текст можно посмотреть и принять, но проверьте конец главы.
+            : ": последняя фраза не закончена."}{" "}
+          Принять его можно, но проверьте конец главы.
+        </p>
+      )}
+      {unknownEnding && (
+        <p className="text-sm" style={{ color: "var(--color-ink-muted)" }}>
+          Бэкенд подписки не сообщает, дописала ли модель до конца. Текст
+          выглядит законченным.
         </p>
       )}
 

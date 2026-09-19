@@ -59,6 +59,7 @@ import {
   loadProposal,
 } from "../utils/prose-proposals.js";
 import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
+import { judgeProseCompletion } from "@book-forge/shared";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 export { loadBookContext, type BookContext } from "../utils/book-context.js";
@@ -476,9 +477,14 @@ export function createPlotRoute(
           return;
         }
 
+        // С5: бэкенд подписки причину остановки не сообщает вовсе, и
+        // «не подтверждено» горело на КАЖДОЙ главе — предупреждение,
+        // которое всегда горит, перестают читать. Когда причины нет,
+        // судим по хвосту текста; `completion` остаётся честным.
+        const verdict = judgeProseCompletion(stopReason, fullText);
         const confirmed = isConfirmedCompletion(stopReason);
         finishProposal(sqlite, proposalId, {
-          status: confirmed ? "ready" : "incomplete",
+          status: verdict.looksComplete ? "ready" : "incomplete",
           contentText: fullText,
           contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
           wordCount: countWords(fullText),

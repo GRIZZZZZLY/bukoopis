@@ -12,6 +12,30 @@ import type { Database as DatabaseType } from "better-sqlite3";
  * самое. Процесс один, и после старта ни один `pending` не может быть живым:
  * писать его было некому.
  */
+/**
+ * Кандидаты прозы, оставшиеся в `streaming` от прошлого запуска (С8).
+ *
+ * Реестр отмены живёт в памяти процесса, писать в такую строку больше
+ * некому, а экран главы её не показывает вовсе — автор видит «ничего нет» и
+ * запускает генерацию заново, то есть платит второй раз за тот же текст.
+ * После старта ни один `streaming` живым быть не может.
+ */
+export function recoverStaleProseProposals(sqlite: DatabaseType): number {
+  const now = new Date().toISOString();
+  return sqlite
+    .prepare(
+      `UPDATE prose_proposals
+       SET status = 'failed',
+           error_message = COALESCE(error_message, ?),
+           updated_at = ?
+       WHERE status = 'streaming'`,
+    )
+    .run(
+      "Генерация прервалась вместе с работой сервера. Запустите её заново.",
+      now,
+    ).changes;
+}
+
 export function recoverStaleCritiqueReports(sqlite: DatabaseType): number {
   const now = new Date().toISOString();
   return sqlite
