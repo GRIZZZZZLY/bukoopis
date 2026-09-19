@@ -133,6 +133,11 @@ export function startMemoryWorker(
       language: "ru",
       text: ctx.contentText,
     });
+    // Поиск ждёт именно этого, а не активации всей памяти (В3): чанки в
+    // индексе — полнотекстовый поиск работает, даже если извлекатели упали.
+    sqlite
+      .prepare("UPDATE chapters SET indexed_version_id = ? WHERE id = ?")
+      .run(ctx.versionId, ctx.chapterId);
     completeMemoryJob(sqlite, job.id, { chunkCount });
   }
 

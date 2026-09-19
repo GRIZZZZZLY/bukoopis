@@ -68,10 +68,12 @@ export async function hybridSearch(
     const qBlob = floatToBlob(qVec);
 
     // sqlite-vec: query first against chunk_vec, then filter via JOIN on chunks.
-    // ADR 0002 (I2): chapter chunks are filtered by memory_version_id — the
-    // last FULLY activated version — not current_version_id. While a newer
-    // commit is still being processed, retrieval keeps seeing the previous
-    // activated version instead of the chapter vanishing.
+    // Главы отбираются по ПРОИНДЕКСИРОВАННОЙ версии, а не по активированной
+    // памяти (В3 ревью 2026-09-19). Прежний фильтр по `memory_version_id`
+    // означал «искать можно только там, где отработали три LLM-извлекателя»:
+    // недоступная модель делала главу невидимой полнотекстовому поиску,
+    // который от модели не зависит вовсе. `COALESCE` — ради баз, где колонка
+    // появилась позже уже разобранных глав.
     const rows = sqlite
       .prepare(
         `SELECT v.rowid AS id, v.distance AS distance
@@ -83,7 +85,7 @@ export async function hybridSearch(
            AND v.book_id = ?
            AND (
              c.source_type != 'chapter_version'
-             OR ch.memory_version_id = c.source_id
+             OR COALESCE(ch.indexed_version_id, ch.memory_version_id) = c.source_id
            )
            ${
              opts.beforeChapterOrder !== undefined
@@ -132,7 +134,7 @@ export async function hybridSearch(
            AND c.book_id = ?
            AND (
              c.source_type != 'chapter_version'
-             OR ch.memory_version_id = c.source_id
+             OR COALESCE(ch.indexed_version_id, ch.memory_version_id) = c.source_id
            )
            ${
              opts.beforeChapterOrder !== undefined

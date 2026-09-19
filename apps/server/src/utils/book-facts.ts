@@ -87,11 +87,37 @@ const TYPE_LABEL: Record<FactEntityType, string> = {
  * Render active facts as a prompt block grouped by entity. Returns null when
  * there are no active facts. `entityNames` scopes to mentioned entities.
  */
+/** Номер главы для промпта: порядковый, если справочник дан (С4). */
+function chapterNum(
+  orderIndex: number,
+  positionOf?: (orderIndex: number) => number | null,
+): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `#${orderIndex}` : String(pos);
+}
+
+function chapterSince(
+  orderIndex: number,
+  positionOf?: (orderIndex: number) => number | null,
+): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `с гл. #${orderIndex}` : `с главы ${pos}`;
+}
+
 export function renderActiveFactsPrompt(
   sqlite: DatabaseType,
   bookId: number,
   atChapterOrder: number,
-  opts?: { entityNames?: string[]; withIds?: boolean },
+  opts?: {
+    entityNames?: string[];
+    withIds?: boolean;
+    /** Порядковые номера глав вместо разрежённого `order_index` (С4). */
+    positionOf?: (orderIndex: number) => number | null;
+    /** Какую главу называть в заголовке. По умолчанию — сама граница; у
+     *  Писателя граница на главу раньше, и печатать её номер значило бы
+     *  назвать главу, которой нет. */
+    headingOrder?: number;
+  },
 ): string | null {
   const facts = loadActiveFacts(sqlite, bookId, atChapterOrder, opts);
   if (facts.length === 0) return null;
@@ -118,11 +144,11 @@ export function renderActiveFactsPrompt(
     // contexts stay id-free to avoid prompt noise.
     const lines = group.map(
       (f) =>
-        `- ${opts?.withIds ? `[fact_${f.id}] ` : ""}${f.predicate}: ${f.objectText} (с гл. #${f.validFromChapter})`,
+        `- ${opts?.withIds ? `[fact_${f.id}] ` : ""}${f.predicate}: ${f.objectText} (${chapterSince(f.validFromChapter, opts?.positionOf)})`,
     );
     blocks.push(`### ${TYPE_LABEL[type]}: ${name}\n${lines.join("\n")}`);
   }
-  return `## Канон-факты (актуальны на главу #${atChapterOrder})\n${blocks.join("\n\n")}`;
+  return `## Канон-факты (актуальны на главу ${chapterNum(opts?.headingOrder ?? atChapterOrder, opts?.positionOf)})\n${blocks.join("\n\n")}`;
 }
 
 /**
@@ -147,9 +173,15 @@ export function persistExtractedFacts(
   );
   const tx = sqlite.transaction(() => {
     // Idempotency pre-pass: drop rows for each (type,name,predicate,mode)
-    // this batch touches, introduced at this chapter or later — handles
-    // re-running the same chapter. Done BEFORE inserts so two same-predicate
-    // facts in ONE batch (multi-valued predicates) don't delete each other.
+    // this batch touches, introduced at THIS chapter — handles re-running the
+    // same chapter. Done BEFORE inserts so two same-predicate facts in ONE
+    // batch (multi-valued predicates) don't delete each other.
+    //
+    // Раньше условие было `>= chapterOrder`, то есть «эта глава и все
+    // последующие». Оно держалось на том, что очередь памяти разбирает главы
+    // строго по порядку и поздних строк там быть не может. Гарантии больше
+    // нет (В3: задание, упавшее навсегда, очередь не держит), и повтор
+    // разбора четвёртой главы стирал факты всех разобранных после неё.
     const cleaned = new Set<string>();
     for (const f of facts) {
       const mode = f.assertionMode ?? "narrated_as_fact";
@@ -161,7 +193,7 @@ export function persistExtractedFacts(
         .prepare(
           `DELETE FROM book_facts
            WHERE book_id = ? AND entity_type = ? AND entity_name = ?
-             AND predicate = ? AND assertion_mode = ? AND valid_from_chapter >= ?`,
+             AND predicate = ? AND assertion_mode = ? AND valid_from_chapter = ?`,
         )
         .run(bookId, f.entityType, name, f.predicate, mode, chapterOrder);
     }
@@ -217,14 +249,16 @@ export function persistExtractedFacts(
           now,
         );
         const newId = Number(info.lastInsertRowid);
+        closeAgainstNextFact(sqlite, bookId, newId, chapterOrder, f.entityType, entityId, name, f.predicate);
         for (const id of new Set(explicitIds)) {
           const res = sqlite
             .prepare(
               `UPDATE book_facts
                SET valid_to_chapter = ?, superseded_by = ?
-               WHERE id = ? AND book_id = ? AND valid_to_chapter IS NULL`,
+               WHERE id = ? AND book_id = ?
+                 AND (valid_to_chapter IS NULL OR valid_to_chapter >= ?)`,
             )
-            .run(chapterOrder - 1, newId, id, bookId);
+            .run(chapterOrder - 1, newId, id, bookId, chapterOrder);
           if (res.changes === 0) {
             console.warn(
               `[canon-facts] supersedesFactId fact_${id} skipped (missing, other book, or already closed)`,
@@ -244,9 +278,9 @@ export function persistExtractedFacts(
         entityId !== null
           ? sqlite
               .prepare(
-                `SELECT id, object_text FROM book_facts
+                `SELECT id, object_text, valid_to_chapter FROM book_facts
                  WHERE book_id = ? AND entity_type = ? AND predicate = ?
-                   AND valid_to_chapter IS NULL AND valid_from_chapter < ?
+                   AND valid_from_chapter < ?
                    AND assertion_mode IN ('narrated_as_fact','directly_observed')
                    AND (entity_id = ? OR (entity_id IS NULL AND lower(entity_name) = ?))
                  ORDER BY valid_from_chapter DESC LIMIT 1`,
@@ -261,18 +295,30 @@ export function persistExtractedFacts(
               )
           : sqlite
               .prepare(
-                `SELECT id, object_text FROM book_facts
+                `SELECT id, object_text, valid_to_chapter FROM book_facts
                  WHERE book_id = ? AND entity_type = ? AND entity_name = ?
-                   AND predicate = ? AND valid_to_chapter IS NULL
+                   AND predicate = ?
                    AND valid_from_chapter < ?
                    AND assertion_mode IN ('narrated_as_fact','directly_observed')
                  ORDER BY valid_from_chapter DESC LIMIT 1`,
               )
               .get(bookId, f.entityType, name, f.predicate, chapterOrder)
-      ) as { id: number; object_text: string } | undefined;
+      ) as
+        | { id: number; object_text: string; valid_to_chapter: number | null }
+        | undefined;
 
-      // Unchanged value → keep the open prior row, skip insert (idempotent).
-      if (prior && prior.object_text === f.objectText) continue;
+      // Действует ли предшественник на этой главе. Разбор глав больше не
+      // строго упорядочен (В3: задание, упавшее навсегда, не держит очередь),
+      // поэтому ближайшая предыдущая строка вполне может быть уже закрыта
+      // главой, разобранной раньше этой.
+      const priorCovers =
+        prior !== undefined &&
+        (prior.valid_to_chapter === null || prior.valid_to_chapter >= chapterOrder);
+
+      // Значение не изменилось → оставляем действующую строку (идемпотентность).
+      // Закрытую строку так пропускать нельзя: между ней и этой главой лежит
+      // другое значение, и факт обязан открыться заново.
+      if (prior && priorCovers && prior.object_text === f.objectText) continue;
 
       const info = insertFact.run(
         bookId,
@@ -289,7 +335,7 @@ export function persistExtractedFacts(
       );
       const newId = Number(info.lastInsertRowid);
 
-      if (prior) {
+      if (prior && priorCovers) {
         // Close the prior version the chapter before this one and link it.
         sqlite
           .prepare(
@@ -299,9 +345,63 @@ export function persistExtractedFacts(
           )
           .run(chapterOrder - 1, newId, prior.id);
       }
+
+      closeAgainstNextFact(sqlite, bookId, newId, chapterOrder, f.entityType, entityId, name, f.predicate);
     }
   });
   tx();
+}
+
+/** Закрывает только что вставленный факт ближайшим ПОЗДНЕЙШИМ фактом того же
+ *  (сущность, предикат), если такой уже разобран.
+ *
+ *  Пока очередь памяти гарантировала разбор строго по порядку глав, смотреть
+ *  вперёд было незачем: позднего факта там просто не было. Гарантии больше
+ *  нет — задание, упавшее навсегда, очередь не держит (В3), и «Повторить» по
+ *  главе 4 приходит после того, как глава 5 уже разобрана. Без этого шага
+ *  факт четвёртой главы оставался открытым навсегда и Писатель получал на
+ *  границе шестой два противоречащих действующих факта. */
+function closeAgainstNextFact(
+  sqlite: DatabaseType,
+  bookId: number,
+  newId: number,
+  chapterOrder: number,
+  entityType: string,
+  entityId: number | null,
+  name: string,
+  predicate: string,
+): void {
+  // По сущности, если она разобрана; иначе по имени — ровно теми же
+  // условиями, что и поиск предшественника. `lower()` в SQLite работает
+  // только по ASCII, поэтому кириллические имена сравниваются как есть.
+  const next = (
+    entityId !== null
+      ? sqlite
+          .prepare(
+            `SELECT id, valid_from_chapter FROM book_facts
+             WHERE book_id = ? AND entity_type = ? AND predicate = ?
+               AND valid_from_chapter > ?
+               AND assertion_mode IN ('narrated_as_fact','directly_observed')
+               AND (entity_id = ? OR (entity_id IS NULL AND entity_name = ?))
+             ORDER BY valid_from_chapter ASC LIMIT 1`,
+          )
+          .get(bookId, entityType, predicate, chapterOrder, entityId, name)
+      : sqlite
+          .prepare(
+            `SELECT id, valid_from_chapter FROM book_facts
+             WHERE book_id = ? AND entity_type = ? AND entity_name = ?
+               AND predicate = ? AND valid_from_chapter > ?
+               AND assertion_mode IN ('narrated_as_fact','directly_observed')
+             ORDER BY valid_from_chapter ASC LIMIT 1`,
+          )
+          .get(bookId, entityType, name, predicate, chapterOrder)
+  ) as { id: number; valid_from_chapter: number } | undefined;
+  if (next === undefined) return;
+  sqlite
+    .prepare(
+      `UPDATE book_facts SET valid_to_chapter = ?, superseded_by = ? WHERE id = ?`,
+    )
+    .run(next.valid_from_chapter - 1, next.id, newId);
 }
 
 export interface FactsExtractionResult {

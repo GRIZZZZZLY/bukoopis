@@ -302,6 +302,69 @@ export function createBooksRoute(
     }>;
 
     const tx = sqlite.transaction(() => {
+      // В5 ревью 2026-09-19: «перестроить» значит собрать заново, а не
+      // добавить поверх. Прежде удалялись только задания, а производные
+      // строки оставались: `persistExtractedFacts` чистит лишь те тройки
+      // (сущность, предикат, режим), которые пришли в НОВОМ ответе, так что
+      // факт, который модель в этот раз не извлекла, оставался действующим
+      // навсегда. Получалось объединение старой и новой памяти.
+      //
+      // Удаляется только машинное (`origin = 'extracted'` у фактов и заметок,
+      // `llm` у событий). Ручное и студийное — авторские сведения, их
+      // перестроение не трогает; `legacy` (до миграции 0014) тоже остаётся:
+      // происхождение таких строк неизвестно.
+      // Факт, закрытый удаляемым сейчас фактом, иначе остался бы закрытым
+      // навсегда: ссылка на отменившего уйдёт в NULL по внешнему ключу, а
+      // граница действия — нет. Открывается ровно тот, кого закрывает
+      // удаляемый: прежде условие было «закрыт и ссылки нет», а ссылки нет
+      // и у интервалов, посчитанных перестановкой глав, у перенесённых и у
+      // закрытых автором — перестроение с первой главы реанимировало почти
+      // всё закрытое. Идёт ДО удаления, пока связь ещё цела.
+      sqlite
+        .prepare(
+          `UPDATE book_facts SET valid_to_chapter = NULL, superseded_by = NULL
+           WHERE book_id = ? AND superseded_by IN (
+             SELECT id FROM book_facts
+             WHERE book_id = ? AND origin = 'extracted' AND valid_from_chapter >= ?)`,
+        )
+        .run(id, id, fromOrder);
+      const deletedFacts = sqlite
+        .prepare(
+          `DELETE FROM book_facts
+           WHERE book_id = ? AND origin = 'extracted' AND valid_from_chapter >= ?`,
+        )
+        .run(id, fromOrder).changes;
+      const deletedNotes = sqlite
+        .prepare(
+          `DELETE FROM book_notes
+           WHERE book_id = ? AND origin = 'extracted' AND chapter_order_introduced >= ?`,
+        )
+        .run(id, fromOrder).changes;
+      // Нить, закрытую в перестраиваемом диапазоне, открываем обратно —
+      // только машинную. Заметки автора закрыты его решением, а отличить
+      // «закрыл автор» от «закрыла модель» у заметки нечем: ссылки на
+      // закрывшего, как у фактов, у неё нет.
+      sqlite
+        .prepare(
+          `UPDATE book_notes SET chapter_order_resolved = NULL
+           WHERE book_id = ? AND origin = 'extracted' AND chapter_order_resolved >= ?`,
+        )
+        .run(id, fromOrder);
+      const deletedEvents = sqlite
+        .prepare(
+          `DELETE FROM character_events
+           WHERE book_id = ? AND origin = 'llm' AND chapter_id IN
+             (SELECT id FROM chapters WHERE book_id = ? AND order_index >= ?)`,
+        )
+        .run(id, id, fromOrder).changes;
+      // Сводки, куда входили перестраиваемые главы, собраны из пересказов,
+      // которых сейчас не станет.
+      sqlite
+        .prepare(
+          "DELETE FROM book_meta_summaries WHERE book_id = ? AND covers_to_order >= ?",
+        )
+        .run(id, fromOrder);
+
       for (const ch of chapters) {
         sqlite
           .prepare(
@@ -309,6 +372,14 @@ export function createBooksRoute(
              WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
           )
           .run(ch.current_version_id);
+        // Пересказ главы тоже собирается заново: он лежит на версии, и без
+        // очистки задание `summary` увидит его на месте и пропустит работу.
+        sqlite
+          .prepare("UPDATE chapter_versions SET summary = NULL WHERE id = ?")
+          .run(ch.current_version_id);
+        sqlite
+          .prepare("UPDATE chapters SET memory_version_id = NULL WHERE id = ?")
+          .run(ch.id);
         enqueueMemoryJobs(sqlite, {
           bookId: id,
           chapterId: ch.id,
@@ -316,10 +387,11 @@ export function createBooksRoute(
           kinds: COMMIT_JOB_KINDS,
         });
       }
+      return { deletedFacts, deletedNotes, deletedEvents };
     });
-    tx();
+    const cleared = tx();
     if (chapters.length > 0) memoryWorker?.kick();
-    return c.json({ enqueuedChapters: chapters.length, fromOrder });
+    return c.json({ enqueuedChapters: chapters.length, fromOrder, ...cleared });
   });
 
   return r;

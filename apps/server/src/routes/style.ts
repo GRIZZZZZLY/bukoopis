@@ -199,10 +199,17 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
 
   r.delete("/style-profiles/:id", (c) => {
     const id = Number(c.req.param("id"));
-    const info = sqlite
-      .prepare("DELETE FROM style_profiles WHERE id = ?")
-      .run(id);
-    if (info.changes === 0) return notFound(c, "style_profile");
+    // В14 ревью 2026-09-19: `books.style_profile_id` объявлен без ON DELETE,
+    // поэтому удаление привязанного профиля падало нарушением внешнего ключа
+    // и уходило автору как 500 «internal_error». Книга просто остаётся без
+    // стиля — это её нормальное состояние, а не отказ.
+    const removed = sqlite.transaction(() => {
+      sqlite
+        .prepare("UPDATE books SET style_profile_id = NULL WHERE style_profile_id = ?")
+        .run(id);
+      return sqlite.prepare("DELETE FROM style_profiles WHERE id = ?").run(id).changes;
+    })();
+    if (removed === 0) return notFound(c, "style_profile");
     return c.body(null, 204);
   });
 

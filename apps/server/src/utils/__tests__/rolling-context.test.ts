@@ -124,7 +124,9 @@ describe("loadRollingChapterContext", () => {
       )
       .run(bookId, "СЖАТАЯ сводка глав 1-2.", NOW);
     const out = loadRollingChapterContext(sqlite, bookId, 999)!;
-    expect(out).toContain("### Сводка ранних глав (#1–#2)");
+    // С4: номера глав в промпте порядковые; без справочника печатается
+    // прежнее число, но подпись теперь называет, что это главы.
+    expect(out).toContain("### Сводка ранних глав (главы #1–#2)");
     expect(out).toContain("СЖАТАЯ сводка глав 1-2.");
     expect(out).not.toContain("Глава #1 «Глава 1»");
     // recent window still verbatim

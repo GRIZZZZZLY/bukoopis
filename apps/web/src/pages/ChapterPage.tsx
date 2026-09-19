@@ -43,6 +43,7 @@ import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
+import { PanelBoundary } from "@/components/PanelBoundary";
 import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
 import {
   MemoryStatusBadge,
@@ -106,6 +107,10 @@ export function ChapterPage() {
   const [proposalChanges, setProposalChanges] = useState<ProseChange[]>([]);
   const [runningProposalId, setRunningProposalId] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Ошибка ОПЕРАЦИИ (сохранение, восстановление): полоса над рукописью.
+   *  `error` ниже остаётся за сбоем ЗАГРУЗКИ — только он вправе заменить
+   *  собой страницу, потому что показывать тогда нечего (В10). */
+  const [actionError, setActionError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editorTick, setEditorTick] = useState(0);
   const [mobilePanelsOpen, setMobilePanelsOpen] = useState(false);
@@ -119,7 +124,6 @@ export function ChapterPage() {
   const [memoryRebuilding, setMemoryRebuilding] = useState(false);
 
   const isPreviewRef = useRef(false);
-  const writingRef = useRef(false);
   const baselineJsonRef = useRef<string>(JSON.stringify(EMPTY_DOC));
   const titleBaselineRef = useRef<string>("");
   const writerAbortRef = useRef<AbortController | null>(null);
@@ -167,9 +171,10 @@ export function ChapterPage() {
         baselineJsonRef.current = JSON.stringify(json);
         setSaveError(null);
         setDirty((d) => {
-          // recompute via title — content now baseline
-          const titleStillChanged =
-            titleBaselineRef.current.trim() !== titleBaselineRef.current.trim();
+          // Название сравнивается с сохранённым, а не само с собой (С13):
+          // прежнее выражение было тождественно false, и правка одного лишь
+          // названия молча теряла признак несохранённого.
+          const titleStillChanged = title.trim() !== titleBaselineRef.current.trim();
           return titleStillChanged ? d : false;
         });
       } catch (err) {
@@ -256,7 +261,12 @@ export function ChapterPage() {
       setEditorTick((t) => t + 1);
       const json = editor.getJSON();
       recomputeDirty(json, title);
-      if (isPreviewRef.current || writingRef.current) return;
+      // В9: автосохранение больше не выключается на время генерации. Писатель
+      // пишет в кандидата, а не в редактор, и текст, набранный автором за эти
+      // минуты, нигде не сохранялся — а если поток обрывался молча, не
+      // сохранялся и после. В предпросмотре по-прежнему молчим: там в
+      // редакторе чужой текст.
+      if (isPreviewRef.current) return;
       const text = editor.getText().trim();
       if (text === "") return;
       debouncedSave.mark(json);
@@ -355,9 +365,6 @@ export function ChapterPage() {
   useEffect(() => {
     isPreviewRef.current = isPreview;
   }, [isPreview]);
-  useEffect(() => {
-    writingRef.current = writing;
-  }, [writing]);
 
   // Recompute dirty when title changes.
   useEffect(() => {
@@ -440,8 +447,24 @@ export function ChapterPage() {
     if (!chapter) return;
     if (v.id === chapter.currentVersionId) {
       setPreviewVersionId(null);
-      const doc = parseDoc(chapter.currentVersion?.contentJson ?? null);
+      // В редактор возвращается то же, что и при открытии главы: черновик,
+      // если он новее принятой версии (С13 ревью 2026-09-19). Прежде сюда
+      // всегда ложился текст версии, и первый же автосейв записывал его
+      // поверх черновика — незакоммиченная работа исчезала от одного
+      // захода в предпросмотр и обратно.
+      // «Новее» считается по содержимому, а не по отметке времени: тот же
+      // выбор, что делает выгрузка (К2). Автосейв и принятие версии
+      // ложатся в одну секунду, и сравнение времени там врало.
+      const draftJson = chapter.draft?.contentJson ?? null;
+      const versionJson = chapter.currentVersion?.contentJson ?? null;
+      const json =
+        draftJson !== null && draftJson !== versionJson ? draftJson : versionJson;
+      const doc = parseDoc(json);
       editor?.commands.setContent(doc as never, false);
+      baselineJsonRef.current = JSON.stringify(doc);
+      // База сравнения обновлена — признак несохранённого снимается
+      // вместе с ней, иначе он держался бы на пустом месте.
+      setDirty(title.trim() !== titleBaselineRef.current.trim());
       editor?.setEditable(true);
       return;
     }
@@ -450,8 +473,10 @@ export function ChapterPage() {
     editor?.setEditable(true);
   }
 
-  async function onSave() {
-    if (!editor) return;
+  /** `true` — состояние действительно записано. Вызывающие, которые после
+   *  сохранения куда-то уходят, обязаны на это смотреть (В10). */
+  async function onSave(): Promise<boolean> {
+    if (!editor) return false;
     const json = editor.getJSON();
     const newJson = JSON.stringify(json);
     const baselineJson = isPreview
@@ -469,11 +494,13 @@ export function ChapterPage() {
           ? "Текст пуст — сохранять нечего."
           : "Нечего сохранять — изменений нет.",
       );
-      return;
+      // Сохранять было нечего — значит, несохранённого не осталось, и уйти
+      // можно.
+      return true;
     }
 
     setSaving(true);
-    setError(null);
+    setActionError(null);
     try {
       if (contentChanged) {
         // Отложенный автосейв досылается ДО коммита, иначе на сервере
@@ -493,10 +520,16 @@ export function ChapterPage() {
       }
       await load();
       toast.success("Сохранено");
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+      // В10: ошибка ОПЕРАЦИИ рисуется полосой над рукописью, а не заменяет
+      // собой страницу. Прежде она уходила в тот же `error`, что и сбой
+      // загрузки, и редактор с несохранённым текстом размонтировался —
+      // скопировать написанное было уже неоткуда.
+      setActionError(msg);
       toast.error("Ошибка сохранения", { description: msg });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -572,20 +605,22 @@ export function ChapterPage() {
   async function onRestore() {
     if (previewVersionId === null) return;
     setRestoring(true);
-    setError(null);
+    setActionError(null);
     try {
       await api.restoreVersion(id, previewVersionId);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setRestoring(false);
     }
   }
 
   async function handleBlockedSave() {
-    await onSave();
-    blocker.proceed?.();
+    // Уходим, только если сохранение удалось. Прежде переход происходил в
+    // любом случае, и упавшее сохранение уносило правки вместе с экраном
+    // (В10) — оставалось одно всплывающее сообщение.
+    if (await onSave()) blocker.proceed?.();
   }
 
   function handleBlockedDiscard() {
@@ -869,6 +904,41 @@ export function ChapterPage() {
               </div>
 
               <div className="ms-body">
+                {actionError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 text-sm"
+                    style={{
+                      border: "1px solid var(--color-ink-red-fg)",
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      marginBottom: 10,
+                      color: "var(--color-ink-red-fg)",
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>
+                      Не удалось сохранить: {actionError}. Текст на месте —
+                      попробуйте ещё раз.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void onSave()}
+                      disabled={saving}
+                      className="text-xs border rounded px-2 py-0.5"
+                      style={{ borderColor: "var(--color-ink-red-fg)" }}
+                    >
+                      Повторить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActionError(null)}
+                      className="text-xs border rounded px-2 py-0.5"
+                      style={{ borderColor: "var(--color-border)" }}
+                    >
+                      Скрыть
+                    </button>
+                  </div>
+                )}
                 <EditorToolbar
                   editor={editor}
                   editorTick={editorTick}
@@ -908,7 +978,11 @@ export function ChapterPage() {
             </div>
           </div>
 
-          {!isPreview && <InlineCommandPanel editor={editor} chapterId={id} />}
+          {!isPreview && (
+            <PanelBoundary title="Правка фрагмента">
+              <InlineCommandPanel editor={editor} chapterId={id} />
+            </PanelBoundary>
+          )}
 
           <div className="flex gap-2 px-6 pb-6">
             <Button onClick={onSave} disabled={saving} aria-busy={saving || undefined}>
@@ -939,14 +1013,16 @@ export function ChapterPage() {
           aria-label="Разбор и материалы"
         >
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
-            <CritiquePanel
-              versionId={chapter.currentVersionId}
-              expectedVersionId={chapter.currentVersionId}
-              expectedDraftRevision={chapter.draft?.revision ?? null}
-              onRereadProposal={rereadForProposal}
-              onRepairDone={load}
-            />
-            {sidebar}
+            <PanelBoundary title="Разбор критиков">
+              <CritiquePanel
+                versionId={chapter.currentVersionId}
+                expectedVersionId={chapter.currentVersionId}
+                expectedDraftRevision={chapter.draft?.revision ?? null}
+                onRereadProposal={rereadForProposal}
+                onRepairDone={load}
+              />
+            </PanelBoundary>
+            <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>
         </aside>
       </div>
@@ -1226,6 +1302,19 @@ function AutosaveStatus({
       />
     );
     label = "Автосохранение…";
+  } else if (dirty) {
+    // Набранное после последнего автосейва важнее времени этого автосейва
+    // (С13 ревью 2026-09-19): «Сохранено 14:05» поверх несохранённых правок
+    // читается как «всё на месте», и автор закрывает вкладку.
+    icon = (
+      <AlertCircle
+        className="size-3.5 text-[var(--color-muted-foreground)]"
+        aria-hidden="true"
+      />
+    );
+    label = lastSavedAt
+      ? "Есть несохранённые правки · сохранится через несколько секунд"
+      : "Изменено · ещё не сохранено";
   } else if (lastSavedAt) {
     icon = (
       <Check

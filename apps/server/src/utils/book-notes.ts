@@ -104,17 +104,31 @@ export function renderOpenNotesPrompt(
   notes: OpenNote[],
   heading: string,
   atChapterOrder: number,
-  opts?: { withIds?: boolean },
+  opts?: {
+    withIds?: boolean;
+    /** Порядковые номера глав вместо разрежённого `order_index` (С4). */
+    positionOf?: (orderIndex: number) => number | null;
+    /** Какую главу называть в заголовке; см. `renderActiveFactsPrompt`. */
+    headingOrder?: number;
+  },
 ): string | null {
   if (notes.length === 0) return null;
+  const num = (orderIndex: number): string => {
+    const pos = opts?.positionOf?.(orderIndex) ?? null;
+    return pos === null ? `#${orderIndex}` : String(pos);
+  };
+  const since = (orderIndex: number): string => {
+    const pos = opts?.positionOf?.(orderIndex) ?? null;
+    return pos === null ? `с гл. #${orderIndex}` : `с главы ${pos}`;
+  };
   // withIds prefixes each note with its stable id (note_<id>) so the
   // extractor can resolve notes by id instead of fragile exact-title match.
   // Contexts for Plot/critics stay id-free to avoid prompt noise.
   const lines = notes.map(
     (n) =>
-      `- ${opts?.withIds ? `[note_${n.id}] ` : ""}[${KIND_LABEL[n.kind]}] ${n.title}: ${n.body} (с гл. #${n.introduced})`,
+      `- ${opts?.withIds ? `[note_${n.id}] ` : ""}[${KIND_LABEL[n.kind]}] ${n.title}: ${n.body} (${since(n.introduced)})`,
   );
-  return `## ${heading} (актуально на главу #${atChapterOrder})\n${lines.join("\n")}`;
+  return `## ${heading} (актуально на главу ${num(opts?.headingOrder ?? atChapterOrder)})\n${lines.join("\n")}`;
 }
 
 /**

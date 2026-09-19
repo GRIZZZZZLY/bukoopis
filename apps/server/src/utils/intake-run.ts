@@ -346,18 +346,39 @@ export async function runIntake(
   }
 
   const now = new Date().toISOString();
-  const { next, landed, chapterFragments, planVariants } = landFragments(state, fragments, now);
+  const { landed, chapterFragments, planVariants } = landFragments(state, fragments, now);
   log(
     `book ${bookId}: фрагментов всего ${fragments.length} [${countByTarget(fragments)}] → аспектов ${landed.length}, глав ${chapterFragments.length}, планов ${planVariants.length}` +
       (conceptFragments.length > 0 ? `, concept-фрагментов ${conceptFragments.length}` : ""),
   );
 
+  // В2 ревью 2026-09-19: состояние перечитывается ПЕРЕД записью и фрагменты
+  // раскладываются на свежее. `state` прочитан до разбора, который идёт
+  // десятками минут, и любое действие автора за это время (принял аспект,
+  // поправил вариант, запустил быстрый сбор) поднимало ревизию — разбор
+  // отвечал 409, и не приземлялось НИЧЕГО: ни аспекты, ни главы, ни план, ни
+  // замысел, и журнал не писался, так что повтор стоил полной цены заново.
+  // `landFragments` чистая, поэтому переложить её на другое состояние можно
+  // столько раз, сколько нужно.
   let revision = state.revision;
   if (landed.length > 0) {
-    revision = repo.patchStudioState(bookId, {
-      expectedRevision: state.revision,
-      next,
-    }).revision;
+    const MAX_LANDING_ATTEMPTS = 3;
+    for (let attempt = 1; ; attempt++) {
+      const fresh = repo.loadStudioState(bookId);
+      const relanded = landFragments(fresh, fragments, now);
+      try {
+        revision = repo.patchStudioState(bookId, {
+          expectedRevision: fresh.revision,
+          next: relanded.next,
+        }).revision;
+        break;
+      } catch (e) {
+        if (!(e instanceof StudioConflictError) || attempt >= MAX_LANDING_ATTEMPTS) throw e;
+        log(
+          `book ${bookId}: состояние Мастерской изменилось во время разбора — перекладываем (попытка ${attempt + 1})`,
+        );
+      }
+    }
   }
 
   // Studio-state aspects are already durably committed above (if landed.length
@@ -370,12 +391,19 @@ export async function runIntake(
   let chapters: InsertedChapter[] = [];
   if (chapterFragments.length > 0) {
     try {
-      chapters = await insertChapters(
+      const inserted = await insertChapters(
         sqlite,
         hasVec,
         bookId,
         chapterFragments.map((f) => ({ title: f.title, body: f.body })),
       );
+      chapters = inserted.created;
+      // Глава, отсеянная как повтор по названию, обязана быть названа:
+      // иначе она исчезает молча, а в авторском документе две сцены с
+      // одинаковым заголовком — обычное дело.
+      for (const s of inserted.skipped) {
+        failures.push({ filename: s.title, message: `Глава не добавлена: ${s.reason}` });
+      }
     } catch (e) {
       failures.push({
         filename: "Главы",

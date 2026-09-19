@@ -102,6 +102,23 @@ export function MarkdownStagePage() {
     return { stage: savedStage, revision: saved.revision };
   }
 
+  /** Перечитать этап после конфликта ревизии: автор мог принять соседний
+   *  раздел, пока шла генерация этого (В11). Раннер наложит свой раздел на
+   *  свежее состояние и повторит — чужая работа при этом остаётся. */
+  async function handleReloadStage(): Promise<{
+    stage: StageState;
+    revision: number;
+  }> {
+    const fresh = await api.getStudioState(bookId);
+    setStudio(fresh);
+    const freshStage = fresh.stages[stageId] ?? {
+      status: "not_started" as const,
+      playbookGenerated: false,
+      aspects: [],
+    };
+    return { stage: freshStage, revision: fresh.revision };
+  }
+
   if (error) {
     return (
       <div className="route">
@@ -196,6 +213,7 @@ export function MarkdownStagePage() {
               adapter={adapter}
               generator={variantGenerator}
               onPatch={handlePatch}
+              onReloadStage={handleReloadStage}
             />
           )}
         </div>

@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import type { FactEntityType } from "@book-forge/shared";
+import { sameEntityName, type FactEntityType } from "@book-forge/shared";
 
 /**
  * ADR 0003 slice 2 — resolve a canon-fact entity name to a stable entity id.

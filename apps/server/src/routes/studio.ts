@@ -1,3 +1,4 @@
+import { aspectModelLabel } from "../utils/aspect-model-label.js";
 import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -294,6 +295,30 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   // ничего и не начиналось. Снимок позволяет любой вкладке в любой момент
   // спросить «что сейчас идёт» и нарисовать тот же прогресс.
   const intakeInFlight = new Map<number, IntakeInFlightRun>();
+
+  /** Отказ, когда разбор этой книги уже идёт (С14). Реестр в памяти
+   *  ключуется книгой — это нужно `GET /intake/inflight`, которому нечем
+   *  спросить про конкретный прогон, — поэтому второй разбор не забирает
+   *  слот, а получает 409: иначе идущий становился невидимым и его нельзя
+   *  было ни показать, ни остановить. */
+  function intakeBusyResponse(c: Context, bookId: number): Response | null {
+    const running = intakeInFlight.get(bookId);
+    if (!running) return null;
+    return c.json(
+      {
+        error: "intake_in_progress",
+        details: {
+          requestKey: running.requestKey,
+          startedAt: running.startedAt,
+          message:
+            "Разбор этой книги уже идёт. Дождитесь его конца или остановите" +
+            " в той вкладке, где он запущен.",
+        },
+      },
+      409,
+    );
+  }
+
 
   const quickStartCancels = createQuickStartCancelRegistry();
   /** Что сейчас собирается для книги — для GET .../quick-start/inflight.
@@ -608,6 +633,17 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     const parsed = intakeBodySchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
 
+    // Тот же отказ, что у потокового маршрута: два разбора одной книги
+    // пишут в одни этапы, и второй делал первый невидимым (С14).
+    const busy = intakeBusyResponse(c, id);
+    if (busy) return busy;
+    intakeInFlight.set(id, {
+      requestKey: "sync",
+      total: parsed.data.files.length,
+      startedAt: new Date().toISOString(),
+      rows: [],
+    });
+
     try {
       const { summary, ideaSet, chapters, planVariants, failures, revision } = await runIntake(
         { sqlite, hasVec, repo, bookId: id },
@@ -623,6 +659,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         );
       }
       throw e;
+    } finally {
+      intakeInFlight.delete(id);
     }
   });
 
@@ -636,6 +674,14 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     // обычным 404, а не событием `error` внутри уже открытого 200-потока.
     const concept = loadConceptOr404(c, id);
     if (concept instanceof Response) return concept;
+
+    // Второй разбор той же книги отклоняется, а не забирает слот реестра
+    // (С14 ревью 2026-09-19). Реестр в памяти ключуется одной книгой — это
+    // нужно `GET /intake/inflight`, которому нечем спросить про конкретный
+    // прогон, — и перезапись делала идущий разбор невидимым: его нельзя
+    // было ни показать, ни остановить, а он продолжал писать в те же этапы.
+    const busyStream = intakeBusyResponse(c, id);
+    if (busyStream) return busyStream;
 
     return streamSSE(c, async (stream) => {
       // onFile синхронный, а stream.writeSSE — асинхронный запись; без
@@ -960,7 +1006,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         });
         const variants = toStoredEntityVariants(result, {
           contextRef: contextRefEntity,
-          modelId: "subscription:claude-sonnet-4-6",
+          modelId: aspectModelLabel("aspect_entity_variants"),
         });
         return c.json({ variants, contextRef: contextRefEntity });
       } catch (e) {
@@ -1006,7 +1052,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       });
       const variants = toStoredVariants(result, {
         contextRef,
-        modelId: "subscription:claude-sonnet-4-6",
+        modelId: aspectModelLabel("aspect_variants"),
       });
       return c.json({ variants, contextRef });
     } catch (e) {
@@ -1078,7 +1124,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
               contextRef,
-              modelId: "subscription:claude-sonnet-4-6",
+              modelId: aspectModelLabel("aspect_entity_variants"),
             }),
             contextRef,
           }),
@@ -1124,7 +1170,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         buildDone: (result) => ({
           variants: toStoredVariants(result, {
             contextRef,
-            modelId: "subscription:claude-sonnet-4-6",
+            modelId: aspectModelLabel("aspect_variants"),
           }),
           contextRef,
         }),
@@ -1188,7 +1234,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           variant: toStoredRefinedVariant(result, {
             parentVariantId: payload.parentVariant.id,
             contextRef,
-            modelId: "subscription:claude-sonnet-4-6",
+            modelId: aspectModelLabel("aspect_variants"),
           }),
           contextRef,
         }),
@@ -1289,7 +1335,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       const variant = toStoredRefinedVariant(result, {
         parentVariantId: parsed.data.parentVariant.id,
         contextRef,
-        modelId: "subscription:claude-sonnet-4-6",
+        modelId: aspectModelLabel("aspect_variants"),
       });
       return c.json({ variant, contextRef });
     } catch (e) {

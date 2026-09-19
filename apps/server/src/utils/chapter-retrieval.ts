@@ -32,6 +32,9 @@ export interface GatherRetrievedChunksOptions {
   hasVec: boolean;
   /** Final chunk count after per-chapter dedupe. Default 5. */
   topK?: number;
+  /** Порядковые номера глав для заголовков фрагментов (С4). Без него
+   *  печатается разрежённый `order_index`, как раньше. */
+  positionOf?: (orderIndex: number) => number | null;
   /**
    * Raw candidate count fetched from hybridSearch before dedupe. Larger pool
    * = better dedupe + headroom for the Phase 5 reranker. Default topK * 4.
@@ -108,8 +111,14 @@ export async function gatherRetrievedChunks(
 
   const blocks = picked
     .map((c) => {
+      // Порядковый номер, а не разрежённый `order_index` (С4): модель
+      // сверяет эти числа со «своей» главой и считала по ним расстояния.
+      const pos =
+        c.chapterOrder !== null ? opts.positionOf?.(c.chapterOrder) ?? null : null;
       const head =
-        c.chapterOrder !== null ? `Глава #${c.chapterOrder}` : "Фрагмент";
+        c.chapterOrder === null
+          ? "Фрагмент"
+          : `Глава ${pos === null ? `#${c.chapterOrder}` : pos}`;
       return `### ${head}\n${c.text.trim()}`;
     })
     .join("\n\n");

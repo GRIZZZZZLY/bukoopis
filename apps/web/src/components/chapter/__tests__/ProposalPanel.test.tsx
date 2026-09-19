@@ -125,15 +125,24 @@ describe("ProposalPanel", () => {
     expect(calls[0]?.[1].requestId).toBe(calls[1]?.[1].requestId);
   });
 
-  it("незавершённый кандидат помечен и требует подтверждения", async () => {
+  it("оборванный кандидат помечен и требует подтверждения", async () => {
     renderPanel({ status: "incomplete", completion: "unconfirmed", stopReason: "max_tokens" });
-    expect(screen.getByText(/завершение не подтверждено/i)).toBeInTheDocument();
+    // С5: тревожная строка — только когда обрыв назван бэкендом или виден
+    // по тексту. На подписке, которая причину не сообщает вовсе, она горела
+    // на каждой главе и перестала читаться.
+    expect(screen.getByText(/похоже, текст оборван/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Принять целиком" }));
     const body = vi.mocked(api.acceptProposal).mock.calls[0]?.[1];
     // Согласие ровно на своё: неподтверждённое завершение — да, уехавшая
     // база контекста — нет, её автор ещё не видел.
     expect(body?.acknowledgeUnconfirmed).toBe(true);
     expect(body?.acknowledgeContextDrift).toBe(false);
+  });
+
+  it("на молчащем бэкенде вместо тревоги — спокойная заметка", () => {
+    renderPanel({ status: "ready", completion: "unconfirmed", stopReason: null });
+    expect(screen.queryByText(/похоже, текст оборван/i)).toBeNull();
+    expect(screen.getByText(/не сообщает, дописала ли модель/i)).toBeInTheDocument();
   });
 
   it("конфликт версии объясняется словами, а не кодом 409", async () => {

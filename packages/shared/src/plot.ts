@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { voiceSampleSituationSchema } from "./character-voice.js";
 
 // ──────────────────────────────────────────────────────────────────
 // Book outline (level 1)
@@ -350,6 +351,11 @@ export const chapterBeatSheetVariantSchema = z.object({
   /** Необязателен в хранилище: планы, написанные до слайса 4.5, читаются без
    *  него. На выходе планировщика обязателен — как `closing`. */
   contract: chapterContractSchema.optional(),
+  /** Регистр диалога сцены. По нему отбираются образцы речи героев (С3
+   *  ревью 2026-09-19): раньше ситуация была жёстко `neutral`, и в допрос
+   *  героя ехали образцы бытовой болтовни. Необязателен в хранилище —
+   *  старые планы читаются, — обязателен на выходе планировщика. */
+  dialogueRegister: voiceSampleSituationSchema.optional(),
 });
 export type ChapterBeatSheetVariant = z.infer<
   typeof chapterBeatSheetVariantSchema

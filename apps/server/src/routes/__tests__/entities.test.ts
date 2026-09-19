@@ -124,7 +124,10 @@ describe("characters CRUD", () => {
       tension: -0.8,
     });
     const del = await send(t.app, `/api/characters/${c1.id}`, "DELETE");
-    expect(del.status).toBe(204);
+    // С10: удаление героя теперь отвечает 200 и называет, что ушло вместе
+    // с ним — события, образцы речи, отношения. Прежде это было молчаливое
+    // 204, и автор не узнавал о потере.
+    expect(del.status).toBe(200);
     const rels = await sendJson<RelationshipJson[]>(
       t.app,
       `/api/books/${bookId}/relationships`,

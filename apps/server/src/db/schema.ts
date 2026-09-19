@@ -23,9 +23,12 @@ export const books = sqliteTable(
     language: text("language").notNull().default("ru"),
     premise: text("premise"),
     outlineJson: text("outline_json"),
+    // ВНИМАНИЕ: в базе внешний ключ БЕЗ `ON DELETE` (миграция 0005), то есть
+    // поведение по умолчанию — RESTRICT. Здесь стояло `set null`, и это была
+    // неправда: удаление профиля, на который смотрит книга, отвечало 500,
+    // пока маршрут стиля не начал снимать ссылку сам, транзакцией (С12).
     styleProfileId: integer("style_profile_id").references(
       (): AnySQLiteColumn => styleProfiles.id,
-      { onDelete: "set null" },
     ),
     status: text("status").notNull().default("draft"),
     writerModel: text("writer_model").notNull().default("opus"),
@@ -81,8 +84,16 @@ export const chapters = sqliteTable(
       { onDelete: "set null" },
     ),
     // ADR 0002: last version whose memory (chunks/summary/facts/notes) was
-    // fully activated. Retrieval reads by this, not current_version_id.
+    // fully activated. Факты, заметки и события читаются по нему.
     memoryVersionId: integer("memory_version_id").references(
+      (): AnySQLiteColumn => chapterVersions.id,
+      { onDelete: "set null" },
+    ),
+    // Последняя версия, чьи чанки лежат в индексе (миграция 0027). Поиск
+    // читает ПО НЕЙ: индексация от модели не зависит, и привязка поиска к
+    // активации памяти делала главу ненаходимой всякий раз, когда падал
+    // LLM-извлекатель (В3 ревью 2026-09-19).
+    indexedVersionId: integer("indexed_version_id").references(
       (): AnySQLiteColumn => chapterVersions.id,
       { onDelete: "set null" },
     ),

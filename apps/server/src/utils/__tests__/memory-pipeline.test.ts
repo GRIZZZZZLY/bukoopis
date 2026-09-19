@@ -297,7 +297,7 @@ describe("gate 5 — superseded version becomes obsolete, active memory untouche
 });
 
 describe("I5 — stateful ordering by chapter", () => {
-  it("an error'd facts job on chapter 4 blocks chapter 5 facts but not index", () => {
+  it("an unfinished facts job on chapter 4 blocks chapter 5 facts but not index", () => {
     const b = insertBook();
     const ch4 = insertChapter(b, 4);
     const ch5 = insertChapter(b, 5);
@@ -315,15 +315,34 @@ describe("I5 — stateful ordering by chapter", () => {
       chapterVersionId: v5,
       kinds: ["facts", "index"],
     });
+    // Chapter 5 facts blocked by the pending earlier-chapter stateful job…
+    expect(claimNextMemoryJob(sqlite, { kinds: ["facts"] })?.chapter_version_id).toBe(v4);
     sqlite
-      .prepare(
-        "UPDATE memory_jobs SET status='error' WHERE chapter_version_id = ? AND kind='facts'",
-      )
+      .prepare("UPDATE memory_jobs SET status='running' WHERE chapter_version_id = ? AND kind='facts'")
       .run(v4);
-    // Chapter 5 facts blocked by the failed earlier-chapter stateful job…
     expect(claimNextMemoryJob(sqlite, { kinds: ["facts"] })).toBeNull();
     // …while non-stateful work still flows.
     expect(claimNextMemoryJob(sqlite, { kinds: ["index"] })?.chapter_version_id).toBe(v5);
+  });
+
+  it("an error'd facts job on chapter 4 no longer blocks chapter 5 (В3 ревью 2026-09-19)", () => {
+    const b = insertBook();
+    const ch4 = insertChapter(b, 4);
+    const ch5 = insertChapter(b, 5);
+    const v4 = insertVersion(ch4, 200);
+    const v5 = insertVersion(ch5, 200);
+    enqueueMemoryJobs(sqlite, { bookId: b, chapterId: ch4, chapterVersionId: v4, kinds: ["facts"] });
+    enqueueMemoryJobs(sqlite, { bookId: b, chapterId: ch5, chapterVersionId: v5, kinds: ["facts"] });
+    sqlite
+      .prepare("UPDATE memory_jobs SET status='error' WHERE chapter_version_id = ? AND kind='facts'")
+      .run(v4);
+    // Задание, исчерпавшее попытки, не «вот-вот доделается»: оно стоит, пока
+    // автор не нажмёт «Повторить». Считая его блокирующим, очередь
+    // останавливала факты и заметки ВСЕЙ книги из-за одной главы — а видел
+    // это автор только как «память обновляется» без конца. Порядок остаётся
+    // (упавшая глава просто перестаёт держать остальные), а сама она видна в
+    // `pendingEarlierMemoryChapters`.
+    expect(claimNextMemoryJob(sqlite, { kinds: ["facts"] })?.chapter_version_id).toBe(v5);
   });
 });
 

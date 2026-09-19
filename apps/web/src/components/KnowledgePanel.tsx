@@ -87,6 +87,7 @@ function labelFor(t: Tab): string {
 
 function CharactersTab({ bookId }: { bookId: number }) {
   const [list, setList] = useState<Character[] | null>(null);
+  const [lastDeletion, setLastDeletion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -114,10 +115,30 @@ function CharactersTab({ bookId }: { bookId: number }) {
         want: want.trim() || null,
         need: need.trim() || null,
       };
-      await api.createCharacter(bookId, {
-        canonicalName: name.trim(),
-        profile,
-      });
+      try {
+        await api.createCharacter(bookId, {
+          canonicalName: name.trim(),
+          profile,
+        });
+      } catch (err) {
+        // 409: в книге уже есть герой с таким именем (или его падежной
+        // формой). Тёзки ломают привязку фактов к обоим, поэтому сервер
+        // спрашивает, а не решает сам (С2).
+        const status = (err as { status?: number } | null)?.status;
+        const details = (err as { details?: { existing?: string[] } } | null)?.details;
+        if (status !== 409) throw err;
+        const existing = details?.existing?.join(", ") ?? "герой с таким именем";
+        const ok = confirm(
+          `В книге уже есть ${existing}. Два героя с одним именем — и факты` +
+            ` перестанут приставать к обоим. Всё равно завести?`,
+        );
+        if (!ok) return;
+        await api.createCharacter(bookId, {
+          canonicalName: name.trim(),
+          profile,
+          allowDuplicateName: true,
+        });
+      }
       setName(""); setDescription(""); setWant(""); setNeed("");
       await load();
     } catch (e) {
@@ -129,15 +150,34 @@ function CharactersTab({ bookId }: { bookId: number }) {
 
   async function onDelete(id: number) {
     if (!confirm("Удалить персонажа? (вместе со связями и знаниями)")) return;
-    try { await api.deleteCharacter(id); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    try {
+      const lost = await api.deleteCharacter(id);
+      const parts = [
+        lost.deletedEvents > 0 ? `записей о знаниях: ${lost.deletedEvents}` : null,
+        lost.deletedVoiceSamples > 0 ? `образцов речи: ${lost.deletedVoiceSamples}` : null,
+        lost.deletedRelationships > 0 ? `связей: ${lost.deletedRelationships}` : null,
+      ].filter(Boolean);
+      // Что именно ушло — вслух: удаление героя уносит по цепочке больше,
+      // чем видно на карточке (С10).
+      setLastDeletion(
+        parts.length > 0 ? `Удалено вместе с героем — ${parts.join(", ")}.` : null,
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   if (error) return <p className="text-sm text-red-600">Ошибка: {error}</p>;
+  const deletionNote =
+    lastDeletion === null ? null : (
+      <p className="text-xs text-[var(--color-muted-foreground)]">{lastDeletion}</p>
+    );
   if (list === null) return <p className="text-sm">Загрузка…</p>;
 
   return (
     <div className="flex flex-col gap-3">
+      {deletionNote}
       <form onSubmit={onCreate} className="flex flex-col gap-2 border border-[var(--color-border)] rounded-md p-3">
         <input className="border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />

@@ -72,6 +72,7 @@ interface PlanVariantLite {
   }>;
   closing?: unknown;
   contract?: import("@book-forge/shared").ChapterContract;
+  dialogueRegister?: import("@book-forge/shared").VoiceSampleSituation;
 }
 
 /**
@@ -124,6 +125,7 @@ export async function loadChapterProseContext(
   let emotionalGoal = "—";
   let beatSheet: string | null = null;
   let chapterContract: string | null = null;
+  let registerFromPlan: import("@book-forge/shared").VoiceSampleSituation | null = null;
   if (ch.plan_json) {
     try {
       const p = JSON.parse(ch.plan_json) as {
@@ -136,6 +138,7 @@ export async function loadChapterProseContext(
         emotionalGoal = sel.emotionalGoal;
         beatSheet = renderBeatSheetBlock(sel);
         chapterContract = sel.contract ? renderChapterContract(sel.contract) : null;
+        registerFromPlan = sel.dialogueRegister ?? null;
       }
     } catch {
       /* ignore corrupt plan */
@@ -154,6 +157,11 @@ export async function loadChapterProseContext(
     // Критик стиля судит по отпечатку; дословные образцы звали бы его искать
     // совпадения с ними, а не стиль.
     styleFewShot: 0,
+    // План автора на героя — замысел, а не факт книги: критик судит
+    // написанное, и «по плану она должна дойти до доверия» толкало бы его
+    // требовать от главы того, чего в ней и не должно быть (С3).
+    includeAuthorPlan: false,
+    ...(registerFromPlan ? { dialogueRegister: registerFromPlan } : {}),
     notesQuery: `${ch.title}\n${emotionalGoal}`,
     label: `prose ch#${ch.order_index}`,
   });

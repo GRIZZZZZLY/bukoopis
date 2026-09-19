@@ -1,3 +1,5 @@
+import { chapterPositionLookup } from "./chapter-position.js";
+import type { VoiceSampleSituation } from "@book-forge/shared";
 import type { Database as DatabaseType } from "better-sqlite3";
 import { boundaryForChapter } from "@book-forge/shared";
 import {
@@ -54,6 +56,25 @@ export interface AssembleContextArgs {
   styleFewShot?: number;
   /** Запрос по открытым линиям (заметкам); null — не собирать. */
   notesQuery?: string | null;
+  /**
+   * Где кончается канон для этой сборки (В7 ревью 2026-09-19).
+   *
+   * `at_chapter` (по умолчанию) — вместе с фактами и заметками самой главы.
+   * Так нужно критике: она проверяет главу против того, что глава же и
+   * утверждает.
+   *
+   * `before_chapter` — строго до неё. Так нужно Писателю и планировщику: у
+   * главы может быть уже принятая версия, и её факты — это утверждения
+   * текста, который автор сейчас переписывает. Подавать их как действующий
+   * канон значит заставить новую версию повторить старую.
+   */
+  factsBoundary?: "at_chapter" | "before_chapter";
+  /** Регистр диалога сцены из плана главы. По нему отбираются образцы речи;
+   *  без него берутся нейтральные, и в допрос ехала бытовая болтовня (С3). */
+  dialogueRegister?: VoiceSampleSituation | null;
+  /** План автора на героя — замысел, а не факт книги. Писателю он нужен,
+   *  критике нет: та судит написанное. */
+  includeAuthorPlan?: boolean;
   budgetTokens?: number;
   /** Подпись для инспектора контекста в логе. */
   label: string;
@@ -121,7 +142,12 @@ export async function assembleGenerationContext(
   const outlineSelected = bookCtx?.outlineSelected ?? null;
 
   // История — теми же тремя функциями и в том же порядке для всех ролей.
-  const rolling = loadRollingChapterContext(sqlite, book.id, ch.order_index);
+  // Один справочник позиций на всю сборку: номера глав в промпте должны
+  // быть порядковыми, а не разрежёнными `order_index` (С4).
+  const positionOf = chapterPositionLookup(sqlite, book.id);
+  const rolling = loadRollingChapterContext(sqlite, book.id, ch.order_index, {
+    positionOf,
+  });
   const tailRow = loadPreviousChapterTailWithOrder(sqlite, book.id, ch.order_index);
   const retrieved = await gatherRetrievedChunks(sqlite, {
     bookId: book.id,
@@ -132,6 +158,7 @@ export async function assembleGenerationContext(
     // блоком; её фрагменты повторение. Остальным окно даёт пересказ, и
     // деталь, не попавшая в него, достаётся только поиском (AC-12).
     verbatimChapterOrders: tailRow ? [tailRow.chapterOrder] : [],
+    positionOf,
   });
 
   // POV — отдельным идентификатором, а не надеждой на совпадение имени в
@@ -151,14 +178,25 @@ export async function assembleGenerationContext(
     }
   }
 
+  // Состав сцены ищется по СЦЕНЕ, а не по книге (С1 ревью 2026-09-19).
+  // Прежде сюда входили весь выбранный аутлайн и все пересказы прошлых глав,
+  // поэтому участником каждой сцены оказывался почти каждый герой книги — с
+  // карточкой, знаниями и событиями, в обязательном слое, который нельзя
+  // урезать. На тридцати главах это и переполняло бюджет, а сообщение
+  // «сократите состав сцены» автор выполнить не мог: состав он не задавал.
+  // Намерение главы, её беат-лист (или её текст у критики), название,
+  // премиса и POV — то, что про сцену и есть.
   const scanTexts = [
     ch.intent,
     title,
     premise,
-    outlineSelected,
     pov,
     ...args.scanTexts,
-    rolling,
+    // Хвост предыдущей главы — часть этой же сцены: герой, действующий в
+    // продолжающемся эпизоде, может быть не назван в беат-листе, и без
+    // этого его карточка пропадала. Пересказы всей книги сюда по-прежнему
+    // не идут — именно они и раздували состав (С1).
+    tailRow?.text ?? null,
   ];
   const boundary = boundaryForChapter(book.id, ch.id, ch.current_version_id ?? null);
   const charResult = gatherCharacterContext(
@@ -173,7 +211,13 @@ export async function assembleGenerationContext(
   );
   const characterCards =
     charResult.characters.length > 0
-      ? characterContextToPrompt(charResult, charNameById, { chapterOrder: ch.order_index })
+      ? characterContextToPrompt(charResult, charNameById, {
+          chapterOrder: ch.order_index,
+          ...(args.dialogueRegister ? { situation: args.dialogueRegister } : {}),
+          ...(args.includeAuthorPlan !== undefined
+            ? { includeAuthorPlan: args.includeAuthorPlan }
+            : {}),
+        })
       : null;
   const loreResult = gatherLoreContext(sqlite, book.id, scanTexts, ch.order_index);
   const loreContext =
@@ -191,11 +235,26 @@ export async function assembleGenerationContext(
     ...loreResult.locations.map((l) => l.name),
     ...loreResult.items.map((i) => i.name),
   ];
+  // Разрежённая нумерация (шаг 10) делает `order - 1` точным «строго до»:
+  // между соседними главами других номеров не бывает.
+  const factsOrder =
+    args.factsBoundary === "before_chapter"
+      ? Math.max(0, ch.order_index - 1)
+      : ch.order_index;
+  // Заголовок блока называет главу, для которой собран контекст, а не
+  // границу канона: `factsOrder` у Писателя — это `order_index - 1`, номера
+  // главы с таким индексом в книге нет, и `positionOf` вернул бы `null` —
+  // в промпте рядом со строками «с главы 3» печаталось «#29».
+  const factsLabelOrder = ch.order_index;
   const factsPrompt = renderActiveFactsPrompt(
     sqlite,
     book.id,
-    ch.order_index,
-    factEntityNames.length > 0 ? { entityNames: factEntityNames } : undefined,
+    factsOrder,
+    {
+      ...(factEntityNames.length > 0 ? { entityNames: factEntityNames } : {}),
+      positionOf,
+      headingOrder: factsLabelOrder,
+    },
   );
   const characterContext =
     factsPrompt !== null
@@ -210,9 +269,10 @@ export async function assembleGenerationContext(
   );
   const notesPrompt = args.notesQuery
     ? renderOpenNotesPrompt(
-        await gatherRelevantNotes(sqlite, book.id, args.notesQuery, ch.order_index),
+        await gatherRelevantNotes(sqlite, book.id, args.notesQuery, factsOrder),
         "Открытые линии",
-        ch.order_index,
+        factsOrder,
+        { positionOf, headingOrder: factsLabelOrder },
       )
     : null;
 
@@ -228,9 +288,14 @@ export async function assembleGenerationContext(
       { id: "prevTail", text: tailRow?.text ?? null, priority: 2 },
       { id: "rolling", text: rolling, priority: 2 },
       { id: "lore", text: loreContext, priority: 3 },
-      { id: "studio", text: studioContext, priority: 4 },
-      { id: "retrieval", text: retrieved.promptBlock, priority: 5 },
-      { id: "style", text: styleContext.prompt, priority: 6 },
+      // Поиск по прошлым главам и стиль — выше принятых разделов Мастерской
+      // (С6). Мир и лор автор задал один раз и читает сам; поиск отвечает за
+      // непротиворечивость деталей, а стилевые образцы — за голос, и
+      // вытеснять их большой «библией» значит терять ровно то, за чем
+      // Писателя и зовут.
+      { id: "retrieval", text: retrieved.promptBlock, priority: 4 },
+      { id: "style", text: styleContext.prompt, priority: 5 },
+      { id: "studio", text: studioContext, priority: 6 },
     ],
     { maxTokens: budget },
   );

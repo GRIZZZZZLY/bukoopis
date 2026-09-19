@@ -157,6 +157,10 @@ describe("chapters CRUD", () => {
     expect(await del.json()).toEqual({
       deletedCharacterEvents: 2,
       deletedAuthoredEvents: 1,
+      // В4 ревью 2026-09-19: факты и заметки удалённой главы тоже уходят и
+      // тоже названы. Здесь их не было — счёт честно нулевой.
+      deletedFacts: 0,
+      deletedNotes: 0,
     });
     // И они действительно исчезли — счёт описывает потерю, а не намерение.
     const left = t.sqlite

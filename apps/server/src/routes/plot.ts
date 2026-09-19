@@ -59,6 +59,7 @@ import {
   loadProposal,
 } from "../utils/prose-proposals.js";
 import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
+import { judgeProseCompletion } from "@book-forge/shared";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 export { loadBookContext, type BookContext } from "../utils/book-context.js";
@@ -206,25 +207,30 @@ export function createPlotRoute(
       // нет — значит, и повторять нечего: ищем по всем предыдущим главам.
       verbatimChapterOrders: [],
     });
+    // Граница планировщика — строго ДО главы (В7): у неё может быть принятая
+    // версия, и её заметки с фактами описывают текст, который план как раз
+    // и переписывает.
+    const planBoundary = Math.max(0, ch.order_index - 1);
     const planNotes = await gatherRelevantNotes(
       sqlite,
       ch.book_id,
       `${ch.title}\n${parsed.data.intent}`,
-      ch.order_index,
+      planBoundary,
     );
     const planOpenThreads = renderOpenNotesPrompt(
       planNotes,
       "Открытые линии",
-      ch.order_index,
+      planBoundary,
     );
     // Слайс 4.5: планировщик впервые видит действующий канон — иначе он может
     // назвать отменяемый факт только словами, без ссылки, и критику нечего
     // сопоставить. Граница та же, что у Writer: факты по состоянию ДО этой
-    // главы (`order_index`), иначе план опирался бы на то, что сам изменит.
+    // главы — и это `order_index - 1`, а не сам `order_index`, который
+    // включал бы факты уже принятой её версии (В7).
     const planActiveFacts = renderActiveFactsPrompt(
       sqlite,
       ch.book_id,
-      ch.order_index,
+      planBoundary,
       { withIds: true },
     );
     const variants = await runChapterPlan({
@@ -342,6 +348,14 @@ export function createPlotRoute(
       scanTexts: [beatSheet.emotionalGoal, beatBlob],
       retrievalQuery: beatBlob,
       povName: beatSheet.pov,
+      // В7: у главы может быть принятая версия, и её факты — утверждения
+      // текста, который автор сейчас переписывает. Канон для Писателя
+      // кончается ДО неё.
+      factsBoundary: "before_chapter",
+      // Регистр сцены из плана — по нему отбираются образцы речи (С3).
+      ...(beatSheet.dialogueRegister
+        ? { dialogueRegister: beatSheet.dialogueRegister }
+        : {}),
       label: `writer ch#${ch.order_index}`,
     });
     if (assembled.compiled.requiredOverflow) {
@@ -386,6 +400,19 @@ export function createPlotRoute(
       });
       cancels.begin(proposalId);
       const signal = cancels.signal(proposalId);
+
+      // В9: до первого токена подписочный бэкенд молчит минутами, а молчащее
+      // соединение вправе закрыть кто угодно по дороге. Признак жизни раз в
+      // 20 секунд — как у приёма материала; клиент неизвестные события
+      // пропускает. Сами `ping` идут цепочкой друг за другом; с кадрами
+      // тела они не пересекаются потому, что запись в поток уже
+      // последовательна, а не потому, что цепочка общая.
+      let pending: Promise<void> = Promise.resolve();
+      const keepalive = setInterval(() => {
+        pending = pending
+          .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
+          .catch(() => {});
+      }, 20_000);
 
       try {
         await stream.writeSSE({
@@ -450,9 +477,14 @@ export function createPlotRoute(
           return;
         }
 
+        // С5: бэкенд подписки причину остановки не сообщает вовсе, и
+        // «не подтверждено» горело на КАЖДОЙ главе — предупреждение,
+        // которое всегда горит, перестают читать. Когда причины нет,
+        // судим по хвосту текста; `completion` остаётся честным.
+        const verdict = judgeProseCompletion(stopReason, fullText);
         const confirmed = isConfirmedCompletion(stopReason);
         finishProposal(sqlite, proposalId, {
-          status: confirmed ? "ready" : "incomplete",
+          status: verdict.looksComplete ? "ready" : "incomplete",
           contentText: fullText,
           contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
           wordCount: countWords(fullText),
@@ -517,6 +549,8 @@ export function createPlotRoute(
           data: JSON.stringify({ message, proposalId }),
         });
       } finally {
+        clearInterval(keepalive);
+        await pending;
         cancels.end(proposalId);
       }
     });

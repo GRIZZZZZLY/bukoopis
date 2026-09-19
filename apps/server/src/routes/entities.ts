@@ -1,3 +1,4 @@
+import { sameEntityName } from "@book-forge/shared";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
@@ -112,6 +113,34 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     const checked = parseCharacterProfileForWrite(parsed.data.profile);
     if (!checked.ok) return validationFailed(c, checked.error);
 
+    // Тёзка — решение автора, но осознанное (С2 ревью 2026-09-19). Прежде
+    // два героя с одним именем заводились молча, после чего резолвер на
+    // обоих отвечал «неоднозначно» и факт не приставал ни к кому — а
+    // обнаруживалось это в готовой главе. Повтор с `allowDuplicateName`
+    // заводит тёзку и снимает вопрос.
+    if (parsed.data.allowDuplicateName !== true) {
+      const twins = (
+        sqlite
+          .prepare("SELECT canonical_name AS name FROM characters WHERE book_id = ?")
+          .all(id) as Array<{ name: string }>
+      ).filter((r) => sameEntityName(r.name, parsed.data.canonicalName));
+      if (twins.length > 0) {
+        return c.json(
+          {
+            error: "duplicate_character_name",
+            details: {
+              existing: twins.map((t) => t.name),
+              message:
+                "В книге уже есть герой с таким именем. Факты и реплики перестанут" +
+                " приставать к обоим. Дайте другое имя или повторите с" +
+                " allowDuplicateName.",
+            },
+          },
+          409,
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const profileJson = JSON.stringify(checked.profile);
     const tx = sqlite.transaction(() => {
@@ -209,6 +238,31 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       .get(id) as { book_id: number } | undefined;
     if (!existing) return notFound(c, "character");
 
+    // Что уйдёт вместе с героем — по CASCADE, молча (С10 ревью 2026-09-19).
+    // У удаления главы такой счётчик уже есть, а герой уносил события,
+    // образцы речи и отношения без единого слова.
+    const count = (sql: string, ...params: unknown[]): number =>
+      (sqlite.prepare(sql).get(...params) as { c: number }).c;
+    const lost = {
+      deletedEvents: count(
+        "SELECT COUNT(*) c FROM character_events WHERE subject_character_id = ?",
+        id,
+      ),
+      deletedVoiceSamples: count(
+        "SELECT COUNT(*) c FROM character_voice_samples WHERE character_id = ?",
+        id,
+      ),
+      deletedRelationships: count(
+        "SELECT COUNT(*) c FROM relationships WHERE from_character_id = ? OR to_character_id = ?",
+        id,
+        id,
+      ),
+      deletedAliases: count(
+        "SELECT COUNT(*) c FROM entity_aliases WHERE entity_type = 'character' AND entity_id = ?",
+        id,
+      ),
+    };
+
     const tx = sqlite.transaction(() => {
       deleteProfileVersions(sqlite, "character", id);
       // Удалить историю его отношений (они каскадятся, но история остаётся сиротой)
@@ -218,11 +272,29 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
       for (const rel of relIds) {
         deleteProfileVersions(sqlite, "relationship", rel.id);
       }
+      // Сироты, которые CASCADE не уносит: псевдонимы и упоминания в главах
+      // ссылаются на сущность парой (тип, id), без внешнего ключа, а
+      // `book_facts.entity_id` после удаления указывал бы в пустоту.
+      sqlite
+        .prepare(
+          "DELETE FROM entity_aliases WHERE entity_type = 'character' AND entity_id = ?",
+        )
+        .run(id);
+      sqlite
+        .prepare(
+          "DELETE FROM entity_chapter_mentions WHERE entity_type = 'character' AND entity_id = ?",
+        )
+        .run(id);
+      sqlite
+        .prepare(
+          "UPDATE book_facts SET entity_id = NULL WHERE entity_type = 'character' AND entity_id = ?",
+        )
+        .run(id);
       sqlite.prepare("DELETE FROM characters WHERE id = ?").run(id);
     });
     tx.immediate();
     bumpBook(sqlite, existing.book_id);
-    return c.body(null, 204);
+    return c.json(lost);
   });
 
   // ─────────────── Locations ───────────────

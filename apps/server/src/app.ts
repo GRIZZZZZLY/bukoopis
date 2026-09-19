@@ -17,6 +17,10 @@ import { createStudioRoute } from "./routes/studio.js";
 import { createProposalsRoute } from "./routes/proposals.js";
 import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
 import { createProposalCancelRegistry } from "./utils/proposal-cancel.js";
+import {
+  recoverStaleCritiqueReports,
+  recoverStaleProseProposals,
+} from "./utils/critique-recovery.js";
 
 export interface AppHandle {
   app: Hono;
@@ -27,6 +31,23 @@ export interface AppHandle {
 
 export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   const { sqlite, hasVec } = createDb(dbPath);
+  // Отчёты критики, застрявшие в `pending` от прошлого запуска: писать их
+  // больше некому, и вечное «критика идёт» хуже честной ошибки (В13).
+  const staleReports = recoverStaleCritiqueReports(sqlite);
+  if (staleReports > 0) {
+    console.warn(
+      `[critique] ${staleReports} отчёт(ов) остались от прошлого запуска — помечены ошибкой`,
+    );
+  }
+  // Кандидаты прозы, оставшиеся в `streaming` от прошлого запуска: писать в
+  // них некому, а экран их не показывает — автор платит за второй прогон
+  // того же текста (С8).
+  const staleProposals = recoverStaleProseProposals(sqlite);
+  if (staleProposals > 0) {
+    console.warn(
+      `[proposals] ${staleProposals} кандидат(ов) остались от прошлого запуска — помечены ошибкой`,
+    );
+  }
   const memoryWorker = startMemoryWorker(sqlite, hasVec);
   // Один реестр на процесс: его смотрит генерация и правка, а маршрут отмены
   // в него пишет.

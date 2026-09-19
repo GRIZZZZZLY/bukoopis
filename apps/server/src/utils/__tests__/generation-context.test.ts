@@ -258,3 +258,124 @@ describe("assembleGenerationContext", () => {
     expect(ctx.previousChapters).toBeNull();
   });
 });
+
+/** В7 независимого ревью 2026-09-19: факты и заметки читались ВКЛЮЧАЮЩЕ по
+ *  номеру самой главы. У главы с уже принятой версией это значит, что в
+ *  промпт её же перегенерации возвращаются факты, извлечённые из версии,
+ *  которую автор как раз выбрасывает. Извлекатели ту же границу считают
+ *  исключающей — расхождение было и в комментарии маршрута. */
+describe("граница фактов (В7)", () => {
+  function seedFact(order: number, name: string, object: string): void {
+    sqlite
+      .prepare(
+        `INSERT INTO book_facts
+           (book_id, entity_type, entity_name, predicate, object_text,
+            valid_from_chapter, valid_to_chapter, source_version_id, confidence,
+            origin, assertion_mode, created_at)
+         VALUES (?, 'character', ?, 'состояние', ?, ?, NULL, NULL, 0.9, 'extracted', 'narrated_as_fact', ?)`,
+      )
+      .run(bookId, name, object, order, NOW);
+  }
+
+  it("Писатель не получает фактов из версии главы, которую переписывает", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья.");
+    const second = insertChapter(20, "Вторая глава. Рин в лесу.");
+    seedFact(10, "Рин", "цела");
+    seedFact(20, "Рин", "ранена в отброшенной версии");
+
+    const forWriter = await assemble(second, { factsBoundary: "before_chapter" });
+    expect(forWriter.characterContext).toContain("цела");
+    expect(forWriter.characterContext).not.toContain("ранена в отброшенной версии");
+  });
+
+  it("критика по-прежнему видит факты своей главы: их она и проверяет", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья.");
+    const second = insertChapter(20, "Вторая глава. Рин в лесу.");
+    seedFact(20, "Рин", "ранена");
+
+    const forCritic = await assemble(second);
+    expect(forCritic.characterContext).toContain("ранена");
+  });
+});
+
+describe("состав сцены (С1) и приоритеты бюджета (С6)", () => {
+  it("герой из аутлайна и пересказов не становится участником сцены", async () => {
+    insertCharacter("Рин");
+    insertCharacter("Кассий");
+    // Кассий действует в первой главе и назван в плане книги, но в этой
+    // сцене его нет. Прежде карточки собирались сканированием аутлайна и
+    // всех пересказов — и в обязательный слой попадала почти вся книга.
+    insertChapter(10, "Первая глава. Кассий у ворот.");
+    insertChapter(20, "Вторая. Рин идёт.");
+    const third = insertChapter(30, "Третья.");
+    sqlite
+      .prepare("UPDATE books SET outline_json = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          variants: [
+            {
+              id: "v1",
+              logline: "Кассий предаёт Рин",
+              synopsis: "Кассий и Рин идут через горы",
+              selected: true,
+            },
+          ],
+          selectedVariantId: "v1",
+        }),
+        bookId,
+      );
+
+    const ctx = await assemble(third, { scanTexts: ["беат-лист: Рин у ручья"] });
+
+    expect(ctx.characterContext).toContain("Рин");
+    expect(ctx.characterContext ?? "").not.toContain("Кассий");
+  });
+
+  it("поиск и стиль вытесняются позже принятых разделов Мастерской", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья. ОРИЕНТИР_ПЕРВОЙ.");
+    const second = insertChapter(20, "Вторая.");
+    // Принятый мир Мастерской — большой: именно так «библия» и выбивала из
+    // бюджета поиск и стиль, которые держат непротиворечивость и голос.
+    const world = "Мир держится на соли. ".repeat(200);
+    sqlite
+      .prepare("UPDATE books SET studio_state = ? WHERE id = ?")
+      .run(
+        JSON.stringify({
+          schemaVersion: 1,
+          revision: 1,
+          stages: {
+            world: {
+              status: "complete",
+              playbookGenerated: true,
+              aspects: [
+                {
+                  id: "a1",
+                  name: "мир",
+                  status: "accepted",
+                  order: 0,
+                  required: true,
+                  source: "llm",
+                  payloadKind: "markdown",
+                  variants: [],
+                  finalPayload: world,
+                },
+              ],
+            },
+          },
+        }),
+        bookId,
+      );
+
+    const roomy = await assemble(second, { budgetTokens: 100000 });
+    expect(roomy.compiled.includedIds).toContain("studio");
+
+    // Тесно: уходит студийный контекст, а не стиль.
+    const tight = await assemble(second, { budgetTokens: 900 });
+    expect(tight.compiled.includedIds).not.toContain("studio");
+    expect(tight.compiled.dropped.map((d) => d.id)).toContain("studio");
+  });
+});
+

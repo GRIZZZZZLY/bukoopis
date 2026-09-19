@@ -1,4 +1,6 @@
 export * from "./book.js";
+export * from "./prose-completion.js";
+export * from "./entity-names.js";
 export * from "./chapter.js";
 export * from "./chapter-version.js";
 export * from "./plot.js";

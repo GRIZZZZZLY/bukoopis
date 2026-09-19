@@ -13,6 +13,16 @@ import { logUsage } from "./usageLogger.js";
 
 export const ROLLING_WINDOW = 3;
 
+/** Сколько рубежей просматривать в поисках пригодного. Сводок у книги по
+ *  одной на пройденный рубеж, и после правки ранней главы негодными
+ *  становятся все с ней внутри — но пригодный может лежать и глубже. */
+const MAX_SUMMARY_CANDIDATES = 20;
+
+/** Сколько устаревших рубежей пересобирать за один прогон. Каждый — вызов
+ *  модели, и правка первой главы длинной книги иначе выливалась бы в
+ *  десятки вызовов разом. Остальные догонят следующим прогоном. */
+const MAX_STALE_REBUILDS_PER_RUN = 4;
+
 interface ChapterRow {
   title: string;
   order_index: number;
@@ -26,14 +36,25 @@ interface MetaRow {
   source_fingerprint: string | null;
 }
 
-function chapterSnippet(r: ChapterRow): string {
+/** Номер главы для промпта. Порядковый, а не `order_index`: нумерация
+ *  разрежённая (шаг 10), и «Глава #30» рядом с «Глава 3» заставляла модель
+ *  считать несуществующие расстояния (С4 ревью 2026-09-19). Без справочника
+ *  печатается прежнее число: вызывающие вне сборки контекста его не строят. */
+export type ChapterPositionOf = (orderIndex: number) => number | null;
+
+function chapterLabel(orderIndex: number, positionOf?: ChapterPositionOf): string {
+  const pos = positionOf?.(orderIndex) ?? null;
+  return pos === null ? `#${orderIndex}` : String(pos);
+}
+
+function chapterSnippet(r: ChapterRow, positionOf?: ChapterPositionOf): string {
   const snippet =
     r.summary && r.summary.length > 0
       ? r.summary
       : r.content_text
         ? r.content_text.slice(0, 1200)
         : "(пусто)";
-  return `Глава #${r.order_index} «${r.title}»:\n${snippet}`;
+  return `Глава ${chapterLabel(r.order_index, positionOf)} «${r.title}»:\n${snippet}`;
 }
 
 /**
@@ -45,8 +66,12 @@ export function loadRollingChapterContext(
   sqlite: DatabaseType,
   bookId: number,
   beforeOrderIndex: number,
-  window: number = ROLLING_WINDOW,
+  windowOrOpts: number | { window?: number; positionOf?: ChapterPositionOf } = ROLLING_WINDOW,
 ): string | null {
+  const window =
+    typeof windowOrOpts === "number" ? windowOrOpts : windowOrOpts.window ?? ROLLING_WINDOW;
+  const positionOf =
+    typeof windowOrOpts === "number" ? undefined : windowOrOpts.positionOf;
   const rows = sqlite
     .prepare(
       `SELECT c.title, c.order_index, v.content_text, v.summary
@@ -68,49 +93,50 @@ export function loadRollingChapterContext(
     // написанное с точки зрения этой сцены (AC-10), поэтому границу ставит
     // сам запрос. Сводок у книги несколько — по одной на пройденный рубеж, —
     // и берётся самая полная из подходящих.
-    const meta = sqlite
+    // Берётся самая поздняя ПРИГОДНАЯ сводка, а не просто самая поздняя
+    // (В6 ревью 2026-09-19). Отпечаток сверяется на чтении: главу внутри
+    // диапазона могли переписать после того, как сводка составлена, и тогда
+    // она описывает текст, которого больше нет. Раньше кандидат был один
+    // (`LIMIT 1`), и одна негодная строка отправляла всю книгу на поглавные
+    // пересказы, хотя рядом лежал рубеж пораньше, вполне живой.
+    const candidates = sqlite
       .prepare(
         `SELECT covers_from_order, covers_to_order, summary_text, source_fingerprint
          FROM book_meta_summaries
          WHERE book_id = ? AND covers_to_order < ?
-         ORDER BY covers_to_order DESC LIMIT 1`,
+         ORDER BY covers_to_order DESC LIMIT ?`,
       )
-      .get(bookId, beforeOrderIndex) as MetaRow | undefined;
+      .all(bookId, beforeOrderIndex, MAX_SUMMARY_CANDIDATES) as MetaRow[];
     const olderMax = older[older.length - 1]!.order_index;
 
-    // Отпечаток сверяется и на чтении: главу внутри диапазона могли
-    // переписать после того, как сводка была составлена, и тогда она
-    // описывает текст, которого больше нет. Такую не берём — ранние главы
-    // уходят поглавно, это дороже по месту, но не лжёт.
-    const usableMeta =
-      meta &&
-      (meta.source_fingerprint === null ||
-        meta.source_fingerprint ===
-          currentSourceFingerprint(sqlite, bookId, meta.covers_to_order))
-        ? meta
-        : undefined;
+    const usableMeta = candidates.find(
+      (m) =>
+        m.source_fingerprint === null ||
+        m.source_fingerprint ===
+          currentSourceFingerprint(sqlite, bookId, m.covers_to_order),
+    );
 
     if (usableMeta && usableMeta.covers_to_order >= olderMax) {
       // Meta fully covers the older run.
       parts.push(
-        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
+        `### Сводка ранних глав (главы ${chapterLabel(usableMeta.covers_from_order, positionOf)}–${chapterLabel(usableMeta.covers_to_order, positionOf)})\n${usableMeta.summary_text}`,
       );
     } else if (usableMeta) {
       // Meta covers a prefix; remaining older chapters fall back verbatim.
       parts.push(
-        `### Сводка ранних глав (#${usableMeta.covers_from_order}–#${usableMeta.covers_to_order})\n${usableMeta.summary_text}`,
+        `### Сводка ранних глав (главы ${chapterLabel(usableMeta.covers_from_order, positionOf)}–${chapterLabel(usableMeta.covers_to_order, positionOf)})\n${usableMeta.summary_text}`,
       );
       const uncovered = older.filter(
         (r) => r.order_index > usableMeta.covers_to_order,
       );
-      for (const r of uncovered) parts.push(chapterSnippet(r));
+      for (const r of uncovered) parts.push(chapterSnippet(r, positionOf));
     } else {
       // No meta yet — graceful fallback to per-chapter (nothing lost).
-      for (const r of older) parts.push(chapterSnippet(r));
+      for (const r of older) parts.push(chapterSnippet(r, positionOf));
     }
   }
 
-  for (const r of recent) parts.push(chapterSnippet(r));
+  for (const r of recent) parts.push(chapterSnippet(r, positionOf));
 
   return parts.join("\n\n---\n\n");
 }
@@ -243,84 +269,135 @@ export async function runMetaSummary(
   bookId: number,
   window: number = ROLLING_WINDOW,
 ): Promise<MetaSummaryResult> {
-  {
-    // Тот же набор, что сверяется на чтении: разойдись они — отпечаток не
-    // совпал бы никогда, и сводка была бы бесполезна с первого дня.
-    const summarized = summarizedChaptersUpTo(
-      sqlite,
-      bookId,
-      Number.MAX_SAFE_INTEGER,
-    );
+  // Тот же набор, что сверяется на чтении: разойдись они — отпечаток не
+  // совпал бы никогда, и сводка была бы бесполезна с первого дня.
+  const summarized = summarizedChaptersUpTo(
+    sqlite,
+    bookId,
+    Number.MAX_SAFE_INTEGER,
+  );
 
-    if (summarized.length <= window) {
-      return { updated: false, skipped: "window" }; // nothing older than the window
-    }
+  if (summarized.length <= window) {
+    return { updated: false, skipped: "window" }; // nothing older than the window
+  }
 
-    const older = summarized.slice(0, summarized.length - window);
-    const coversFrom = older[0]!.order_index;
-    const coversTo = older[older.length - 1]!.order_index;
+  const bk = sqlite
+    .prepare("SELECT title, critic_model FROM books WHERE id = ?")
+    .get(bookId) as { title: string; critic_model: "sonnet" | "opus" } | undefined;
+  if (!bk) return { updated: false, skipped: "missing" };
 
-    const fingerprint = metaSourceFingerprint(older);
-    // Ищется строка ровно этого рубежа: сводки живут по одной на covers_to,
-    // и «есть сводка подальше» больше не означает, что эта не нужна.
-    const existing = sqlite
-      .prepare(
-        `SELECT source_fingerprint FROM book_meta_summaries
-         WHERE book_id = ? AND covers_to_order = ?`,
-      )
-      .get(bookId, coversTo) as { source_fingerprint: string | null } | undefined;
-    if (existing && existing.source_fingerprint === fingerprint) {
-      return { updated: false, coversTo, skipped: "covered" }; // up to date
-    }
+  const older = summarized.slice(0, summarized.length - window);
+  const coversTo = older[older.length - 1]!.order_index;
+  const newest = await rebuildThreshold(sqlite, bookId, coversTo, bk);
 
-    const bk = sqlite
-      .prepare("SELECT title, critic_model FROM books WHERE id = ?")
-      .get(bookId) as
-      | { title: string; critic_model: "sonnet" | "opus" }
-      | undefined;
-    if (!bk) return { updated: false, skipped: "missing" };
-
-    const result = await metaSummarize({
-      bookTitle: bk.title,
-      chapterSummaries: older.map((o) => ({
-        order: o.order_index,
-        title: o.title,
-        summary: o.summary,
-      })),
-      model: bk.critic_model ?? "sonnet",
-    });
-    if (!result.summary) return { updated: false, skipped: "empty" };
-
-    const now = new Date().toISOString();
+  // Рубежи ПОЗАДИ нового тоже могли устареть: правка ранней главы меняет
+  // отпечаток каждого диапазона, куда она входит, а пересобирался только
+  // последний (В6 ревью 2026-09-19). Читатель после этого не находил ни
+  // одной пригодной сводки и на всей книге переходил на поглавные пересказы.
+  //
+  // Но только когда по книге больше нечего пересказывать. «Перестроить
+  // память» ставит задание на каждую главу, и каждое завершённое цепляет
+  // свой `rollup`: добор на каждом из них умножал платные вызовы на число
+  // глав, а отпечатки всё равно плыли на каждом шаге. Своё задание здесь не
+  // мешает — оно `running`, а ждём мы `pending`/`retry`.
+  const queueBusy =
     sqlite
       .prepare(
-        `INSERT INTO book_meta_summaries
-           (book_id, covers_from_order, covers_to_order, summary_text, model_id, source_fingerprint, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(book_id, covers_to_order) DO UPDATE SET
-           covers_from_order = excluded.covers_from_order,
-           summary_text      = excluded.summary_text,
-           model_id          = excluded.model_id,
-           source_fingerprint = excluded.source_fingerprint,
-           created_at        = excluded.created_at`,
+        `SELECT 1 FROM memory_jobs
+         WHERE book_id = ? AND kind IN ('summary','rollup')
+           AND status IN ('pending','retry')
+         LIMIT 1`,
       )
-      .run(bookId, coversFrom, coversTo, result.summary, result.modelId, fingerprint, now);
-
-    if (result.modelId !== "noop") {
-      logUsage(sqlite, {
-        route: "summary.meta",
-        model: result.modelId,
-        usage: {
-          inputTokens: result.tokens.input,
-          outputTokens: result.tokens.output,
-          cacheCreationInputTokens: result.tokens.cacheCreation,
-          cacheReadInputTokens: result.tokens.cacheRead,
-        },
-        bookId,
-      });
-    }
-    return { updated: true, coversTo };
+      .get(bookId) !== undefined;
+  const stale = queueBusy
+    ? []
+    : (sqlite
+        .prepare(
+          `SELECT covers_to_order AS t, source_fingerprint AS fp
+           FROM book_meta_summaries
+           WHERE book_id = ? AND covers_to_order < ?
+           ORDER BY covers_to_order DESC`,
+        )
+        .all(bookId, coversTo) as Array<{ t: number; fp: string | null }>);
+  let rebuilt = 0;
+  for (const row of stale) {
+    if (rebuilt >= MAX_STALE_REBUILDS_PER_RUN) break;
+    if (row.fp === null) continue; // старая строка без отпечатка — оставляем
+    if (row.fp === currentSourceFingerprint(sqlite, bookId, row.t)) continue;
+    const outcome = await rebuildThreshold(sqlite, bookId, row.t, bk);
+    if (outcome === "updated") rebuilt += 1;
   }
+
+  return newest === "updated" || rebuilt > 0
+    ? { updated: true, coversTo }
+    : { updated: false, coversTo, skipped: newest === "covered" ? "covered" : "empty" };
+}
+
+type ThresholdOutcome = "updated" | "covered" | "empty";
+
+/** Собирает сводку одного рубежа: главы с пересказами до `coversTo`
+ *  включительно. Ничего не делает, если отпечаток источников совпал. */
+async function rebuildThreshold(
+  sqlite: DatabaseType,
+  bookId: number,
+  coversTo: number,
+  bk: { title: string; critic_model: "sonnet" | "opus" },
+): Promise<ThresholdOutcome> {
+  const rows = summarizedChaptersUpTo(sqlite, bookId, coversTo);
+  if (rows.length === 0) return "empty";
+  const coversFrom = rows[0]!.order_index;
+  const fingerprint = metaSourceFingerprint(rows);
+
+  // Ищется строка ровно этого рубежа: сводки живут по одной на covers_to,
+  // и «есть сводка подальше» не означает, что эта не нужна.
+  const existing = sqlite
+    .prepare(
+      `SELECT source_fingerprint FROM book_meta_summaries
+       WHERE book_id = ? AND covers_to_order = ?`,
+    )
+    .get(bookId, coversTo) as { source_fingerprint: string | null } | undefined;
+  if (existing && existing.source_fingerprint === fingerprint) return "covered";
+
+  const result = await metaSummarize({
+    bookTitle: bk.title,
+    chapterSummaries: rows.map((o) => ({
+      order: o.order_index,
+      title: o.title,
+      summary: o.summary,
+    })),
+    model: bk.critic_model ?? "sonnet",
+  });
+  if (!result.summary) return "empty";
+
+  const now = new Date().toISOString();
+  sqlite
+    .prepare(
+      `INSERT INTO book_meta_summaries
+         (book_id, covers_from_order, covers_to_order, summary_text, model_id, source_fingerprint, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(book_id, covers_to_order) DO UPDATE SET
+         covers_from_order = excluded.covers_from_order,
+         summary_text      = excluded.summary_text,
+         model_id          = excluded.model_id,
+         source_fingerprint = excluded.source_fingerprint,
+         created_at        = excluded.created_at`,
+    )
+    .run(bookId, coversFrom, coversTo, result.summary, result.modelId, fingerprint, now);
+
+  if (result.modelId !== "noop") {
+    logUsage(sqlite, {
+      route: "summary.meta",
+      model: result.modelId,
+      usage: {
+        inputTokens: result.tokens.input,
+        outputTokens: result.tokens.output,
+        cacheCreationInputTokens: result.tokens.cacheCreation,
+        cacheReadInputTokens: result.tokens.cacheRead,
+      },
+      bookId,
+    });
+  }
+  return "updated";
 }
 
 /**

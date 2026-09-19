@@ -27,6 +27,7 @@ import {
   loadProposal,
 } from "../utils/prose-proposals.js";
 import type { ProposalCancelRegistry } from "../utils/proposal-cancel.js";
+import { judgeProseCompletion } from "@book-forge/shared";
 import { isConfirmedCompletion } from "@book-forge/llm";
 import { loadStyleContext } from "../utils/style-context.js";
 import { measureStructuralTells, renderStructuralTells } from "@book-forge/style-engine";
@@ -375,6 +376,13 @@ export function createCritiqueRoute(
       });
       cancels.begin(proposalId);
       const signal = cancels.signal(proposalId);
+      // В9: то же, что у Писателя — молчащее соединение рвут по дороге.
+      let pending: Promise<void> = Promise.resolve();
+      const keepalive = setInterval(() => {
+        pending = pending
+          .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
+          .catch(() => {});
+      }, 20_000);
       try {
         await stream.writeSSE({
           event: "iteration",
@@ -450,16 +458,24 @@ export function createCritiqueRoute(
 
         // Кандидат, не версия: ветка repair-N и коммит в чаптер появятся при
         // принятии — до тех пор ни версии, ни памяти, ни удаления черновика.
+        // С5: бэкенд подписки причину остановки не сообщает вовсе, и
+        // «не подтверждено» горело на КАЖДОЙ главе — предупреждение,
+        // которое всегда горит, перестают читать. Когда причины нет,
+        // судим по хвосту текста; `completion` остаётся честным.
+        const verdict = judgeProseCompletion(stopReason, fullText);
         const confirmed = isConfirmedCompletion(stopReason);
         finishProposal(sqlite, proposalId, {
-          status: confirmed ? "ready" : "incomplete",
+          status: verdict.looksComplete ? "ready" : "incomplete",
           contentText: fullText,
           contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
           wordCount: countWords(fullText),
           completion: confirmed ? "confirmed" : "unconfirmed",
           stopReason,
           modelId,
-          backend: "anthropic",
+          // Настоящий бэкенд, а не константа: правка идёт тем же
+          // маршрутизатором, что и всё остальное, и «anthropic» на
+          // подписочном прогоне было неправдой в журнале (С5).
+          backend: modelId.startsWith("subscription:") ? "subscription" : "anthropic",
         });
         finalized = true;
 
@@ -518,6 +534,8 @@ export function createCritiqueRoute(
           data: JSON.stringify({ message }),
         });
       } finally {
+        clearInterval(keepalive);
+        await pending;
         cancels.end(proposalId);
       }
     });
