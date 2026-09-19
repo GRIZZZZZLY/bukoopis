@@ -28,9 +28,8 @@ import {
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import {
-  loadPreviousChapterTail,
+  loadPreviousChapterTailWithOrder,
   loadRollingChapterContext,
-  ROLLING_WINDOW,
 } from "../utils/rolling-context.js";
 import {
   compileContext,
@@ -263,9 +262,9 @@ export function createPlotRoute(
       queryText: `${ch.title}\n${parsed.data.intent}`,
       currentChapterOrder: ch.order_index,
       hasVec,
-      // ADR 0003 slice 3: don't re-surface chapters the rolling window already
-      // gives the plotter verbatim.
-      excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
+      // Планировщик получает только пересказы (окно), дословного текста у него
+      // нет — значит, и повторять нечего: ищем по всем предыдущим главам.
+      verbatimChapterOrders: [],
     });
     const planNotes = await gatherRelevantNotes(
       sqlite,
@@ -465,23 +464,28 @@ export function createPlotRoute(
 
     const styleCtx = loadStyleContext(sqlite, ctx.styleProfileId);
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, ch.book_id));
+    // Verbatim close of the preceding chapter — carries intonation and
+    // unfinished action across the seam, which summaries drop.
+    const prevTailRow = loadPreviousChapterTailWithOrder(
+      sqlite,
+      ch.book_id,
+      ch.order_index,
+    );
+    const prevTail = prevTailRow?.text ?? null;
+
     const writerRetrieved = await gatherRetrievedChunks(sqlite, {
       bookId: ch.book_id,
       queryText: beatBlob,
       currentChapterOrder: ch.order_index,
       hasVec,
-      // ADR 0003 slice 3: don't retrieve chunks from chapters the rolling
-      // window already injects verbatim (dedup).
-      excludeFromChapterOrder: ch.order_index - ROLLING_WINDOW,
+      // Дословно подана ровно одна глава — та, чей хвост едет отдельным
+      // блоком; её фрагменты повторение. Окно даёт остальным главам пересказ,
+      // и деталь, не попавшая в него, достаётся только поиском (AC-12).
+      // Хвост может ещё выпасть по бюджету ниже — тогда его глава окажется
+      // исключённой из поиска зря; это редкий случай тесного бюджета, где
+      // фрагменты (приоритет 5) всё равно выпали бы первыми.
+      verbatimChapterOrders: prevTailRow ? [prevTailRow.chapterOrder] : [],
     });
-
-    // Verbatim close of the preceding chapter — carries intonation and
-    // unfinished action across the seam, which summaries drop.
-    const prevTail = loadPreviousChapterTail(
-      sqlite,
-      ch.book_id,
-      ch.order_index,
-    );
 
     // ADR 0003 slice 3: bound the assembled context under a token budget and
     // log what was included/dropped (Context Inspector). The beat-sheet is
