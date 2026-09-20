@@ -13,6 +13,7 @@ import {
   StageOptionalBadge,
 } from "@/components/studio/StageSkipControl";
 import { EntityStageRunner } from "@/components/studio/aspect-engine/EntityStageRunner";
+import { CastCheckPanel } from "@/components/studio/CastCheckPanel";
 import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
 import {
   createLLMEntityVariantGenerator,
@@ -50,6 +51,24 @@ export function EntityStagePage() {
   const [studio, setStudio] = useState<StudioState | null>(null);
   const [concept, setConcept] = useState<BookConcept | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Имена утверждённого состава: в отчёте проверки лежат номера героев. */
+  const [castNames, setCastNames] = useState<ReadonlyMap<number, string>>(new Map());
+
+  useEffect(() => {
+    if (stageId !== "characters" || !Number.isFinite(bookId)) return;
+    let alive = true;
+    api
+      .listCharacters(bookId)
+      .then((list) => {
+        if (alive) setCastNames(new Map(list.map((ch) => [ch.id, ch.canonicalName])));
+      })
+      // Список нужен только подписям в отчёте: без него панель покажет
+      // номера, но экран этапа не сломается.
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [bookId, stageId]);
 
   useEffect(() => {
     if (!Number.isFinite(bookId)) return;
@@ -202,6 +221,15 @@ export function EntityStagePage() {
               generator={entityGenerator}
               onPatch={handlePatch}
               onMaterialize={handleMaterialize}
+            />
+          )}
+          {/* Проверка различий — только для героев: у предметов сравнивать
+              первый ход не с чем (ТЗ 9.1). */}
+          {stageId === "characters" && (
+            <CastCheckPanel
+              bookId={bookId}
+              names={castNames}
+              characterCount={castNames.size}
             />
           )}
         </div>

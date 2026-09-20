@@ -58,6 +58,12 @@ import {
 } from "../utils/entity-revisions.js";
 import { dedupKeyFor } from "../utils/character-events.js";
 import { z } from "zod";
+import {
+  loadCast,
+  performCastCheck,
+  readStoredCastCheck,
+} from "../utils/cast-check.js";
+import { logUsage } from "../utils/usageLogger.js";
 
 function bookExists(sqlite: DatabaseType, id: number): boolean {
   const row = sqlite
@@ -998,6 +1004,48 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     if (!deleteEntityAlias(sqlite, id, aliasId)) return notFound(c, "alias");
     bumpBook(sqlite, id);
     return c.body(null, 204);
+  });
+
+  // ─────────────── Проверка различий состава (ТЗ 9.1) ───────────────
+
+  r.get("/books/:id/cast-check", (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite.prepare("SELECT id FROM books WHERE id = ?").get(id) as
+      | { id: number }
+      | undefined;
+    if (!book) return notFound(c, "book");
+    return c.json(readStoredCastCheck(sqlite, id));
+  });
+
+  r.post("/books/:id/cast-check", async (c) => {
+    const id = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT id, title, premise FROM books WHERE id = ?")
+      .get(id) as { id: number; title: string; premise: string | null } | undefined;
+    if (!book) return notFound(c, "book");
+    // Сравнивать не с кем: проверка на одном герое — потраченный вызов.
+    if (loadCast(sqlite, id).length < 2) {
+      return badRequest(c, "в составе меньше двух героев — сравнивать не с чем");
+    }
+    const result = await performCastCheck(sqlite, {
+      bookId: id,
+      bookTitle: book.title,
+      premise: book.premise,
+      onUsage: (usage) =>
+        logUsage(sqlite, {
+          route: "entities.cast_check",
+          model: usage.modelId,
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationInputTokens: usage.cacheCreationInputTokens,
+            cacheReadInputTokens: usage.cacheReadInputTokens,
+          },
+          bookId: id,
+        }),
+    });
+    // Отчёт только что собран по нынешнему составу — устареть он ещё не мог.
+    return c.json({ ...result, stale: false });
   });
 
   return r;

@@ -335,6 +335,18 @@ export const api = {
       },
     ),
 
+  // ── Проверка различий состава (ТЗ 9.1) ──
+  getCastCheck: (bookId: number) =>
+    req<{ report: import("@book-forge/shared").CastCheckReport | null; stale: boolean }>(
+      `/api/books/${bookId}/cast-check`,
+    ),
+  runCastCheck: (bookId: number) =>
+    req<{
+      report: import("@book-forge/shared").CastCheckReport;
+      stale: boolean;
+      droppedPairs: number;
+    }>(`/api/books/${bookId}/cast-check`, { method: "POST", body: JSON.stringify({}) }),
+
   // ── Characters ──
   listCharacters: (bookId: number) =>
     req<Character[]>(`/api/books/${bookId}/characters`),
