@@ -26,6 +26,7 @@ const REPORT: CritiqueReport = {
     critics: [{ critic: "canon", overallNotes: "ок", issues: [] }],
     requestedCritics: ["canon", "style", "editor", "reader"],
     failedCritics: [],
+    skippedCritics: [],
     blockingCount: 1,
     suggestionCount: 0,
     nitCount: 0,
@@ -145,6 +146,7 @@ const ERROR_REPORT: CritiqueReport = {
     critics: [],
     requestedCritics: ["canon", "style", "editor", "reader"],
     failedCritics: ["canon", "style", "editor", "reader"],
+skippedCritics: [],
     blockingCount: 0,
     suggestionCount: 0,
     nitCount: 0,
@@ -163,6 +165,7 @@ const PARTIAL_REPORT: CritiqueReport = {
     critics: [{ critic: "canon", overallNotes: "ок", issues: [] }],
     requestedCritics: ["canon", "style"],
     failedCritics: ["style"],
+skippedCritics: [],
     blockingCount: 0,
     suggestionCount: 0,
     nitCount: 0,
@@ -256,5 +259,128 @@ describe("CritiquePanel — остановка self-repair", () => {
     expect(
       screen.queryByRole("button", { name: "Принять целиком" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+// Пропущенный критик — третье состояние: не ответил и не упал. Без строки в
+// панели непроверенное выглядит проверенным (ТЗ 10, этап 5).
+describe("CritiquePanel — пропущенные критики", () => {
+  beforeEach(() => {
+    vi.mocked(api.runCritique).mockReset();
+    vi.mocked(api.getCritique).mockReset();
+  });
+
+  it("называет, кого не запускали и почему", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: {
+        ...REPORT.report!,
+        requestedCritics: ["canon"],
+        skippedCritics: ["character"],
+      },
+    });
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={null}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/Не запускались: Персонажи/)).toBeInTheDocument();
+  });
+
+  it("пустой список пропущенных строки не рисует", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: { ...REPORT.report!, skippedCritics: [] },
+    });
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={null}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    await screen.findByText(/Просили:/);
+    expect(screen.queryByText(/Не запускались/)).not.toBeInTheDocument();
+  });
+});
+
+// Замечание критика персонажей несёт больше, чем summary и цитата: кого
+// касается, на чём основано и что стоит сохранить. Не показать это значит
+// собрать данные и спрятать их от автора.
+describe("CritiquePanel — замечание критика персонажей", () => {
+  beforeEach(() => {
+    vi.mocked(api.getCritique).mockReset();
+  });
+
+  it("печатает героев, основание и что сохранить", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: {
+        ...REPORT.report!,
+        critics: [
+          {
+            critic: "character",
+            overallNotes: "Двое звучат одинаково",
+            issues: [
+              {
+                severity: "suggestion",
+                summary: "Нина и Ворт уходят от ответа одинаково",
+                excerpt: "— Не знаю. — Не знаю.",
+                suggestion: "Разведите способ уклонения",
+                category: "interchangeable",
+                affectedCharacters: ["Нина", "Ворт"],
+                basis: "у Ворта принцип «не врать прямо», у Нины его нет",
+                whyHere: "сцена про то, кто сломается первым",
+                alternativeReading: "оба молчат от усталости",
+                keep: "пауза перед вторым «не знаю»",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={null}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/Нина, Ворт/)).toBeInTheDocument();
+    expect(screen.getByText(/не врать прямо/)).toBeInTheDocument();
+    expect(screen.getByText(/пауза перед вторым/)).toBeInTheDocument();
+    expect(screen.getByText(/оба молчат от усталости/)).toBeInTheDocument();
+  });
+
+  it("замечание старого критика лишних подписей не получает", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: {
+        ...REPORT.report!,
+        critics: [
+          {
+            critic: "style",
+            overallNotes: "норм",
+            issues: [{ severity: "nit", summary: "мелочь" }],
+          },
+        ],
+      },
+    });
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={null}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    await screen.findAllByText("мелочь");
+    expect(screen.queryByText(/Герои:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Основание:/)).not.toBeInTheDocument();
   });
 });

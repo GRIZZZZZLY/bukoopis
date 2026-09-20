@@ -13,6 +13,7 @@ import {
   type CritiqueReport,
   type CriticReport,
   type CriticType,
+  type CritiqueIssue,
   type IssueSeverity,
   type ProseChange,
   type ProseProposal,
@@ -419,12 +420,47 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
           {criticNames(r.requestedCritics)}.
         </p>
       )}
+      {/* Пропуск — не успех и не ошибка. Без этой строки сцена, где критик
+          персонажей не запускался, выглядела бы полностью проверенной. */}
+      {(r.skippedCritics?.length ?? 0) > 0 && (
+        <p className="text-xs text-[var(--color-muted-foreground)]">
+          Не запускались: {criticNames(r.skippedCritics ?? [])} — в сцене меньше
+          двух названных героев.
+        </p>
+      )}
       <div className="flex flex-col gap-3">
         {r.critics.map((c) => (
           <CriticBlock key={c.critic} report={c} />
         ))}
       </div>
     </div>
+  );
+}
+
+/** Дополнительные поля замечания критика персонажей: кого касается, на чём
+ *  основано, что стоит сохранить и как это ещё можно прочесть. Собрать их и
+ *  не показать значит спрятать от автора половину разбора. */
+function CharacterIssueDetails({ issue }: { issue: CritiqueIssue }) {
+  const rows: Array<[string, string]> = [];
+  if (issue.affectedCharacters && issue.affectedCharacters.length > 0) {
+    rows.push(["Герои:", issue.affectedCharacters.join(", ")]);
+  }
+  if (issue.basis) rows.push(["Основание:", issue.basis]);
+  if (issue.whyHere) rows.push(["Почему здесь:", issue.whyHere]);
+  if (issue.alternativeReading) {
+    rows.push(["Может быть и так:", issue.alternativeReading]);
+  }
+  if (issue.keep) rows.push(["Сохранить:", issue.keep]);
+  if (rows.length === 0) return null;
+  return (
+    <dl className="cri-card-meta text-xs flex flex-col gap-0.5">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex gap-1">
+          <dt className="cap-upper shrink-0">{label}</dt>
+          <dd className="text-[var(--color-muted-foreground)]">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -479,6 +515,10 @@ function CriticBlock({ report }: { report: CriticReport }) {
                       </span>
                     </div>
                   )}
+                  {/* Поля критика персонажей. У остальных критиков их нет, и
+                      подписи не появляются вовсе: пустой заголовок читается
+                      как утверждение. */}
+                  <CharacterIssueDetails issue={issue} />
                 </li>
               ))}
             </ul>
