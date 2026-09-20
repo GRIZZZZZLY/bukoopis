@@ -10,6 +10,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
   type StructuredProgressEvent,
+  type StructuredUsage,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -182,13 +183,16 @@ export interface RunAspectEntityVariantsOptions {
   temperature?: number;
   /** Вехи вызова для SSE-прогресса в UI. */
   onProgress?: (e: StructuredProgressEvent) => void;
+  /** Расход вызова. Без него работа Мастерской не попадала в журнал
+   *  расходов вовсе: шестнадцать вызовов агентов и ни одной строки. */
+  onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
 }
 
 export async function runAspectEntityVariants(
   input: AspectEntityVariantsInput,
   options: RunAspectEntityVariantsOptions = {},
 ): Promise<AspectEntityVariantsOutput> {
-  const { raw } = await dispatchStructured<
+  const { raw, diagnostics } = await dispatchStructured<
     AspectEntityVariantsInput,
     AspectEntityVariantsOutput
   >({
@@ -203,6 +207,19 @@ export async function runAspectEntityVariants(
       : {}),
     maxTokens: 4096,
   });
+  if (options.onUsage) {
+    try {
+      options.onUsage({
+        modelId: diagnostics.modelId,
+        inputTokens: diagnostics.inputTokens,
+        outputTokens: diagnostics.outputTokens,
+        cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+        cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+      });
+    } catch (e) {
+      console.warn(`[${'aspect_entity_variants'}] onUsage callback threw:`, e instanceof Error ? e.message : e);
+    }
+  }
   return raw;
 }
 

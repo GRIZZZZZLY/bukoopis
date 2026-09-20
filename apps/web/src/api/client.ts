@@ -589,6 +589,8 @@ export const api = {
       timestamp: string;
       db: "ok" | "missing";
       vec: boolean;
+      /** Бэкенд у каждого агента свой; подвалу нужны эти двое. */
+      backends?: { writer: string; critics: string };
     }>("/api/health"),
   getWritingProgress: (date?: string) =>
     req<{ date: string; wordsAdded: number }>(

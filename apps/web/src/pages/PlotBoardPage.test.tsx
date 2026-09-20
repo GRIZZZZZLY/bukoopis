@@ -8,6 +8,7 @@ vi.mock("@/api/client", () => ({
   api: {
     getBook: vi.fn(),
     listBookNotes: vi.fn(),
+    listChapters: vi.fn(),
   },
 }));
 
@@ -26,6 +27,13 @@ function renderAt() {
 describe("PlotBoardPage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Подписи колонок — порядковые номера глав книги, поэтому доска читает
+    // их список; без него она рисует номер со знаком «#».
+    m.listChapters.mockResolvedValue([
+      { id: 1, orderIndex: 1 },
+      { id: 2, orderIndex: 2 },
+      { id: 3, orderIndex: 3 },
+    ] as never);
   });
 
   it("renders a sticky note per book note", async () => {

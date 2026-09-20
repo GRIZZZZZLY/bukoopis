@@ -75,6 +75,11 @@ const editorCriticContract: AgentStructuredContract<CriticInput, EditorCriticOut
     toolName: "submit_critique_editor",
     toolDescription:
       "Submit a structured critique report from the editor critic. Return all issues found with severity and concrete suggestions.",
+    // Пять ходов, а не три по умолчанию: на подписке критик один раз вернул
+    // «модель не вызвала инструмент» — ровно так выглядит исчерпание ходов на
+    // длинном отчёте (живой прогон 2026-09-20). Лишние ходы тратятся только
+    // там, где без них был бы отказ.
+    maxTurns: 5,
   },
 };
 

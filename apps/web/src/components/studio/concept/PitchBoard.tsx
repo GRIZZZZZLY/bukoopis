@@ -74,8 +74,8 @@ export function PitchBoard({
       {questions.length > 0 && (
         <div className="pitch-questions" role="group" aria-label="Уточняющие вопросы">
           <p className="muted" style={{ fontSize: 13 }}>
-            Задумка тонкая. Можно ответить на пару вопросов, ответ допишется к задумке и
-            питчи пересоберутся. Можно и не отвечать.
+            Можно уточнить. Ответ допишется к задумке, и питчи пересоберутся —
+            или оставьте как есть.
           </p>
           {questions.map((q) => (
             <div key={q} style={{ display: "flex", gap: 8, alignItems: "center" }}>

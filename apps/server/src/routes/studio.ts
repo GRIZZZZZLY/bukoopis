@@ -25,6 +25,7 @@ import {
 } from "../db/studio.js";
 import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
+import { logUsage } from "../utils/usageLogger.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
 import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
@@ -811,9 +812,16 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
   // страницы отличает живой разбор от закончившегося.
   r.get("/books/:id/intake/inflight", (c) => {
     const id = Number(c.req.param("id"));
+    const book = sqlite.prepare("SELECT id FROM books WHERE id = ?").get(id) as
+      | { id: number }
+      | undefined;
+    if (!book) return notFound(c, "book");
     const run = intakeInFlight.get(id);
-    if (run === undefined) return notFound(c, "intake_run");
+    // «Ничего не идёт» — штатный ответ, а не ошибка: 404 на каждом опросе
+    // засыпал консоль браузера красным и делал настоящие 404 незаметными.
+    if (run === undefined) return c.json({ running: false });
     return c.json({
+      running: true,
       requestKey: run.requestKey,
       total: run.total,
       startedAt: run.startedAt,
@@ -900,9 +908,13 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
 
   r.get("/books/:id/quick-start/inflight", (c) => {
     const id = Number(c.req.param("id"));
+    const book = sqlite.prepare("SELECT id FROM books WHERE id = ?").get(id) as
+      | { id: number }
+      | undefined;
+    if (!book) return notFound(c, "book");
     const run = quickStartInFlight.get(id);
-    if (run === undefined) return notFound(c, "quick_start_run");
-    return c.json(run);
+    if (run === undefined) return c.json({ running: false });
+    return c.json({ running: true, ...run });
   });
 
   r.post("/books/:id/quick-start/cancel", (c) => {
@@ -1049,6 +1061,19 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         })),
         ...(parsed.data.draft !== undefined ? { draft: parsed.data.draft } : {}),
         contextRef,
+      }, {
+        onUsage: (usage) =>
+          logUsage(sqlite, {
+            route: "studio.aspect_variants",
+            model: usage.modelId,
+            usage: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheCreationInputTokens: usage.cacheCreationInputTokens,
+              cacheReadInputTokens: usage.cacheReadInputTokens,
+            },
+            bookId: id,
+          }),
       });
       const variants = toStoredVariants(result, {
         contextRef,

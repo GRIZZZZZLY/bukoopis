@@ -6,6 +6,7 @@ import {
   SYSTEM_CHAPTER_PLAN,
   buildChapterPlanPrompt,
 } from "../plot.js";
+import { bookOutlineVariantSchema } from "@book-forge/shared";
 
 // The stored schemas keep architecture/closing optional so old outline_json
 // rows still parse. The agent tool schemas do not: a fresh generation must
@@ -26,6 +27,10 @@ const variant = {
   estimatedChapters: 12,
 };
 
+/** Поглавные строки обязательны на выходе планировщика: без них план не
+ *  утвердить. Фикстура добавляет их всюду, где проверяется что-то другое. */
+const chapters = [{ title: "Смена в четыре", goal: "застать брата одного" }];
+
 const architecture = {
   themeHandling: "withheld",
   subplot: "none",
@@ -42,13 +47,16 @@ describe("plot tool schemas", () => {
   it("outline tool output requires the architecture sheet", () => {
     expect(bookOutlineToolSchema.safeParse({ variants: [variant] }).success).toBe(false);
     expect(
-      bookOutlineToolSchema.safeParse({ variants: [{ ...variant, architecture }] }).success,
+      bookOutlineToolSchema.safeParse({ variants: [{ ...variant, architecture, chapters }] })
+        .success,
     ).toBe(true);
   });
 
   it("outline tool output requires at least three human-leaning moves", () => {
     const r = bookOutlineToolSchema.safeParse({
-      variants: [{ ...variant, architecture: { ...architecture, humanMoves: ["a"] } }],
+      variants: [
+        { ...variant, chapters, architecture: { ...architecture, humanMoves: ["a"] } },
+      ],
     });
     expect(r.success).toBe(false);
   });
@@ -149,5 +157,34 @@ describe("plot system prompts — architecture calibration", () => {
     expect(SYSTEM_CHAPTER_PLAN).toContain("closing");
     expect(SYSTEM_CHAPTER_PLAN).toMatch(/рефлекси/i);
     expect(SYSTEM_CHAPTER_PLAN).toMatch(/внутренн\S* принят/i);
+  });
+});
+
+// Находка живого прогона 2026-09-20: сгенерированный план утвердить было
+// нельзя. Экран писал «У выбранного варианта нет поглавных строк», и это была
+// правда — тулсхема их не требовала, а без них утверждать нечего.
+describe("bookOutlineToolSchema — поглавные строки обязательны", () => {
+  it("вариант без глав не принимается", () => {
+    const out = bookOutlineToolSchema.safeParse({
+      variants: [{ ...variant, architecture }],
+    });
+    expect(out.success).toBe(false);
+  });
+
+  it("вариант с главами принимается", () => {
+    const out = bookOutlineToolSchema.safeParse({
+      variants: [{ ...variant, architecture, chapters }],
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("схема хранения по-прежнему глав не требует: старые планы читаются", () => {
+    expect(bookOutlineVariantSchema.safeParse(variant).success).toBe(true);
+  });
+});
+
+describe("SYSTEM_BOOK_OUTLINE", () => {
+  it("просит поглавный список прямо", () => {
+    expect(SYSTEM_BOOK_OUTLINE).toMatch(/поглавн|список глав/i);
   });
 });

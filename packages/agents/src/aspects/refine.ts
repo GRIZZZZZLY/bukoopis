@@ -10,6 +10,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
   type StructuredProgressEvent,
+  type StructuredUsage,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
 
@@ -114,13 +115,16 @@ export interface RunAspectRefineOptions {
   temperature?: number;
   /** Вехи вызова для SSE-прогресса в UI. */
   onProgress?: (e: StructuredProgressEvent) => void;
+  /** Расход вызова. Без него работа Мастерской не попадала в журнал
+   *  расходов вовсе: шестнадцать вызовов агентов и ни одной строки. */
+  onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
 }
 
 export async function runAspectRefine(
   input: AspectRefineInput,
   options: RunAspectRefineOptions = {},
 ): Promise<AspectRefineOutput> {
-  const { raw } = await dispatchStructured<
+  const { raw, diagnostics } = await dispatchStructured<
     AspectRefineInput,
     AspectRefineOutput
   >({
@@ -135,6 +139,19 @@ export async function runAspectRefine(
       : {}),
     maxTokens: 2048,
   });
+  if (options.onUsage) {
+    try {
+      options.onUsage({
+        modelId: diagnostics.modelId,
+        inputTokens: diagnostics.inputTokens,
+        outputTokens: diagnostics.outputTokens,
+        cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+        cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+      });
+    } catch (e) {
+      console.warn(`[${'aspect_refine'}] onUsage callback threw:`, e instanceof Error ? e.message : e);
+    }
+  }
   return raw;
 }
 

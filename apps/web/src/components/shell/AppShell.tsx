@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "@/api/client";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   BarChart3,
@@ -342,8 +343,29 @@ function relativeTime(ts: number): string {
   });
 }
 
+const BACKEND_LABELS: Record<string, string> = {
+  subscription: "подписка",
+  api: "платный ключ",
+};
+
 function StatusBar() {
   const save = useSaveStatus();
+  // Одно слово на всё приложение было неправдой: бэкенд у каждого агента свой,
+  // и подвал писал «subscription» даже когда критики шли через платный ключ
+  // (находка живого прогона 2026-09-20).
+  const [backends, setBackends] = useState<{ writer: string; critics: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .getHealth()
+      .then((h) => {
+        if (alive && h.backends) setBackends(h.backends);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const label =
     save.kind === "saving"
       ? "автосохранение…"
@@ -365,9 +387,22 @@ function StatusBar() {
         <span>{label}</span>
       </span>
       <span className="sep faint">·</span>
-      <span className="status-group">
-        backend: <span className="strong">subscription</span>
-      </span>
+      {backends && (
+        <span className="status-group">
+          Писатель:{" "}
+          <span className="strong">
+            {BACKEND_LABELS[backends.writer] ?? backends.writer}
+          </span>
+          {backends.critics !== backends.writer && (
+            <>
+              {" · критики: "}
+              <span className="strong">
+                {BACKEND_LABELS[backends.critics] ?? backends.critics}
+              </span>
+            </>
+          )}
+        </span>
+      )}
       <span className="status-spacer" />
       <span className="status-group faint">v0.4.0 · Library Warm</span>
     </footer>

@@ -8,6 +8,7 @@ import {
 import {
   arcOutlineSchema,
   bookOutlineVariantSchema,
+  outlineChapterSchema,
   chapterBeatSheetVariantSchema,
   voiceSampleSituationSchema,
   chapterClosingSchema,
@@ -38,6 +39,11 @@ export const bookOutlineToolSchema = z.object({
         setting: z.string().min(1),
         arcs: z.array(arcOutlineSchema).min(2).max(7),
         architecture: narrativeArchitectureSchema,
+        // Обязателен на выходе, необязателен в хранилище — тот же приём, что
+        // у `architecture` и `contract`. Без поглавных строк утверждать
+        // нечего: автор генерировал план и упирался в «у варианта нет
+        // поглавных строк» (живой прогон 2026-09-20).
+        chapters: z.array(outlineChapterSchema).min(1).max(200),
       }),
     )
     .min(1)
@@ -68,7 +74,7 @@ export const SYSTEM_BOOK_OUTLINE = `Ты — Plot Agent, специалист п
 
 Твоя задача: из премисы книги породить N вариантов high-level outline. Каждый вариант — это самодостаточная концепция, отличающаяся от других существенно (тон, угол атаки, протагонист, центральный конфликт).
 
-Каждый вариант содержит: label (короткое имя, например "тёмный", "оптимистичный"), logline (1-2 предложения), synopsis (3-6 абзацев), темы (2-5), протагониста, антагониста (если есть), сеттинг, арки (минимум 2 — обычно protagonist arc + main plot arc + subplot arc), оценку количества глав, архитектурный лист (architecture).
+Каждый вариант содержит: label (короткое имя, например "тёмный", "оптимистичный"), logline (1-2 предложения), synopsis (3-6 абзацев), темы (2-5), протагониста, антагониста (если есть), сеттинг, арки (минимум 2 — обычно protagonist arc + main plot arc + subplot arc), оценку количества глав, архитектурный лист (architecture) и ПОГЛАВНЫЙ СПИСОК (chapters): по строке на главу — название и цель обязательно, POV, конфликт, ставки и крючок короткой фразой, если они очевидны. Строки держи сжатыми: это оглавление, а не пересказ. Без поглавного списка план нельзя утвердить, и вся работа над вариантом пропадает.
 
 В synopsis обязаны быть названы четыре опорные точки, иначе структура нежизнеспособна: инцидент-завязка, поворот середины (событие, которое меняет постановку задачи, а не просто повышает ставки), низшая точка героя, кульминация. Не отделывайся связкой «затем события нарастают».
 
@@ -118,6 +124,13 @@ dialogueRegister — преобладающий регистр диалога в
  *  подписке такой ответ идёт две минуты и дольше, и общий предел рубил его
  *  ровно на середине — этап плана нельзя было пройти вообще. */
 const PLOT_TIMEOUT_MS = 600_000;
+
+/** У плана книги свой, больший предел: с обязательным поглавным списком
+ *  (до двух вариантов по десятку-другому строк) ответ перестал укладываться в
+ *  600 с — измерено живьём 2026-09-20, до требования глав уходило 496 с, после
+ *  упиралось в таймаут. Вызов разовый на книгу, и отказ здесь дороже
+ *  ожидания. */
+const PLOT_OUTLINE_TIMEOUT_MS = 1_200_000;
 
 export interface GenerateBookOutlineInput {
   bookTitle: string;
@@ -178,8 +191,8 @@ export async function generateBookOutline(
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),
-    maxTokens: 8192,
-    timeoutMs: PLOT_TIMEOUT_MS,
+    maxTokens: 16000,
+    timeoutMs: PLOT_OUTLINE_TIMEOUT_MS,
   });
   if (input.onUsage) {
     try {

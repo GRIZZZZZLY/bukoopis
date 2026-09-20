@@ -73,3 +73,23 @@ export function threadSpan(
   if (to < 0) return { x1, x2: boardWidth(columns), open: true };
   return { x1, x2: BOARD_PAD + to * COLUMN_W + COLUMN_W / 2, open: false };
 }
+
+/**
+ * Подписи колонок доски. Порядок глав в базе разрежённый (шаг 10), и сырой
+ * `order_index` на доске читался как «гл. 30» у третьей главы книги. Номер
+ * берётся из позиции главы в книге; главе, которой в списке нет (удалена),
+ * рисуется её номер со знаком, а не выдуманная позиция.
+ */
+export function chapterLabels(
+  columns: readonly number[],
+  bookChapterOrders: readonly number[],
+): string[] {
+  const position = new Map<number, number>();
+  [...bookChapterOrders]
+    .sort((a, b) => a - b)
+    .forEach((order, i) => position.set(order, i + 1));
+  return columns.map((c) => {
+    const p = position.get(c);
+    return p === undefined ? `#${c}` : String(p);
+  });
+}

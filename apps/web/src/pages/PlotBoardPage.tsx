@@ -10,6 +10,7 @@ import {
   threadSpan,
   COLUMN_W,
   BOARD_PAD,
+  chapterLabels,
 } from "@/lib/board";
 import type { Book, BookNote, NoteKind } from "@book-forge/shared";
 
@@ -27,6 +28,8 @@ export function PlotBoardPage() {
 
   const [book, setBook] = useState<Book | null>(null);
   const [notes, setNotes] = useState<BookNote[] | null>(null);
+  /** Порядок глав книги — чтобы подписать колонки порядковыми номерами. */
+  const [chapterOrders, setChapterOrders] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   /** Доска шире экрана начиная с ~6 глав, но обрезалась вплотную к краю —
@@ -59,12 +62,16 @@ export function PlotBoardPage() {
   async function load() {
     setError(null);
     try {
-      const [b, n] = await Promise.all([
+      const [b, n, chs] = await Promise.all([
         api.getBook(id),
         api.listBookNotes(id),
+        // Подписи колонок — порядковые номера глав, а не разрежённый
+        // order_index: у третьей главы книги стояло «гл. 30».
+        api.listChapters(id).catch(() => []),
       ]);
       setBook(b);
       setNotes(n);
+      setChapterOrders(chs.map((ch) => ch.orderIndex));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -185,9 +192,9 @@ export function PlotBoardPage() {
                 })}
               </svg>
 
-              {columns.map((c, i) => (
+              {chapterLabels(columns, chapterOrders).map((label, i) => (
                 <div
-                  key={c}
+                  key={label}
                   className="board-col-label mono faint"
                   style={{
                     left: BOARD_PAD + i * COLUMN_W,
@@ -195,7 +202,7 @@ export function PlotBoardPage() {
                     width: COLUMN_W - 12,
                   }}
                 >
-                  гл. {c}
+                  гл. {label}
                 </div>
               ))}
 
@@ -217,7 +224,7 @@ export function PlotBoardPage() {
                   <h2 className="board-note-title">{p.note.title}</h2>
                   <p className="board-note-body">{p.note.body}</p>
                   <div className="board-note-foot mono faint">
-                    гл. {p.note.introduced}
+                    гл. {chapterLabels([p.note.introduced], chapterOrders)[0]}
                     {p.note.resolved !== null
                       ? ` → ${p.note.resolved}`
                       : " · открыта"}
