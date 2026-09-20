@@ -5,6 +5,7 @@ import {
   LLMNoToolCallError,
   LLMMultipleToolCallsError,
   LLMSchemaRetryExhaustedError,
+  LLMTimeoutError,
 } from "./errors.js";
 
 export interface RetryOptions {
@@ -38,6 +39,7 @@ export function shouldRetry(err: unknown): boolean {
  *  LLM error classes without a numeric `.status`. */
 export function isTransientLlmError(err: unknown): boolean {
   if (
+    err instanceof LLMTimeoutError ||
     err instanceof LLMAuthError ||
     err instanceof LLMValidationError ||
     err instanceof LLMNoToolCallError ||

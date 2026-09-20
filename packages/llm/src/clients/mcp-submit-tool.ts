@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ZodType, ZodError } from "zod";
 import {
   query,
@@ -9,6 +10,7 @@ import {
 import {
   LLMAuthError,
   LLMError,
+  LLMTimeoutError,
   LLMNoToolCallError,
   LLMMultipleToolCallsError,
   LLMValidationError,
@@ -104,6 +106,70 @@ function summariseAssistantError(
   return new LLMError(`[subscription/${modelId}] ${code}`);
 }
 
+/**
+ * Схема для `tool()`: та же, но каждое поле верхнего уровня дополнительно
+ * принимает строку.
+ *
+ * SDK проверяет аргументы САМ, до вызова обработчика, и на несовпадение
+ * отвечает модели `MCP error -32602` — наш код об этом даже не узнаёт. А
+ * модель на сложной схеме присылает вложенный массив JSON-строкой. Поэтому
+ * строгую проверку делает обработчик (после `parseJsonStringFields`), а
+ * сюда уходит ослабленная копия: она пропускает строку внутрь, где та
+ * разворачивается и проверяется по-настоящему.
+ */
+function toolFacingSchema<O>(schema: ZodType<O>): ZodType<unknown> {
+  const shape = (schema as unknown as { shape?: Record<string, ZodType> }).shape;
+  if (!shape || typeof shape !== "object") return schema as ZodType<unknown>;
+  const loosened: Record<string, ZodType> = {};
+  for (const [key, field] of Object.entries(shape)) {
+    loosened[key] = z.union([field, z.string()]).optional();
+  }
+  return z.object(loosened) as unknown as ZodType<unknown>;
+}
+
+/**
+ * Поле, присланное JSON-строкой вместо массива или объекта, разворачивается
+ * обратно (живой прогон 2026-09-20).
+ *
+ * На сложной схеме модель сериализует вложенную структуру в строку — так
+ * устроена передача аргументов инструменту. Проверка же видела строку там,
+ * где ждала массив, и отвечала разом «expected array, received string» и
+ * «too_big: expected string to have <=30 characters»: предел длины массива
+ * применялся к строке. Модель читала этот ответ, пыталась переформатировать
+ * и упиралась в предел ходов — извлечение фактов не проходило ни на одной
+ * главе.
+ *
+ * Строка, которая просто строка, остаётся строкой: поле, где ждали текст, не
+ * должно превращаться в структуру.
+ *
+ * Строка, которая начинается как JSON-массив, но не разбирается, становится
+ * ПУСТЫМ массивом. Так приходит `characterEvents`: сериализуя массив в
+ * строку, модель ломает экранирование на русских кавычках и переносах, и
+ * восстановить содержимое нельзя. Но факты в том же ответе приходят
+ * настоящим массивом и целы — ронять их из-за соседнего поля значит терять
+ * память всей главы каждый раз. Потеря видна вызывающему по числу записей;
+ * это тот же приём, что у негодной строки внутри массива фактов.
+ */
+function parseJsonStringFields(args: unknown): unknown {
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return args;
+  const out: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(out)) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (typeof parsed === "object" && parsed !== null) out[key] = parsed;
+    } catch {
+      // Похоже на массив, но не разбирается — отдаём пустой, чтобы уцелело
+      // всё остальное. Объект не подменяем: у него нет безопасного пустого
+      // значения, и молча отдать `{}` значило бы выдумать содержимое.
+      if (trimmed.startsWith("[")) out[key] = [];
+    }
+  }
+  return out;
+}
+
 export async function callViaSdkMcpSubmitTool<I, O>(
   contract: AgentStructuredContract<I, O>,
   outputSchema: ZodType<O>,
@@ -136,7 +202,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   // SDK 0.2.x `tool()` accepts the Zod schema directly and validates args
   // before invoking the handler. The cast satisfies TS without exposing
   // schema internals (`.shape` would be fragile vs the SDK contract).
-  const toolInputSchema = outputSchema as unknown as Parameters<typeof tool>[2];
+  const toolInputSchema = toolFacingSchema(outputSchema) as unknown as Parameters<typeof tool>[2];
   const submitTool = tool(
     mcp.toolName,
     mcp.toolDescription,
@@ -144,7 +210,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     async (args: unknown) => {
       toolCallCount++;
       emit({ kind: "tool_call" });
-      const parsed = outputSchema.safeParse(args);
+      const parsed = outputSchema.safeParse(parseJsonStringFields(args));
       if (!parsed.success) {
         capturedValidationError = parsed.error;
         return {
@@ -187,6 +253,22 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     allowedTools: [`mcp__${serverName}__${mcp.toolName}`],
     maxTurns: input.maxTurnsOverride ?? mcp.maxTurns ?? 3,
     env: subscriptionEnv,
+    // Расширенное размышление выключено (живой прогон 2026-09-20). Сессия
+    // Claude Code включает его по умолчанию, и на сложном структурном
+    // запросе — план книги, беат-лист главы — модель уходит думать дольше,
+    // чем CLI готов ждать первый кусок потока. CLI молча шлёт запрос заново,
+    // модель снова уходит думать: три круга по ~175 секунд и ни одного
+    // вызова инструмента. Тот же запрос без размышления отдаёт валидный
+    // ответ за 120 секунд. Агенту здесь думать и не нужно: он заполняет
+    // схему, а не решает задачу в несколько ходов.
+    thinking: { type: "disabled" },
+    maxThinkingTokens: 0,
+    // Пустой список = не читать ни пользовательские, ни проектные, ни
+    // локальные настройки. Иначе на каждый вызов агента поднимается сессия
+    // с чужими хуками, плагинами и MCP-серверами: 126 инструментов вместо
+    // одного и 5.5 секунды старта вместо 0.7. Агенту нужен ровно один
+    // инструмент — свой submit.
+    settingSources: [],
   };
 
   // Per-call timeout: abort the query if it stalls past LLM_TIMEOUT_MS (or the
@@ -234,7 +316,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     // предел ожидания. Называем вещь своим именем: это наш таймаут, и лечится
     // он не повтором, а бо́льшим пределом (или меньшим куском работы).
     if (controller.signal.aborted) {
-      throw new LLMError(
+      throw new LLMTimeoutError(
         `[subscription/${modelId}] не уложился в ${timeoutMs} мс — вызов прерван по таймауту (LLM_TIMEOUT_MS или свой предел агента)`,
       );
     }
@@ -256,7 +338,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     // schema bug when the backend simply never answered, so name it for what
     // it is.
     if (controller.signal.aborted) {
-      throw new LLMError(
+      throw new LLMTimeoutError(
         `[subscription/${modelId}] no response within ${timeoutMs}ms — ${mcp.toolName} was never called (backend stalled or unreachable)`,
       );
     }

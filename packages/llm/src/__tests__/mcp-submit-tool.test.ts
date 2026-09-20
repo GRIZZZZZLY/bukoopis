@@ -236,3 +236,147 @@ describe("callViaSdkMcpSubmitTool", () => {
     ).rejects.toThrow(/no mcp spec/);
   });
 });
+
+describe("вызов подписки не уходит в петлю размышления", () => {
+  /** Живой прогон 2026-09-20: план книги и беат-лист главы не завершались
+   *  никогда. Сессия Claude Code по умолчанию включает расширенное
+   *  размышление; на сложном структурном запросе модель молчит дольше, чем
+   *  CLI готов ждать первый кусок потока, и CLI молча шлёт запрос заново.
+   *  Три круга по ~175 секунд, ни одного вызова инструмента. С выключенным
+   *  размышлением тот же запрос отдал валидный ответ за 120 секунд. */
+  it("выключает расширенное размышление", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Тверь", n: 1 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    const options = vi.mocked(query).mock.calls[0]![0].options as Record<string, unknown>;
+    expect(options.thinking).toEqual({ type: "disabled" });
+    expect(options.maxThinkingTokens).toBe(0);
+  });
+
+  /** Без изоляции сессия грузит пользовательские хуки, плагины и MCP-серверы:
+   *  126 инструментов вместо одного, 5.5 секунды старта вместо 0.7 — и чужой
+   *  контекст в каждом запросе агента. */
+  it("не читает пользовательские настройки", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Тверь", n: 1 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    const options = vi.mocked(query).mock.calls[0]![0].options as Record<string, unknown>;
+    expect(options.settingSources).toEqual([]);
+  });
+});
+
+describe("вложенный массив, присланный строкой", () => {
+  /** Живой прогон 2026-09-20: извлечение фактов не работало ни на одной
+   *  главе. Модель на сложной схеме сериализует вложенный массив в JSON-
+   *  строку — так устроена передача аргументов в MCP. Валидация же видела
+   *  строку там, где ждала массив, и отвечала «expected array, received
+   *  string» вместе с «too_big: expected string to have <=30 characters»:
+   *  предел длины массива применялся к строке. Модель читала ответ, пыталась
+   *  переформатировать, упиралась в предел ходов — и задание падало. */
+  const nestedSchema = z.object({
+    facts: z.array(z.object({ text: z.string() })).max(40),
+    events: z.array(z.object({ kind: z.string() })).max(30).default([]),
+  });
+
+  it("строку с JSON-массивом принимает как массив", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({
+            facts: JSON.stringify([{ text: "брат утонул" }]),
+            events: JSON.stringify([{ kind: "knowledge" }]),
+          });
+        },
+        successResult,
+      ]),
+    );
+    const contract = { ...fixtureContract, getOutputSchema: () => nestedSchema };
+    const result = await callViaSdkMcpSubmitTool(contract as never, nestedSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    expect(result.raw.facts).toEqual([{ text: "брат утонул" }]);
+    expect(result.raw.events).toEqual([{ kind: "knowledge" }]);
+  });
+
+  it("обычный массив по-прежнему принимается", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ facts: [{ text: "прямо массивом" }], events: [] });
+        },
+        successResult,
+      ]),
+    );
+    const contract = { ...fixtureContract, getOutputSchema: () => nestedSchema };
+    const result = await callViaSdkMcpSubmitTool(contract as never, nestedSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    expect(result.raw.facts).toEqual([{ text: "прямо массивом" }]);
+  });
+
+  /** Живой прогон 2026-09-20: строка с массивом приходит с повреждённым JSON
+   *  — модель ломает экранирование на русских кавычках и переносах. Развернуть
+   *  такую строку нельзя. Но факты в том же ответе приходят настоящим массивом
+   *  и целы: ронять их из-за соседнего поля значит терять память всей главы
+   *  каждый раз. Негодное поле-массив становится пустым массивом, и вызывающий
+   *  видит это по числу записей — тот же приём, что у негодной строки внутри
+   *  массива фактов. */
+  it("повреждённый JSON в поле-массиве не уносит остальной ответ", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({
+            facts: [{ text: "брат утонул" }],
+            events: '[{"kind": "знание с «кавычкой» и обрывом',
+          });
+        },
+        successResult,
+      ]),
+    );
+    const contract = { ...fixtureContract, getOutputSchema: () => nestedSchema };
+    const result = await callViaSdkMcpSubmitTool(contract as never, nestedSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    expect(result.raw.facts).toEqual([{ text: "брат утонул" }]);
+    expect(result.raw.events).toEqual([]);
+  });
+
+  it("строка, которая не JSON, остаётся ошибкой схемы", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ facts: "это просто текст", events: [] });
+        },
+        successResult,
+      ]),
+    );
+    const contract = { ...fixtureContract, getOutputSchema: () => nestedSchema };
+    await expect(
+      callViaSdkMcpSubmitTool(contract as never, nestedSchema, {
+        payload: { q: "тест" },
+        model: "sonnet",
+      }),
+    ).rejects.toThrow(LLMValidationError);
+  });
+});

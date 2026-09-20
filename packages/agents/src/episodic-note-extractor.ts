@@ -85,6 +85,13 @@ export function registerEpisodicNoteExtractorContract(): void {
   registerAgentContract(episodicNoteExtractorContract);
 }
 
+/** Свой предел ожидания у агента, который читает главу целиком (живой
+ *  прогон 2026-09-20). Общий `LLM_TIMEOUT_MS` рассчитан на короткий
+ *  структурный ответ; разбор главы в две-три тысячи слов на подписке идёт
+ *  дольше, и общий предел рубил его на середине — память главы не
+ *  собиралась вовсе, а очередь молча повторяла задание пять раз. */
+const CHAPTER_AGENT_TIMEOUT_MS = 600_000;
+
 export async function extractEpisodicNotes(
   input: EpisodicNoteExtractorInput,
 ): Promise<EpisodicNoteExtraction> {
@@ -99,6 +106,7 @@ export async function extractEpisodicNotes(
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 4096,
+    timeoutMs: CHAPTER_AGENT_TIMEOUT_MS,
   });
   if (input.onUsage) {
     try {

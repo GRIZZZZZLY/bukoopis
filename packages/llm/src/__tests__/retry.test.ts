@@ -6,6 +6,7 @@ import {
   LLMValidationError,
   LLMNoToolCallError,
   LLMMultipleToolCallsError,
+  LLMTimeoutError,
 } from "../errors.js";
 
 describe("isTransientLlmError", () => {
@@ -14,6 +15,15 @@ describe("isTransientLlmError", () => {
     expect(isTransientLlmError(new LLMValidationError("bad", undefined))).toBe(false);
     expect(isTransientLlmError(new LLMNoToolCallError("none"))).toBe(false);
     expect(isTransientLlmError(new LLMMultipleToolCallsError("two"))).toBe(false);
+  });
+
+  /** Живой прогон 2026-09-20: таймаут считался временной ошибкой, и вызов
+   *  повторялся четыре раза подряд. При пределе в 10 минут это 40 минут
+   *  тишины — и ни строчки в логе, потому что об ошибке узнают только после
+   *  последней попытки. Повтор того же запроса с тем же пределом даёт тот же
+   *  результат: это не «временно», это «не влезает». */
+  it("не повторяет вызов, оборванный по нашему же таймауту", () => {
+    expect(isTransientLlmError(new LLMTimeoutError("не уложился в 120000 мс"))).toBe(false);
   });
 
   it("treats rate-limit / generic subscription errors and network errors as transient", () => {

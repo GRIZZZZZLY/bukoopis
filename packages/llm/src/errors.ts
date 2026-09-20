@@ -15,6 +15,17 @@ export class BackendNotImplementedError extends LLMError {
   }
 }
 
+/** Вызов оборван нашим же таймером. Повторять бессмысленно: тот же запрос с
+ *  тем же пределом упрётся в тот же предел, а четыре попытки по десять минут
+ *  превращают отказ в сорок минут тишины (живой прогон 2026-09-20). Лечится
+ *  бо́льшим пределом или меньшим куском работы, не повтором. */
+export class LLMTimeoutError extends LLMError {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMTimeoutError";
+  }
+}
+
 export class LLMAuthError extends LLMError {
   constructor(message: string) {
     super(message);

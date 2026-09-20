@@ -24,6 +24,7 @@ export {
   LLMNoToolCallError,
   LLMMultipleToolCallsError,
   LLMSchemaRetryExhaustedError,
+  LLMTimeoutError,
 } from "./errors.js";
 export {
   resolveBackend,
