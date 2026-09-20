@@ -223,3 +223,78 @@ describe("отпечаток базы в отчёте критики (AC-13)", (
     expect(changed.report?.contextFingerprint).not.toBe(fp);
   });
 });
+
+// ───────── Критик персонажей: когда он вообще запускается ─────────
+//
+// На монологе сравнивать не с кем, и вызов тратится впустую. Пропуск — не
+// ошибка, но и не зелёный отчёт: панель должна показать, что проверки не
+// было (ТЗ 10, этап 5).
+describe("critic_character запускается только при двух названных участниках", () => {
+  async function addCharacter(name: string): Promise<void> {
+    await sendJson(t.app, `/api/books/${bookId}/characters`, "POST", {
+      canonicalName: name,
+      profile: { description: "Герой этой книги." },
+    });
+  }
+
+  async function runCritique(target = versionId): Promise<{
+    report: { requestedCritics: string[]; skippedCritics: string[] } | null;
+  }> {
+    return sendJson(t.app, `/api/chapter-versions/${target}/critique`, "POST", {});
+  }
+
+  /** Участники ищутся по тексту версии, и имя должно стоять с большой буквы:
+   *  `mentionsEntityName` требует этого, чтобы «Ян» не находился в «январе». */
+  async function versionNaming(...names: string[]): Promise<number> {
+    const v = await sendJson<VersionJson>(
+      t.app,
+      `/api/chapters/${chapterId}/versions`,
+      "POST",
+      {
+        contentJson: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: `${names.join(" посмотрел на ")}.` }],
+            },
+          ],
+        },
+      },
+    );
+    return v.id;
+  }
+
+  it("героев в сцене нет — критик пропущен и назван пропущенным", async () => {
+    const r = await runCritique();
+    expect(r.report?.requestedCritics).not.toContain("character");
+    expect(r.report?.skippedCritics).toContain("character");
+  });
+
+  it("один участник — тоже пропуск", async () => {
+    await addCharacter("Нина");
+    const r = await runCritique(await versionNaming("Нина"));
+    expect(r.report?.requestedCritics).not.toContain("character");
+    expect(r.report?.skippedCritics).toContain("character");
+  });
+
+  it("двое названных — критик запрошен и не числится пропущенным", async () => {
+    await addCharacter("Нина");
+    await addCharacter("Ворт");
+    const r = await runCritique(await versionNaming("Нина", "Ворт"));
+    expect(r.report?.requestedCritics).toContain("character");
+    expect(r.report?.skippedCritics ?? []).not.toContain("character");
+  });
+
+  it("явно запрошенный критик на монологе всё равно не зовётся впустую", async () => {
+    const r = await sendJson<{
+      report: { requestedCritics: string[]; skippedCritics: string[] } | null;
+      status: string;
+    }>(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {
+      critics: ["character"],
+    });
+    expect(r.report?.skippedCritics).toContain("character");
+    // Пустой набор не становится зелёным «всё хорошо» (ТЗ 10).
+    expect(r.status).not.toBe("done");
+  });
+});

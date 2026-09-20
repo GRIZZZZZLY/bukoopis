@@ -7,6 +7,7 @@ import {
   fullCritiqueReportSchema,
   REPAIR_BRANCH_PREFIX,
   REPAIR_MAX_ITERATIONS,
+  ALL_CRITIC_TYPES,
   type CritiqueReport,
   type CritiqueReportStatus,
   type FullCritiqueReport,
@@ -238,9 +239,22 @@ export function createCritiqueRoute(
     const reportRowId = Number(insertInfo.lastInsertRowid);
 
     try {
+      // Критик персонажей сравнивает героев между собой: на сцене с одним
+      // названным участником сравнивать не с кем, и вызов тратится впустую.
+      // Состав берётся из той же сборки контекста, что и карточки, — второй
+      // поиск участников разошёлся бы с ней молча.
+      const requested = parsed.data.critics ?? [...ALL_CRITIC_TYPES];
+      const soloScene = assembled.participants.length < 2;
+      const enabledCritics = soloScene
+        ? requested.filter((c) => c !== "character")
+        : requested;
+      // Пропуск — третье состояние: не успех и не ошибка. Без него панель
+      // рисовала бы непроверенное проверенным.
+      const skippedCritics = requested.filter((c) => !enabledCritics.includes(c));
       const result = await runCritique({
         input: criticInput,
-        enabledCritics: parsed.data.critics,
+        enabledCritics,
+        skippedCritics,
       });
       const completedAt = new Date().toISOString();
       const errorMessage =
@@ -248,7 +262,12 @@ export function createCritiqueRoute(
           ? result.errors
               .map((e) => `[${e.critic}] ${e.message}`)
               .join(" | ")
-          : null;
+          : // Никто не упал, но и не запускался никто: набор целиком отсеян
+            // условием сцены. Без этой строки отчёт молчал бы о том, что
+            // проверки не было вовсе.
+            result.report.critics.length === 0 && skippedCritics.length > 0
+            ? `не запускались: ${skippedCritics.join(", ")}`
+            : null;
       // Статус — от того, кого просили и кто выжил, а не от длины списка
       // успешных: прежняя формула на четырёх падениях из четырёх давала done.
       const status: CritiqueReportStatus =

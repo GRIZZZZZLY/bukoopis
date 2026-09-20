@@ -20,6 +20,10 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   critic_style: "api",
   critic_editor: "api",
   critic_reader: "api",
+  // Исключение из прежнего правила «все критики на API» — решение ТЗ
+  // индивидуальности, раздел 10. Правила больше нет: бэкенд каждого критика
+  // смотреть здесь, а не выводить по аналогии с соседом.
+  critic_character: "subscription",
   style_extractor: "api",
   style_blender: "api",
   concept_refiner: "subscription",
