@@ -5,6 +5,8 @@ import {
   critiqueIssueSchema,
   characterIssueToolSchema,
   criticReportSchema,
+  issueIdFor,
+  runRepairInputSchema,
 } from "./critique.js";
 
 /**
@@ -105,5 +107,54 @@ describe("characterIssueToolSchema — что критик обязан прис
       category: "плохо_написано",
     });
     expect(out.success).toBe(false);
+  });
+});
+
+// ───────── Локальная правка (этап 5, слайс 3) ─────────
+//
+// Правка умела только «исправь всё серьёзнее такого-то уровня». Автор не мог
+// сказать «вот это одно, и не трогай абзац, который мне нравится» — а после
+// критики, которая различает героев, нужно именно это (AC-29).
+
+describe("issueIdFor", () => {
+  it("склеивает критика и позицию замечания", () => {
+    expect(issueIdFor("character", 0)).toBe("character:0");
+    expect(issueIdFor("style", 3)).toBe("style:3");
+  });
+
+  it("идентификаторы разных критиков не совпадают", () => {
+    expect(issueIdFor("canon", 1)).not.toBe(issueIdFor("reader", 1));
+  });
+});
+
+describe("runRepairInputSchema — выбранные замечания и защищённые куски", () => {
+  it("принимает пустое тело: прежнее поведение не сломано", () => {
+    expect(runRepairInputSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("принимает выбранные замечания", () => {
+    const out = runRepairInputSchema.safeParse({
+      selectedIssueIds: ["character:0", "style:2"],
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("принимает защищённые фрагменты", () => {
+    const out = runRepairInputSchema.safeParse({
+      protectedFragments: ["Металл был тёплый."],
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("пустой список выбранных не принимается: это не то же, что «не выбирал»", () => {
+    expect(runRepairInputSchema.safeParse({ selectedIssueIds: [] }).success).toBe(false);
+  });
+
+  it("пустая строка защищённым фрагментом быть не может", () => {
+    expect(runRepairInputSchema.safeParse({ protectedFragments: ["  "] }).success).toBe(false);
+  });
+
+  it("слишком короткий фрагмент не принимается: он найдётся где угодно", () => {
+    expect(runRepairInputSchema.safeParse({ protectedFragments: ["Да."] }).success).toBe(false);
   });
 });

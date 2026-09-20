@@ -298,3 +298,115 @@ describe("critic_character запускается только при двух �
     expect(r.status).not.toBe("done");
   });
 });
+
+// ───────── Локальная правка (этап 5, слайс 3) ─────────
+//
+// До вызова модели: ссылка на несуществующее замечание — отказ, а не тихое
+// игнорирование; фрагмент, которого нет в тексте или который встречается
+// дважды, защитить нельзя (AC-29).
+describe("repair: выбранные замечания и защищённые фрагменты", () => {
+  async function seedReport(): Promise<void> {
+    const now = new Date().toISOString();
+    t.sqlite
+      .prepare(
+        `INSERT INTO critique_reports (chapter_version_id, status, report_json, created_at, completed_at)
+         VALUES (?, 'done', ?, ?, ?)`,
+      )
+      .run(
+        versionId,
+        JSON.stringify({
+          critics: [
+            {
+              critic: "character",
+              overallNotes: "заметки",
+              issues: [{ severity: "blocking", summary: "Ворт знает лишнее" }],
+            },
+          ],
+          requestedCritics: ["character"],
+          failedCritics: [],
+          skippedCritics: [],
+          blockingCount: 1,
+          suggestionCount: 0,
+          nitCount: 0,
+          generatedAt: now,
+        }),
+        now,
+        now,
+      );
+  }
+
+  async function repair(body: unknown): Promise<{ status: number; text: string }> {
+    const res = await send(
+      t.app,
+      `/api/chapter-versions/${versionId}/repair`,
+      "POST",
+      body,
+    );
+    return { status: res.status, text: await res.text() };
+  }
+
+  it("ссылка на несуществующее замечание — 400, а не тихое игнорирование", async () => {
+    await seedReport();
+    const r = await repair({ selectedIssueIds: ["style:7"] });
+    expect(r.status).toBe(400);
+    expect(r.text).toContain("style:7");
+  });
+
+  it("фрагмент, которого нет в главе, защитить нельзя", async () => {
+    await seedReport();
+    const r = await repair({ protectedFragments: ["Такой строки в главе нет вовсе"] });
+    expect(r.status).toBe(400);
+    expect(r.text).toMatch(/не найден|not_found/i);
+  });
+
+  it("фрагмент, встречающийся дважды, отвергается до вызова модели", async () => {
+    await seedReport();
+    // «Текст главы для критики.» — единственное предложение версии; повторим
+    // его дважды в новой версии, чтобы привязка стала неоднозначной.
+    const v = await sendJson<VersionJson>(
+      t.app,
+      `/api/chapters/${chapterId}/versions`,
+      "POST",
+      {
+        contentJson: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Металл был тёплый. Металл был тёплый." }],
+            },
+          ],
+        },
+      },
+    );
+    const now = new Date().toISOString();
+    t.sqlite
+      .prepare(
+        `INSERT INTO critique_reports (chapter_version_id, status, report_json, created_at, completed_at)
+         VALUES (?, 'done', ?, ?, ?)`,
+      )
+      .run(
+        v.id,
+        JSON.stringify({
+          critics: [{ critic: "style", overallNotes: "з", issues: [] }],
+          requestedCritics: ["style"],
+          failedCritics: [],
+          skippedCritics: [],
+          blockingCount: 0,
+          suggestionCount: 0,
+          nitCount: 0,
+          generatedAt: now,
+        }),
+        now,
+        now,
+      );
+    const res = await send(
+      t.app,
+      `/api/chapter-versions/${v.id}/repair`,
+      "POST",
+      { protectedFragments: ["Металл был тёплый."] },
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toMatch(/дважды|неоднознач|ambiguous/i);
+  });
+});

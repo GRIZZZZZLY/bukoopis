@@ -8,6 +8,7 @@ import {
 import {
   ALL_CRITIC_TYPES,
   CRITIC_LABELS,
+  issueIdFor,
   SEVERITY_LABELS,
   REPAIR_MAX_ITERATIONS,
   type CritiqueReport,
@@ -86,6 +87,11 @@ export function CritiquePanel({
     null,
   );
   const [repairStopping, setRepairStopping] = useState(false);
+  /** Выбранные автором замечания (этап 5). Пустой набор = «не выбирал», и
+   *  тогда работает прежний фильтр по серьёзности. */
+  const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
+  /** Куски, которых правка не касается: по одному на строку. */
+  const [protectedText, setProtectedText] = useState("");
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
     new Set<IssueSeverity>(["blocking", "suggestion"]),
   );
@@ -136,6 +142,17 @@ export function CritiquePanel({
     });
   }
 
+  /** Выбор замечания. Набор пуст = автор не выбирал, и правка идёт прежним
+   *  фильтром по серьёзности. */
+  function toggleIssue(id: string) {
+    setSelectedIssues((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function toggleSeverity(s: IssueSeverity) {
     setSeverityFilter((prev) => {
       const next = new Set(prev);
@@ -172,7 +189,18 @@ export function CritiquePanel({
     try {
       const severities =
         severityFilter.size === 3 ? undefined : [...severityFilter];
-      await streamRepair(versionId, severities, {
+      const protectedFragments = protectedText
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      await streamRepair(
+        versionId,
+        {
+          ...(severities ? { severities } : {}),
+          ...(selectedIssues.size > 0 ? { selectedIssueIds: [...selectedIssues] } : {}),
+          ...(protectedFragments.length > 0 ? { protectedFragments } : {}),
+        },
+        {
         onIteration: (current, max) =>
           setRepairIteration({ current, max }),
         onProposal: (proposalId) => setRepairProposalId(proposalId),
@@ -191,12 +219,13 @@ export function CritiquePanel({
           const { changes } = await api.getProposalChanges(payload.proposal.id);
           setRepairProposalChanges(changes);
         },
-        onError: (msg) => {
-          setRepairError(msg);
-          setRepairing(false);
-          setRepairStopping(false);
+          onError: (msg) => {
+            setRepairError(msg);
+            setRepairing(false);
+            setRepairStopping(false);
+          },
         },
-      });
+      );
     } catch (e) {
       setRepairError(e instanceof Error ? e.message : String(e));
       setRepairing(false);
@@ -291,7 +320,11 @@ export function CritiquePanel({
       )}
 
       {report && report.status !== "error" && report.report && (
-        <CritiqueResults report={report} />
+        <CritiqueResults
+          report={report}
+          selectedIssues={selectedIssues}
+          onToggleIssue={toggleIssue}
+        />
       )}
 
       {report &&
@@ -318,6 +351,11 @@ export function CritiquePanel({
                     </label>
                   ),
                 )}
+                {selectedIssues.size > 0 && (
+                  <span className="text-xs text-[var(--color-muted-foreground)]">
+                    выбрано замечаний: {selectedIssues.size} — правится только это
+                  </span>
+                )}
                 <Button onClick={onRepair} disabled={repairing}>
                   {repairing ? "Reviser пишет…" : "Запустить self-repair"}
                 </Button>
@@ -332,6 +370,19 @@ export function CritiquePanel({
                 )}
               </div>
             </div>
+            {/* Куски, которых правка не коснётся (AC-29). Дословные цитаты:
+                сервер находит их в тексте версии до вызова модели и отвергает
+                то, что встречается дважды. */}
+            <label className="text-xs flex flex-col gap-1">
+              Не трогать (по одному куску на строку, дословно из главы)
+              <textarea
+                rows={2}
+                value={protectedText}
+                onChange={(e) => setProtectedText(e.target.value)}
+                disabled={repairing}
+                className="text-xs border border-[var(--color-border)] rounded p-1 font-mono"
+              />
+            </label>
             <p className="text-xs text-[var(--color-muted-foreground)]">
               Reviser перепишет главу с приоритетом по выбранным severity.
               Результат придёт кандидатом ниже — его нужно принять (целиком
@@ -395,7 +446,15 @@ export function CritiquePanel({
   );
 }
 
-function CritiqueResults({ report }: { report: CritiqueReport }) {
+function CritiqueResults({
+  report,
+  selectedIssues,
+  onToggleIssue,
+}: {
+  report: CritiqueReport;
+  selectedIssues: ReadonlySet<string>;
+  onToggleIssue: (id: string) => void;
+}) {
   if (!report.report) return null;
   const r = report.report;
   return (
@@ -430,7 +489,12 @@ function CritiqueResults({ report }: { report: CritiqueReport }) {
       )}
       <div className="flex flex-col gap-3">
         {r.critics.map((c) => (
-          <CriticBlock key={c.critic} report={c} />
+          <CriticBlock
+            key={c.critic}
+            report={c}
+            selectedIssues={selectedIssues}
+            onToggleIssue={onToggleIssue}
+          />
         ))}
       </div>
     </div>
@@ -464,7 +528,15 @@ function CharacterIssueDetails({ issue }: { issue: CritiqueIssue }) {
   );
 }
 
-function CriticBlock({ report }: { report: CriticReport }) {
+function CriticBlock({
+  report,
+  selectedIssues,
+  onToggleIssue,
+}: {
+  report: CriticReport;
+  selectedIssues: ReadonlySet<string>;
+  onToggleIssue: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState(true);
   return (
     <div className="border border-[var(--color-border)] rounded-md">
@@ -492,6 +564,15 @@ function CriticBlock({ report }: { report: CriticReport }) {
               {report.issues.map((issue, i) => (
                 <li key={i} className="cri-card">
                   <div className="cri-card-top">
+                    {/* Выбор автора: правится только отмеченное. Без отметок
+                        работает прежний фильтр по серьёзности. */}
+                    <input
+                      type="checkbox"
+                      aria-label={`Править это замечание: ${issue.summary}`}
+                      checked={selectedIssues.has(issueIdFor(report.critic, i))}
+                      onChange={() => onToggleIssue(issueIdFor(report.critic, i))}
+                      style={{ flexShrink: 0 }}
+                    />
                     <span
                       aria-hidden="true"
                       className={SEVERITY_DOT[issue.severity]}

@@ -384,3 +384,74 @@ describe("CritiquePanel — замечание критика персонаже
     expect(screen.queryByText(/Основание:/)).not.toBeInTheDocument();
   });
 });
+
+// ───────── Локальная правка (этап 5, слайс 3) ─────────
+describe("CritiquePanel — выбор замечаний и защита кусков", () => {
+  const TWO_ISSUES: CritiqueReport = {
+    ...REPORT,
+    report: {
+      ...REPORT.report!,
+      blockingCount: 1,
+      suggestionCount: 1,
+      critics: [
+        {
+          critic: "character",
+          overallNotes: "заметки",
+          issues: [
+            { severity: "blocking", summary: "Ворт знает лишнее" },
+            { severity: "suggestion", summary: "мелочь про паузу" },
+          ],
+        },
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.getCritique).mockReset();
+    vi.mocked(streamRepair).mockReset();
+    vi.mocked(streamRepair).mockResolvedValue(undefined);
+  });
+
+  async function openPanel() {
+    vi.mocked(api.getCritique).mockResolvedValue(TWO_ISSUES);
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={7}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    await screen.findByText("Ворт знает лишнее");
+  }
+
+  it("отмеченное замечание уезжает в правку, неотмеченное — нет", async () => {
+    await openPanel();
+    await userEvent.click(screen.getByLabelText("Править это замечание: Ворт знает лишнее"));
+    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
+    expect(opts?.selectedIssueIds).toEqual(["character:0"]);
+  });
+
+  it("без отметок правка идёт по-старому, фильтром серьёзности", async () => {
+    await openPanel();
+    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
+    expect(opts?.selectedIssueIds).toBeUndefined();
+    expect(opts?.severities).toBeTruthy();
+  });
+
+  it("защищённые куски уезжают построчно, пустые строки выбрасываются", async () => {
+    await openPanel();
+    await userEvent.type(
+      screen.getByLabelText(/Не трогать/),
+      "Металл был тёплый.{enter}{enter}Она не обернулась.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
+    expect(opts?.protectedFragments).toEqual([
+      "Металл был тёплый.",
+      "Она не обернулась.",
+    ]);
+  });
+});

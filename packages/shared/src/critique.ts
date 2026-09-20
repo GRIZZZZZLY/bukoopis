@@ -161,9 +161,35 @@ export const runCritiqueInputSchema = z.object({
 });
 export type RunCritiqueInput = z.infer<typeof runCritiqueInputSchema>;
 
+/**
+ * Устойчивый идентификатор замечания: критик и его позиция в списке. Своего
+ * поля у замечания нет и не заводится — отчёт хранится одним JSON, порядок
+ * внутри критика не меняется, а колонка с идентификаторами потребовала бы
+ * миграции ради того, что и так однозначно. Считают его ОБА конца — сервер и
+ * экран, — поэтому функция одна на проект.
+ */
+export function issueIdFor(critic: CriticType, index: number): string {
+  return `${critic}:${index}`;
+}
+
+/** Короткий фрагмент («Да.», «— Нет.») встречается в главе много раз, и
+ *  защитить им нечего: сервер откажется его привязывать. Предел отсекает
+ *  заведомо бесполезное до вызова модели. */
+export const MIN_PROTECTED_FRAGMENT_CHARS = 12;
+
 export const runRepairInputSchema = z.object({
   // optional override: only address selected severity levels
   severities: z.array(issueSeveritySchema).min(1).optional(),
+  /** Только эти замечания. Пустой список не принимается: «ничего не выбрал»
+   *  и «выбрал ноль» — разные намерения, и второе бессмысленно. */
+  selectedIssueIds: z.array(z.string().min(1)).min(1).optional(),
+  /** Куски, которых правка не касается (AC-29). Дословные цитаты: сервер сам
+   *  находит их в тексте версии, как и доказательство события. */
+  protectedFragments: z
+    .array(z.string().trim().min(MIN_PROTECTED_FRAGMENT_CHARS))
+    .min(1)
+    .max(20)
+    .optional(),
 });
 export type RunRepairInput = z.infer<typeof runRepairInputSchema>;
 

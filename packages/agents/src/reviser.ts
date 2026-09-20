@@ -1,6 +1,7 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
 import { renderHistoryBlocks } from "./critics/base.js";
 import {
+  issueIdFor,
   renderClicheRule,
   RU_DIALOGUE_RULE,
   STYLE_PRECEDENCE_RULE,
@@ -61,6 +62,12 @@ export interface ReviseChapterInput {
   originalText: string;
   critics: CriticReport[];
   severityFilter?: IssueSeverity[]; // default: all
+  /** Только эти замечания (этап 5, AC-29). Сильнее `severityFilter`: автор
+   *  показал пальцем, а не задал порог. */
+  selectedIssueIds?: string[];
+  /** Куски, которых правка не касается. Сервер уже проверил, что каждый
+   *  встречается в тексте версии ровно один раз. */
+  protectedFragments?: string[];
   iteration: number; // 1, 2, 3
   config?: GenerationConfig;
   /** Отмена вызова (task 7 — остановка генерации). */
@@ -70,18 +77,22 @@ export interface ReviseChapterInput {
 function formatCriticIssues(
   critics: CriticReport[],
   severityFilter: IssueSeverity[],
+  selectedIssueIds?: readonly string[],
 ): string {
   const order: IssueSeverity[] = ["blocking", "suggestion", "nit"];
+  // Выбор автора сильнее фильтра по серьёзности: он показал пальцем именно на
+  // эти замечания, и отсекать их порогом значит спорить с ним.
+  const selected = selectedIssueIds ? new Set(selectedIssueIds) : null;
   const lines: string[] = [];
   for (const sev of order) {
-    if (!severityFilter.includes(sev)) continue;
+    if (!selected && !severityFilter.includes(sev)) continue;
     const all: { critic: string; issue: CriticReport["issues"][number] }[] = [];
     for (const c of critics) {
-      for (const issue of c.issues) {
-        if (issue.severity === sev) {
-          all.push({ critic: c.critic, issue });
-        }
-      }
+      c.issues.forEach((issue, index) => {
+        if (issue.severity !== sev) return;
+        if (selected && !selected.has(issueIdFor(c.critic, index))) return;
+        all.push({ critic: c.critic, issue });
+      });
     }
     if (all.length === 0) continue;
     lines.push(`## ${sev.toUpperCase()} (${all.length}):`);
@@ -137,7 +148,16 @@ export function buildReviserVolatilePrompt(input: ReviseChapterInput): string {
       ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
       : []),
     `Итерация repair: ${input.iteration}`,
-    `Замечания критиков (приоритет blocking → suggestion → nit):\n${formatCriticIssues(input.critics, severityFilter)}`,
+    input.selectedIssueIds && input.selectedIssueIds.length > 0
+      ? `Замечания, выбранные автором — правь ТОЛЬКО это, остального он не просил:\n${formatCriticIssues(input.critics, severityFilter, input.selectedIssueIds)}`
+      : `Замечания критиков (приоритет blocking → suggestion → nit):\n${formatCriticIssues(input.critics, severityFilter)}`,
+    ...(input.protectedFragments && input.protectedFragments.length > 0
+      ? [
+          `Защищённые фрагменты — перенеси их в результат ДОСЛОВНО, символ в символ, и не трогай:\n${input.protectedFragments
+            .map((f) => `- «${f}»`)
+            .join("\n")}\nЕсли замечание требует изменить защищённый фрагмент, оставь фрагмент как есть, а замечание не выполняй.`,
+        ]
+      : []),
     `Оригинальная глава для переработки:\n\n${input.originalText}`,
     "Задача: перепиши главу, устранив указанные замечания. Выводи только прозу.",
   ].join("\n\n");

@@ -8,6 +8,7 @@ import {
   REPAIR_BRANCH_PREFIX,
   REPAIR_MAX_ITERATIONS,
   ALL_CRITIC_TYPES,
+  issueIdFor,
   type CritiqueReport,
   type CritiqueReportStatus,
   type FullCritiqueReport,
@@ -20,6 +21,10 @@ import {
 import { extractText, countWords } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
+import {
+  locateProtectedFragments,
+  survivingFragments,
+} from "../utils/protected-fragments.js";
 import { recordContextManifest, compareWithWriterBase } from "../utils/context-manifests.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
@@ -358,6 +363,42 @@ export function createCritiqueRoute(
     }
     const report = fullCritiqueReportSchema.parse(JSON.parse(reportRow.report_json));
 
+    // Выбор автора проверяется ДО вызова модели. Ссылка на замечание, которого
+    // в отчёте нет, — отказ, а не тихое игнорирование: иначе автор ждёт
+    // правку выбранного и получает правку пустого списка.
+    const selectedIssueIds = parsed.data.selectedIssueIds;
+    if (selectedIssueIds) {
+      const known = new Set<string>();
+      for (const critic of report.critics) {
+        critic.issues.forEach((_, index) => known.add(issueIdFor(critic.critic, index)));
+      }
+      const unknown = selectedIssueIds.filter((id) => !known.has(id));
+      if (unknown.length > 0) {
+        return badRequest(
+          c,
+          `в отчёте нет таких замечаний: ${unknown.join(", ")}. Перечитайте критику — отчёт мог смениться.`,
+        );
+      }
+    }
+
+    // Защищённые фрагменты привязываются к тексту ЭТОЙ версии. Правило то же,
+    // что у доказательства события: привязка либо однозначна, либо её нет.
+    let protectedFragments: string[] = [];
+    if (parsed.data.protectedFragments) {
+      const located = locateProtectedFragments(
+        v.content_text,
+        parsed.data.protectedFragments,
+      );
+      if (located.rejected.length > 0) {
+        const lines = located.rejected.map((r) =>
+          r.reason === "ambiguous"
+            ? `«${r.fragment}» встречается в главе дважды — привязка неоднозначна, возьмите кусок подлиннее`
+            : `«${r.fragment}» в главе не найден`,
+        );
+        return badRequest(c, `Защитить не удалось: ${lines.join("; ")}`);
+      }
+      protectedFragments = located.accepted;
+    }
 
     // Same context the critics saw — one assembly, so a field added for them
     // cannot silently miss the Reviser.
@@ -439,6 +480,8 @@ export function createCritiqueRoute(
           originalText: v.content_text,
           critics: report.critics,
           severityFilter: parsed.data.severities,
+          ...(selectedIssueIds ? { selectedIssueIds } : {}),
+          ...(protectedFragments.length > 0 ? { protectedFragments } : {}),
           iteration: nextIteration,
           config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
           ...(signal !== undefined ? { signal } : {}),
@@ -511,11 +554,25 @@ export function createCritiqueRoute(
           chapterId: ch.id,
         });
 
+        // Что из защищённого дожило. Потеря не отвергает кандидата — решать
+        // автору, он видит текст целиком, — но молчать о ней нельзя: он
+        // просил не трогать именно эти строки.
+        const survived =
+          protectedFragments.length > 0
+            ? survivingFragments(fullText, protectedFragments)
+            : null;
+        if (survived && survived.lost.length > 0) {
+          console.warn(
+            `[repair] v${v.id}: правка тронула защищённые фрагменты (${survived.lost.length}): ${survived.lost.map((f) => `«${f.slice(0, 60)}»`).join("; ")}`,
+          );
+        }
+
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
             proposal: loadProposal(sqlite, proposalId),
             iteration: nextIteration,
+            ...(survived ? { protectedLost: survived.lost } : {}),
             tokens: {
               input: inputTokens,
               output: outputTokens,
