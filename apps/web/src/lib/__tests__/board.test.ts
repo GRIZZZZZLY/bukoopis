@@ -9,6 +9,7 @@ import {
   layoutNotes,
   ROW_H,
   threadSpan,
+  chapterLabels,
 } from "../board";
 import type { BookNote } from "@book-forge/shared";
 
@@ -79,5 +80,22 @@ describe("board geometry", () => {
     const notes = [note(1, 1), note(2, 1), note(3, 5)];
     expect(boardWidth(boardColumns(notes))).toBe(BOARD_PAD * 2 + COLUMN_W * 2);
     expect(boardHeight(layoutNotes(notes))).toBe(BOARD_PAD * 2 + HEADER_H + ROW_H * 2);
+  });
+});
+
+// Номера глав на доске были сырым `order_index` (10, 20, 30): у третьей главы
+// книги подпись «гл. 30». Автор считает главы подряд (находка живого прогона).
+describe("chapterLabels", () => {
+  it("переводит разрежённый порядок в порядковые номера", () => {
+    const labels = chapterLabels([10, 20, 30], [10, 20, 30]);
+    expect(labels).toEqual(["1", "2", "3"]);
+  });
+
+  it("глава не из книги показывается своим номером, а не выдуманным", () => {
+    expect(chapterLabels([10, 999], [10, 20])).toEqual(["1", "#999"]);
+  });
+
+  it("без списка глав книги подписи остаются прежними", () => {
+    expect(chapterLabels([10, 20], [])).toEqual(["#10", "#20"]);
   });
 });

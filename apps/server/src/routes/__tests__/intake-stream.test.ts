@@ -176,10 +176,13 @@ describe("POST /api/books/:id/intake-stream", () => {
 });
 
 describe("GET /api/books/:id/intake/inflight", () => {
-  it("404 when nothing is being parsed for the book", async () => {
+  it("ничего не идёт — 200 с признаком, а не 404", async () => {
+    // 404 на каждом опросе засыпал консоль браузера красным и делал
+    // настоящие 404 незаметными (находка живого прогона 2026-09-20).
     const id = await createBook();
     const r = await t.app.request(`/api/books/${id}/intake/inflight`);
-    expect(r.status).toBe(404);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ running: false });
   });
 
   it("describes the running parse, so a reloaded page can show the same progress", async () => {
@@ -217,9 +220,11 @@ describe("GET /api/books/:id/intake/inflight", () => {
     ]);
     expect(seen.rows[0]!.targets).toEqual(["world"]);
 
-    // Разбор закончился — реестр снова пуст, и вкладка узнаёт об этом по 404.
+    // Разбор закончился — реестр снова пуст, и вкладка узнаёт об этом по
+    // признаку в ответе.
     const after = await t.app.request(`/api/books/${id}/intake/inflight`);
-    expect(after.status).toBe(404);
+    expect(after.status).toBe(200);
+    expect(await after.json()).toMatchObject({ running: false });
   });
 });
 

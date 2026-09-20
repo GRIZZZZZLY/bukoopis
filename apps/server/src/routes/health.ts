@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { resolveBackend } from "@book-forge/llm";
 import type { Database as DatabaseType } from "better-sqlite3";
 
 export interface HealthOptions {
@@ -29,6 +30,14 @@ export function createHealthRoute(opts: HealthOptions): Hono {
       timestamp: new Date().toISOString(),
       db: dbStatus,
       vec: opts.hasVec,
+      // Бэкенд у каждого агента свой (`DEFAULT_AGENT_BACKEND`), и одно слово
+      // на всё приложение было неправдой: подвал писал «subscription» даже
+      // когда критики шли через платный ключ. Отдаём тех, про кого автор
+      // спрашивает, когда смотрит на подвал: кто пишет и кто проверяет.
+      backends: {
+        writer: resolveBackend("writer"),
+        critics: resolveBackend("critic_style"),
+      },
     });
   });
   return r;

@@ -103,6 +103,11 @@ const characterCriticContract: AgentStructuredContract<CriticInput, CharacterCri
     toolName: "submit_critique_character",
     toolDescription:
       "Submit a structured critique of the characters in a chapter: are they distinguishable, do they respect what they know at the scene boundary, do relationships hold. Every issue carries a verbatim quote and its basis.",
+    // Пять ходов, а не три по умолчанию: на подписке критик один раз вернул
+    // «модель не вызвала инструмент» — ровно так выглядит исчерпание ходов на
+    // длинном отчёте (живой прогон 2026-09-20). Лишние ходы тратятся только
+    // там, где без них был бы отказ.
+    maxTurns: 5,
   },
 };
 

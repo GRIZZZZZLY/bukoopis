@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z, ZodError } from "zod";
 import { createDb, resolveDbPath } from "./db/client.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createBooksRoute } from "./routes/books.js";
@@ -69,6 +70,19 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   // own envelopes; this catches the unexpected (e.g. a synchronous DB throw).
   app.onError((err, c) => {
     console.error("[app] unhandled route error:", err);
+    // Негодные данные — это 400 с причиной, а не «internal_error». Схема,
+    // брошенная из маршрута (испорченный studio_state, кривой профиль),
+    // приходила автору как «HTTP 500: internal_error» — сообщение, по
+    // которому нельзя понять ни что случилось, ни что делать.
+    if (err instanceof ZodError) {
+      return c.json(
+        {
+          error: "validation_failed",
+          details: z.treeifyError(err),
+        },
+        400,
+      );
+    }
     return c.json(
       {
         error: "internal_error",

@@ -331,10 +331,11 @@ describe("studio routes", () => {
 });
 
 describe("быстрый сбор: снимок и остановка", () => {
-  it("GET /quick-start/inflight отвечает 404, когда ничего не идёт", async () => {
+  it("GET /quick-start/inflight отвечает признаком, когда ничего не идёт", async () => {
     const id = await createBook();
     const r = await send(t.app, `/api/books/${id}/quick-start/inflight`, "GET");
-    expect(r.status).toBe(404);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ running: false });
   });
 
   it("POST /quick-start/cancel без идущего сбора отвечает 404", async () => {

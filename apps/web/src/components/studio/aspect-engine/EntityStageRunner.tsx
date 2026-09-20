@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { StageAspect, StageState, EntityCandidateProfile } from "@book-forge/shared";
+import type {
+  AspectVariant,
+  StageAspect,
+  StageState,
+  EntityCandidateProfile,
+} from "@book-forge/shared";
 import type { AspectGenerationProgress } from "@/api/client";
 import type { VariantGenerator } from "./types.js";
 import { candidateLabel, createEntityAdapter } from "./entityAdapter.js";
@@ -165,6 +170,8 @@ export function EntityStageRunner({
   }
 
   const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
+  /** Разделы, которые сейчас пишутся пачкой. */
+  const [batchIds, setBatchIds] = useState<Set<string>>(new Set());
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>(
     {},
   );
@@ -190,7 +197,8 @@ export function EntityStageRunner({
   }
 
   function buildAccumulated(
-    skip: string,
+    /** `null` — пачка: пропускать нечего, в неё идёт всё принятое. */
+    skip: string | null,
   ): Array<{ id: string; name: string; finalPayload: unknown }> {
     return stage.aspects
       .filter(
@@ -226,6 +234,83 @@ export function EntityStageRunner({
       delete copy[aspectId];
       return copy;
     });
+  }
+
+  /**
+   * Пакетная генерация состава. На документных этапах она была с фазы 2, на
+   * персонажах и предметах её не было вовсе — автор жал «Сгенерировать» на
+   * каждой категории по очереди (находка живого прогона 2026-09-20).
+   *
+   * Разделы пишутся по три разом и друг друга не видят — та же плата, что у
+   * `AspectRunner`: каждый получает только уже ПРИНЯТОЕ.
+   */
+  async function handleGenerateAll(): Promise<void> {
+    const queue = stage.aspects.filter((a) => a.status === "pending");
+    if (queue.length === 0) return;
+    setBatchIds(new Set(queue.map((a) => a.id)));
+    setErrorByAspect({});
+
+    const accumulated = { acceptedAspects: buildAccumulated(null) };
+    const results = new Map<string, AspectVariant[]>();
+    const failures: Record<string, string> = {};
+    const CONCURRENCY = 3;
+    let cursor = 0;
+
+    async function worker(): Promise<void> {
+      for (;;) {
+        const aspect = queue[cursor++];
+        if (!aspect) return;
+        try {
+          results.set(
+            aspect.id,
+            await generator.generate({ aspect, accumulated }, (progress) =>
+              setProgressByAspect((p) => ({ ...p, [aspect.id]: progress })),
+            ),
+          );
+        } catch (e) {
+          failures[aspect.id] = e instanceof Error ? e.message : String(e);
+        } finally {
+          clearProgress(aspect.id);
+          setBatchIds((prev) => {
+            const next = new Set(prev);
+            next.delete(aspect.id);
+            return next;
+          });
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker),
+    );
+
+    // Один PATCH на всю пачку: по одному они спорили бы за ревизию этапа.
+    if (results.size > 0) {
+      const next: StageState = {
+        ...stage,
+        status: stage.status === "not_started" ? "in_progress" : stage.status,
+        aspects: stage.aspects.map((a) => {
+          const variants = results.get(a.id);
+          if (!variants) return a;
+          return {
+            ...a,
+            status: "reviewing" as const,
+            payloadKind: "entity_set" as const,
+            variants,
+            ...(a.selectedVariantId !== undefined
+              ? { selectedVariantId: undefined }
+              : {}),
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        await onPatch(revision, next);
+      } catch (e) {
+        failures.__patch = e instanceof Error ? e.message : String(e);
+      }
+    }
+    if (Object.keys(failures).length > 0) setErrorByAspect(failures);
   }
 
   async function handleGenerate(aspect: StageAspect): Promise<void> {
@@ -509,11 +594,32 @@ export function EntityStageRunner({
     }
   }
 
+  const pendingCount = stage.aspects.filter((a) => a.status === "pending").length;
+  const batchRunning = batchIds.size > 0;
+
   return (
     <ul
       aria-label="entity-aspects"
       className="lw-card flex flex-col gap-4"
     >
+      {pendingCount > 1 && (
+        <li className="flex flex-col gap-1 border-b border-[var(--color-border)] pb-3">
+          <button
+            type="button"
+            onClick={() => void handleGenerateAll()}
+            disabled={batchRunning || busyAspectId !== null}
+            className="text-sm self-start border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+          >
+            {batchRunning
+              ? `Генерируем… осталось ${batchIds.size}`
+              : `Сгенерировать все оставшиеся (${pendingCount})`}
+          </button>
+          <span className="text-xs text-[var(--color-muted-foreground)]">
+            Категории пишутся сразу и не видят друг друга — только то, что вы уже
+            приняли. По одной выйдет связнее, зато дольше.
+          </span>
+        </li>
+      )}
       {stage.aspects.map((aspect) => {
         const busy = busyAspectId === aspect.id;
         const err = errorByAspect[aspect.id];
