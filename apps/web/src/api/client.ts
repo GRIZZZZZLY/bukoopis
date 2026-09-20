@@ -1209,8 +1209,19 @@ export async function streamRepair(
 }
 
 // ── SSE writer streaming ──
+export interface SceneIntentStatus {
+  /** Замысел собран и ушёл в промпт. */
+  prepared: boolean;
+  /** Подготовка не удалась: Писатель работает по тому же снимку без неё. */
+  degraded: boolean;
+  /** Ссылок на события, которых нет в снимке (модель их выдумала). */
+  droppedEventIds: number;
+}
+
 export interface WriterStreamHandlers {
   onProposal?: (proposalId: number) => void;
+  /** Подготовка сцены (этап 5). Деградацию видно автору, а не только в логе. */
+  onSceneIntent?: (status: SceneIntentStatus) => void;
   onChunk: (text: string) => void;
   onDone: (payload: {
     proposal: import("@book-forge/shared").ProseProposal;
@@ -1254,6 +1265,8 @@ export async function streamWriteChapter(
       ({ event, data }) => {
         const d = data as Record<string, unknown>;
         if (event === "proposal") handlers.onProposal?.(d.proposalId as number);
+        else if (event === "scene_intent")
+          handlers.onSceneIntent?.(data as unknown as SceneIntentStatus);
         else if (event === "chunk") handlers.onChunk(d.text as string);
         else if (event === "done")
           handlers.onDone(data as Parameters<WriterStreamHandlers["onDone"]>[0]);

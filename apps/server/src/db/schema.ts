@@ -97,6 +97,10 @@ export const chapters = sqliteTable(
       (): AnySQLiteColumn => chapterVersions.id,
       { onDelete: "set null" },
     ),
+    // Замысел сцены (миграция 0029, этап 5): чего каждый участник хочет в
+    // этой сцене. Колонка, а не таблица — он живёт одну генерацию и
+    // перезаписывается следующей. NULL = подготовки не было.
+    sceneIntentJson: text("scene_intent_json"),
     status: text("status").notNull().default("draft"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

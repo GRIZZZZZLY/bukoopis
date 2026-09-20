@@ -38,6 +38,7 @@ function fakeAssembled(refs: AssembledContext["sourceRefs"]): AssembledContext {
     ambiguousNames: [],
     bookContextBase: "Книга",
     characterContext: "## Персонажи",
+    participants: [],
     loreContext: null,
     studioContext: null,
     previousChapters: null,

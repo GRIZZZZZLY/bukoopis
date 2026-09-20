@@ -104,6 +104,11 @@ export interface AssembledContext {
   bookContextBase: string;
   /** Карточки участников + действующие факты. Обязательная секция. */
   characterContext: string | null;
+  /** Кто в сцене: тот же состав, из которого собраны карточки. Наружу он
+   *  нужен замыслу сцены (решения приходят по `characterId`) и критику
+   *  персонажей (он не запускается на монологе). Второй поиск участников
+   *  завести нельзя — он разошёлся бы с карточками молча. */
+  participants: Array<{ characterId: number; name: string }>;
   loreContext: string | null;
   studioContext: string | null;
   previousChapters: string | null;
@@ -346,6 +351,10 @@ export async function assembleGenerationContext(
   return {
     pov,
     povCharacterId,
+    participants: charResult.characters.map((cc) => ({
+      characterId: cc.character.id,
+      name: cc.character.canonicalName,
+    })),
     ambiguousNames,
     bookContextBase: bookContextLines.join("\n"),
     characterContext: inc.has("characters") ? characterContext : null,

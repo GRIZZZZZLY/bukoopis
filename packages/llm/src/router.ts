@@ -34,6 +34,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   episodic_note_extractor: "subscription",
   reranker: "subscription",
   material_classifier: "subscription",
+  scene_intent: "subscription",
 };
 
 // One-time deprecation warnings for compat aliases (etap 0.2.4 / Phase 4).

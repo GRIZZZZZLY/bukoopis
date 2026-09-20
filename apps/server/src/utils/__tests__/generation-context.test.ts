@@ -379,3 +379,27 @@ describe("состав сцены (С1) и приоритеты бюджета (
   });
 });
 
+
+// Состав сцены нужен не только карточкам: замысел сцены (этап 5) возвращает
+// решения по characterId, а критик персонажей запускается только при двух
+// названных участниках. Второй поиск участников заводить нельзя — он
+// разошёлся бы с карточками молча.
+describe("assembleGenerationContext — участники сцены наружу", () => {
+  it("отдаёт участников с их id и каноническими именами", async () => {
+    const ninaId = insertCharacter("Нина Соловьёва");
+    const chapterId = insertChapter(10, null);
+    const assembled = await assemble(chapterId, {
+      scanTexts: ["Нина Соловьёва идёт на станцию"],
+    });
+    expect(assembled.participants).toEqual([
+      { characterId: ninaId, name: "Нина Соловьёва" },
+    ]);
+  });
+
+  it("никого не нашлось — пустой список, а не отсутствующее поле", async () => {
+    insertCharacter("Нина Соловьёва");
+    const chapterId = insertChapter(10, null);
+    const assembled = await assemble(chapterId, { scanTexts: ["пустая сцена"] });
+    expect(assembled.participants).toEqual([]);
+  });
+});

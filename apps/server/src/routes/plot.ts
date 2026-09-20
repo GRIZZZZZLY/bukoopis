@@ -10,6 +10,7 @@ import {
   type BookOutline,
   type ChapterPlan,
   boundaryForChapter,
+  renderChapterContract,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -35,6 +36,7 @@ import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import { assembleGenerationContext } from "../utils/generation-context.js";
 import { recordContextManifest } from "../utils/context-manifests.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
+import { prepareSceneIntent } from "../utils/scene-intent.js";
 import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import { resolveEntity } from "../utils/entity-resolve.js";
 import {
@@ -423,12 +425,59 @@ export function createPlotRoute(
           }),
         });
 
+        // Замысел сцены (этап 5). Внутри потока, а не до него: это вызов
+        // модели на минуты, и снаружи автор смотрел бы в тишину, пока
+        // соединение даже не открылось. Падение сюда не долетает —
+        // `prepareSceneIntent` возвращает деградацию, а не бросает.
+        const sceneIntent = await prepareSceneIntent(sqlite, {
+          bookId: ch.book_id,
+          chapterId: ch.id,
+          chapterOrder: ch.order_index,
+          chapterTitle: ch.title,
+          bookTitle: ctx.title,
+          beatSheet: beatBlob,
+          dialogueRegister: beatSheet.dialogueRegister ?? null,
+          chapterContract: beatSheet.contract
+            ? renderChapterContract(beatSheet.contract)
+            : null,
+          characterContext: assembled.characterContext,
+          participants: assembled.participants,
+          snapshotEventIds: assembled.sourceRefs
+            .filter((r) => r.kind === "event")
+            .map((r) => r.id),
+          contextSnapshotId: contextManifest.id,
+          onUsage: (usage) =>
+            logUsage(sqlite, {
+              route: "plot.scene_intent",
+              model: usage.modelId,
+              usage: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationInputTokens: usage.cacheCreationInputTokens,
+                cacheReadInputTokens: usage.cacheReadInputTokens,
+              },
+              bookId: ch.book_id,
+              chapterId: ch.id,
+            }),
+        });
+        await stream.writeSSE({
+          event: "scene_intent",
+          data: JSON.stringify({
+            prepared: sceneIntent.prompt !== null,
+            // Деградация называется вслух: Писатель работает по тому же
+            // снимку, но без намерений, и это видно в запуске.
+            degraded: sceneIntent.degraded,
+            droppedEventIds: sceneIntent.droppedEventIds.length,
+          }),
+        });
+
         const gen = runChapterWriter({
           bookTitle: ctx.title,
           bookPremise: ctx.premise,
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
           beatSheet: beatSheetForWriter,
+          sceneIntent: sceneIntent.prompt,
           previousChaptersSummary: assembled.previousChapters,
           previousChapterTail: assembled.previousTail,
           characterContext: assembled.characterContext,
