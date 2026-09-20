@@ -212,3 +212,42 @@ describe("buildWriterVolatilePrompt — chapter closing", () => {
     expect(system).not.toContain("(если он есть)");
   });
 });
+
+// ───────── Этап 5: замысел сцены ─────────
+
+describe("buildWriterVolatilePrompt — замысел сцены", () => {
+  const intent =
+    "Замысел сцены:\n\nНина Соловьёва\n— Хочет в этой сцене: увести брата со станции";
+
+  it("печатает замысел перед беатами: намерение объясняет, из чего герой действует", () => {
+    const out = buildWriterVolatilePrompt({ ...base, sceneIntent: intent });
+    expect(out).toContain("увести брата со станции");
+    expect(out.indexOf("Замысел сцены")).toBeLessThan(out.indexOf("Beats:"));
+  });
+
+  it("без замысла блока нет вовсе", () => {
+    expect(buildWriterVolatilePrompt(base)).not.toContain("Замысел сцены");
+  });
+});
+
+describe("SYSTEM_WRITER — правила этапа 5", () => {
+  // Промпт собирается в системной половине; проверяем через неё.
+  const system = buildWriterStableSystem(base);
+
+  it("называет приоритет: контракт главы сильнее замысла сцены", () => {
+    expect(system).toMatch(/замысел[^\n]*контракт|контракт[^\n]*замысел/i);
+  });
+
+  it("требует воплощать намерение действием и речью, а не пересказом карточки", () => {
+    expect(system).toMatch(/не пересказыва[^\n]*карточк/i);
+  });
+
+  it("различает голос повествователя, восприятие POV и прямую речь", () => {
+    expect(system).toMatch(/повествовател/i);
+    expect(system).toMatch(/прямая речь|прямой речи/i);
+  });
+
+  it("запрещает превращать характер в частотное правило", () => {
+    expect(system).toMatch(/инженер|частотн/i);
+  });
+});

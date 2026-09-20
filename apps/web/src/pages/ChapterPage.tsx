@@ -559,6 +559,16 @@ export function ChapterPage() {
             setWriterBuffer((b) => b + text);
           },
           onProposal: (proposalId) => setRunningProposalId(proposalId),
+          // Деградация названа вслух: глава без замысла сцены пишется теми же
+          // карточками, но герои действуют без намерений — и молча это
+          // выглядело бы как обычная генерация.
+          onSceneIntent: (status) => {
+            if (status.degraded) {
+              toast.info("Замысел сцены не собрался", {
+                description: "Глава пишется без намерений героев.",
+              });
+            }
+          },
           onDone: async (payload) => {
             setWriting(false);
             writerAbortRef.current = null;
