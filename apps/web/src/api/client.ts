@@ -1173,17 +1173,31 @@ export interface RepairStreamHandlers {
   onError: (message: string) => void;
 }
 
+export interface RepairOptions {
+  severities?: import("@book-forge/shared").IssueSeverity[];
+  /** Только эти замечания (этап 5). Сильнее фильтра по серьёзности. */
+  selectedIssueIds?: string[];
+  /** Куски, которых правка не касается. Сервер проверит их до вызова модели. */
+  protectedFragments?: string[];
+}
+
 export async function streamRepair(
   versionId: number,
-  severities: import("@book-forge/shared").IssueSeverity[] | undefined,
+  options: RepairOptions | undefined,
   handlers: RepairStreamHandlers,
 ): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (options?.severities) body.severities = options.severities;
+  if (options?.selectedIssueIds?.length) body.selectedIssueIds = options.selectedIssueIds;
+  if (options?.protectedFragments?.length) {
+    body.protectedFragments = options.protectedFragments;
+  }
   const res = await fetch(
     `${API_BASE}/api/chapter-versions/${versionId}/repair`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(severities ? { severities } : {}),
+      body: JSON.stringify(body),
     },
   );
   if (!res.ok || !res.body) {

@@ -96,3 +96,76 @@ describe("buildReviserVolatilePrompt", () => {
     expect(prompt).toContain("Оригинальная глава для переработки:");
   });
 });
+
+// ───────── Локальная правка (этап 5, слайс 3) ─────────
+
+const twoCritics: ReviseChapterInput["critics"] = [
+  {
+    critic: "character",
+    overallNotes: "заметки",
+    issues: [
+      { severity: "blocking", summary: "Ворт знает лишнее", excerpt: "— Я выложу твою запись" },
+      { severity: "nit", summary: "мелочь про паузу" },
+    ],
+  },
+  {
+    critic: "style",
+    overallNotes: "заметки",
+    issues: [{ severity: "suggestion", summary: "три сравнения подряд" }],
+  },
+];
+
+describe("buildReviserVolatilePrompt — выбранные замечания", () => {
+  it("печатает только выбранные, остальные не показывает", () => {
+    const out = buildReviserVolatilePrompt({
+      ...base,
+      critics: twoCritics,
+      selectedIssueIds: ["character:0"],
+    });
+    expect(out).toContain("Ворт знает лишнее");
+    expect(out).not.toContain("три сравнения подряд");
+    expect(out).not.toContain("мелочь про паузу");
+  });
+
+  it("без выбора печатает всё, как раньше", () => {
+    const out = buildReviserVolatilePrompt({ ...base, critics: twoCritics });
+    expect(out).toContain("Ворт знает лишнее");
+    expect(out).toContain("три сравнения подряд");
+  });
+
+  it("выбор сильнее фильтра по серьёзности: автор выбрал именно это", () => {
+    const out = buildReviserVolatilePrompt({
+      ...base,
+      critics: twoCritics,
+      severityFilter: ["blocking"],
+      selectedIssueIds: ["style:0"],
+    });
+    expect(out).toContain("три сравнения подряд");
+    expect(out).not.toContain("Ворт знает лишнее");
+  });
+
+  it("говорит прямо, что правится только выбранное", () => {
+    const out = buildReviserVolatilePrompt({
+      ...base,
+      critics: twoCritics,
+      selectedIssueIds: ["character:0"],
+    });
+    expect(out).toMatch(/только (это|эти|выбранн)/i);
+  });
+});
+
+describe("buildReviserVolatilePrompt — защищённые фрагменты", () => {
+  it("печатает их дословно и запрещает трогать", () => {
+    const out = buildReviserVolatilePrompt({
+      ...base,
+      protectedFragments: ["Металл был тёплый.", "Она не обернулась."],
+    });
+    expect(out).toContain("Металл был тёплый.");
+    expect(out).toContain("Она не обернулась.");
+    expect(out).toMatch(/не тронь|не трогай|без изменений/i);
+  });
+
+  it("без защищённых кусков блока нет вовсе", () => {
+    expect(buildReviserVolatilePrompt(base)).not.toMatch(/не трогай/i);
+  });
+});
