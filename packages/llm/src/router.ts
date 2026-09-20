@@ -39,6 +39,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   reranker: "subscription",
   material_classifier: "subscription",
   scene_intent: "subscription",
+  cast_check: "subscription",
 };
 
 // One-time deprecation warnings for compat aliases (etap 0.2.4 / Phase 4).

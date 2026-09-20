@@ -8,6 +8,7 @@ export * from "./canon-extractor.js";
 export * from "./canon-fact-extractor.js";
 export * from "./character-event-extractor.js";
 export * from "./scene-intent.js";
+export * from "./cast-check.js";
 export * from "./episodic-note-extractor.js";
 export * from "./reranker.js";
 export * from "./summarize-chapter.js";

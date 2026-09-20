@@ -53,6 +53,7 @@ export const AGENT_NAMES = [
   "reranker",
   "material_classifier",
   "scene_intent",
+  "cast_check",
 ] as const;
 
 export type AgentName = (typeof AGENT_NAMES)[number];
@@ -79,6 +80,7 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "critic_character",
   "canon_guard",
   "scene_intent",
+  "cast_check",
   "plot_outline",
   "plot_chapter_plan",
   "style_extractor",
