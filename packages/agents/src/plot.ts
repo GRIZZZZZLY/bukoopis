@@ -110,6 +110,15 @@ dialogueRegister — преобладающий регистр диалога в
 
 // ─────────── Outline ───────────
 
+/** Свой предел ожидания у планировщика (живой прогон 2026-09-20).
+ *
+ *  Общий `LLM_TIMEOUT_MS` (120 с) рассчитан на короткий структурный ответ.
+ *  План книги и беат-лист главы — самые большие ответы в проекте: логлайн,
+ *  синопсис, арки, архитектурный лист, поглавные строки, контракт главы. На
+ *  подписке такой ответ идёт две минуты и дольше, и общий предел рубил его
+ *  ровно на середине — этап плана нельзя было пройти вообще. */
+const PLOT_TIMEOUT_MS = 600_000;
+
 export interface GenerateBookOutlineInput {
   bookTitle: string;
   premise: string;
@@ -170,6 +179,7 @@ export async function generateBookOutline(
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 8192,
+    timeoutMs: PLOT_TIMEOUT_MS,
   });
   if (input.onUsage) {
     try {
@@ -281,6 +291,7 @@ export async function generateChapterPlan(
       ? { temperature: input.config.temperature }
       : {}),
     maxTokens: 8192,
+    timeoutMs: PLOT_TIMEOUT_MS,
   });
   if (input.onUsage) {
     try {

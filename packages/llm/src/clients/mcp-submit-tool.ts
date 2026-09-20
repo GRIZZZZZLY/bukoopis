@@ -9,6 +9,7 @@ import {
 import {
   LLMAuthError,
   LLMError,
+  LLMTimeoutError,
   LLMNoToolCallError,
   LLMMultipleToolCallsError,
   LLMValidationError,
@@ -187,6 +188,22 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     allowedTools: [`mcp__${serverName}__${mcp.toolName}`],
     maxTurns: input.maxTurnsOverride ?? mcp.maxTurns ?? 3,
     env: subscriptionEnv,
+    // Расширенное размышление выключено (живой прогон 2026-09-20). Сессия
+    // Claude Code включает его по умолчанию, и на сложном структурном
+    // запросе — план книги, беат-лист главы — модель уходит думать дольше,
+    // чем CLI готов ждать первый кусок потока. CLI молча шлёт запрос заново,
+    // модель снова уходит думать: три круга по ~175 секунд и ни одного
+    // вызова инструмента. Тот же запрос без размышления отдаёт валидный
+    // ответ за 120 секунд. Агенту здесь думать и не нужно: он заполняет
+    // схему, а не решает задачу в несколько ходов.
+    thinking: { type: "disabled" },
+    maxThinkingTokens: 0,
+    // Пустой список = не читать ни пользовательские, ни проектные, ни
+    // локальные настройки. Иначе на каждый вызов агента поднимается сессия
+    // с чужими хуками, плагинами и MCP-серверами: 126 инструментов вместо
+    // одного и 5.5 секунды старта вместо 0.7. Агенту нужен ровно один
+    // инструмент — свой submit.
+    settingSources: [],
   };
 
   // Per-call timeout: abort the query if it stalls past LLM_TIMEOUT_MS (or the
@@ -234,7 +251,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     // предел ожидания. Называем вещь своим именем: это наш таймаут, и лечится
     // он не повтором, а бо́льшим пределом (или меньшим куском работы).
     if (controller.signal.aborted) {
-      throw new LLMError(
+      throw new LLMTimeoutError(
         `[subscription/${modelId}] не уложился в ${timeoutMs} мс — вызов прерван по таймауту (LLM_TIMEOUT_MS или свой предел агента)`,
       );
     }
@@ -256,7 +273,7 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     // schema bug when the backend simply never answered, so name it for what
     // it is.
     if (controller.signal.aborted) {
-      throw new LLMError(
+      throw new LLMTimeoutError(
         `[subscription/${modelId}] no response within ${timeoutMs}ms — ${mcp.toolName} was never called (backend stalled or unreachable)`,
       );
     }

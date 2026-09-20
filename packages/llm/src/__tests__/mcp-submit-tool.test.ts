@@ -236,3 +236,49 @@ describe("callViaSdkMcpSubmitTool", () => {
     ).rejects.toThrow(/no mcp spec/);
   });
 });
+
+describe("вызов подписки не уходит в петлю размышления", () => {
+  /** Живой прогон 2026-09-20: план книги и беат-лист главы не завершались
+   *  никогда. Сессия Claude Code по умолчанию включает расширенное
+   *  размышление; на сложном структурном запросе модель молчит дольше, чем
+   *  CLI готов ждать первый кусок потока, и CLI молча шлёт запрос заново.
+   *  Три круга по ~175 секунд, ни одного вызова инструмента. С выключенным
+   *  размышлением тот же запрос отдал валидный ответ за 120 секунд. */
+  it("выключает расширенное размышление", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Тверь", n: 1 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    const options = vi.mocked(query).mock.calls[0]![0].options as Record<string, unknown>;
+    expect(options.thinking).toEqual({ type: "disabled" });
+    expect(options.maxThinkingTokens).toBe(0);
+  });
+
+  /** Без изоляции сессия грузит пользовательские хуки, плагины и MCP-серверы:
+   *  126 инструментов вместо одного, 5.5 секунды старта вместо 0.7 — и чужой
+   *  контекст в каждом запросе агента. */
+  it("не читает пользовательские настройки", async () => {
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ city: "Тверь", n: 1 });
+        },
+        successResult,
+      ]),
+    );
+    await callViaSdkMcpSubmitTool(fixtureContract, fixtureSchema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    const options = vi.mocked(query).mock.calls[0]![0].options as Record<string, unknown>;
+    expect(options.settingSources).toEqual([]);
+  });
+});
