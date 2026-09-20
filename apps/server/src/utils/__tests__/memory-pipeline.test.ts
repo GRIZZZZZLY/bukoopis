@@ -13,6 +13,7 @@ vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   summarizeChapter: vi.fn(),
   extractCanonFacts: vi.fn(),
+  extractCharacterEvents: vi.fn(),
   extractEpisodicNotes: vi.fn(),
   metaSummarize: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock("@book-forge/agents", async (orig) => ({
 import {
   summarizeChapter,
   extractCanonFacts,
+  extractCharacterEvents,
   extractEpisodicNotes,
   metaSummarize,
 } from "@book-forge/agents";
@@ -42,6 +44,7 @@ import { LLMValidationError } from "@book-forge/llm";
 
 const summarizeMock = vi.mocked(summarizeChapter);
 const factsMock = vi.mocked(extractCanonFacts);
+const eventsMock = vi.mocked(extractCharacterEvents);
 const notesMock = vi.mocked(extractEpisodicNotes);
 const metaMock = vi.mocked(metaSummarize);
 
@@ -152,6 +155,7 @@ beforeEach(() => {
     tokens: NO_TOKENS,
   } as never);
   factsMock.mockReset().mockResolvedValue({ facts: [] } as never);
+  eventsMock.mockReset().mockResolvedValue({ characterEvents: [] } as never);
   notesMock
     .mockReset()
     .mockResolvedValue({ newNotes: [], resolvedNoteIds: [], notes: null } as never);
@@ -501,6 +505,11 @@ describe("worker end-to-end (mocked LLM)", () => {
           assertionMode: "narrated_as_fact",
         },
       ],
+    } as never);
+    // События приходят своим вызовом (живой прогон 2026-09-20), но в
+    // staged-результат задания ложатся рядом с фактами: активация у них
+    // общая и должна оставаться атомарной.
+    eventsMock.mockResolvedValue({
       characterEvents: [
         {
           subjectName: "Рин",

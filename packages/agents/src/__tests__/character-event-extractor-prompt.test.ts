@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { canonFactExtractionSchema } from "@book-forge/shared";
-import { CANON_FACT_EXTRACTOR_SYSTEM } from "../canon-fact-extractor.js";
+// Правила событий переехали к своему агенту (живой прогон 2026-09-20):
+// два массива в одном ответе модель сериализовала во вложенную строку,
+// и события терялись все до одного. Сами правила не изменились — их
+// проверяет тот же набор, только на новом промпте.
+import { CHARACTER_EVENT_EXTRACTOR_SYSTEM } from "../character-event-extractor.js";
 
 /**
  * Промпт — это и есть работа агента: схема примет любой объект правильной
@@ -8,17 +12,17 @@ import { CANON_FACT_EXTRACTOR_SYSTEM } from "../canon-fact-extractor.js";
  * закрепляют те его места, где ошибка стоит целого разбора, — и падают,
  * если соответствующий кусок из промпта убрать.
  */
-describe("промпт извлекателя", () => {
+describe("промпт извлекателя событий", () => {
   it("не просит у модели позиции символов", () => {
     // Просьба посчитать offsets давала почти стопроцентный отказ: промах на
     // единицу отвергает событие, и разбор выглядит как «ничего не нашлось».
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/Позиции считать НЕ НАДО/);
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).not.toMatch(/диапазон \(позиции символов\)/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(/Позиции считать НЕ НАДО/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).not.toMatch(/диапазон \(позиции символов\)/);
   });
 
   it("требует уникальную дословную цитату", () => {
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/СИМВОЛ В СИМВОЛ/);
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/РОВНО ОДИН РАЗ/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(/СИМВОЛ В СИМВОЛ/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(/РОВНО ОДИН РАЗ/);
   });
 
   it("называет поля data для каждого вида события", () => {
@@ -32,7 +36,7 @@ describe("промпт извлекателя", () => {
       commitment: ["commitment", "toWhom"],
     };
     for (const [kind, fields] of Object.entries(bullets)) {
-      const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find(
+      const line = CHARACTER_EVENT_EXTRACTOR_SYSTEM.split("\n").find(
         (l) => l.startsWith(`- ${kind} —`) && l.includes("data:"),
       );
       expect(line, `нет строки с полями data для ${kind}`).toBeDefined();
@@ -41,10 +45,10 @@ describe("промпт извлекателя", () => {
   });
 
   it("делает acquisition обязательным и объясняет все четыре значения", () => {
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/acquisition ОБЯЗАТЕЛЬНО/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(/acquisition ОБЯЗАТЕЛЬНО/);
     // «observed» и «believed» встречаются в списке assertionMode фактов,
     // поэтому ищем их в строке, которая их именно объясняет.
-    const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+    const line = CHARACTER_EVENT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
       l.includes("acquisition = observed"),
     );
     expect(line).toBeDefined();
@@ -56,7 +60,7 @@ describe("промпт извлекателя", () => {
   it("задаёт правило именительного падежа именно для имён в событиях", () => {
     // Такое же правило давно есть у entityName фактов, поэтому общий поиск
     // по «Ивану → Иван» проходил бы и без этой строки.
-    const line = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+    const line = CHARACTER_EVENT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
       l.includes("subjectName"),
     );
     expect(line).toBeDefined();
@@ -69,22 +73,21 @@ describe("промпт извлекателя", () => {
     // выбрасывают поштучно (иначе глава теряла и факты, и заметки). Обещать
     // модели катастрофу там, где её нет, — такая же ложь, как обещать
     // дешёвый отказ там, где она есть.
-    const whole = CANON_FACT_EXTRACTOR_SYSTEM.match(
-      /ВЕСЬ ответ, вместе с фактами/g,
-    );
-    expect(whole).toHaveLength(1);
     // Единственное, что и правда валит ответ целиком, — превышение предела.
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(
-      /Не более 30 событий\. Превышение отвергает ВЕСЬ ответ/,
+    // И теперь только этот ответ: факты приходят своим вызовом, обещать
+    // модели, что она заодно потеряет их, — неправда.
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(
+      /Не более 30 событий\. Превышение отвергает ВЕСЬ ответ этого вызова/,
     );
-    const acquisitionLine = CANON_FACT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).not.toMatch(/вместе с фактами/);
+    const acquisitionLine = CHARACTER_EVENT_EXTRACTOR_SYSTEM.split("\n").find((l) =>
       l.includes("acquisition ОБЯЗАТЕЛЬНО"),
     );
     expect(acquisitionLine).toMatch(/отбрасывается целиком/);
   });
 
   it("называет предел числа событий", () => {
-    expect(CANON_FACT_EXTRACTOR_SYSTEM).toMatch(/Не более 30 событий/);
+    expect(CHARACTER_EVENT_EXTRACTOR_SYSTEM).toMatch(/Не более 30 событий/);
   });
 });
 

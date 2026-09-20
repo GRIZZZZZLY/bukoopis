@@ -87,3 +87,24 @@ export const canonFactExtractionSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 export type CanonFactExtraction = z.infer<typeof canonFactExtractionSchema>;
+
+/** Ответ отдельного агента событий (живой прогон 2026-09-20): один массив
+ *  верхнего уровня и ничего больше. Два массива в одном ответе модель
+ *  сериализовала во вложенную JSON-строку с ломаным экранированием, и все
+ *  события терялись. Поле `characterEvents` в `canonFactExtractionSchema`
+ *  осталось: по ней разбираются старые staged-результаты в `memory_jobs`. */
+export const characterEventExtractionSchema = z.object({
+  characterEvents: z.array(lenient(extractedCharacterEventSchema)).max(30).default([]),
+});
+export type CharacterEventExtraction = z.infer<
+  typeof characterEventExtractionSchema
+>;
+
+/** Схема инструмента извлекателя фактов: только факты и заметка. События
+ *  уехали своему агенту, и просить их здесь значит снова получить два
+ *  массива в одном ответе — ту самую вложенную строку. */
+export const canonFactToolSchema = z.object({
+  facts: z.array(lenient(extractedFactSchema)).max(40),
+  notes: z.string().nullable().optional(),
+});
+export type CanonFactToolResult = z.infer<typeof canonFactToolSchema>;

@@ -11,9 +11,10 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   extractCanonFacts: vi.fn(),
+  extractCharacterEvents: vi.fn(),
 }));
 
-import { extractCanonFacts } from "@book-forge/agents";
+import { extractCanonFacts, extractCharacterEvents } from "@book-forge/agents";
 import {
   extractFactsPayload,
   loadActiveFacts,
@@ -24,6 +25,7 @@ import {
 import type { ExtractedFact } from "@book-forge/shared";
 
 const extractMock = vi.mocked(extractCanonFacts);
+const eventsMock = vi.mocked(extractCharacterEvents);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = resolve(__dirname, "../../../drizzle");
@@ -71,6 +73,8 @@ function fact(
 beforeEach(() => {
   open();
   extractMock.mockReset();
+  eventsMock.mockReset();
+  eventsMock.mockResolvedValue({ characterEvents: [] } as never);
 });
 afterEach(() => {
   sqlite.close();
@@ -255,8 +259,7 @@ describe("triggerCanonFactExtraction", () => {
     const b = insertBook();
     const vId = seedChapter(b, 3, 500);
     extractMock.mockResolvedValue({
-      facts: [fact("Аня", "умеет", "магия огня")],
-      characterEvents: [],
+      facts: [fact("Аня", "умеет", "магия огня")],
       notes: null,
     });
     await triggerCanonFactExtraction(sqlite, vId);
@@ -282,9 +285,11 @@ describe("triggerCanonFactExtraction", () => {
     const vId = seedChapter(b, 4, 500);
     extractMock.mockResolvedValue({
       facts: [fact("Аня", "умеет", "магия огня"), null],
-      characterEvents: [null, null],
       notes: null,
     });
+    // События приходят своим вызовом (живой прогон 2026-09-20), и считаются
+    // отдельно — но в той же сводке: автору важно, сколько записей не легло.
+    eventsMock.mockResolvedValue({ characterEvents: [null, null] } as never);
     const payload = await extractFactsPayload(sqlite, vId);
     expect(payload.facts).toHaveLength(1);
     expect(payload.characterEvents).toHaveLength(0);
