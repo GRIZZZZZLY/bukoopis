@@ -52,6 +52,9 @@ export interface AppliedEventCounts {
   duplicates: number;
   rejectedEvidence: number;
   unresolved: number;
+  /** Имена, не нашедшиеся в составе книги. Нет у версий, разобранных до
+   *  выпуска этого поля. */
+  unresolvedNames?: string[];
   /** Снято с прежнего разбора этой же версии. Не потеря: заменено новым. */
   superseded?: number;
 }

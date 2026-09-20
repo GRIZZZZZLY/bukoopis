@@ -86,6 +86,33 @@ describe("MemoryStatusBadge", () => {
     ).toBeInTheDocument();
   });
 
+  it("называет имена, которые не нашлись в составе книги", () => {
+    // «Не прижилось записей: 2» говорит, что память потерялась, но не что
+    // делать. Имя — единственная зацепка: расхождение между замыслом и
+    // составом лечится псевдонимом или переименованием героя.
+    render(
+      <MemoryStatusBadge
+        memory={mem("fresh", null, {
+          events: {
+            inserted: 0,
+            duplicates: 0,
+            rejectedEvidence: 0,
+            unresolved: 2,
+            unresolvedNames: ["Нина", "Ворт"],
+          },
+          malformed: 0,
+        })}
+        onRetry={() => {}}
+        retrying={false}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Память актуальна · не прижилось записей: 2 — в составе книги нет: Нина, Ворт",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows updating state", () => {
     render(
       <MemoryStatusBadge

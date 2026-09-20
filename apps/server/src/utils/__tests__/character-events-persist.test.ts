@@ -103,6 +103,7 @@ describe("persistCharacterEvents", () => {
       inserted: 1,
       rejectedEvidence: 0,
       unresolved: 0,
+      unresolvedNames: [],
       duplicates: 0,
       superseded: 0,
     });
@@ -273,6 +274,7 @@ describe("persistCharacterEvents", () => {
       inserted: 0,
       rejectedEvidence: 0,
       unresolved: 0,
+      unresolvedNames: [],
       duplicates: 0,
       superseded: 0,
     });
@@ -302,5 +304,36 @@ describe("persistCharacterEvents", () => {
       .prepare("SELECT verification FROM character_events")
       .get() as { verification: string };
     expect(row.verification).toBe("proposed");
+  });
+});
+
+// Имя, которое не разрешилось, называется по имени. «Не прижилось записей: 15»
+// говорит автору, что что-то пропало, но не говорит, что делать: расхождение
+// имён между замыслом и составом лечится псевдонимом или переименованием, и
+// без самого имени искать его негде (живой прогон 2026-09-20).
+describe("persistCharacterEvents — какие имена не разрешились", () => {
+  it("называет неразрешённое имя субъекта", () => {
+    const out = persist([event({ subjectName: "Нина" })]);
+    expect(out.unresolvedNames).toEqual(["Нина"]);
+  });
+
+  it("называет и неразрешённого адресата", () => {
+    const data = { quality: "доверие", from: "ровно", to: "холодно" };
+    const out = persist([
+      event({ kind: "relation_shift", data, addresseeName: "Никто" }),
+    ]);
+    expect(out.unresolvedNames).toEqual(["Никто"]);
+  });
+
+  it("одно и то же имя не повторяется в списке", () => {
+    const out = persist([
+      event({ subjectName: "Нина" }),
+      event({ subjectName: "Нина", data: { fact: "другое", acquisition: "told" } }),
+    ]);
+    expect(out.unresolvedNames).toEqual(["Нина"]);
+  });
+
+  it("список пуст, когда всё разрешилось", () => {
+    expect(persist([event()]).unresolvedNames).toEqual([]);
   });
 });

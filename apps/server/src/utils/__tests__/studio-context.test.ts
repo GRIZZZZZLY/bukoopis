@@ -209,6 +209,7 @@ describe("studioContextToPrompt", () => {
   it("returns null when nothing to render", () => {
     const out = studioContextToPrompt({
       concept: null,
+      characters: [],
       worldAspects: [],
       loreAspects: [],
       plotAspects: [],
@@ -226,6 +227,7 @@ describe("studioContextToPrompt", () => {
         audience: "adult",
         premise: { logline: "Герой ищет правду" },
       },
+      characters: [],
       worldAspects: [{ name: "география", payload: "Острова." }],
       loreAspects: [{ name: "фракции", payload: "Гильдии." }],
       plotAspects: [{ name: "завязка", payload: "Корабль тонет." }],
@@ -254,6 +256,7 @@ describe("studioContextToPrompt", () => {
         audience: "ya",
         premise: {},
       },
+      characters: [],
       worldAspects: [],
       loreAspects: [],
       plotAspects: [],
@@ -274,6 +277,7 @@ describe("studioContextToPrompt", () => {
         hook: "В списке — её имя.",
         premise: { logline: "Когда…" },
       },
+      characters: [],
       worldAspects: [],
       loreAspects: [],
       plotAspects: [],
@@ -382,5 +386,90 @@ describe("derivePremiseFromConcept", () => {
         premise: { logline: "Картограф ищет остров, которого нет." },
       }),
     ).toBe("Картограф ищет остров, которого нет.");
+  });
+});
+
+// ───────── Канонический состав в контексте Мастерской ─────────
+//
+// Расхождение имён (живой прогон 2026-09-20): план книги и план главы
+// генерировались, ничего не зная об утверждённом составе. Питч звал героиню
+// Ниной, состав создал Агату Солнцеву, план снова написал Нину — и все
+// извлечённые события памяти отвергались с «имя героя не разрешилось».
+
+function insertCharacter(
+  name: string,
+  profile: Record<string, unknown> | string,
+): void {
+  const now = new Date().toISOString();
+  sqlite
+    .prepare(
+      `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+       VALUES (1, ?, ?, ?, ?)`,
+    )
+    .run(name, typeof profile === "string" ? profile : JSON.stringify(profile), now, now);
+}
+
+describe("loadStudioContext — канонический состав", () => {
+  it("returns an empty cast when the book has no materialized characters", () => {
+    expect(loadStudioContext(sqlite, 1).characters).toEqual([]);
+  });
+
+  it("loads canonical names with their role", () => {
+    insertCharacter("Агата Солнцева", { schemaVersion: 2, role: "гидроакустик порта" });
+    insertCharacter("Ворт", { schemaVersion: 2, role: "техник насосной станции" });
+    const cast = loadStudioContext(sqlite, 1).characters;
+    expect(cast).toEqual([
+      { name: "Агата Солнцева", role: "гидроакустик порта" },
+      { name: "Ворт", role: "техник насосной станции" },
+    ]);
+  });
+
+  it("survives a corrupt profile: the name is what the plan needs", () => {
+    insertCharacter("Агата Солнцева", "{не json");
+    expect(loadStudioContext(sqlite, 1).characters).toEqual([
+      { name: "Агата Солнцева", role: null },
+    ]);
+  });
+
+  it("does not leak another book's cast", () => {
+    const now = new Date().toISOString();
+    sqlite
+      .prepare("INSERT INTO books (title, created_at, updated_at) VALUES ('U', ?, ?)")
+      .run(now, now);
+    sqlite
+      .prepare(
+        `INSERT INTO characters (book_id, canonical_name, profile_json, created_at, updated_at)
+         VALUES (2, 'Чужой герой', '{}', ?, ?)`,
+      )
+      .run(now, now);
+    expect(loadStudioContext(sqlite, 1).characters).toEqual([]);
+  });
+});
+
+describe("studioContextToPrompt — блок состава", () => {
+  it("renders the canon cast with the names the book must use", () => {
+    insertCharacter("Агата Солнцева", { schemaVersion: 2, role: "гидроакустик порта" });
+    insertCharacter("Ворт", { schemaVersion: 2, role: "техник насосной станции" });
+    const out = studioContextToPrompt(loadStudioContext(sqlite, 1));
+    expect(out).toContain("## Персонажи книги (канон)");
+    expect(out).toContain("- Агата Солнцева — гидроакустик порта");
+    expect(out).toContain("- Ворт — техник насосной станции");
+  });
+
+  it("states that the canon name beats the one the concept used", () => {
+    insertCharacter("Агата Солнцева", { schemaVersion: 2, role: "гидроакустик" });
+    const out = studioContextToPrompt(loadStudioContext(sqlite, 1));
+    expect(out).toMatch(/замысел[^\n]*канон|канон[^\n]*замысел/i);
+  });
+
+  it("omits the block entirely when the cast is empty", () => {
+    sqlite
+      .prepare("UPDATE books SET concept = ? WHERE id = ?")
+      .run(
+        JSON.stringify({ schemaVersion: 1, audience: "adult", premise: { logline: "л" } }),
+        1,
+      );
+    const out = studioContextToPrompt(loadStudioContext(sqlite, 1));
+    expect(out).not.toContain("Персонажи книги");
   });
 });

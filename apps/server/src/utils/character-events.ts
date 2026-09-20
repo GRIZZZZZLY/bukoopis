@@ -99,6 +99,11 @@ export interface PersistEventsOutcome {
   rejectedEvidence: number;
   /** Имя субъекта не разрешилось в героя этой книги. */
   unresolved: number;
+  /** Сами имена, по одному разу каждое. Число отказов говорит автору, что
+   *  память не легла; что с этим делать, говорит только имя — расхождение
+   *  между замыслом и составом лечится псевдонимом или переименованием
+   *  героя, и искать его больше негде. */
+  unresolvedNames: string[];
   /** Уже было — повторная обработка (AC-21). */
   duplicates: number;
   /** Снято прежним извлекателем по этой же версии главы и вытеснено новым
@@ -133,8 +138,13 @@ export function persistCharacterEvents(
     inserted: 0,
     rejectedEvidence: 0,
     unresolved: 0,
+    unresolvedNames: [],
     duplicates: 0,
     superseded: 0,
+  };
+  const noteUnresolved = (name: string): void => {
+    out.unresolved += 1;
+    if (!out.unresolvedNames.includes(name)) out.unresolvedNames.push(name);
   };
   // `INSERT OR IGNORE` гасит и нарушения CHECK, а не только конфликт
   // уникального индекса: с extractorVersion = 0 весь прогон вернул бы
@@ -200,7 +210,7 @@ export function persistCharacterEvents(
       // Неоднозначное или неизвестное имя. Резолвер намеренно возвращает
       // `null` вместо первого попавшегося — пришить событие чужому герою
       // хуже, чем не пришить никому (AC-04, этап 2).
-      out.unresolved += 1;
+      noteUnresolved(e.subjectName);
       continue;
     }
     // Названный, но неразрешённый адресат — тот же отказ, а не NULL. Иначе
@@ -211,7 +221,7 @@ export function persistCharacterEvents(
     if (e.addresseeName) {
       const addressee = resolveEntity(sqlite, args.bookId, "character", e.addresseeName);
       if (!addressee) {
-        out.unresolved += 1;
+        noteUnresolved(e.addresseeName);
         continue;
       }
       addresseeId = addressee.entityId;
