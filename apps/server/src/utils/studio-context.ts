@@ -11,8 +11,21 @@ export interface StudioContextAspect {
   payload: string;
 }
 
+/** Строка канонического состава: имя и, если есть, роль одной строкой.
+ *  Карточку героя со знаниями и целями собирает `gatherCharacterContext` на
+ *  границе сцены; здесь нужен только список имён. */
+export interface StudioContextCharacter {
+  name: string;
+  role: string | null;
+}
+
 export interface StudioContext {
   concept: BookConcept | null;
+  /** Утверждённый состав книги (`characters`). Планировщик книги и главы
+   *  видели только замысел, и питч с составом расходились в именах: план звал
+   *  героиню как питч, канон — как состав, и события памяти отвергались с
+   *  «имя героя не разрешилось» (живой прогон 2026-09-20). */
+  characters: StudioContextCharacter[];
   worldAspects: StudioContextAspect[];
   loreAspects: StudioContextAspect[];
   plotAspects: StudioContextAspect[];
@@ -28,7 +41,13 @@ export function loadStudioContext(
     | { concept: string | null; studio_state: string | null }
     | undefined;
   if (!row) {
-    return { concept: null, worldAspects: [], loreAspects: [], plotAspects: [] };
+    return {
+      concept: null,
+      characters: [],
+      worldAspects: [],
+      loreAspects: [],
+      plotAspects: [],
+    };
   }
   let concept: BookConcept | null = null;
   if (row.concept) {
@@ -62,7 +81,42 @@ export function loadStudioContext(
       );
     }
   }
-  return { concept, worldAspects, loreAspects, plotAspects };
+  return {
+    concept,
+    characters: loadCanonCast(sqlite, bookId),
+    worldAspects,
+    loreAspects,
+    plotAspects,
+  };
+}
+
+/** Профиль читается врукопашную, без `characterProfileV2Schema`: здесь нужны
+ *  имя и роль, а одна негодная строка не должна лишать планировщик всего
+ *  состава — ровно та потеря, из-за которой `toCharacter` когда-то ронял
+ *  `GET /books/:id/characters` на всю книгу. */
+function loadCanonCast(
+  sqlite: DatabaseType,
+  bookId: number,
+): StudioContextCharacter[] {
+  const rows = sqlite
+    .prepare(
+      "SELECT canonical_name, profile_json FROM characters WHERE book_id = ? ORDER BY id",
+    )
+    .all(bookId) as Array<{ canonical_name: string; profile_json: string | null }>;
+  return rows.map((r) => {
+    let role: string | null = null;
+    if (r.profile_json) {
+      try {
+        const parsed = JSON.parse(r.profile_json) as { role?: unknown };
+        if (typeof parsed.role === "string" && parsed.role.trim()) {
+          role = parsed.role.trim();
+        }
+      } catch {
+        // Имя — это всё, ради чего список собирается; роль необязательна.
+      }
+    }
+    return { name: r.canonical_name, role };
+  });
 }
 
 function extractMarkdownAspects(
@@ -130,6 +184,16 @@ export function studioContextToPrompt(ctx: StudioContext): string | null {
     if (conceptLines.length > 0) {
       parts.push(`## Концепт\n${conceptLines.join("\n")}`);
     }
+  }
+
+  if (ctx.characters.length > 0) {
+    const lines = ctx.characters.map((ch) =>
+      ch.role ? `- ${ch.name} — ${ch.role}` : `- ${ch.name}`,
+    );
+    parts.push(
+      `## Персонажи книги (канон)\n${lines.join("\n")}\n` +
+        "Звать героев только этими именами. Замысел выше мог называть их иначе — канон сильнее: имя из этого списка и есть имя героя в книге.",
+    );
   }
 
   if (ctx.worldAspects.length > 0) {

@@ -86,7 +86,12 @@ function freshLabel(memory: ChapterMemoryInfo): string {
       ? memory.events.rejectedEvidence + memory.events.unresolved
       : 0) + memory.malformed;
   if (dropped > 0) {
-    return `Память актуальна · не прижилось записей: ${dropped}`;
+    // Имена — единственное, по чему автор может действовать: расхождение
+    // между замыслом и составом лечится псевдонимом или переименованием.
+    const names = memory.events?.unresolvedNames ?? [];
+    const why =
+      names.length > 0 ? ` — в составе книги нет: ${names.join(", ")}` : "";
+    return `Память актуальна · не прижилось записей: ${dropped}${why}`;
   }
   if (memory.outdatedPipeline) return "Память собрана прежним разбором";
   return "Память актуальна";

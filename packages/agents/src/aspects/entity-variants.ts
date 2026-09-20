@@ -100,7 +100,7 @@ const ENTITY_LABEL: Record<EntityStageId, string> = {
   items: "предметы",
 };
 
-function buildPrompt(input: AspectEntityVariantsInput): string {
+export function buildEntityVariantsPrompt(input: AspectEntityVariantsInput): string {
   const parts: string[] = [
     `Стадия: ${ENTITY_LABEL[input.stageId]}`,
     `Категория аспекта: ${input.aspect.name}`,
@@ -118,6 +118,23 @@ function buildPrompt(input: AspectEntityVariantsInput): string {
   if (input.concept.premise.logline) {
     parts.push("Логлайн:", input.concept.premise.logline);
   }
+  // Имена героев автор выбирает здесь, на замысле, и до этого промпта они не
+  // доезжали: в нём стояли только жанр, тон, аудитория и логлайн. Модель
+  // придумывала своё имя, книга расходилась сама с собой — план звал героиню
+  // как питч, канон как состав, и события памяти отвергались с «имя героя не
+  // разрешилось» (живой прогон 2026-09-20).
+  if (input.concept.premise.protagonist) {
+    parts.push(`Протагонист: ${input.concept.premise.protagonist}`);
+  }
+  if (input.concept.premise.conflict) {
+    parts.push(`Конфликт: ${input.concept.premise.conflict}`);
+  }
+  if (input.concept.premise.stakes) {
+    parts.push(`Ставки: ${input.concept.premise.stakes}`);
+  }
+  if (input.concept.hook) {
+    parts.push(`Крючок: ${input.concept.hook}`);
+  }
   if (input.accumulated.length > 0) {
     parts.push("", "УЖЕ ПРИНЯТЫЕ СУЩНОСТИ ЭТОЙ СТАДИИ:");
     for (const a of input.accumulated) {
@@ -132,6 +149,7 @@ function buildPrompt(input: AspectEntityVariantsInput): string {
   parts.push(
     "",
     `Сгенерируй 2–3 разных варианта набора *${ENTITY_LABEL[input.stageId]}* для категории "${input.aspect.name}". Каждый вариант = 1–6 именованных сущностей.`,
+    "Имена и прозвища, уже названные в замысле выше, переносить дословно во ВСЕ варианты: это выбор автора, и книга дальше зовёт героя только так. Придумывать своё имя тому, кто в замысле уже назван, нельзя.",
   );
   return parts.join("\n");
 }
@@ -146,7 +164,7 @@ const aspectEntityVariantsContract: AgentStructuredContract<
       ? (charactersOutputSchema as unknown as z.ZodType<AspectEntityVariantsOutput>)
       : (itemsOutputSchema as unknown as z.ZodType<AspectEntityVariantsOutput>),
   systemPrompt: SYSTEM,
-  buildPrompt,
+  buildPrompt: buildEntityVariantsPrompt,
   defaultMode: "mcp_submit_tool",
   mcp: {
     toolName: "submit_aspect_entity_variants",

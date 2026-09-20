@@ -41,6 +41,10 @@ export interface AppliedEventCounts {
   duplicates: number;
   rejectedEvidence: number;
   unresolved: number;
+  /** Имена, которые не разрешились в героев книги. Необязательно: у заданий,
+   *  записанных до этого выпуска, поля нет, и отсутствие списка отличается от
+   *  пустого списка. */
+  unresolvedNames?: string[];
   /** Событий прежнего извлекателя по этой же версии, снятых новым разбором. */
   superseded: number;
 }
@@ -147,6 +151,7 @@ export function tryActivateMemoryVersion(
               duplicates: outcome.duplicates,
               rejectedEvidence: outcome.rejectedEvidence,
               unresolved: outcome.unresolved,
+              unresolvedNames: outcome.unresolvedNames,
               superseded: outcome.superseded,
             } satisfies AppliedEventCounts,
           }),
@@ -155,7 +160,7 @@ export function tryActivateMemoryVersion(
       if (outcome.rejectedEvidence > 0 || outcome.unresolved > 0) {
         // Не ошибка активации: остальные слои версии обязаны активироваться.
         console.warn(
-          `[memory] v${versionId}: принято событий ${outcome.inserted}, повторов ${outcome.duplicates}; отброшено — доказательство ${outcome.rejectedEvidence}, имя героя или адресата не разрешилось ${outcome.unresolved}`,
+          `[memory] v${versionId}: принято событий ${outcome.inserted}, повторов ${outcome.duplicates}; отброшено — доказательство ${outcome.rejectedEvidence}, имя героя или адресата не разрешилось ${outcome.unresolved}${outcome.unresolvedNames.length > 0 ? ` (${outcome.unresolvedNames.join(", ")})` : ""}`,
         );
       }
     }
