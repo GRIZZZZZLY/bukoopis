@@ -4,6 +4,7 @@ import { registerEditorCriticContract } from "./critics/editor.js";
 import { registerReaderCriticContract } from "./critics/reader.js";
 import { registerCanonGuardContract } from "./canon-extractor.js";
 import { registerCanonFactExtractorContract } from "./canon-fact-extractor.js";
+import { registerCharacterEventExtractorContract } from "./character-event-extractor.js";
 import { registerEpisodicNoteExtractorContract } from "./episodic-note-extractor.js";
 import { registerRerankerContract } from "./reranker.js";
 import {
@@ -40,6 +41,7 @@ export function registerAllAgentContracts(): void {
   registerReaderCriticContract();
   registerCanonGuardContract();
   registerCanonFactExtractorContract();
+  registerCharacterEventExtractorContract();
   registerEpisodicNoteExtractorContract();
   registerRerankerContract();
   registerPlotOutlineContract();

@@ -5,8 +5,8 @@ import {
   type StructuredUsage,
 } from "@book-forge/llm";
 import {
-  canonFactExtractionSchema,
-  type CanonFactExtraction,
+  canonFactToolSchema,
+  type CanonFactToolResult,
   type ModelChoice,
   type GenerationConfig,
 } from "@book-forge/shared";
@@ -48,40 +48,9 @@ const CHAPTER_AGENT_TIMEOUT_MS = 600_000;
 
 export const CANON_FACT_EXTRACTOR_SYSTEM = `Ты — Canon Archivist, литературный архивариус непрерывности. Работаешь на русском.
 
-Задача: прочитать главу и выписать АТОМАРНЫЕ факты о каноне, истинные НА МОМЕНТ ЭТОЙ ГЛАВЫ, и события персонажей.
+Задача: прочитать главу и выписать АТОМАРНЫЕ факты о каноне, истинные НА МОМЕНТ ЭТОЙ ГЛАВЫ.
 
-ФАКТЫ КНИГИ vs СОБЫТИЯ ПЕРСОНАЖА
-
-Факт книги — то, что произошло объективно (герой потерял ключ, переместился, мир имеет правило).
-Событие персонажа — то, что стало известно или изменилось У КОНКРЕТНОГО ГЕРОЯ (герой узнал о закрытии станции, испугался, обещал помочь).
-
-Как герой получил сведение:
-- Услышанное и увиденное РАЗЛИЧАТЬ: acquisition = observed ТОЛЬКО если герой это видел сам; told — если ему сказали (или он подслушал); inferred — если он вывел из увиденного («на столе два прибора — значит, ждали гостя»); believed — если верит без подтверждения («она была уверена, что брат жив»).
-- Поле acquisition ОБЯЗАТЕЛЬНО для knowledge и должно быть одним из четырёх выше. Событие без него отбрасывается целиком и в канон не попадает — герой так и останется не знающим этого. Значения "unknown" у тебя нет: оно означает «происхождение не записано» и оставлено для старых авторских записей — если из текста не понять, откуда герой знает, событие лучше не записывать вовсе.
-- ЛОЖЬ, УСЛЫШАННАЯ ГЕРОЕМ, — это событие знания с acquisition: "told", а НЕ факт книги. Герой может верить неправде; канон книги от его убеждений не меняется.
-
-ИМЕНА ГЕРОЕВ в событиях: subjectName и addresseeName пиши в именительном падеже — «Ивану» → «Иван», «с Рин» → «Рин». Если герой есть в списке известного канона (если такой список дан ниже), бери имя оттуда дословно. Имя, которое не удастся сопоставить с героем книги, событие не запишет.
-
-ДОКАЗАТЕЛЬСТВО
-- Каждое событие несёт evidenceQuote — ДОСЛОВНЫЙ отрывок из текста главы, скопированный СИМВОЛ В СИМВОЛ, вместе со знаками препинания и тире. Не пересказывай, не сокращай, не исправляй опечатки.
-- Позиции считать НЕ НАДО: сервер сам находит цитату в тексте.
-- Цитата должна встречаться в главе РОВНО ОДИН РАЗ. Короткий обрывок вроде «— Да.» встречается много раз и будет отвергнут — бери отрывок подлиннее, вместе с окружающими словами.
-- Событие, чью цитату не удалось найти, не записывается.
-
-Что записывать как событие и КАКИЕ ПОЛЯ у data:
-- knowledge — герой узнал факт, умение, чувство другого. data: { fact: "что именно узнал", acquisition: "observed|told|inferred|believed", source: "от кого или откуда, если это видно из текста; иначе null" }
-- state — усталость, раздражение, намерение, эмоция, если это видно из текста. data: { state: "что с героем", scope: "scene|chapter|until_resolved|unknown", endCondition: "чем это кончится, словами из текста; иначе null", endsAtChapterOrder: "номер главы, с которой это точно позади, если он назван; иначе null" }
-- relation_shift — конкретное изменение отношения к другому герою. data: { quality: "доверие|уважение|привязанность|страх|обида|…", from: "как было", to: "как стало" }, addresseeName — к кому
-- commitment — обещание, долг, взятое обязательство. data: { commitment: "что обещал", toWhom: "кому" }
-
-Имена полей менять нельзя. Ключи не из этого списка отбрасываются молча, поэтому событие, где главное поле названо по-своему, оказывается пустым — и такое событие отбрасывается целиком, работа над ним пропадает.
-
-- relation_shift — только конкретные изменения, НЕ ГИПОТЕЗЫ. Вывод о длительном отношении («теперь презирает всех») из одной реплики — НЕ событие. Записывать только то, что в тексте сказано или показано. Такие события автор подтверждает вручную, поэтому лучше пропустить сомнительное, чем нагрузить его списком догадок.
-- При состояниях (state): если из текста не видно, когда это кончится, оставлять scope: "unknown", а не придумывать срок. scope: "scene" и "chapter" означают, что состояние кончается вместе со сценой или главой, и дальше герою не приписывается.
-- endCondition — это условие, а не срок: «пока Сарек не ответит», «пока не доберётся до станции». Писать так, чтобы фраза читалась после слова «держится:». Номер главы в endsAtChapterOrder — порядковый, как их видит автор (первая глава — 1), а не внутренний.
-- Не более 30 событий. Превышение отвергает ВЕСЬ ответ, вместе с фактами. Лучше меньше и точнее.
-
----
+События персонажей — что узнал и почувствовал конкретный герой — выписывает отдельный агент своим вызовом. Здесь их не нужно: два массива в одном ответе модель сериализует во вложенную строку, и события терялись все до одного (живой прогон 2026-09-20).
 
 Факт = (entityType, entityName, predicate, objectText):
 - entityType: character | location | item | world
@@ -107,7 +76,7 @@ export const CANON_FACT_EXTRACTOR_SYSTEM = `Ты — Canon Archivist, литер
 - Если supersedesFactIds не указан, сервер закроет активный факт с тем же entityName и predicate (fallback) — поэтому для мультизначных предикатов («владеет», «умеет», «союзник») указывай id явно.
 - Не более 40 фактов. Лучше меньше и точнее.
 
-Возвращай: facts[] (с assertionMode и, где нужно, supersedesFactIds) + characterEvents[] (если есть) + notes (1-2 предложения о ключевых изменениях канона, либо null).`;
+Возвращай: facts[] (с assertionMode и, где нужно, supersedesFactIds) + notes (1-2 предложения о ключевых изменениях канона, либо null).`;
 
 function buildPrompt(input: CanonFactExtractorInput): string {
   const known = [
@@ -133,7 +102,7 @@ function buildPrompt(input: CanonFactExtractorInput): string {
   const volatileParts: string[] = [
     `Глава #${input.chapterOrder}: "${input.chapterTitle}"`,
     `Текст главы:\n\n${input.chapterText}`,
-    "Выпиши атомарные факты канона по этой главе и события персонажей: что каждый герой узнал, от кого, что с ним стало. К каждому событию — дословную цитату из текста выше.",
+    "Выпиши атомарные факты канона по этой главе.",
   ];
 
   return [...stableParts, ...volatileParts].join("\n\n---\n\n");
@@ -141,10 +110,13 @@ function buildPrompt(input: CanonFactExtractorInput): string {
 
 const canonFactExtractorContract: AgentStructuredContract<
   CanonFactExtractorInput,
-  CanonFactExtraction
+  CanonFactToolResult
 > = {
   agentName: "canon_fact_extractor",
-  getOutputSchema: () => canonFactExtractionSchema,
+  // Только факты: события уехали своему агенту. Схема чтения
+  // `canonFactExtractionSchema` осталась с полем событий — по ней
+  // разбираются staged-результаты заданий, записанных до разделения.
+  getOutputSchema: () => canonFactToolSchema,
   systemPrompt: CANON_FACT_EXTRACTOR_SYSTEM,
   buildPrompt,
   defaultMode: "mcp_submit_tool",
@@ -168,10 +140,10 @@ export function registerCanonFactExtractorContract(): void {
 
 export async function extractCanonFacts(
   input: CanonFactExtractorInput,
-): Promise<CanonFactExtraction> {
+): Promise<CanonFactToolResult> {
   const { raw, diagnostics } = await dispatchStructured<
     CanonFactExtractorInput,
-    CanonFactExtraction
+    CanonFactToolResult
   >({
     agentName: "canon_fact_extractor",
     payload: input,

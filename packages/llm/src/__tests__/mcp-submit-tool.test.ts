@@ -362,6 +362,39 @@ describe("вложенный массив, присланный строкой",
     expect(result.raw.events).toEqual([]);
   });
 
+  /** Живой прогон 2026-09-20: строка не разбиралась не потому, что оборвана,
+   *  а потому, что внутри дословной цитаты стоят двойные кавычки — «техник
+   *  насосной станции "Северная"». Модель копирует цитату посимвольно, как
+   *  мы и требуем, но, сериализуя массив в строку вручную, внутренние
+   *  кавычки не экранирует. На реальной главе так терялись все 15 событий. */
+  it("чинит неэкранированные кавычки внутри строки", async () => {
+    const broken =
+      '[{"kind": "knowledge", "quote": "техник станции "Северная" пришёл"}]';
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ facts: [], events: broken });
+        },
+        successResult,
+      ]),
+    );
+    const schema = z.object({
+      facts: z.array(z.object({ text: z.string() })).max(40),
+      events: z
+        .array(z.object({ kind: z.string(), quote: z.string() }))
+        .max(30)
+        .default([]),
+    });
+    const contract = { ...fixtureContract, getOutputSchema: () => schema };
+    const result = await callViaSdkMcpSubmitTool(contract as never, schema, {
+      payload: { q: "тест" },
+      model: "sonnet",
+    });
+    expect(result.raw.events).toEqual([
+      { kind: "knowledge", quote: 'техник станции "Северная" пришёл' },
+    ]);
+  });
+
   it("строка, которая не JSON, остаётся ошибкой схемы", async () => {
     queryQueue.push(() =>
       asyncGen([

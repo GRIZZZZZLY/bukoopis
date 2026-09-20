@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
-import { extractCanonFacts } from "@book-forge/agents";
+import { extractCanonFacts, extractCharacterEvents } from "@book-forge/agents";
 import type { ExtractedFact, FactEntityType, ExtractedCharacterEvent } from "@book-forge/shared";
 import { logUsage } from "./usageLogger.js";
 import { resolveEntity, normalizeEntityName } from "./entity-resolve.js";
@@ -551,8 +551,45 @@ export async function extractFactsPayload(
       }),
   });
 
+  // Второй вызов — только события (живой прогон 2026-09-20). Одним ответом
+  // они не доезжали никогда: на схеме с двумя массивами модель сериализует
+  // второй в JSON-строку с ломаным экранированием, и развернуть её нельзя.
+  // Падение этого вызова факты не уносит: они уже получены и это всё, что у
+  // главы есть.
+  let rawEvents: Array<ExtractedCharacterEvent | null> = [];
+  try {
+    const eventResult = await extractCharacterEvents({
+      bookTitle: bk.title,
+      chapterTitle: ch.title,
+      chapterOrder: ch.order_index,
+      chapterText: v.content_text,
+      knownCharacters: names("characters"),
+      model: bk.critic_model ?? "sonnet",
+      onUsage: (u) =>
+        logUsage(sqlite, {
+          route: "canon.events",
+          model: u.modelId,
+          usage: {
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+            cacheCreationInputTokens: u.cacheCreationInputTokens,
+            cacheReadInputTokens: u.cacheReadInputTokens,
+          },
+          bookId: ch.book_id,
+          chapterId: ch.id,
+          versionId,
+        }),
+    });
+    rawEvents = eventResult.characterEvents ?? [];
+  } catch (e) {
+    console.warn(
+      `[canon-facts] v${versionId}: события персонажей не извлеклись —`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+
   const facts = dropMalformed(result.facts);
-  const events = dropMalformed(result.characterEvents ?? []);
+  const events = dropMalformed(rawEvents);
   if (facts.dropped > 0 || events.dropped > 0) {
     console.warn(
       `[canon-facts] v${versionId}: схема не приняла ${facts.dropped} факт(ов) и ${events.dropped} событие(й) — остальное сохранено`,
