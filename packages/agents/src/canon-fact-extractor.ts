@@ -39,6 +39,13 @@ export interface CanonFactExtractorInput {
 
 /** Экспортируется ради тестов: промпт — это и есть работа агента, а
  *  проверка схемы проверяет zod, а не то, что модели сказали. */
+/** Свой предел ожидания у агента, который читает главу целиком (живой
+ *  прогон 2026-09-20). Общий `LLM_TIMEOUT_MS` рассчитан на короткий
+ *  структурный ответ; разбор главы в две-три тысячи слов на подписке идёт
+ *  дольше, и общий предел рубил его на середине — память главы не
+ *  собиралась вовсе, а очередь молча повторяла задание пять раз. */
+const CHAPTER_AGENT_TIMEOUT_MS = 600_000;
+
 export const CANON_FACT_EXTRACTOR_SYSTEM = `Ты — Canon Archivist, литературный архивариус непрерывности. Работаешь на русском.
 
 Задача: прочитать главу и выписать АТОМАРНЫЕ факты о каноне, истинные НА МОМЕНТ ЭТОЙ ГЛАВЫ, и события персонажей.
@@ -145,6 +152,13 @@ const canonFactExtractorContract: AgentStructuredContract<
     toolName: "submit_canon_facts",
     toolDescription:
       "Submit atomic, time-scoped canon facts extracted from a chapter (entityType/entityName/predicate/objectText) together with per-character events (knowledge/state/relation_shift/commitment), each carrying a verbatim quote from the chapter.",
+    // Ходов больше трёх (живой прогон 2026-09-20). Схема здесь самая
+    // сложная в проекте: два массива объектов с вложенными данными и
+    // дословными цитатами. Модель заполняет её не с первого раза, и трёх
+    // ходов не хватало — задание падало с «Reached maximum number of
+    // turns», то есть память главы не собиралась вовсе. Лишние ходы
+    // тратятся только там, где без них был бы отказ.
+    maxTurns: 6,
   },
 };
 
@@ -170,6 +184,7 @@ export async function extractCanonFacts(
     // «инструмент не вызван», без `stop_reason`. Пока предел не доезжал до
     // подписки, его занижение ничего не стоило; теперь доезжает.
     maxTokens: 16000,
+    timeoutMs: CHAPTER_AGENT_TIMEOUT_MS,
   });
   if (input.onUsage) {
     try {
