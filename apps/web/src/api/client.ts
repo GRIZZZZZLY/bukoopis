@@ -12,6 +12,8 @@ import type {
   Character,
   CharacterKnowledge,
   CharacterVoiceSample,
+  ChatMessage,
+  ChatThread,
   CreateBookInput,
   CreateChapterInput,
   CreateCharacterInput,
@@ -21,6 +23,7 @@ import type {
   CreateLocationInput,
   CreateRelationshipInput,
   CreateVoiceSampleInput,
+  EntityAlias,
   GenerationConfig,
   Hook,
   IntakeSummaryRow,
@@ -32,6 +35,7 @@ import type {
   StageId,
   StudioState,
   StudioWarning,
+  StyleFreshness,
   UpdateBookInput,
   UpdateChapterInput,
   UpdateCharacterInput,
@@ -387,6 +391,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  setCharacterPromptVisibility: (id: number, hidden: boolean) =>
+    req<Character>(`/api/characters/${id}/prompt-visibility`, {
+      method: "PATCH",
+      body: JSON.stringify({ hidden }),
+    }),
   /** Возвращает, что ушло вместе с героем: события, образцы речи,
    *  отношения, псевдонимы (С10). */
   deleteCharacter: (id: number) =>
@@ -396,6 +405,19 @@ export const api = {
       deletedRelationships: number;
       deletedAliases: number;
     }>(`/api/characters/${id}`, { method: "DELETE" }),
+  /** Другие имена героя (прозвища, титулы) — по ним резолвер сводит
+   *  разные написания к одному id (ADR 0003). */
+  listCharacterAliases: (bookId: number, characterId: number) =>
+    req<EntityAlias[]>(
+      `/api/books/${bookId}/entities/character/${characterId}/aliases`,
+    ),
+  addCharacterAlias: (bookId: number, characterId: number, alias: string) =>
+    req<EntityAlias[]>(
+      `/api/books/${bookId}/entities/character/${characterId}/aliases`,
+      { method: "POST", body: JSON.stringify({ alias }) },
+    ),
+  deleteAlias: (bookId: number, aliasId: number) =>
+    req<void>(`/api/books/${bookId}/aliases/${aliasId}`, { method: "DELETE" }),
   listCharacterKnowledge: (id: number) =>
     req<CharacterKnowledge[]>(`/api/characters/${id}/knowledge`),
   addCharacterKnowledge: (
@@ -500,6 +522,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  /** Остановиться после текущего беата, сохранив написанное. */
+  holdProposal: (id: number) =>
+    req<{ holding: boolean }>(`/api/prose-proposals/${id}/hold`, { method: "POST" }),
   listProposals: (chapterId: number) =>
     req<import("@book-forge/shared").ProseProposal[]>(
       `/api/chapters/${chapterId}/proposals`,
@@ -584,7 +609,7 @@ export const api = {
     }),
   runStyleExtract: (
     profileId: number,
-    body?: import("@book-forge/shared").RunExtractInput,
+    body?: import("@book-forge/shared").RunExtractRequest,
   ) =>
     req<import("@book-forge/shared").StyleProfile>(
       `/api/style-profiles/${profileId}/extract`,
@@ -596,6 +621,13 @@ export const api = {
     req<import("@book-forge/shared").StyleProfile>(
       `/api/style-profiles/blend`,
       { method: "POST", body: JSON.stringify(body) },
+    ),
+  getStyleFreshness: (bookId: number) =>
+    req<StyleFreshness>(`/api/books/${bookId}/style-freshness`),
+  refreshStyleFromChapters: (bookId: number) =>
+    req<{ corpusId: number; chapters: Array<{ id: number; title: string }> }>(
+      `/api/books/${bookId}/style/refresh-from-chapters`,
+      { method: "POST", body: JSON.stringify({}) },
     ),
 
   // ── Usage / Health ──
@@ -954,6 +986,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+
+  // ── Чат по книге ──
+  listChatThreads: (chapterId: number) =>
+    req<ChatThread[]>(`/api/chapters/${chapterId}/chat/threads`),
+  createChatThread: (chapterId: number, title?: string) =>
+    req<ChatThread>(`/api/chapters/${chapterId}/chat/threads`, {
+      method: "POST",
+      body: JSON.stringify(title ? { title } : {}),
+    }),
+  deleteChatThread: (threadId: number) =>
+    req<void>(`/api/chat/threads/${threadId}`, { method: "DELETE" }),
+  listChatMessages: (threadId: number) =>
+    req<ChatMessage[]>(`/api/chat/threads/${threadId}/messages`),
 };
 
 export interface QuickStartInflight {
@@ -1030,6 +1075,7 @@ export interface InlineCommandRequest {
   beforeText: string;
   afterText: string;
   guidance?: string | null;
+  sense?: import("@book-forge/shared").SenseChannel;
 }
 
 export async function streamInlineCommand(
@@ -1056,6 +1102,40 @@ export async function streamInlineCommand(
       if (event === "chunk") handlers.onChunk((data as { text: string }).text);
       else if (event === "done")
         handlers.onDone(data as { text: string; tokens: { input: number; output: number } });
+      else if (event === "error") handlers.onError((data as { message: string }).message);
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
+}
+
+// ── SSE chat ──
+export interface ChatStreamHandlers {
+  onChunk: (text: string) => void;
+  onDone: (payload: { message: ChatMessage }) => void;
+  onError: (message: string) => void;
+}
+
+export async function streamChatMessage(
+  threadId: number,
+  content: string,
+  handlers: ChatStreamHandlers,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/chat/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => res.statusText);
+    handlers.onError(`HTTP ${res.status}: ${errorSummary(text)}`);
+    return;
+  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      if (event === "chunk") handlers.onChunk((data as { text: string }).text);
+      else if (event === "done") handlers.onDone(data as { message: ChatMessage });
       else if (event === "error") handlers.onError((data as { message: string }).message);
     },
     { terminalEvents: ["done", "error"] },
@@ -1210,6 +1290,9 @@ export interface RepairStreamHandlers {
     proposal: import("@book-forge/shared").ProseProposal;
     cancelled?: boolean;
     tokens?: { input: number; output: number };
+    /** Защищённые фрагменты, которых правка не сберегла (сервер их находит
+     *  в готовом тексте до отправки события). */
+    protectedLost?: string[];
   }) => void;
   onError: (message: string) => void;
 }
@@ -1278,9 +1361,12 @@ export interface WriterStreamHandlers {
   /** Подготовка сцены (этап 5). Деградацию видно автору, а не только в логе. */
   onSceneIntent?: (status: SceneIntentStatus) => void;
   onChunk: (text: string) => void;
+  /** Какой беат пошёл в работу — только в режиме «по беатам». */
+  onBeat?: (e: { index: number; total: number }) => void;
   onDone: (payload: {
     proposal: import("@book-forge/shared").ProseProposal;
     cancelled?: boolean;
+    held?: boolean;
     tokens?: { input: number; output: number };
   }) => void;
   onError: (message: string) => void;
@@ -1292,13 +1378,18 @@ export async function streamWriteChapter(
   config: GenerationConfig | undefined,
   handlers: WriterStreamHandlers,
   signal?: AbortSignal,
+  options?: { mode?: "whole" | "beats"; fromBeat?: number },
 ): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/chapters/${chapterId}/write`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ config }),
+      body: JSON.stringify({
+        config,
+        ...(options?.mode ? { mode: options.mode } : {}),
+        ...(options?.fromBeat !== undefined ? { fromBeat: options.fromBeat } : {}),
+      }),
       signal,
     });
   } catch (err) {
@@ -1323,6 +1414,8 @@ export async function streamWriteChapter(
         else if (event === "scene_intent")
           handlers.onSceneIntent?.(data as unknown as SceneIntentStatus);
         else if (event === "chunk") handlers.onChunk(d.text as string);
+        else if (event === "beat")
+          handlers.onBeat?.(data as { index: number; total: number });
         else if (event === "done")
           handlers.onDone(data as Parameters<WriterStreamHandlers["onDone"]>[0]);
         else if (event === "error") handlers.onError(d.message as string);

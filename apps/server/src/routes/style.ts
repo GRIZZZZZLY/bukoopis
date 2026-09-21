@@ -25,6 +25,8 @@ import {
 } from "@book-forge/style-engine";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
+import { insertReferenceCorpus } from "../utils/style-corpus.js";
+import type { BookRow, ChapterRow } from "../db/rows.js";
 
 interface StyleProfileRow {
   id: number;
@@ -261,38 +263,12 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
       return badRequest(c, "parsed text is too short (<200 chars)");
     }
 
-    const now = new Date().toISOString();
-    const tx = sqlite.transaction(() => {
-      const info = sqlite
-        .prepare(
-          `INSERT INTO reference_corpora
-           (profile_id, filename, format, language, raw_text, char_count, scene_count, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          id,
-          parsed.data.filename,
-          parsedRef.format,
-          profile.language,
-          parsedRef.text,
-          parsedRef.text.length,
-          parsedRef.scenes.length,
-          now,
-        );
-      const corpusId = Number(info.lastInsertRowid);
-      const insertScene = sqlite.prepare(
-        `INSERT INTO reference_scenes (corpus_id, order_index, text, char_count, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      );
-      for (let i = 0; i < parsedRef.scenes.length; i++) {
-        insertScene.run(corpusId, i, parsedRef.scenes[i]!, parsedRef.scenes[i]!.length, now);
-      }
-      sqlite
-        .prepare("UPDATE style_profiles SET updated_at = ? WHERE id = ?")
-        .run(now, id);
-      return corpusId;
-    });
-    const corpusId = tx();
+    const corpusId = insertReferenceCorpus(
+      sqlite,
+      { id, language: profile.language },
+      parsed.data.filename,
+      parsedRef,
+    );
     const row = sqlite
       .prepare(
         "SELECT id, profile_id, filename, format, language, '' as raw_text, char_count, scene_count, created_at FROM reference_corpora WHERE id = ?",
@@ -536,6 +512,100 @@ export function createStyleRoute(sqlite: DatabaseType): Hono {
       .prepare("SELECT * FROM style_profiles WHERE id = ?")
       .get(info.lastInsertRowid) as StyleProfileRow;
     return c.json(toProfile(sqlite, row), 201);
+  });
+
+  // ─────────── Свежесть паспорта стиля (заимствование из litrab.ai) ───────────
+
+  const STALE_AFTER_CHAPTERS = 3;
+
+  r.get("/books/:id/style-freshness", (c) => {
+    const bookId = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT * FROM books WHERE id = ?")
+      .get(bookId) as BookRow | undefined;
+    if (!book) return notFound(c, "book");
+    const empty = {
+      profileId: null,
+      profileName: null,
+      kind: null,
+      lastExtractedAt: null,
+      versionsSince: 0,
+      chaptersSince: 0,
+      stale: false,
+    };
+    if (book.style_profile_id === null) return c.json(empty);
+    const profile = sqlite
+      .prepare("SELECT * FROM style_profiles WHERE id = ?")
+      .get(book.style_profile_id) as StyleProfileRow | undefined;
+    if (!profile) return c.json(empty);
+    // Отсчёт — от последнего извлечения; пока его не было, сравнивать нечем.
+    const since = profile.last_extracted_at ?? "0000-00-00T00:00:00.000Z";
+    const counts = sqlite
+      .prepare(
+        `SELECT COUNT(*) AS versions, COUNT(DISTINCT v.chapter_id) AS chapters
+         FROM chapter_versions v JOIN chapters ch ON ch.id = v.chapter_id
+         WHERE ch.book_id = ? AND v.created_at > ?`,
+      )
+      .get(bookId, since) as { versions: number; chapters: number };
+    return c.json({
+      profileId: profile.id,
+      profileName: profile.name,
+      kind: profile.kind,
+      lastExtractedAt: profile.last_extracted_at,
+      versionsSince: counts.versions,
+      chaptersSince: counts.chapters,
+      stale:
+        profile.kind === "extracted" &&
+        profile.last_extracted_at !== null &&
+        counts.chapters >= STALE_AFTER_CHAPTERS,
+    });
+  });
+
+  // Добор последних глав в корпус. Старые корпуса остаются: статистика
+  // меряется по всему корпусу, а что убрать — решает автор на странице
+  // профиля. Само извлечение — прежним POST /style-profiles/:id/extract,
+  // его зовёт клиент вторым шагом; второго обработчика извлечения не заводим.
+  r.post("/books/:id/style/refresh-from-chapters", async (c) => {
+    const bookId = Number(c.req.param("id"));
+    const book = sqlite
+      .prepare("SELECT * FROM books WHERE id = ?")
+      .get(bookId) as BookRow | undefined;
+    if (!book) return notFound(c, "book");
+    if (book.style_profile_id === null) return badRequest(c, "у книги нет паспорта стиля");
+    const profile = sqlite
+      .prepare("SELECT * FROM style_profiles WHERE id = ?")
+      .get(book.style_profile_id) as StyleProfileRow | undefined;
+    if (!profile) return notFound(c, "style_profile");
+    if (profile.kind !== "extracted") {
+      return badRequest(c, "у смешанного профиля нет своего корпуса — пересобирайте родителей");
+    }
+    const rows = sqlite
+      .prepare(
+        `SELECT ch.id, ch.title, v.content_text
+         FROM chapters ch JOIN chapter_versions v ON v.id = ch.current_version_id
+         WHERE ch.book_id = ?
+         ORDER BY ch.order_index DESC, ch.id DESC
+         LIMIT 3`,
+      )
+      .all(bookId) as Array<Pick<ChapterRow, "id" | "title"> & { content_text: string }>;
+    if (rows.length === 0) return badRequest(c, "у книги нет принятых глав");
+    const ordered = [...rows].reverse();
+    const text = ordered.map((r2) => r2.content_text).join("\n\n");
+    const filename = `${book.title}-главы-${new Date().toISOString().slice(0, 10)}.txt`;
+    let parsedRef;
+    try {
+      parsedRef = await parseReference(filename, text);
+    } catch (e) {
+      return badRequest(c, `parser failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (parsedRef.text.length < 200) return badRequest(c, "parsed text is too short (<200 chars)");
+    const corpusId = insertReferenceCorpus(
+      sqlite,
+      { id: profile.id, language: profile.language },
+      filename,
+      parsedRef,
+    );
+    return c.json({ corpusId, chapters: ordered.map((r2) => ({ id: r2.id, title: r2.title })) });
   });
 
   return r;

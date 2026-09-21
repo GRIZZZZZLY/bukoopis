@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VoiceSamples } from "@/components/VoiceSamples";
+import { AliasEditor } from "@/components/AliasEditor";
 import { RelationshipQualities } from "@/components/RelationshipQualities";
 import { api } from "@/api/client";
 import type {
@@ -148,6 +149,15 @@ function CharactersTab({ bookId }: { bookId: number }) {
     }
   }
 
+  async function onToggleHidden(c: Character) {
+    try {
+      const next = await api.setCharacterPromptVisibility(c.id, !c.hiddenFromPrompts);
+      setList((prev) => (prev ?? []).map((x) => (x.id === next.id ? next : x)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function onDelete(id: number) {
     if (!confirm("Удалить персонажа? (вместе со связями и знаниями)")) return;
     try {
@@ -193,17 +203,42 @@ function CharactersTab({ bookId }: { bookId: number }) {
         <ul className="flex flex-col gap-2">
           {list.map((c) => (
             <li key={c.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
-              <div className="flex justify-between items-center">
-                <strong>{c.canonicalName}</strong>
-                <DeleteButton
-                  label={`Удалить персонажа «${c.canonicalName}»`}
-                  onClick={() => onDelete(c.id)}
-                />
+              <div className="flex justify-between items-center gap-2">
+                <strong className={c.hiddenFromPrompts ? "opacity-60" : ""}>{c.canonicalName}</strong>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="p-1 rounded hover:bg-[var(--color-muted)]"
+                    aria-label={
+                      c.hiddenFromPrompts
+                        ? `Вернуть «${c.canonicalName}» в запросы к модели`
+                        : `Скрыть «${c.canonicalName}» из запросов к модели`
+                    }
+                    title={c.hiddenFromPrompts ? "Скрыт из запросов к модели" : "Уходит в запросы к модели"}
+                    onClick={() => void onToggleHidden(c)}
+                  >
+                    {c.hiddenFromPrompts ? (
+                      <EyeOff className="size-4" aria-hidden="true" />
+                    ) : (
+                      <Eye className="size-4" aria-hidden="true" />
+                    )}
+                  </button>
+                  <DeleteButton
+                    label={`Удалить персонажа «${c.canonicalName}»`}
+                    onClick={() => onDelete(c.id)}
+                  />
+                </div>
               </div>
+              {c.hiddenFromPrompts && (
+                <div className="text-xs text-[var(--color-muted-foreground)]">
+                  Скрыт из запросов к модели — карточка не уходит Писателю и критикам.
+                </div>
+              )}
               <div className="text-[var(--color-muted-foreground)]">{c.profile.description}</div>
               {c.profile.want && <div>Хочет: {c.profile.want}</div>}
               {c.profile.need && <div>Нуждается: {c.profile.need}</div>}
               {c.profile.lie && <div>Самообман: {c.profile.lie}</div>}
+              <AliasEditor bookId={bookId} characterId={c.id} />
               <button
                 type="button"
                 onClick={() => setExpandedVoiceId(expandedVoiceId === c.id ? null : c.id)}

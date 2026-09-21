@@ -5,6 +5,8 @@
  *  Функции здесь чистые: сервер применяет выбранное подмножество (принимает
  *  сервер, а не вкладка), веб теми же данными рисует выбор. */
 
+import { mentionsEntityName } from "./entity-names.js";
+
 /** Выше этого числа абзацев LCS-таблица становится дороже, чем стоит выбор по
  *  абзацам. Такой документ отдаём одной правкой «заменить всё» — автор всё
  *  равно не выбирает из тысячи пунктов. */
@@ -268,4 +270,26 @@ function textToParagraph(text: string): unknown {
   return text === ""
     ? { type: "paragraph" }
     : { type: "paragraph", content: [{ type: "text", text }] };
+}
+
+/** Имена героев, встречавшиеся в убранных или заменённых абзацах базы и не
+ *  встречающиеся в кандидате вовсе. Правка «убирает частное ради общего»
+ *  (наблюдение авторов, цитируемых Литрабом): герой, названный по имени,
+ *  становится «он», и глазами это пропускается. Вставки потерей не считаются. */
+export function findLostMentions(
+  changes: ProseChange[],
+  candidateText: string,
+  names: string[],
+): string[] {
+  const removed = changes
+    .filter((c) => c.kind !== "insert")
+    .flatMap((c) => c.baseText)
+    .join("\n");
+  if (removed.trim().length === 0) return [];
+  return names.filter(
+    (n) =>
+      n.trim().length > 0 &&
+      mentionsEntityName(removed, n) &&
+      !mentionsEntityName(candidateText, n),
+  );
 }

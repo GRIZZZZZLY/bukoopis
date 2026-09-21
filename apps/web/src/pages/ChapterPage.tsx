@@ -36,6 +36,9 @@ import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { SceneStatePanel } from "@/components/chapter/SceneStatePanel";
+import { ChatPanel } from "@/components/chapter/ChatPanel";
+import { AuthorNotesPanel } from "@/components/chapter/AuthorNotesPanel";
+import { StyleFreshnessNote } from "@/components/chapter/StyleFreshnessNote";
 import {
   ProposalPanel,
   type ProposalReread,
@@ -103,6 +106,18 @@ export function ChapterPage() {
     null,
   );
   const [writing, setWriting] = useState(false);
+  /** Выбор автора живёт между главами: режим — привычка, а не свойство главы. */
+  const [writeMode, setWriteMode] = useState<"whole" | "beats">(() => {
+    try {
+      return localStorage.getItem("bf-write-mode") === "beats" ? "beats" : "whole";
+    } catch {
+      return "whole";
+    }
+  });
+  const [beatProgress, setBeatProgress] = useState<{ index: number; total: number } | null>(null);
+  const [holding, setHolding] = useState(false);
+  /** С какого беата дописывать: частично написанная и уже принятая глава. */
+  const [resumeFromBeat, setResumeFromBeat] = useState<number | null>(null);
   const [writerBuffer, setWriterBuffer] = useState("");
   const [proposal, setProposal] = useState<ProseProposal | null>(null);
   const [proposalChanges, setProposalChanges] = useState<ProseChange[]>([]);
@@ -123,6 +138,9 @@ export function ChapterPage() {
   const [memory, setMemory] = useState<ChapterMemoryInfo | null>(null);
   const [memoryRetrying, setMemoryRetrying] = useState(false);
   const [memoryRebuilding, setMemoryRebuilding] = useState(false);
+  /** Имена героев книги — панель кандидата ищет по ним пропавшие упоминания
+   *  (Task 6). Тот же список, что уже грузится ниже для подсветки канона. */
+  const [characterNames, setCharacterNames] = useState<string[]>([]);
 
   const isPreviewRef = useRef(false);
   const baselineJsonRef = useRef<string>(JSON.stringify(EMPTY_DOC));
@@ -313,6 +331,22 @@ export function ChapterPage() {
           setDirty(false);
           setEditorTick((t) => t + 1);
         }
+        // Частично написанная и принятая глава: с какого беата продолжать,
+        // видно по последнему принятому кандидату — без новых колонок у версии.
+        try {
+          const list = await api.listProposals(id);
+          const partial = list.find(
+            (p) =>
+              p.acceptedVersionId !== null &&
+              p.acceptedVersionId === ch.currentVersionId &&
+              p.beatsDone !== null &&
+              p.beatsTotal !== null &&
+              p.beatsDone < p.beatsTotal,
+          );
+          setResumeFromBeat(partial ? partial.beatsDone : null);
+        } catch {
+          setResumeFromBeat(null);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -386,6 +420,7 @@ export function ChapterPage() {
     ])
       .then(([chars, locs, items, hooks]) => {
         if (cancelled) return;
+        setCharacterNames(chars.map((c) => c.canonicalName));
         const entities: CanonHighlightEntity[] = [
           ...chars.map((c) => ({
             type: "character" as const,
@@ -544,13 +579,33 @@ export function ChapterPage() {
     writerAbortRef.current = null;
   }
 
-  async function onRunWriter() {
+  /** Остановиться после текущего беата, сохранив написанное. Не отмена: беат
+   *  дописывается, кандидат остаётся и его можно принять. */
+  async function onHoldWriter() {
+    if (runningProposalId === null) return;
+    setHolding(true);
+    try {
+      await api.holdProposal(runningProposalId);
+    } catch (e) {
+      setHolding(false);
+      toast.error("Не удалось остановить", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function onRunWriter(fromBeat?: number) {
     if (!selectedPlan) return;
     if (writing) return;
     const ctrl = new AbortController();
     writerAbortRef.current = ctrl;
     setWriting(true);
     setWriterBuffer("");
+    // Хвост прошлого запуска: иначе после остановленной генерации по беатам
+    // целая глава писалась бы под «Беат 2 из 3» и с живой кнопкой удержания,
+    // которую этот путь всё равно не слушает.
+    setBeatProgress(null);
+    setHolding(false);
     try {
       await streamWriteChapter(
         id,
@@ -560,6 +615,7 @@ export function ChapterPage() {
             setWriterBuffer((b) => b + text);
           },
           onProposal: (proposalId) => setRunningProposalId(proposalId),
+          onBeat: (e) => setBeatProgress(e),
           // Деградация названа вслух: глава без замысла сцены пишется теми же
           // карточками, но герои действуют без намерений — и молча это
           // выглядело бы как обычная генерация.
@@ -574,9 +630,16 @@ export function ChapterPage() {
             setWriting(false);
             writerAbortRef.current = null;
             setRunningProposalId(null);
+            setBeatProgress(null);
+            setHolding(false);
             if (payload.cancelled) {
               toast.info("Генерация остановлена");
               return;
+            }
+            if (payload.held) {
+              toast.info("Остановлено после беата", {
+                description: "Написанное лежит в кандидате — примите его или отклоните.",
+              });
             }
             setProposal(payload.proposal);
             const { changes } = await api.getProposalChanges(payload.proposal.id);
@@ -594,16 +657,23 @@ export function ChapterPage() {
             });
             setWriting(false);
             writerAbortRef.current = null;
+            setBeatProgress(null);
+            setHolding(false);
           },
           onAbort: () => {
             setWriting(false);
             writerAbortRef.current = null;
+            setBeatProgress(null);
+            setHolding(false);
             toast.success("Стрим остановлен", {
               description: "Уже сгенерированный текст оставлен в буфере.",
             });
           },
         },
         ctrl.signal,
+        // Дописывание по определению идёт по беатам: иначе снятая галочка
+        // превращала бы кнопку «Дописать с беата» в отказ сервера.
+        fromBeat !== undefined ? { mode: "beats", fromBeat } : { mode: writeMode },
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -731,7 +801,7 @@ export function ChapterPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={onRunWriter}
+            onClick={() => void onRunWriter()}
             disabled={writing || !selectedPlan}
             variant="default"
             aria-busy={writing || undefined}
@@ -754,6 +824,40 @@ export function ChapterPage() {
             >
               <Square className="size-4" aria-hidden="true" />
               Стоп
+            </Button>
+          )}
+          <label className="text-xs flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={writeMode === "beats"}
+              onChange={(e) => {
+                const next = e.target.checked ? "beats" : "whole";
+                setWriteMode(next);
+                try {
+                  localStorage.setItem("bf-write-mode", next);
+                } catch {
+                  /* приватное окно */
+                }
+              }}
+              disabled={writing}
+            />
+            По беатам
+          </label>
+          {writing && beatProgress && (
+            <span className="text-xs">
+              Беат {beatProgress.index + 1} из {beatProgress.total}
+            </span>
+          )}
+          {/* По беатам ли идёт ЭТОТ запуск, говорит пришедший беат, а не
+              галочка: «Дописать с беата» работает и при снятой. */}
+          {writing && beatProgress !== null && (
+            <Button size="sm" variant="outline" onClick={() => void onHoldWriter()} disabled={holding}>
+              {holding ? "Дописываю беат…" : "Остановить после беата"}
+            </Button>
+          )}
+          {!writing && resumeFromBeat !== null && (
+            <Button size="sm" variant="outline" onClick={() => void onRunWriter(resumeFromBeat)}>
+              Дописать с беата {resumeFromBeat + 1}
             </Button>
           )}
           {!selectedPlan && !writing && (
@@ -875,6 +979,8 @@ export function ChapterPage() {
                 changes={proposalChanges}
                 expectedVersionId={chapter?.currentVersionId ?? null}
                 expectedDraftRevision={chapter?.draft?.revision ?? null}
+                baseWordCount={chapter?.currentVersion?.wordCount ?? null}
+                characterNames={characterNames}
                 onReread={async () => {
                   const fresh = await rereadForProposal(proposal.id);
                   setProposalChanges(fresh.changes);
@@ -1024,17 +1130,31 @@ export function ChapterPage() {
           aria-label="Разбор и материалы"
         >
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
+            <PanelBoundary title="Чат по книге">
+              <ChatPanel chapterId={id} />
+            </PanelBoundary>
             <PanelBoundary title="Разбор критиков">
               <CritiquePanel
                 versionId={chapter.currentVersionId}
                 expectedVersionId={chapter.currentVersionId}
                 expectedDraftRevision={chapter.draft?.revision ?? null}
+                baseWordCount={chapter.currentVersion?.wordCount ?? null}
+                characterNames={characterNames}
                 onRereadProposal={rereadForProposal}
                 onRepairDone={load}
               />
             </PanelBoundary>
             <PanelBoundary title="Состояние сцены">
               <SceneStatePanel chapterId={id} />
+            </PanelBoundary>
+            <PanelBoundary title="Заметки автора">
+              <AuthorNotesPanel
+                bookId={Number(bookId)}
+                initialNotes={book?.authorNotes ?? null}
+              />
+            </PanelBoundary>
+            <PanelBoundary title="Стиль">
+              <StyleFreshnessNote bookId={Number(bookId)} />
             </PanelBoundary>
             <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>
@@ -1058,6 +1178,8 @@ export function ChapterPage() {
               versionId={chapter.currentVersionId}
               expectedVersionId={chapter.currentVersionId}
               expectedDraftRevision={chapter.draft?.revision ?? null}
+              baseWordCount={chapter.currentVersion?.wordCount ?? null}
+              characterNames={characterNames}
               onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />

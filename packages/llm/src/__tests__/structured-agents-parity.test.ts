@@ -15,6 +15,7 @@ const KNOWN_FREE_TEXT_OR_NOLLM: AgentName[] = [
   "inline",
   "lore",
   "character",
+  "book_chat",
 ];
 
 describe("STRUCTURED_AGENT_NAMES drift guard", () => {

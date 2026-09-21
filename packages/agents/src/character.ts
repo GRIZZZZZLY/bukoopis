@@ -162,10 +162,14 @@ export function gatherCharacterContext(
   alwaysIncludeIds: number[] = [],
   readers: CharacterBoundaryReaders | null,
 ): CharacterAgentResult {
+  // «Глазок» (заимствование из litrab.ai): герой, снятый автором с запросов,
+  // в скан участников не попадает. Это ЕДИНСТВЕННОЕ место фильтра — все роли
+  // (Писатель, критики, правка, inline, замысел сцены) идут через эту функцию.
+  // `alwaysIncludeIds` фильтр обходит: POV назван в плане автором явно.
   const allCharacters = sqlite
-    .prepare("SELECT * FROM characters WHERE book_id = ?")
+    .prepare("SELECT * FROM characters WHERE book_id = ? AND hidden_from_prompts = 0")
     .all(bookId) as CharacterRow[];
-  if (allCharacters.length === 0) {
+  if (allCharacters.length === 0 && alwaysIncludeIds.length === 0) {
     return { characters: [], relationships: [], voiceSamples: [], states: [] };
   }
 

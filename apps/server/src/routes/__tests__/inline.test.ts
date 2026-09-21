@@ -107,4 +107,28 @@ describe("inline endpoint", () => {
     // SSE body should mention error event because no API key is set.
     expect(text).toContain("event: error");
   });
+
+  it("400 when describe without sense", async () => {
+    const res = await send(t.app, `/api/chapters/${chapterId}/inline`, "POST", {
+      command: "describe",
+      selectionText: "Старый дом встретил её темнотой.",
+      beforeText: "",
+      afterText: "",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("bad_request");
+  });
+
+  it("describe with sense passes validation", async () => {
+    const res = await send(t.app, `/api/chapters/${chapterId}/inline`, "POST", {
+      command: "describe",
+      sense: "smell",
+      selectionText: "Старый дом встретил её темнотой.",
+      beforeText: "Она толкнула дверь.",
+      afterText: "Потом было тихо.",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("event: error");
+  });
 });

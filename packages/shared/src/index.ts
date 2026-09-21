@@ -30,3 +30,4 @@ export * from "./character-voice.js";
 export * from "./relationship-profile.js";
 export * from "./scene-boundary.js";
 export * from "./generation-context.js";
+export * from "./chat.js";

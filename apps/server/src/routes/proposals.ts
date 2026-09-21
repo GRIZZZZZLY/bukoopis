@@ -93,6 +93,22 @@ export function createProposalsRoute(
     return c.json({ stopping: true });
   });
 
+  // Остановка с сохранением (глава по беатам): поток дописывает текущий беат
+  // и завершает кандидата `incomplete` — его можно принять. Отмена — другое:
+  // она выбрасывает всё.
+  r.post("/prose-proposals/:id/hold", (c) => {
+    const id = Number(c.req.param("id"));
+    const proposal = loadProposal(sqlite, id);
+    if (!proposal) return notFound(c, "prose_proposal");
+    if (proposal.status !== "streaming") {
+      return badRequest(c, `нельзя удержать предложение в статусе ${proposal.status}`);
+    }
+    if (!cancels.requestHold(id)) {
+      return badRequest(c, "этот запуск уже завершён или идёт не в этом процессе");
+    }
+    return c.json({ holding: true });
+  });
+
   r.post("/prose-proposals/:id/accept", async (c) => {
     const id = Number(c.req.param("id"));
     const body = await c.req.json().catch(() => null);

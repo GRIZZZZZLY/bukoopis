@@ -55,6 +55,7 @@ export const AGENT_NAMES = [
   "scene_intent",
   "cast_check",
   "scene_state_extractor",
+  "book_chat",
 ] as const;
 
 export type AgentName = (typeof AGENT_NAMES)[number];

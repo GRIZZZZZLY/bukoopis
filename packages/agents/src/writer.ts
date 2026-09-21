@@ -78,6 +78,10 @@ export interface WriteChapterInput {
   localBaseUrl?: string;
   /** Отмена вызова (task 7 — остановка генерации). */
   signal?: AbortSignal;
+  /** Режим «по беатам» (заимствование из litrab.ai: на длинной генерации
+   *  сползают голоса, ритм и детали). Один вызов — один беат; стабильная
+   *  часть промпта та же, меняется только этот блок. */
+  beat?: { index: number; textSoFar: string };
 }
 
 /**
@@ -109,11 +113,49 @@ export function buildWriterVolatilePrompt(input: WriteChapterInput): string {
     const contract = renderChapterContract(input.beatSheet.contract);
     if (contract) parts.push(contract);
   }
+  // Задание по беатам само несёт финал главы — но только последнему беату:
+  // прочитанный раньше времени, он тянет модель закрывать главу на середине.
+  if (input.beat) {
+    parts.push(buildWriterBeatBlock(input));
+    return parts.join("\n\n");
+  }
   if (input.beatSheet.closing) {
     parts.push(`Финал главы: ${renderChapterClosing(input.beatSheet.closing)}`);
   }
   parts.push("Напиши главу.");
   return parts.join("\n\n");
+}
+
+/** Блок одного беата. Идёт ПОСЛЕ контракта: запрет прочитан до задания. */
+export function buildWriterBeatBlock(input: WriteChapterInput): string {
+  const beat = input.beat;
+  if (!beat) return "";
+  const beats = input.beatSheet.beats;
+  const total = beats.length;
+  const current = beats[beat.index];
+  if (!current) throw new Error(`beat index ${beat.index} out of range (${total})`);
+  const isLast = beat.index === total - 1;
+  const perBeatWords = Math.max(150, Math.round(input.beatSheet.estimatedWords / total));
+  const lines = [
+    "Режим: глава пишется по беатам, по одному вызову на беат.",
+    beat.textSoFar.trim().length > 0
+      ? `Уже написано (дословно; продолжай ровно с этого места, не повторяй и не пересказывай):\n${beat.textSoFar}`
+      : "Уже написано: ничего — глава только начинается.",
+    `Сейчас пиши ТОЛЬКО беат ${beat.index + 1} из ${total}:\n[${current.type}] ${current.summary}\n   Цель: ${current.goal}\n   Конфликт: ${current.conflict}\n   Исход: ${current.outcome}`,
+    "Остальные беаты даны для ориентира — не забегай в них и не закрывай их исходы.",
+    `Объём этого куска: ~${perBeatWords} слов.`,
+  ];
+  if (isLast) {
+    lines.push(
+      `Это последний беат — здесь финал главы${input.beatSheet.closing ? `: ${renderChapterClosing(input.beatSheet.closing)}` : ". Заканчивай действием, репликой или образом, не осмыслением."}`,
+    );
+  } else {
+    lines.push(
+      "Не завершай главу: не подводи итог, не ставь финальную точку сцены, не пиши рефлексивный хвост. Закончи там, где беат кончается по смыслу — можно на полуслове действия.",
+    );
+  }
+  lines.push("Выведи только прозу этого беата.");
+  return lines.join("\n\n");
 }
 
 /**

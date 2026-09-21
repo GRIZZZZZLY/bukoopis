@@ -1,3 +1,4 @@
+import type React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -48,6 +49,7 @@ const CHANGES = [
 function renderPanel(
   overrides: Partial<ProseProposal> = {},
   onReread?: () => Promise<ProposalReread>,
+  extra: Partial<React.ComponentProps<typeof ProposalPanel>> = {},
 ) {
   const onAccepted = vi.fn();
   const onRejected = vi.fn();
@@ -60,6 +62,7 @@ function renderPanel(
       {...(onReread ? { onReread } : {})}
       onAccepted={onAccepted}
       onRejected={onRejected}
+      {...extra}
     />,
   );
   return { onAccepted, onRejected };
@@ -145,6 +148,22 @@ describe("ProposalPanel", () => {
     renderPanel({ status: "ready", completion: "unconfirmed", stopReason: null });
     expect(screen.queryByText(/похоже, текст оборван/i)).toBeNull();
     expect(screen.getByText(/не сообщает, дописала ли модель/i)).toBeInTheDocument();
+  });
+
+  it("удержанный кандидат объясняется один раз и по делу", () => {
+    renderPanel({
+      status: "incomplete",
+      completion: "unconfirmed",
+      stopReason: "held",
+      beatsDone: 2,
+      beatsTotal: 5,
+    });
+    expect(screen.getByText(/остановлено по вашей просьбе после беата 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/написано беатов: 2 из 5/i)).toBeInTheDocument();
+    // Причина остановки известна, и текст намеренно не вся глава: догадки про
+    // оборванность и про молчащий бэкенд здесь были бы просто неправдой.
+    expect(screen.queryByText(/похоже, текст оборван/i)).toBeNull();
+    expect(screen.queryByText(/не сообщает, дописала ли модель/i)).toBeNull();
   });
 
   it("конфликт версии объясняется словами, а не кодом 409", async () => {
@@ -290,5 +309,42 @@ describe("ProposalPanel — выход из 409", () => {
     const second = vi.mocked(api.acceptProposal).mock.calls[1]?.[1];
     expect(second?.acknowledgeUnconfirmed).toBe(true);
     expect(second?.acknowledgeContextDrift).toBe(true);
+  });
+});
+
+describe("потери после правки", () => {
+  it("печатает объём и предупреждает о сокращении правки больше 10%", () => {
+    renderPanel({ kind: "repair", wordCount: 80 }, undefined, { baseWordCount: 100 });
+    expect(screen.getByText(/Объём: 100 → 80 слов \(−20%\)/)).toBeTruthy();
+    expect(screen.getByText(/убрала больше десятой части/)).toBeTruthy();
+  });
+
+  it("на черновике главы сокращение не тревожит", () => {
+    renderPanel({ kind: "write", wordCount: 80 }, undefined, { baseWordCount: 100 });
+    expect(screen.queryByText(/убрала больше десятой части/)).toBeNull();
+  });
+
+  it("называет защищённое, которое не дожило, и пропавшие имена", () => {
+    renderPanel({ kind: "repair", contentText: "Он молчал." }, undefined, {
+      baseWordCount: 3,
+      protectedLost: ["Ты ведь всё равно вернёшься"],
+      characterNames: ["Нина", "Два"],
+    });
+    expect(screen.getByText(/Защищённое не дожило/)).toBeTruthy();
+    expect(screen.getByText(/Ты ведь всё равно вернёшься/)).toBeTruthy();
+    // CHANGES заменяют абзац «Два.» — имя «Два» пропало из кандидата.
+    expect(screen.getByText(/исчезли имена: Два/)).toBeTruthy();
+  });
+
+  it("удержанный беат-прогон не считается потерей объёма и имён", () => {
+    // 3 из 7 беатов: текст короче базы и герои дальше по сюжету законно ещё
+    // не упомянуты — это «не написано», а не то, что правка выкинула.
+    renderPanel(
+      { kind: "write", status: "incomplete", stopReason: "held", beatsDone: 3, beatsTotal: 7, wordCount: 40 },
+      undefined,
+      { baseWordCount: 1900, characterNames: ["Нина", "Два"] },
+    );
+    expect(screen.queryByText(/Объём:/)).toBeNull();
+    expect(screen.queryByText(/исчезли имена/)).toBeNull();
   });
 });

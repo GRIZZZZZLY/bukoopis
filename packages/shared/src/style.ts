@@ -129,6 +129,22 @@ export const styleProfileSchema = z.object({
 });
 export type StyleProfile = z.infer<typeof styleProfileSchema>;
 
+/** Свежесть паспорта стиля относительно рукописи (заимствование из litrab.ai:
+ *  портрет, собранный на третьей главе, к двадцатой тянет автора назад). */
+export const styleFreshnessSchema = z.object({
+  profileId: z.number().int().positive().nullable(),
+  profileName: z.string().nullable(),
+  kind: styleProfileKindSchema.nullable(),
+  lastExtractedAt: z.string().nullable(),
+  /** Версий глав книги, созданных после последнего извлечения. */
+  versionsSince: z.number().int().nonnegative(),
+  /** Сколько разных глав среди них. */
+  chaptersSince: z.number().int().nonnegative(),
+  /** Порог — три главы; блендам не считается (у них нет своего корпуса). */
+  stale: z.boolean(),
+});
+export type StyleFreshness = z.infer<typeof styleFreshnessSchema>;
+
 export const createStyleProfileInputSchema = z.object({
   name: z.string().min(1).max(200),
   language: z.string().min(1).max(16).default("ru"),
@@ -187,3 +203,8 @@ export const runExtractInputSchema = z.object({
   sampleSize: z.number().int().min(5).max(100).default(12),
 });
 export type RunExtractInput = z.infer<typeof runExtractInputSchema>;
+/** Форма ДО разбора — `sampleSize` необязателен на проводе, сервер сам
+ *  подставляет умолчание при `safeParse`. Клиент шлёт запросы этой формы,
+ *  а не пост-парсной `RunExtractInput`, где `.default()` делает поле
+ *  обязательным. */
+export type RunExtractRequest = z.input<typeof runExtractInputSchema>;

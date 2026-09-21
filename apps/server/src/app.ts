@@ -16,6 +16,7 @@ import { createWritingProgressRoute } from "./routes/writing-progress.js";
 import { createCanonExtractionRoute } from "./routes/canon-extraction.js";
 import { createStudioRoute } from "./routes/studio.js";
 import { createProposalsRoute } from "./routes/proposals.js";
+import { createChatRoute } from "./routes/chat.js";
 import { startMemoryWorker, type MemoryWorker } from "./utils/memory-worker.js";
 import { createProposalCancelRegistry } from "./utils/proposal-cancel.js";
 import {
@@ -108,6 +109,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
   app.route("/api", createWritingProgressRoute(sqlite));
   app.route("/api", createCanonExtractionRoute(sqlite));
   app.route("/api", createProposalsRoute(sqlite, proposalCancels, memoryWorker));
+  app.route("/api", createChatRoute(sqlite, hasVec));
 
   return {
     app,

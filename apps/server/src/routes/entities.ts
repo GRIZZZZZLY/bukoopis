@@ -16,6 +16,7 @@ import {
   createCharacterKnowledgeInputSchema,
   createVoiceSampleInputSchema,
   updateVoiceSampleInputSchema,
+  promptVisibilityInputSchema,
 } from "@book-forge/shared";
 import {
   normalizeCharacterProfile,
@@ -234,6 +235,24 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     const row = sqlite
       .prepare("SELECT * FROM characters WHERE id = ?")
       .get(id) as CharacterRow;
+    return c.json(toCharacter(row));
+  });
+
+  // «Глазок»: не правка профиля — ревизия не растёт, истории нет.
+  r.patch("/characters/:id/prompt-visibility", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    const parsed = promptVisibilityInputSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    const existing = sqlite
+      .prepare("SELECT * FROM characters WHERE id = ?")
+      .get(id) as CharacterRow | undefined;
+    if (!existing) return notFound(c, "character");
+    sqlite
+      .prepare("UPDATE characters SET hidden_from_prompts = ?, updated_at = ? WHERE id = ?")
+      .run(parsed.data.hidden ? 1 : 0, new Date().toISOString(), id);
+    bumpBook(sqlite, existing.book_id);
+    const row = sqlite.prepare("SELECT * FROM characters WHERE id = ?").get(id) as CharacterRow;
     return c.json(toCharacter(row));
   });
 

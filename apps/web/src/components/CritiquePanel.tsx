@@ -34,6 +34,10 @@ interface Props {
    *  главы не знает, поэтому перечитывает её `ChapterPage`. */
   onRereadProposal?: (proposalId: number) => Promise<ProposalReread>;
   onRepairDone?: () => void | Promise<void>;
+  /** Слов в версии, от которой сейчас считается self-repair. */
+  baseWordCount?: number | null;
+  /** Имена героев книги — панель кандидата ищет по ним пропавшие упоминания. */
+  characterNames?: string[];
 }
 
 const SEVERITY_DOT: Record<IssueSeverity, string> = {
@@ -62,6 +66,8 @@ export function CritiquePanel({
   expectedDraftRevision,
   onRereadProposal,
   onRepairDone,
+  baseWordCount,
+  characterNames,
 }: Props) {
   const [report, setReport] = useState<CritiqueReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,6 +92,7 @@ export function CritiquePanel({
   const [repairProposalId, setRepairProposalId] = useState<number | null>(
     null,
   );
+  const [repairProtectedLost, setRepairProtectedLost] = useState<string[]>([]);
   const [repairStopping, setRepairStopping] = useState(false);
   /** Выбранные автором замечания (этап 5). Пустой набор = «не выбирал», и
    *  тогда работает прежний фильтр по серьёзности. */
@@ -185,6 +192,7 @@ export function CritiquePanel({
     setRepairProposal(null);
     setRepairProposalChanges([]);
     setRepairProposalId(null);
+    setRepairProtectedLost([]);
     setRepairStopping(false);
     try {
       const severities =
@@ -216,6 +224,7 @@ export function CritiquePanel({
             return;
           }
           setRepairProposal(payload.proposal);
+          setRepairProtectedLost(payload.protectedLost ?? []);
           const { changes } = await api.getProposalChanges(payload.proposal.id);
           setRepairProposalChanges(changes);
         },
@@ -414,6 +423,9 @@ export function CritiquePanel({
                 changes={repairProposalChanges}
                 expectedVersionId={expectedVersionId}
                 expectedDraftRevision={expectedDraftRevision}
+                baseWordCount={baseWordCount ?? null}
+                protectedLost={repairProtectedLost}
+                characterNames={characterNames ?? []}
                 {...(onRereadProposal
                   ? {
                       onReread: async () => {

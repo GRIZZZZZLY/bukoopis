@@ -18,7 +18,7 @@ import {
   reviseChapter,
   type CriticInput,
 } from "@book-forge/agents";
-import { extractText, countWords } from "../utils/prosemirror.js";
+import { countWords, prosePlainTextToProseMirror } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import {
@@ -103,25 +103,6 @@ function countRepairAncestors(
   }
   return count;
 }
-
-function prosePlainTextToProseMirror(text: string): unknown {
-  const paragraphs = text
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  if (paragraphs.length === 0) {
-    return { type: "doc", content: [{ type: "paragraph" }] };
-  }
-  return {
-    type: "doc",
-    content: paragraphs.map((p) => ({
-      type: "paragraph",
-      content: [{ type: "text", text: p }],
-    })),
-  };
-}
-
-void extractText; // keep import alive if unused
 
 export function createCritiqueRoute(
   sqlite: DatabaseType,

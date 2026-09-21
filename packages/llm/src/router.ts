@@ -41,6 +41,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   scene_intent: "subscription",
   cast_check: "subscription",
   scene_state_extractor: "subscription",
+  book_chat: "subscription",
 };
 
 // One-time deprecation warnings for compat aliases (etap 0.2.4 / Phase 4).
