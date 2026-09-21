@@ -189,3 +189,85 @@ describe("глазок героя", () => {
     expect(withPov.characters.map((c) => c.character.canonicalName)).toEqual(["Нина"]);
   });
 });
+
+describe("свежесть паспорта стиля", () => {
+  const LONG = "Ключ не поворачивался. Ну конечно. Дверь он менял в апреле, руки бы оторвать. ".repeat(12);
+
+  async function bookWithProfile(): Promise<{ bookId: number; profileId: number }> {
+    const p = await sendJson<{ id: number }>(t.app, "/api/style-profiles", "POST", {
+      name: "Мой",
+      language: "ru",
+    });
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    await send(t.app, `/api/books/${b.id}`, "PATCH", { styleProfileId: p.id });
+    return { bookId: b.id, profileId: p.id };
+  }
+
+  async function chapterWithVersion(bookId: number, title: string): Promise<number> {
+    const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title });
+    await send(t.app, `/api/chapters/${ch.id}/versions`, "POST", {
+      contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: LONG }] }] },
+    });
+    return ch.id;
+  }
+
+  it("без профиля — profileId null и stale false", async () => {
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    const f = await sendJson<{ profileId: number | null; stale: boolean }>(
+      t.app, `/api/books/${b.id}/style-freshness`, "GET",
+    );
+    expect(f.profileId).toBeNull();
+    expect(f.stale).toBe(false);
+  });
+
+  it("три главы после извлечения — stale", async () => {
+    const { bookId, profileId } = await bookWithProfile();
+    t.sqlite
+      .prepare("UPDATE style_profiles SET last_extracted_at = ? WHERE id = ?")
+      .run("2020-01-01T00:00:00.000Z", profileId);
+    for (const title of ["1", "2"]) await chapterWithVersion(bookId, title);
+    let f = await sendJson<{ chaptersSince: number; stale: boolean }>(
+      t.app, `/api/books/${bookId}/style-freshness`, "GET",
+    );
+    expect(f.chaptersSince).toBe(2);
+    expect(f.stale).toBe(false);
+    await chapterWithVersion(bookId, "3");
+    f = await sendJson(t.app, `/api/books/${bookId}/style-freshness`, "GET");
+    expect(f.chaptersSince).toBe(3);
+    expect(f.stale).toBe(true);
+  });
+
+  it("не извлекался ни разу — не stale, сколько бы глав ни было", async () => {
+    const { bookId } = await bookWithProfile();
+    for (const title of ["1", "2", "3"]) await chapterWithVersion(bookId, title);
+    const f = await sendJson<{ stale: boolean; lastExtractedAt: string | null }>(
+      t.app, `/api/books/${bookId}/style-freshness`, "GET",
+    );
+    expect(f.lastExtractedAt).toBeNull();
+    expect(f.stale).toBe(false);
+  });
+
+  it("добор глав кладёт корпус в профиль книги, старые корпуса не трогает", async () => {
+    const { bookId, profileId } = await bookWithProfile();
+    for (const title of ["1", "2", "3", "4"]) await chapterWithVersion(bookId, title);
+    const before = (t.sqlite.prepare("SELECT COUNT(*) c FROM reference_corpora WHERE profile_id = ?").get(profileId) as { c: number }).c;
+    const res = await sendJson<{ corpusId: number; chapters: Array<{ title: string }> }>(
+      t.app, `/api/books/${bookId}/style/refresh-from-chapters`, "POST", {},
+    );
+    expect(res.chapters.map((c) => c.title)).toEqual(["2", "3", "4"]);
+    const row = t.sqlite
+      .prepare("SELECT profile_id, scene_count FROM reference_corpora WHERE id = ?")
+      .get(res.corpusId) as { profile_id: number; scene_count: number };
+    expect(row.profile_id).toBe(profileId);
+    expect(row.scene_count).toBeGreaterThan(0);
+    const after = (t.sqlite.prepare("SELECT COUNT(*) c FROM reference_corpora WHERE profile_id = ?").get(profileId) as { c: number }).c;
+    expect(after).toBe(before + 1);
+  });
+
+  it("без принятых глав или без профиля — 400", async () => {
+    const { bookId } = await bookWithProfile();
+    expect((await send(t.app, `/api/books/${bookId}/style/refresh-from-chapters`, "POST", {})).status).toBe(400);
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    expect((await send(t.app, `/api/books/${b.id}/style/refresh-from-chapters`, "POST", {})).status).toBe(400);
+  });
+});

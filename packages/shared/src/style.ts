@@ -129,6 +129,22 @@ export const styleProfileSchema = z.object({
 });
 export type StyleProfile = z.infer<typeof styleProfileSchema>;
 
+/** Свежесть паспорта стиля относительно рукописи (заимствование из litrab.ai:
+ *  портрет, собранный на третьей главе, к двадцатой тянет автора назад). */
+export const styleFreshnessSchema = z.object({
+  profileId: z.number().int().positive().nullable(),
+  profileName: z.string().nullable(),
+  kind: styleProfileKindSchema.nullable(),
+  lastExtractedAt: z.string().nullable(),
+  /** Версий глав книги, созданных после последнего извлечения. */
+  versionsSince: z.number().int().nonnegative(),
+  /** Сколько разных глав среди них. */
+  chaptersSince: z.number().int().nonnegative(),
+  /** Порог — три главы; блендам не считается (у них нет своего корпуса). */
+  stale: z.boolean(),
+});
+export type StyleFreshness = z.infer<typeof styleFreshnessSchema>;
+
 export const createStyleProfileInputSchema = z.object({
   name: z.string().min(1).max(200),
   language: z.string().min(1).max(16).default("ru"),

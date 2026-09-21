@@ -33,6 +33,7 @@ import type {
   StageId,
   StudioState,
   StudioWarning,
+  StyleFreshness,
   UpdateBookInput,
   UpdateChapterInput,
   UpdateCharacterInput,
@@ -615,6 +616,13 @@ export const api = {
     req<import("@book-forge/shared").StyleProfile>(
       `/api/style-profiles/blend`,
       { method: "POST", body: JSON.stringify(body) },
+    ),
+  getStyleFreshness: (bookId: number) =>
+    req<StyleFreshness>(`/api/books/${bookId}/style-freshness`),
+  refreshStyleFromChapters: (bookId: number) =>
+    req<{ corpusId: number; chapters: Array<{ id: number; title: string }> }>(
+      `/api/books/${bookId}/style/refresh-from-chapters`,
+      { method: "POST", body: JSON.stringify({}) },
     ),
 
   // ── Usage / Health ──

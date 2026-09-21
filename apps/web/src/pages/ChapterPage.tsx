@@ -37,6 +37,7 @@ import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { SceneStatePanel } from "@/components/chapter/SceneStatePanel";
 import { AuthorNotesPanel } from "@/components/chapter/AuthorNotesPanel";
+import { StyleFreshnessNote } from "@/components/chapter/StyleFreshnessNote";
 import {
   ProposalPanel,
   type ProposalReread,
@@ -1050,6 +1051,9 @@ export function ChapterPage() {
                 bookId={Number(bookId)}
                 initialNotes={book?.authorNotes ?? null}
               />
+            </PanelBoundary>
+            <PanelBoundary title="Стиль">
+              <StyleFreshnessNote bookId={Number(bookId)} />
             </PanelBoundary>
             <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>
