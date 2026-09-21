@@ -5,7 +5,10 @@ import { streamInlineCommand } from "@/api/client";
 import {
   INLINE_COMMAND_LABELS,
   INLINE_COMMANDS_REQUIRING_SELECTION,
+  SENSE_CHANNEL_LABELS,
+  senseChannelSchema,
   type InlineCommand,
+  type SenseChannel,
 } from "@book-forge/shared";
 
 interface Props {
@@ -31,6 +34,7 @@ interface ActiveSuggestion {
   beforeText: string;
   afterText: string;
   guidance: string;
+  sense: SenseChannel | null;
   buffer: string;
   streaming: boolean;
   done: boolean;
@@ -41,6 +45,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
   const [hasSelection, setHasSelection] = useState(false);
   const [active, setActive] = useState<ActiveSuggestion | null>(null);
   const [guidance, setGuidance] = useState("");
+  const [senseOpen, setSenseOpen] = useState(false);
   // Куда вставлять результат. Позиции запоминаются на старте команды, а
   // модель пишет десятки секунд, и автор всё это время правит текст выше:
   // по исходным позициям вставка ложилась мимо и затирала чужой абзац
@@ -117,7 +122,11 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
     [editor],
   );
 
-  async function runCommand(command: InlineCommand, prevGuidance?: string) {
+  async function runCommand(
+    command: InlineCommand,
+    prevGuidance?: string,
+    sense: SenseChannel | null = null,
+  ) {
     if (!editor) return;
     const payload = buildPayload(command);
     if (!payload) return;
@@ -127,6 +136,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
       command,
       ...payload,
       guidance: g,
+      sense,
       buffer: "",
       streaming: true,
       done: false,
@@ -141,6 +151,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
           beforeText: payload.beforeText,
           afterText: payload.afterText,
           guidance: g.trim() || null,
+          ...(sense ? { sense } : {}),
         },
         {
           onChunk: (text) =>
@@ -198,7 +209,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
 
   function regenerate() {
     if (!active) return;
-    void runCommand(active.command, active.guidance);
+    void runCommand(active.command, active.guidance, active.sense);
   }
 
   return (
@@ -238,10 +249,43 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
         })}
       </div>
 
+      <div className="flex gap-2 flex-wrap items-center">
+        <Button
+          size="sm"
+          variant={senseOpen ? "default" : "outline"}
+          onClick={() => setSenseOpen((v) => !v)}
+          disabled={!editor || (active !== null && active.streaming) || !hasSelection}
+          aria-expanded={senseOpen}
+        >
+          Описать
+        </Button>
+        {senseOpen &&
+          senseChannelSchema.options.map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSenseOpen(false);
+                void runCommand("describe", undefined, s);
+              }}
+              disabled={!editor || (active !== null && active.streaming) || !hasSelection}
+            >
+              {SENSE_CHANNEL_LABELS[s]}
+            </Button>
+          ))}
+        {senseOpen && (
+          <span className="text-xs text-[var(--color-muted-foreground)]">
+            Одна деталь выбранного канала; фраза остаётся вашей.
+          </span>
+        )}
+      </div>
+
       {active && (
         <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] flex flex-col gap-2">
           <div className="text-xs text-[var(--color-muted-foreground)]">
             Команда: <strong>{INLINE_COMMAND_LABELS[active.command]}</strong>
+            {active.sense && <span> · {SENSE_CHANNEL_LABELS[active.sense]}</span>}
             {active.selectionText && (
               <span>
                 {" · выделение: "}

@@ -1049,6 +1049,7 @@ export interface InlineCommandRequest {
   beforeText: string;
   afterText: string;
   guidance?: string | null;
+  sense?: import("@book-forge/shared").SenseChannel;
 }
 
 export async function streamInlineCommand(

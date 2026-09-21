@@ -2,8 +2,10 @@ import { streamText, type SystemBlock } from "@book-forge/llm";
 import {
   renderClicheRule,
   RU_DIALOGUE_RULE,
+  SENSE_CHANNEL_LABELS,
   type GenerationConfig,
   type InlineCommand,
+  type SenseChannel,
 } from "@book-forge/shared";
 
 export const INLINE_SYSTEM_BASE = `Ты — Inline Writer. Помогаешь автору переписывать или продолжать художественную прозу на русском, фрагмент за фрагментом.
@@ -28,7 +30,29 @@ export const INLINE_COMMAND_INSTRUCTIONS: Record<InlineCommand, string> = {
   shorten: `Команда: сократить выделенный фрагмент. Сохрани все ключевые события, реплики, поворотные моменты. Убери воду, повторы, избыточные описания. Целевая длина — 50-70% от оригинала.`,
   intensify: `Команда: усилить эмоциональный заряд выделенного фрагмента. Основной инструмент — поступок, реплика и поведение: что персонаж делает, чего избегает, что говорит не к месту. Прямое называние чувства тоже допустимо. Телесную реакцию оставляй только на пике эпизода, не больше одного раза на фрагмент, и не из набора «сердце замерло / мурашки / холодок по спине». Сохрани события и длину (±20%).`,
   lengthen: `Команда: развернуть выделенный фрагмент. Разворачивай конкретикой: названные предметы, точные действия, мысли POV-персонажа, нюансы реплик. Не нагромождай ощущения — в одной фразе одно чувство, не три. Не добавляй новых сюжетных событий — только глубину тому что уже есть. Длина — 150-200% от оригинала.`,
+  describe: `Команда: описать — вплести одну сенсорную деталь. Канал задаётся отдельно.`,
 };
+
+const SENSE_HINT: Record<SenseChannel, string> = {
+  sight: "зрение — что видно: свет, цвет, движение, одна конкретная вещь в поле зрения",
+  sound: "слух — что слышно или, наоборот, какой звук пропал",
+  smell: "обоняние — запах, привязанный к месту или человеку",
+  taste: "вкус — во рту, на губах, в воздухе",
+  touch: "осязание — температура, фактура, вес, давление на кожу",
+  metaphor:
+    "метафора — одно сравнение или одна метафора, бытовая и предметная, без книжной приподнятости; не больше одного на фрагмент",
+};
+
+/** «Описать» — инструмент против сцены-схемы, а не для перегруза: одна
+ *  деталь одного канала, фраза автора остаётся как есть. Текст ПОСЛЕ
+ *  фрагмента модели не показывается — её дело насытить написанное, а не
+ *  продолжить сцену. */
+export function describeInstruction(sense: SenseChannel): string {
+  return `Команда: описать. Канал: ${SENSE_CHANNEL_LABELS[sense].toLowerCase()} (${SENSE_HINT[sense]}).
+Оставь выделенный фрагмент как есть — та же фраза, тот же порядок слов — и вплети в него или сразу за ним ОДНУ деталь этого канала. Одну, не три. Деталь конкретная, привязанная к этому месту и этому герою, не из набора штампов жанра.
+Не переписывай остальное. Не добавляй событий, реплик и новых персонажей. Не объясняй ощущение и не называй чувство героя словом.
+Длина: исходный фрагмент плюс не больше одного предложения. Верни фрагмент целиком, с вплетённой деталью.`;
+}
 
 export interface RunInlineInput {
   command: InlineCommand;
@@ -39,6 +63,7 @@ export interface RunInlineInput {
   characterContext: string | null;
   loreContext: string | null;
   guidance?: string | null;
+  sense?: SenseChannel | null;
   config?: GenerationConfig;
 }
 
@@ -61,11 +86,20 @@ export function buildInlineVolatilePrompt(input: RunInlineInput): string {
       ? `Выделенный фрагмент:\n${input.selectionText}`
       : "(Selection пустой — режим продолжения)",
   );
-  parts.push(`Текст ПОСЛЕ:\n${input.afterText}`);
+  // «Описать» текста ПОСЛЕ не видит намеренно: иначе модель начинает
+  // продолжать сцену вместо того, чтобы насытить написанное.
+  if (input.command !== "describe") {
+    parts.push(`Текст ПОСЛЕ:\n${input.afterText}`);
+  }
   if (input.guidance && input.guidance.trim()) {
     parts.push(`Дополнительные указания автора:\n${input.guidance}`);
   }
-  parts.push(INLINE_COMMAND_INSTRUCTIONS[input.command]);
+  if (input.command === "describe") {
+    if (!input.sense) throw new Error('command "describe" requires sense');
+    parts.push(describeInstruction(input.sense));
+  } else {
+    parts.push(INLINE_COMMAND_INSTRUCTIONS[input.command]);
+  }
   return parts.join("\n\n");
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildInlineStableSystem,
   buildInlineVolatilePrompt,
+  describeInstruction,
   INLINE_COMMAND_INSTRUCTIONS,
   type RunInlineInput,
 } from "../inline.js";
@@ -70,5 +71,41 @@ describe("buildInlineStableSystem", () => {
     const system = buildInlineStableSystem(base);
     expect(system).toContain("LLM-клише");
     expect(system).toContain("Контекст книги");
+  });
+});
+
+describe("describe — одна деталь по каналу", () => {
+  it("инструкция называет канал и требует одну деталь без переписывания", () => {
+    const smell = describeInstruction("smell");
+    expect(smell).toMatch(/обоняни|запах/i);
+    expect(smell).toMatch(/одн(у|а) детал/i);
+    expect(smell).toMatch(/не переписывай|оставь .* как есть/i);
+    expect(smell).toMatch(/не добавляй .*событи/i);
+  });
+
+  it("метафора — одно бытовое сравнение, без книжной приподнятости", () => {
+    const m = describeInstruction("metaphor");
+    expect(m).toMatch(/сравнени|метафор/i);
+    expect(m).toMatch(/бытов|предметн/i);
+    expect(m).toMatch(/не больше одн/i);
+  });
+
+  it("в промпте «Описать» нет текста ПОСЛЕ фрагмента", () => {
+    const prompt = buildInlineVolatilePrompt({
+      ...base,
+      command: "describe",
+      sense: "sound",
+      afterText: "ХВОСТ-КОТОРОГО-НЕ-ДОЛЖНО-БЫТЬ",
+    });
+    expect(prompt).not.toContain("Текст ПОСЛЕ");
+    expect(prompt).not.toContain("ХВОСТ-КОТОРОГО-НЕ-ДОЛЖНО-БЫТЬ");
+    expect(prompt).toContain("Выделенный фрагмент:");
+    expect(prompt).toContain(describeInstruction("sound"));
+  });
+
+  it("describe без канала — ошибка, а не молчаливый канал по умолчанию", () => {
+    expect(() =>
+      buildInlineVolatilePrompt({ ...base, command: "describe" }),
+    ).toThrow(/sense/);
   });
 });

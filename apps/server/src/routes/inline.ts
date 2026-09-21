@@ -42,6 +42,10 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
       );
     }
 
+    if (parsed.data.command === "describe" && !parsed.data.sense) {
+      return badRequest(c, 'command "describe" requires sense');
+    }
+
     const ch = sqlite
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(id) as ChapterRow | undefined;
@@ -128,11 +132,13 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
           command: parsed.data.command,
           selectionText: parsed.data.selectionText,
           beforeText: parsed.data.beforeText,
-          afterText: parsed.data.afterText,
+          // «Описать» текста ПОСЛЕ не видит — см. describeInstruction.
+          afterText: parsed.data.command === "describe" ? "" : parsed.data.afterText,
           bookContext,
           characterContext,
           loreContext,
           guidance: parsed.data.guidance ?? null,
+          sense: parsed.data.sense ?? null,
           config: parsed.data.config,
         });
         let inputTokens = 0;
