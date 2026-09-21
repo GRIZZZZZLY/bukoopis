@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { StageAdapter } from "./types.js";
 import type { StageId } from "@book-forge/shared";
+import { Markdown } from "@/components/Markdown";
 
 const markdownPayloadSchema = z.string().min(1).max(20000);
 type MarkdownPayload = z.infer<typeof markdownPayloadSchema>;
@@ -12,13 +13,15 @@ export function createMarkdownAdapter(stageId: StageId): StageAdapter<MarkdownPa
     stageId,
     payloadKind: "markdown",
     payloadSchema: markdownPayloadSchema,
-    renderVariant: (payload) => (
-      <div className="text-sm whitespace-pre-wrap">{payload}</div>
-    ),
+    // Автор читает раздел как текст, а не как исходник: решётки и звёздочки
+    // на экране — это и есть «сырой markdown» из ТЗ конвейера (фаза 6).
+    // Правка по-прежнему идёт исходником — `editable` ниже.
+    renderVariant: (payload) => <Markdown className="text-sm" text={payload} />,
     renderFinal: (payload) => (
-      <div className="text-sm whitespace-pre-wrap rounded bg-[var(--color-muted)] px-3 py-2">
-        {payload}
-      </div>
+      <Markdown
+        className="text-sm rounded bg-[var(--color-muted)] px-3 py-2"
+        text={payload}
+      />
     ),
     editable: {
       toText: (payload) => payload,

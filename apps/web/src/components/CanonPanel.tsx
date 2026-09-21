@@ -897,7 +897,7 @@ function EmptyState({
   return (
     <div className="text-xs text-[var(--color-muted-foreground)] flex flex-col items-start gap-2">
       <p>
-        Канон ещё не извлекался для этой главы. После Writer'а извлечение
+        Канон ещё не извлекался для этой главы. После написания главы извлечение
         запускается автоматически.
       </p>
       <Button

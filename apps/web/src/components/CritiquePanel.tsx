@@ -212,7 +212,7 @@ export function CritiquePanel({
           // статусу), поэтому предлагать его к принятию — обман.
           if (payload.cancelled) {
             setRepairProposalId(null);
-            setRepairError("Self-repair остановлен. Глава не изменилась.");
+            setRepairError("Правка остановлена. Глава не изменилась.");
             return;
           }
           setRepairProposal(payload.proposal);
@@ -244,7 +244,7 @@ export function CritiquePanel({
   return (
     <section className="cri-card-stack">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-semibold">Критика версии</h2>
+        <h2 className="text-xl font-semibold">Разбор версии</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {ALL_CRITIC_TYPES.map((c) => (
             <label key={c} className="text-xs flex items-center gap-1">
@@ -267,14 +267,14 @@ export function CritiquePanel({
 
       {!loading && !report && (
         <p className="text-sm text-[var(--color-muted-foreground)]">
-          Критика ещё не запускалась для этой версии.
+          Разбор ещё не запускался для этой версии.
         </p>
       )}
 
       {report && report.status === "error" && (
         <div className="border border-[var(--color-ink-red-fg)] rounded-md p-3 flex flex-col gap-1">
           <p className="text-sm text-[var(--color-ink-red-fg)]">
-            Критика не удалась: ни один критик не ответил.
+            Разбор не удался: ни один критик не ответил.
             {requestedList(report) && ` Просили: ${requestedList(report)}.`}
           </p>
           {report.errorMessage && (
@@ -336,7 +336,7 @@ export function CritiquePanel({
           repairError) && (
           <div className="border border-[var(--color-border)] rounded-md p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="text-sm font-medium">Self-repair</div>
+              <div className="text-sm font-medium">Исправить</div>
               <div className="flex items-center gap-2 flex-wrap">
                 {(["blocking", "suggestion", "nit"] as IssueSeverity[]).map(
                   (s) => (
@@ -357,7 +357,7 @@ export function CritiquePanel({
                   </span>
                 )}
                 <Button onClick={onRepair} disabled={repairing}>
-                  {repairing ? "Reviser пишет…" : "Запустить self-repair"}
+                  {repairing ? "Идёт правка…" : "Исправить главу"}
                 </Button>
                 {repairing && (
                   <Button
@@ -384,7 +384,7 @@ export function CritiquePanel({
               />
             </label>
             <p className="text-xs text-[var(--color-muted-foreground)]">
-              Reviser перепишет главу с приоритетом по выбранным severity.
+              Глава будет переписана с приоритетом по выбранным severity.
               Результат придёт кандидатом ниже — его нужно принять (целиком
               или частично) или отклонить, глава сама не изменится.
               Лимит итераций: {REPAIR_MAX_ITERATIONS}.
@@ -400,8 +400,8 @@ export function CritiquePanel({
             {repairing && repairBuffer && (
               <div className="border border-[var(--color-ring)] rounded-md p-3 bg-[var(--color-muted)] max-h-[300px] overflow-auto">
                 <div className="text-xs text-[var(--color-muted-foreground)] mb-2">
-                  Live stream (Reviser пишет; по готовности текст ляжет
-                  кандидатом ниже — его ещё нужно принять):
+                  Идёт правка; по готовности текст ляжет кандидатом ниже — его
+                  ещё нужно принять:
                 </div>
                 <pre className="whitespace-pre-wrap text-sm font-sans">
                   {repairBuffer}

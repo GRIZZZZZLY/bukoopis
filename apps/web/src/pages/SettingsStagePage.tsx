@@ -285,7 +285,7 @@ export function SettingsStagePage() {
           <p className="muted tabular" style={{ fontSize: 12, marginTop: 12 }}>
             Прогноз на главу 4k слов, без учёта prompt-кэша
             {writerProvider === "ollama"
-              ? "; Writer бесплатный — локальная модель"
+              ? "; Писатель бесплатный — локальная модель"
               : ""}
             .
           </p>

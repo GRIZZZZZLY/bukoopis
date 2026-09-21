@@ -40,10 +40,13 @@ const STATUS_INFO: Record<
   StageStatus,
   { label: string; css: string; tone: string }
 > = {
-  complete: { label: "Готово", css: "complete", tone: " pill-green" },
-  in_progress: { label: "В работе", css: "in_progress", tone: " pill-brass" },
-  not_started: { label: "Не начато", css: "todo", tone: "" },
-  skipped: { label: "Пропущено", css: "skipped", tone: "" },
+  // Три состояния на языке автора (ТЗ конвейера, фаза 6): не начат, черновик,
+  // утверждён. Четвёртое, «не нужен», — это осознанный пропуск лора и
+  // предметов, а не готовность: сливать его с «утверждён» значит врать.
+  complete: { label: "Утверждён", css: "complete", tone: " pill-green" },
+  in_progress: { label: "Черновик", css: "in_progress", tone: " pill-brass" },
+  not_started: { label: "Не начат", css: "todo", tone: "" },
+  skipped: { label: "Не нужен", css: "skipped", tone: "" },
 };
 
 function glyph(status: StageStatus) {

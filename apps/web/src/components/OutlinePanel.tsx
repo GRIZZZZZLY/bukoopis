@@ -68,7 +68,7 @@ export function OutlinePanel({ book, onUpdated }: Props) {
   return (
     <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Outline книги</h2>
+        <h2 className="text-xl font-semibold">План книги</h2>
         <div className="flex items-center gap-2">
           <label className="text-sm">
             Вариантов:&nbsp;
