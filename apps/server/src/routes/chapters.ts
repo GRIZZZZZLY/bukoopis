@@ -29,6 +29,7 @@ import type { MemoryWorker } from "../utils/memory-worker.js";
 import { preserveDraftAsVersion } from "../utils/chapter-drafts.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
 import {
+  loadCarryableSceneState,
   loadSceneStateForVersion,
   saveSceneState,
 } from "../utils/scene-state.js";
@@ -211,6 +212,10 @@ export function createChaptersRoute(
     const row = ch.current_version_id
       ? loadSceneStateForVersion(sqlite, ch.current_version_id)
       : null;
+    // Правка автора, оставшаяся на прежней версии: перезапись главы завела
+    // новую, и анкета вместе с правкой ушла с экрана. Переносит её автор
+    // кнопкой — молча подставлять описание заменённого текста нельзя.
+    const carry = loadCarryableSceneState(sqlite, id);
     // «Анкеты нет» — штатный ответ, а не 404: опрос страницы главы не должен
     // засыпать консоль браузера красным (та же правка, что у inflight).
     return c.json({
@@ -219,6 +224,9 @@ export function createChaptersRoute(
       state: row?.state ?? null,
       origin: row?.origin ?? null,
       updatedAt: row?.updatedAt ?? null,
+      carry: carry
+        ? { state: carry.state, versionId: carry.chapterVersionId, updatedAt: carry.updatedAt }
+        : null,
     });
   });
 

@@ -43,6 +43,40 @@ describe("GET /api/chapters/:id/scene-state", () => {
     const res = await send(t.app, "/api/chapters/999999/scene-state", "GET");
     expect(res.status).toBe(404);
   });
+
+  it("после перезаписи главы отдаёт правку прежней версии к переносу", async () => {
+    await sendJson(t.app, `/api/chapters/${chapterId}/scene-state`, "PATCH", {
+      place: "причал",
+      carried: [{ name: "Нина", value: "ключ" }],
+    });
+    // Перезапись главы: новая версия становится текущей, анкета осталась у старой.
+    await sendJson(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+      contentJson: { type: "doc", content: [] },
+      source: "manual",
+    });
+
+    const got = await sendJson<{
+      state: SceneState | null;
+      carry: { state: SceneState; versionId: number } | null;
+    }>(t.app, `/api/chapters/${chapterId}/scene-state`, "GET");
+    expect(got.state).toBeNull();
+    expect(got.carry?.versionId).toBe(versionId);
+    expect(got.carry?.state.place).toBe("причал");
+
+    // Перенос — обычная авторская запись на текущую версию; предлагать больше нечего.
+    await sendJson(
+      t.app,
+      `/api/chapters/${chapterId}/scene-state`,
+      "PATCH",
+      got.carry!.state,
+    );
+    const after = await sendJson<{
+      origin: string | null;
+      carry: unknown;
+    }>(t.app, `/api/chapters/${chapterId}/scene-state`, "GET");
+    expect(after.origin).toBe("manual");
+    expect(after.carry).toBeNull();
+  });
 });
 
 describe("PATCH /api/chapters/:id/scene-state", () => {

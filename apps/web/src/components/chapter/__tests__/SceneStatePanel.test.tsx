@@ -40,6 +40,7 @@ describe("SceneStatePanel", () => {
       state: STATE,
       origin: "llm",
       updatedAt: null,
+      carry: null,
     });
     render(<SceneStatePanel chapterId={1} />);
 
@@ -56,6 +57,7 @@ describe("SceneStatePanel", () => {
       state: null,
       origin: null,
       updatedAt: null,
+      carry: null,
     });
     render(<SceneStatePanel chapterId={1} />);
     expect(await screen.findByText(/Анкеты нет/)).toBeTruthy();
@@ -68,6 +70,7 @@ describe("SceneStatePanel", () => {
       state: STATE,
       origin: "llm",
       updatedAt: null,
+      carry: null,
     });
     vi.mocked(api.saveSceneState).mockResolvedValue({ chapterId: 1, state: STATE });
     render(<SceneStatePanel chapterId={1} />);
@@ -83,6 +86,38 @@ describe("SceneStatePanel", () => {
     expect(sent.carried).toEqual([{ name: "Нина", value: "чужой телефон" }]);
   });
 
+  it("правка с прежней версии предлагается к переносу и уходит одной кнопкой", async () => {
+    vi.mocked(api.getSceneState)
+      .mockResolvedValueOnce({
+        chapterId: 1,
+        versionId: 8,
+        state: null,
+        origin: null,
+        updatedAt: null,
+        carry: { state: STATE, versionId: 7, updatedAt: "2026-09-21T00:00:00.000Z" },
+      })
+      .mockResolvedValue({
+        chapterId: 1,
+        versionId: 8,
+        state: STATE,
+        origin: "manual",
+        updatedAt: null,
+        carry: null,
+      });
+    vi.mocked(api.saveSceneState).mockResolvedValue({ chapterId: 1, state: STATE });
+    render(<SceneStatePanel chapterId={1} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Перенести мою правку" }),
+    );
+    await waitFor(() => expect(api.saveSceneState).toHaveBeenCalledWith(1, STATE));
+    // После переноса предлагать нечего, а анкета на месте и помечена авторской.
+    expect(await screen.findByText(/перенесена/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Перенести мою правку" })).toBeNull(),
+    );
+  });
+
   it("«Пересчитать» снимает анкету с экрана и говорит, что считается", async () => {
     vi.mocked(api.getSceneState).mockResolvedValue({
       chapterId: 1,
@@ -90,6 +125,7 @@ describe("SceneStatePanel", () => {
       state: STATE,
       origin: "manual",
       updatedAt: null,
+      carry: null,
     });
     vi.mocked(api.recomputeSceneState).mockResolvedValue({
       chapterId: 1,

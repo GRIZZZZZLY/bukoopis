@@ -343,6 +343,12 @@ export const api = {
       state: import("@book-forge/shared").SceneState | null;
       origin: "llm" | "manual" | null;
       updatedAt: string | null;
+      /** Правка автора, оставшаяся на прежней версии главы. */
+      carry: {
+        state: import("@book-forge/shared").SceneState;
+        versionId: number;
+        updatedAt: string;
+      } | null;
     }>(`/api/chapters/${chapterId}/scene-state`),
   saveSceneState: (
     chapterId: number,
