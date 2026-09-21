@@ -203,3 +203,8 @@ export const runExtractInputSchema = z.object({
   sampleSize: z.number().int().min(5).max(100).default(12),
 });
 export type RunExtractInput = z.infer<typeof runExtractInputSchema>;
+/** Форма ДО разбора — `sampleSize` необязателен на проводе, сервер сам
+ *  подставляет умолчание при `safeParse`. Клиент шлёт запросы этой формы,
+ *  а не пост-парсной `RunExtractInput`, где `.default()` делает поле
+ *  обязательным. */
+export type RunExtractRequest = z.input<typeof runExtractInputSchema>;

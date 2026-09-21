@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
-import type { RunExtractInput, StyleFreshness } from "@book-forge/shared";
+import type { StyleFreshness } from "@book-forge/shared";
 
 interface Props {
   bookId: number;
@@ -35,10 +35,7 @@ export function StyleFreshnessNote({ bookId }: Props) {
       setPhase("corpus");
       await api.refreshStyleFromChapters(bookId);
       setPhase("extract");
-      // Второй аргумент типизирован как результат разбора схемы (`sampleSize`
-      // обязателен после `.default()`), а не как вход — на проводе `{}`
-      // остаётся пустым телом, сервер сам подставит значение по умолчанию.
-      await api.runStyleExtract(fresh.profileId, {} as RunExtractInput);
+      await api.runStyleExtract(fresh.profileId, {});
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

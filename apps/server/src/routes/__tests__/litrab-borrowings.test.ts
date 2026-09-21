@@ -1,9 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 import { assembleGenerationContext } from "../../utils/generation-context.js";
 import { loadStudioContext, studioContextToPrompt } from "../../utils/studio-context.js";
 import type { BookRow, ChapterRow } from "../../db/rows.js";
 import { gatherCharacterContext } from "@book-forge/agents";
+import type { StyleFingerprint } from "@book-forge/shared";
+
+// Только `runStyleBlender` подменяется — остальной style-engine (парсер,
+// детектор формата, счётчик усталых слов) остаётся настоящим: тест про
+// бленд проверяет ветку `kind`, а не сам блендер.
+vi.mock("@book-forge/style-engine", async (orig) => ({
+  ...(await orig<typeof import("@book-forge/style-engine")>()),
+  runStyleBlender: vi.fn(),
+}));
+import { runStyleBlender } from "@book-forge/style-engine";
 
 let t: TestApp;
 beforeEach(() => {
@@ -211,6 +221,36 @@ describe("свежесть паспорта стиля", () => {
     return ch.id;
   }
 
+  const BLEND_FINGERPRINT: StyleFingerprint = {
+    language: "ru",
+    voiceSummary: "Смешанный голос.",
+    sentenceLengths: { meanWords: 11, medianWords: 9, shortShare: 0.4, mediumShare: 0.4, longShare: 0.2 },
+    density: { dialogue: 0.25, description: 0.35, action: 0.25, introspection: 0.15 },
+    paragraphRhythm: "Плотные короткие абзацы.",
+    sceneOpenings: "С детали.",
+    sceneClosings: "С паузы.",
+    tense: "past",
+    metaphorFamilies: ["ремесло"],
+    signatureSyntax: ["парцелляция"],
+    signatureTropes: ["сцена держится на одном предмете"],
+    thingsToImitate: ["обрывать абзац на действии"],
+    thingsToAvoid: ["зеркальные конструкции"],
+  };
+
+  /** Дешёвый «извлечённый» родитель для бленда: пишем валидный отпечаток
+   *  прямо в базу, минуя настоящий экстрактор — тест проверяет ветку `kind`
+   *  у бленда, а не само извлечение. */
+  async function makeExtractedProfile(name: string): Promise<number> {
+    const p = await sendJson<{ id: number }>(t.app, "/api/style-profiles", "POST", {
+      name,
+      language: "ru",
+    });
+    t.sqlite
+      .prepare("UPDATE style_profiles SET fingerprint_json = ? WHERE id = ?")
+      .run(JSON.stringify(BLEND_FINGERPRINT), p.id);
+    return p.id;
+  }
+
   it("без профиля — profileId null и stale false", async () => {
     const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
     const f = await sendJson<{ profileId: number | null; stale: boolean }>(
@@ -269,5 +309,29 @@ describe("свежесть паспорта стиля", () => {
     expect((await send(t.app, `/api/books/${bookId}/style/refresh-from-chapters`, "POST", {})).status).toBe(400);
     const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
     expect((await send(t.app, `/api/books/${b.id}/style/refresh-from-chapters`, "POST", {})).status).toBe(400);
+  });
+
+  it("бленд не устаревает и не принимает добор — у него нет своего корпуса", async () => {
+    vi.mocked(runStyleBlender).mockResolvedValueOnce(BLEND_FINGERPRINT);
+    const a = await makeExtractedProfile("Первый");
+    const b = await makeExtractedProfile("Второй");
+    const blend = await sendJson<{ id: number; kind: string }>(
+      t.app, "/api/style-profiles/blend", "POST",
+      { name: "Смесь", sources: [{ profileId: a, weight: 0.5 }, { profileId: b, weight: 0.5 }] },
+    );
+    expect(blend.kind).toBe("blend");
+
+    const book = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    await send(t.app, `/api/books/${book.id}`, "PATCH", { styleProfileId: blend.id });
+    for (const title of ["1", "2", "3"]) await chapterWithVersion(book.id, title);
+
+    const f = await sendJson<{ kind: string | null; stale: boolean }>(
+      t.app, `/api/books/${book.id}/style-freshness`, "GET",
+    );
+    expect(f.kind).toBe("blend");
+    expect(f.stale).toBe(false);
+
+    const res = await send(t.app, `/api/books/${book.id}/style/refresh-from-chapters`, "POST", {});
+    expect(res.status).toBe(400);
   });
 });

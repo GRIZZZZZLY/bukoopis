@@ -604,7 +604,7 @@ export const api = {
     }),
   runStyleExtract: (
     profileId: number,
-    body?: import("@book-forge/shared").RunExtractInput,
+    body?: import("@book-forge/shared").RunExtractRequest,
   ) =>
     req<import("@book-forge/shared").StyleProfile>(
       `/api/style-profiles/${profileId}/extract`,
