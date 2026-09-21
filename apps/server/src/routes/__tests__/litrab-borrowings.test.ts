@@ -167,4 +167,25 @@ describe("глазок героя", () => {
     const withPov = gatherCharacterContext(t.sqlite, bookId, ["Нина и Ворт спорят"], [vort], null);
     expect(withPov.characters.map((c) => c.character.canonicalName).sort()).toEqual(["Ворт", "Нина"]);
   });
+
+  it("скрытый POV из плана приходит, даже когда скрыты все герои", async () => {
+    // Единственный герой книги скрыт — отфильтрованный список пуст, и это
+    // единственный способ дойти до ветки `alwaysIncludeIds.length === 0` в
+    // раннем возврате: с любым видимым героем список никогда не пуст, и
+    // регрессия на старую проверку `allCharacters.length === 0` осталась бы
+    // незамеченной (см. ревью).
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    const only = await sendJson<{ id: number }>(t.app, `/api/books/${b.id}/characters`, "POST", {
+      canonicalName: "Нина",
+      profile: { description: "инженер" },
+    });
+    await send(t.app, `/api/characters/${only.id}/prompt-visibility`, "PATCH", { hidden: true });
+    // Скан без POV ничего не находит — список пуст.
+    expect(
+      gatherCharacterContext(t.sqlite, b.id, ["сцена без имён"], [], null).characters,
+    ).toEqual([]);
+    // POV назван автором в плане явно — фильтр обходится, карточка приходит.
+    const withPov = gatherCharacterContext(t.sqlite, b.id, ["сцена без имён"], [only.id], null);
+    expect(withPov.characters.map((c) => c.character.canonicalName)).toEqual(["Нина"]);
+  });
 });
