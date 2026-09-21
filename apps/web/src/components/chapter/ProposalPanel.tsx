@@ -118,9 +118,17 @@ export function ProposalPanel({
     [proposal.contentText],
   );
 
+  // Удержанный беат-прогон (3 из 7 беатов) законно короче базы и законно не
+  // упоминает героев, которые ещё не дошли до сцены — это не пропажа, а «ещё
+  // не написано». Оба блока ниже ловят то, что ПРАВКА молча выкинула из
+  // существующего текста; на частичной главе они врут «потерей» тому, что
+  // просто не наступило.
+  const isPartialBeats =
+    proposal.beatsDone !== null && proposal.beatsTotal !== null && proposal.beatsDone < proposal.beatsTotal;
+
   const base = baseWordCount ?? 0;
   const volumeDelta =
-    base > 0 ? Math.round(((proposal.wordCount - base) / base) * 100) : null;
+    !isPartialBeats && base > 0 ? Math.round(((proposal.wordCount - base) / base) * 100) : null;
   // Литраб: «просили убрать повторы, а фрагмент стал на 15% короче — модель
   // убрала что-то ещё». Порог 10%, только для правки: черновик главы объёма
   // базы не обещал.
@@ -128,10 +136,10 @@ export function ProposalPanel({
     proposal.kind === "repair" && base > 0 && proposal.wordCount < base * 0.9;
   const lostNames = useMemo(
     () =>
-      characterNames && characterNames.length > 0
+      !isPartialBeats && characterNames && characterNames.length > 0
         ? findLostMentions(changes, proposal.contentText, characterNames)
         : [],
-    [changes, proposal.contentText, characterNames],
+    [isPartialBeats, changes, proposal.contentText, characterNames],
   );
 
   function toggle(id: string): void {

@@ -76,15 +76,25 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Не доверяет.")).toBeTruthy();
   });
 
-  it("ошибку потока печатает и оставляет вопрос в поле", async () => {
+  it("ошибку потока печатает и не даёт повтору задвоить вопрос автора", async () => {
+    // Сервер пишет вопрос в базу ДО вызова модели (chat.ts) — сбой его не
+    // теряет. Раньше панель на ошибке снимала оптимистичный пузырь и
+    // оставляла текст в поле «для повтора»: повтор писал ВТОРУЮ такую же
+    // строку. Теперь — рефетч треда с сервера и пустое поле.
     vi.mocked(api.listChatThreads).mockResolvedValue([THREAD]);
-    vi.mocked(api.listChatMessages).mockResolvedValue([]);
+    vi.mocked(api.listChatMessages)
+      .mockResolvedValueOnce([]) // начальная загрузка при монтировании
+      .mockResolvedValueOnce([
+        { id: 5, threadId: 1, role: "user", content: "Вопрос", createdAt: "x" },
+      ]); // рефетч после ошибки — вопрос уже сохранён сервером
     vi.mocked(streamChatMessage).mockImplementation(async (_id, _c, h) => h.onError("backend down"));
     render(<ChatPanel chapterId={2} />);
     await screen.findByRole("textbox");
     await userEvent.type(screen.getByRole("textbox"), "Вопрос");
     await userEvent.click(screen.getByRole("button", { name: /отправить/i }));
     expect(await screen.findByText(/backend down/)).toBeTruthy();
-    expect(screen.getByDisplayValue("Вопрос")).toBeTruthy();
+    await waitFor(() => expect(api.listChatMessages).toHaveBeenCalledTimes(2));
+    expect(screen.getByDisplayValue("")).toBeTruthy();
+    expect(screen.getAllByText("Вопрос")).toHaveLength(1);
   });
 });

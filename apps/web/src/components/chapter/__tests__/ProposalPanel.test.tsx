@@ -335,4 +335,16 @@ describe("потери после правки", () => {
     // CHANGES заменяют абзац «Два.» — имя «Два» пропало из кандидата.
     expect(screen.getByText(/исчезли имена: Два/)).toBeTruthy();
   });
+
+  it("удержанный беат-прогон не считается потерей объёма и имён", () => {
+    // 3 из 7 беатов: текст короче базы и герои дальше по сюжету законно ещё
+    // не упомянуты — это «не написано», а не то, что правка выкинула.
+    renderPanel(
+      { kind: "write", status: "incomplete", stopReason: "held", beatsDone: 3, beatsTotal: 7, wordCount: 40 },
+      undefined,
+      { baseWordCount: 1900, characterNames: ["Нина", "Два"] },
+    );
+    expect(screen.queryByText(/Объём:/)).toBeNull();
+    expect(screen.queryByText(/исчезли имена/)).toBeNull();
+  });
 });

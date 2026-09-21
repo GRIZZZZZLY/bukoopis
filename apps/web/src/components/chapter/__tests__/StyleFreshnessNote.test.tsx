@@ -44,10 +44,10 @@ describe("StyleFreshnessNote", () => {
     vi.mocked(api.refreshStyleFromChapters).mockResolvedValue({ corpusId: 9, chapters: [] });
     vi.mocked(api.runStyleExtract).mockResolvedValue({} as never);
     render(<StyleFreshnessNote bookId={1} />);
-    expect(await screen.findByText(/собран до 5 принятых глав/)).toBeTruthy();
+    expect(await screen.findByText(/принято глав: 5/)).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: /пересобрать/i }));
     await waitFor(() => expect(api.refreshStyleFromChapters).toHaveBeenCalledWith(1));
     await waitFor(() => expect(api.runStyleExtract).toHaveBeenCalledWith(4, {}));
-    await waitFor(() => expect(screen.queryByText(/собран до/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/принято глав/)).toBeNull());
   });
 });

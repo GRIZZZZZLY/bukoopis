@@ -49,8 +49,8 @@ export function StyleFreshnessNote({ bookId }: Props) {
   return (
     <div className="text-sm flex flex-col gap-2">
       <p>
-        Стиль «{fresh.profileName}» собран до {fresh.chaptersSince} принятых глав. Голос книги
-        мог уйти вперёд.
+        С последней сборки паспорта «{fresh.profileName}» принято глав: {fresh.chaptersSince}.
+        Голос книги мог уйти вперёд.
       </p>
       <Button size="sm" variant="outline" onClick={() => void rebuild()} disabled={phase !== "idle"}>
         {phase === "corpus"

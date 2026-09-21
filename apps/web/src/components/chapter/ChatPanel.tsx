@@ -112,8 +112,18 @@ export function ChatPanel({ chapterId }: Props) {
         onError: (msg) => {
           setError(msg);
           setBuffer(null);
-          // Вопрос остаётся в поле: автор повторит, не набирая заново.
-          setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+          setInput("");
+          // Сервер пишет вопрос автора в базу ДО вызова модели (chat.ts) —
+          // сбой не теряет текст. Раньше на ошибке снимали оптимистичный
+          // пузырь и оставляли текст в поле «для повтора»: повтор писал
+          // ВТОРУЮ такую же строку, и обе уходили в окно истории, которое
+          // видит модель. Перечитываем тред с сервера тем же вызовом, что
+          // и при смене треда, — автор видит, что вопрос уже на месте, и
+          // повтор становится осознанным новым сообщением, а не дублем.
+          api
+            .listChatMessages(threadId)
+            .then((m) => setMessages(m))
+            .catch(() => {});
         },
       });
     } catch (e) {
@@ -174,6 +184,7 @@ export function ChatPanel({ chapterId }: Props) {
             aria-label="Удалить разговор"
             className="p-1 rounded hover:bg-[var(--color-muted)]"
             onClick={() => void removeThread(activeId)}
+            disabled={busy}
           >
             <Trash2 className="size-4" aria-hidden="true" />
           </button>

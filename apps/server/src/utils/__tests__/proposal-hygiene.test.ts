@@ -11,7 +11,7 @@ let t: TestApp;
 let bookId: number;
 let chapterId: number;
 
-function seedProposal(status: string, createdAt?: string): number {
+function seedProposal(status: string, createdAt?: string, beatsDone: number | null = null): number {
   const now = createdAt ?? new Date().toISOString();
   return Number(
     t.sqlite
@@ -19,10 +19,10 @@ function seedProposal(status: string, createdAt?: string): number {
         `INSERT INTO prose_proposals
            (book_id, chapter_id, kind, status, base_version_id, base_draft_revision,
             context_fingerprint, content_text, content_json, word_count, completion,
-            created_at, updated_at)
-         VALUES (?, ?, 'write', ?, NULL, NULL, 'fp', '', '{}', 0, 'unconfirmed', ?, ?)`,
+            beats_done, created_at, updated_at)
+         VALUES (?, ?, 'write', ?, NULL, NULL, 'fp', '', '{}', 0, 'unconfirmed', ?, ?, ?)`,
       )
-      .run(bookId, chapterId, status, now, now).lastInsertRowid,
+      .run(bookId, chapterId, status, beatsDone, now, now).lastInsertRowid,
   );
 }
 
@@ -67,6 +67,42 @@ describe("кандидаты прозы после рестарта (С8)", () =
       .prepare("SELECT status FROM prose_proposals WHERE id = ?")
       .get(fresh) as { status: string };
     expect(row.status).toBe("streaming");
+  });
+
+  it("восстановление после рестарта различает беаты и обычный обрыв (Task 9 CASE)", () => {
+    // Оба старше получаса, чтобы гарантированно попасть под восстановление,
+    // независимо от порога. Проверяем именно ветвление CASE: у затронутого
+    // беатами кандидата статус, причина и счётчик должны выжить, у обычного —
+    // прежнее поведение, и сообщения не должны перепутаться местами.
+    const withBeats = seedProposal("streaming", "2020-01-01T00:00:00.000Z", 2);
+    const withoutBeats = seedProposal("streaming", "2020-01-01T00:00:00.000Z", null);
+
+    expect(recoverStaleProseProposals(t.sqlite)).toBe(2);
+
+    const rows = t.sqlite
+      .prepare(
+        "SELECT id, status, stop_reason, error_message, beats_done FROM prose_proposals ORDER BY id",
+      )
+      .all() as Array<{
+        id: number;
+        status: string;
+        stop_reason: string | null;
+        error_message: string | null;
+        beats_done: number | null;
+      }>;
+    const withBeatsRow = rows.find((r) => r.id === withBeats)!;
+    const withoutBeatsRow = rows.find((r) => r.id === withoutBeats)!;
+
+    expect(withBeatsRow.status).toBe("incomplete");
+    expect(withBeatsRow.stop_reason).toBe("interrupted");
+    expect(withBeatsRow.error_message).toContain("Написанные беаты можно принять");
+    expect(withBeatsRow.beats_done).toBe(2);
+
+    expect(withoutBeatsRow.status).toBe("failed");
+    expect(withoutBeatsRow.stop_reason).toBeNull();
+    expect(withoutBeatsRow.error_message).toContain("Запустите её заново");
+    // Сообщения не перепутаны местами: у обычного обрыва нет речи о беатах.
+    expect(withoutBeatsRow.error_message).not.toContain("беаты");
   });
 
   it("поздний ответ не переписывает отменённого кандидата", () => {
