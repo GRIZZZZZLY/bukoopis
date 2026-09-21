@@ -1,3 +1,4 @@
+import type React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -48,6 +49,7 @@ const CHANGES = [
 function renderPanel(
   overrides: Partial<ProseProposal> = {},
   onReread?: () => Promise<ProposalReread>,
+  extra: Partial<React.ComponentProps<typeof ProposalPanel>> = {},
 ) {
   const onAccepted = vi.fn();
   const onRejected = vi.fn();
@@ -60,6 +62,7 @@ function renderPanel(
       {...(onReread ? { onReread } : {})}
       onAccepted={onAccepted}
       onRejected={onRejected}
+      {...extra}
     />,
   );
   return { onAccepted, onRejected };
@@ -290,5 +293,30 @@ describe("ProposalPanel — выход из 409", () => {
     const second = vi.mocked(api.acceptProposal).mock.calls[1]?.[1];
     expect(second?.acknowledgeUnconfirmed).toBe(true);
     expect(second?.acknowledgeContextDrift).toBe(true);
+  });
+});
+
+describe("потери после правки", () => {
+  it("печатает объём и предупреждает о сокращении правки больше 10%", () => {
+    renderPanel({ kind: "repair", wordCount: 80 }, undefined, { baseWordCount: 100 });
+    expect(screen.getByText(/Объём: 100 → 80 слов \(−20%\)/)).toBeTruthy();
+    expect(screen.getByText(/убрала больше десятой части/)).toBeTruthy();
+  });
+
+  it("на черновике главы сокращение не тревожит", () => {
+    renderPanel({ kind: "write", wordCount: 80 }, undefined, { baseWordCount: 100 });
+    expect(screen.queryByText(/убрала больше десятой части/)).toBeNull();
+  });
+
+  it("называет защищённое, которое не дожило, и пропавшие имена", () => {
+    renderPanel({ kind: "repair", contentText: "Он молчал." }, undefined, {
+      baseWordCount: 3,
+      protectedLost: ["Ты ведь всё равно вернёшься"],
+      characterNames: ["Нина", "Два"],
+    });
+    expect(screen.getByText(/Защищённое не дожило/)).toBeTruthy();
+    expect(screen.getByText(/Ты ведь всё равно вернёшься/)).toBeTruthy();
+    // CHANGES заменяют абзац «Два.» — имя «Два» пропало из кандидата.
+    expect(screen.getByText(/исчезли имена: Два/)).toBeTruthy();
   });
 });

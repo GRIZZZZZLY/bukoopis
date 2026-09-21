@@ -1230,6 +1230,9 @@ export interface RepairStreamHandlers {
     proposal: import("@book-forge/shared").ProseProposal;
     cancelled?: boolean;
     tokens?: { input: number; output: number };
+    /** Защищённые фрагменты, которых правка не сберегла (сервер их находит
+     *  в готовом тексте до отправки события). */
+    protectedLost?: string[];
   }) => void;
   onError: (message: string) => void;
 }

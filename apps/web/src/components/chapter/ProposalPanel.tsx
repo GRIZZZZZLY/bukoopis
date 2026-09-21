@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
-import type { ProseChange, ProseProposal } from "@book-forge/shared";
+import { findLostMentions, type ProseChange, type ProseProposal } from "@book-forge/shared";
 
 /** Свежее состояние главы, перечитанное по просьбе автора после 409.
  *  Возвращается вызывающей страницей, а не читается панелью: страница знает
@@ -24,6 +24,12 @@ interface Props {
   onReread?: () => Promise<ProposalReread>;
   onAccepted: (versionId: number) => void | Promise<void>;
   onRejected: () => void | Promise<void>;
+  /** Слов в тексте, от которого считался кандидат (текущая версия главы). */
+  baseWordCount?: number | null;
+  /** Защищённые фрагменты, которых в тексте правки не нашлось (сервер, `done.protectedLost`). */
+  protectedLost?: string[];
+  /** Имена героев книги — для поиска пропавших упоминаний. */
+  characterNames?: string[];
 }
 
 const CHANGE_LABEL: Record<ProseChange["kind"], string> = {
@@ -67,6 +73,9 @@ export function ProposalPanel({
   onReread,
   onAccepted,
   onRejected,
+  baseWordCount,
+  protectedLost,
+  characterNames,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -107,6 +116,22 @@ export function ProposalPanel({
   const paragraphs = useMemo(
     () => proposal.contentText.split(/\n\s*\n/).filter((p) => p.trim().length > 0),
     [proposal.contentText],
+  );
+
+  const base = baseWordCount ?? 0;
+  const volumeDelta =
+    base > 0 ? Math.round(((proposal.wordCount - base) / base) * 100) : null;
+  // Литраб: «просили убрать повторы, а фрагмент стал на 15% короче — модель
+  // убрала что-то ещё». Порог 10%, только для правки: черновик главы объёма
+  // базы не обещал.
+  const shrunkTooMuch =
+    proposal.kind === "repair" && base > 0 && proposal.wordCount < base * 0.9;
+  const lostNames = useMemo(
+    () =>
+      characterNames && characterNames.length > 0
+        ? findLostMentions(changes, proposal.contentText, characterNames)
+        : [],
+    [changes, proposal.contentText, characterNames],
   );
 
   function toggle(id: string): void {
@@ -228,6 +253,33 @@ export function ProposalPanel({
       <p className="text-sm">
         Глава не изменена, пока вы не примете этот текст.
       </p>
+      {volumeDelta !== null && (
+        <p className="text-sm">
+          Объём: {base} → {proposal.wordCount} слов (
+          {volumeDelta >= 0 ? "+" : "−"}
+          {Math.abs(volumeDelta)}%)
+        </p>
+      )}
+      {shrunkTooMuch && (
+        <p className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
+          Правка убрала больше десятой части текста — проверьте, что пропало.
+        </p>
+      )}
+      {protectedLost && protectedLost.length > 0 && (
+        <div className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
+          Защищённое не дожило:
+          <ul style={{ marginLeft: 16 }}>
+            {protectedLost.map((f) => (
+              <li key={f}>«{f}»</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {lostNames.length > 0 && (
+        <p className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
+          Из правленных абзацев исчезли имена: {lostNames.join(", ")}
+        </p>
+      )}
       {looksCut && (
         <p className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
           Похоже, текст оборван

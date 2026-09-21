@@ -124,6 +124,9 @@ export function ChapterPage() {
   const [memory, setMemory] = useState<ChapterMemoryInfo | null>(null);
   const [memoryRetrying, setMemoryRetrying] = useState(false);
   const [memoryRebuilding, setMemoryRebuilding] = useState(false);
+  /** Имена героев книги — панель кандидата ищет по ним пропавшие упоминания
+   *  (Task 6). Тот же список, что уже грузится ниже для подсветки канона. */
+  const [characterNames, setCharacterNames] = useState<string[]>([]);
 
   const isPreviewRef = useRef(false);
   const baselineJsonRef = useRef<string>(JSON.stringify(EMPTY_DOC));
@@ -387,6 +390,7 @@ export function ChapterPage() {
     ])
       .then(([chars, locs, items, hooks]) => {
         if (cancelled) return;
+        setCharacterNames(chars.map((c) => c.canonicalName));
         const entities: CanonHighlightEntity[] = [
           ...chars.map((c) => ({
             type: "character" as const,
@@ -876,6 +880,8 @@ export function ChapterPage() {
                 changes={proposalChanges}
                 expectedVersionId={chapter?.currentVersionId ?? null}
                 expectedDraftRevision={chapter?.draft?.revision ?? null}
+                baseWordCount={chapter?.currentVersion?.wordCount ?? null}
+                characterNames={characterNames}
                 onReread={async () => {
                   const fresh = await rereadForProposal(proposal.id);
                   setProposalChanges(fresh.changes);
@@ -1030,6 +1036,8 @@ export function ChapterPage() {
                 versionId={chapter.currentVersionId}
                 expectedVersionId={chapter.currentVersionId}
                 expectedDraftRevision={chapter.draft?.revision ?? null}
+                baseWordCount={chapter.currentVersion?.wordCount ?? null}
+                characterNames={characterNames}
                 onRereadProposal={rereadForProposal}
                 onRepairDone={load}
               />
@@ -1065,6 +1073,8 @@ export function ChapterPage() {
               versionId={chapter.currentVersionId}
               expectedVersionId={chapter.currentVersionId}
               expectedDraftRevision={chapter.draft?.revision ?? null}
+              baseWordCount={chapter.currentVersion?.wordCount ?? null}
+              characterNames={characterNames}
               onRereadProposal={rereadForProposal}
               onRepairDone={load}
             />

@@ -8,6 +8,7 @@ import {
   docToNodes,
   nodesToBlocks,
   nodesToDoc,
+  findLostMentions,
   MAX_DIFF_BLOCKS,
 } from "./prose-diff.js";
 
@@ -304,5 +305,24 @@ describe("частичное принятие по узлам", () => {
     expect(() =>
       applyProseChangesToNodes(baseNodes, candidateNodes, changes, ["нет-такой"]),
     ).toThrow(/unknown change/);
+  });
+});
+
+describe("findLostMentions", () => {
+  const names = ["Нина", "Ворт", "Агата"];
+  it("называет героев из убранных абзацев, которых в кандидате больше нет", () => {
+    const changes = [
+      { id: "c0", kind: "replace" as const, baseFrom: 0, baseTo: 1, baseText: ["Ворт молчал, глядя на Нину."], candidateText: ["Он молчал."] },
+      { id: "c1", kind: "delete" as const, baseFrom: 3, baseTo: 4, baseText: ["Агата ушла."], candidateText: [] },
+    ];
+    const lost = findLostMentions(changes, "Он молчал.\n\nНина закрыла дверь.", names);
+    expect(lost).toEqual(["Ворт", "Агата"]);
+  });
+  it("вставки не считаются потерями, падежи учитываются", () => {
+    const changes = [
+      { id: "c0", kind: "insert" as const, baseFrom: 0, baseTo: 0, baseText: [], candidateText: ["Нина вошла."] },
+      { id: "c1", kind: "replace" as const, baseFrom: 1, baseTo: 2, baseText: ["Он думал о Нине."], candidateText: ["Он думал."] },
+    ];
+    expect(findLostMentions(changes, "Нина вошла.\n\nОн думал.", names)).toEqual([]);
   });
 });
