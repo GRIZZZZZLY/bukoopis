@@ -173,6 +173,10 @@ vi.mock("@/api/client", () => {
     listLocations: () => Promise.resolve([]),
     listItems: () => Promise.resolve([]),
     listHooks: () => Promise.resolve([]),
+    // Чат по книге (Task 8) рендерится в правой колонке ChapterPage наравне
+    // с остальными панелями; без стаба общий `Promise.resolve({})` заглушки
+    // роняет `.map` на пустом объекте вместо массива.
+    listChatThreads: () => Promise.resolve([]),
     getSceneState: () =>
       Promise.resolve({
         chapterId: 10,

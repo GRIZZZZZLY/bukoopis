@@ -36,6 +36,7 @@ import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { SceneStatePanel } from "@/components/chapter/SceneStatePanel";
+import { ChatPanel } from "@/components/chapter/ChatPanel";
 import { AuthorNotesPanel } from "@/components/chapter/AuthorNotesPanel";
 import { StyleFreshnessNote } from "@/components/chapter/StyleFreshnessNote";
 import {
@@ -1032,6 +1033,9 @@ export function ChapterPage() {
           aria-label="Разбор и материалы"
         >
           <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
+            <PanelBoundary title="Чат по книге">
+              <ChatPanel chapterId={id} />
+            </PanelBoundary>
             <PanelBoundary title="Разбор критиков">
               <CritiquePanel
                 versionId={chapter.currentVersionId}

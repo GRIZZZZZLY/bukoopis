@@ -12,6 +12,8 @@ import type {
   Character,
   CharacterKnowledge,
   CharacterVoiceSample,
+  ChatMessage,
+  ChatThread,
   CreateBookInput,
   CreateChapterInput,
   CreateCharacterInput,
@@ -981,6 +983,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+
+  // ── Чат по книге ──
+  listChatThreads: (chapterId: number) =>
+    req<ChatThread[]>(`/api/chapters/${chapterId}/chat/threads`),
+  createChatThread: (chapterId: number, title?: string) =>
+    req<ChatThread>(`/api/chapters/${chapterId}/chat/threads`, {
+      method: "POST",
+      body: JSON.stringify(title ? { title } : {}),
+    }),
+  deleteChatThread: (threadId: number) =>
+    req<void>(`/api/chat/threads/${threadId}`, { method: "DELETE" }),
+  listChatMessages: (threadId: number) =>
+    req<ChatMessage[]>(`/api/chat/threads/${threadId}/messages`),
 };
 
 export interface QuickStartInflight {
@@ -1084,6 +1099,40 @@ export async function streamInlineCommand(
       if (event === "chunk") handlers.onChunk((data as { text: string }).text);
       else if (event === "done")
         handlers.onDone(data as { text: string; tokens: { input: number; output: number } });
+      else if (event === "error") handlers.onError((data as { message: string }).message);
+    },
+    { terminalEvents: ["done", "error"] },
+  );
+  if (!sawTerminal) handlers.onError(SSE_BROKEN_MESSAGE);
+}
+
+// ── SSE chat ──
+export interface ChatStreamHandlers {
+  onChunk: (text: string) => void;
+  onDone: (payload: { message: ChatMessage }) => void;
+  onError: (message: string) => void;
+}
+
+export async function streamChatMessage(
+  threadId: number,
+  content: string,
+  handlers: ChatStreamHandlers,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/chat/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => res.statusText);
+    handlers.onError(`HTTP ${res.status}: ${errorSummary(text)}`);
+    return;
+  }
+  const { sawTerminal } = await consumeSse(
+    res.body,
+    ({ event, data }) => {
+      if (event === "chunk") handlers.onChunk((data as { text: string }).text);
+      else if (event === "done") handlers.onDone(data as { message: ChatMessage });
       else if (event === "error") handlers.onError((data as { message: string }).message);
     },
     { terminalEvents: ["done", "error"] },
