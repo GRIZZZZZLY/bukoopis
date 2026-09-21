@@ -510,11 +510,42 @@ export const memoryJobs = sqliteTable(
     index("idx_memory_jobs_version").on(t.chapterVersionId, t.kind),
     check(
       "memory_jobs_kind_check",
-      sql`${t.kind} IN ('index','summary','facts','notes','rollup')`,
+      sql`${t.kind} IN ('index','summary','facts','notes','rollup','scene_state')`,
     ),
     check(
       "memory_jobs_status_check",
       sql`${t.status} IN ('pending','running','retry','done','error','obsolete')`,
+    ),
+  ],
+);
+
+// Анкета непрерывности на КОНЕЦ главы (миграция 0031). Ключ — версия главы,
+// а не глава: переписали текст — у новой версии строки нет, и устаревание
+// берётся отсюда даром, без второго механизма свежести.
+export const chapterSceneStates = sqliteTable(
+  "chapter_scene_states",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterId: integer("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    chapterVersionId: integer("chapter_version_id")
+      .notNull()
+      .references(() => chapterVersions.id, { onDelete: "cascade" }),
+    stateJson: text("state_json").notNull(),
+    origin: text("origin").notNull().default("llm"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("idx_chapter_scene_states_version").on(t.chapterVersionId),
+    index("idx_chapter_scene_states_chapter").on(t.chapterId),
+    check(
+      "chapter_scene_states_origin_check",
+      sql`${t.origin} IN ('llm','manual')`,
     ),
   ],
 );

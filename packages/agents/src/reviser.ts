@@ -58,6 +58,8 @@ export interface ReviseChapterInput {
    *  без них она могла «починить» стык с предыдущей главой, которого не
    *  видела. */
   previousChapterTail?: string | null;
+  /** Анкета непрерывности предыдущей главы — та же, что у Писателя. */
+  sceneState?: string | null;
   retrievedContext?: string | null;
   originalText: string;
   critics: CriticReport[];

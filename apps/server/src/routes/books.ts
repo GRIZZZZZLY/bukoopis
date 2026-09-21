@@ -13,7 +13,7 @@ import { notFound, validationFailed } from "../utils/errors.js";
 import { reorderChapters, ChapterReorderError } from "../utils/chapter-reorder.js";
 import {
   enqueueMemoryJobs,
-  COMMIT_JOB_KINDS,
+  ENQUEUE_JOB_KINDS,
 } from "../utils/memory-queue.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
 
@@ -369,8 +369,13 @@ export function createBooksRoute(
         sqlite
           .prepare(
             `DELETE FROM memory_jobs
-             WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes')`,
+             WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes','scene_state')`,
           )
+          .run(ch.current_version_id);
+        // Анкета сцены — тоже производная память: оставленная на месте, она
+        // пережила бы перестроение и продолжила описывать прежний разбор.
+        sqlite
+          .prepare("DELETE FROM chapter_scene_states WHERE chapter_version_id = ?")
           .run(ch.current_version_id);
         // Пересказ главы тоже собирается заново: он лежит на версии, и без
         // очистки задание `summary` увидит его на месте и пропустит работу.
@@ -384,7 +389,7 @@ export function createBooksRoute(
           bookId: id,
           chapterId: ch.id,
           chapterVersionId: ch.current_version_id,
-          kinds: COMMIT_JOB_KINDS,
+          kinds: ENQUEUE_JOB_KINDS,
         });
       }
       return { deletedFacts, deletedNotes, deletedEvents };

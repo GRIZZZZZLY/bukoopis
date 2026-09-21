@@ -15,6 +15,11 @@ import {
 import { extractFactsPayload } from "./book-facts.js";
 import { extractNotesPayload, embedExtractedNotes } from "./book-notes.js";
 import { runMetaSummary } from "./rolling-context.js";
+import {
+  extractSceneStatePayload,
+  loadSceneStateForVersion,
+  saveSceneState,
+} from "./scene-state.js";
 import { tryActivateMemoryVersion } from "./memory-activation.js";
 import { logUsage } from "./usageLogger.js";
 
@@ -242,6 +247,40 @@ export function startMemoryWorker(
     });
   }
 
+  async function handleSceneState(job: MemoryJobRow): Promise<void> {
+    if (!isCurrent(job)) return markMemoryJobObsolete(sqlite, job.id);
+    const p = await extractSceneStatePayload(sqlite, job.chapter_version_id, {
+      onUsage: (u) =>
+        logUsage(sqlite, {
+          route: "memory.scene_state",
+          model: u.modelId,
+          usage: u,
+          bookId: job.book_id,
+          chapterId: job.chapter_id,
+          versionId: job.chapter_version_id,
+        }),
+    });
+    if (!p.state) {
+      return completeMemoryJob(sqlite, job.id, { skipped: p.skipped ?? "empty" });
+    }
+    // Вызов шёл минутами — версия за это время могла перестать быть текущей.
+    if (!isCurrent(job)) return markMemoryJobObsolete(sqlite, job.id);
+    // Авторскую правку машинный разбор не затирает: «Пересчитать» снимает
+    // строку до постановки задания, а запоздавшее задание — нет.
+    const existing = loadSceneStateForVersion(sqlite, job.chapter_version_id);
+    if (existing?.origin === "manual") {
+      return completeMemoryJob(sqlite, job.id, { skipped: "manual" });
+    }
+    saveSceneState(sqlite, {
+      bookId: job.book_id,
+      chapterId: job.chapter_id,
+      chapterVersionId: job.chapter_version_id,
+      state: p.state,
+      origin: "llm",
+    });
+    completeMemoryJob(sqlite, job.id, { filled: true });
+  }
+
   async function handleRollup(job: MemoryJobRow): Promise<void> {
     const r = await runMetaSummary(sqlite, job.book_id);
     completeMemoryJob(sqlite, job.id, r);
@@ -265,6 +304,9 @@ export function startMemoryWorker(
         case "rollup":
           await handleRollup(job);
           break;
+        case "scene_state":
+          await handleSceneState(job);
+          break;
       }
     } catch (e) {
       const status = failMemoryJob(sqlite, job, e, {
@@ -278,7 +320,10 @@ export function startMemoryWorker(
     }
     // Every completed commit-kind may be the last one — try to activate.
     // Failure here must not fail the job itself (it already completed).
-    if (job.kind !== "rollup") {
+    // `rollup` — книжная сводка после активации; `scene_state` — анкета,
+    // которой активация не ждёт (её нет в COMMIT_JOB_KINDS). Ни та, ни другая
+    // последней недостающей частью версии быть не может.
+    if (job.kind !== "rollup" && job.kind !== "scene_state") {
       try {
         tryActivateMemoryVersion(sqlite, job.chapter_id, job.chapter_version_id);
       } catch (e) {

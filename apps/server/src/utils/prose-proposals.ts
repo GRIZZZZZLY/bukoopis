@@ -13,7 +13,7 @@ import {
   REPAIR_BRANCH_PREFIX,
   type AcceptProseProposalInput,
 } from "@book-forge/shared";
-import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "./memory-queue.js";
+import { enqueueMemoryJobs, ENQUEUE_JOB_KINDS } from "./memory-queue.js";
 import { markMemoryStaleOnCommit } from "./memory-activation.js";
 import { attachManifestToVersion } from "./context-manifests.js";
 import { preserveDraftAsVersion } from "./chapter-drafts.js";
@@ -408,7 +408,7 @@ export function acceptProposal(
       bookId: ch.book_id,
       chapterId: ch.id,
       chapterVersionId: versionId,
-      kinds: COMMIT_JOB_KINDS,
+      kinds: ENQUEUE_JOB_KINDS,
     });
     markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
     sqlite.prepare("DELETE FROM chapter_drafts WHERE chapter_id = ?").run(ch.id);

@@ -57,6 +57,9 @@ export interface WriteChapterInput {
    * written from a summary alone reads as a hard cut.
    */
   previousChapterTail?: string | null;
+  /** Анкета непрерывности предыдущей главы: где герои остались, что при них,
+   *  что осталось незакрытым. Исходная обстановка сцены. */
+  sceneState?: string | null;
   characterContext: string | null;
   /** Замысел сцены (этап 5), уже отрендеренный: чего каждый участник хочет
    *  здесь, о чём молчит, где его граница. `null` — подготовка не удалась;
@@ -150,6 +153,7 @@ export function buildWriterStableSystem(input: WriteChapterInput): string {
       `Финал предыдущей главы (дословно, последние абзацы). Продолжай от него: держи интонацию, ритм и место действия, доигрывай незавершённое действие. Не пересказывай этот фрагмент и не начинай главу его повтором:\n${input.previousChapterTail}`,
     );
   }
+  if (input.sceneState) stableParts.push(input.sceneState);
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
