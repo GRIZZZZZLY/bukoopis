@@ -81,7 +81,7 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
 
   return (
     <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
-      <h2 className="text-xl font-semibold">План главы (Plot Agent)</h2>
+      <h2 className="text-xl font-semibold">План главы</h2>
 
       {intent.length > 0 ? (
         <div>

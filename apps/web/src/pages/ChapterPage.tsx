@@ -585,7 +585,7 @@ export function ChapterPage() {
             // а load() затёр бы несохранённые правки автора.
           },
           onError: (msg) => {
-            toast.error("Ошибка Writer", {
+            toast.error("Не удалось написать главу", {
               description: msg,
               action: {
                 label: "Повторить",
@@ -607,7 +607,7 @@ export function ChapterPage() {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error("Ошибка Writer", { description: msg });
+      toast.error("Не удалось написать главу", { description: msg });
       setWriting(false);
       writerAbortRef.current = null;
     }
@@ -739,18 +739,18 @@ export function ChapterPage() {
             {writing ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Writer пишет…
+                Глава пишется…
               </>
             ) : (
-              "Запустить Writer"
+              "Написать главу"
             )}
           </Button>
           {writing && (
             <Button
               onClick={onCancelWriter}
               variant="destructive"
-              aria-label="Остановить Writer (Esc)"
-              title="Остановить Writer (Esc)"
+              aria-label="Остановить (Esc)"
+              title="Остановить (Esc)"
             >
               <Square className="size-4" aria-hidden="true" />
               Стоп
@@ -758,7 +758,7 @@ export function ChapterPage() {
           )}
           {!selectedPlan && !writing && (
             <span className="text-xs text-[var(--color-muted-foreground)]">
-              Выбери вариант плана выше, чтобы запустить Writer.
+              Выбери вариант плана выше, чтобы написать главу.
             </span>
           )}
           {selectedPlan && !writing && (
@@ -1426,15 +1426,15 @@ function EmptyEditorHint({
           Пустой холст. Выберите{" "}
           <span className="font-medium">план в правой панели</span> →{" "}
           {hasPlan
-            ? "запустите Writer одной кнопкой."
-            : "затем нажмите «Запустить Writer»."}
+            ? "напишите главу одной кнопкой."
+            : "затем нажмите «Написать главу»."}
         </p>
         <p className="text-xs opacity-75">
           Или начните печатать сами — автосейв включён.
         </p>
         {hasPlan && (
           <Button type="button" variant="default" size="sm" onClick={onRunWriter}>
-            Запустить Writer
+            Написать главу
           </Button>
         )}
       </div>

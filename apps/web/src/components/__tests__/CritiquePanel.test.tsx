@@ -87,7 +87,7 @@ beforeEach(() => {
     });
 });
 
-describe("CritiquePanel — self-repair proposal wiring", () => {
+describe("CritiquePanel — правка: привязка кандидата", () => {
   it("fetches the repair candidate's own change list instead of showing an empty diff", async () => {
     render(
       <CritiquePanel
@@ -99,7 +99,7 @@ describe("CritiquePanel — self-repair proposal wiring", () => {
     );
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "Запустить self-repair" }),
+      await screen.findByRole("button", { name: "Исправить главу" }),
     );
 
     expect(api.getProposalChanges).toHaveBeenCalledWith(42);
@@ -118,7 +118,7 @@ describe("CritiquePanel — self-repair proposal wiring", () => {
     );
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "Запустить self-repair" }),
+      await screen.findByRole("button", { name: "Исправить главу" }),
     );
     await screen.findByText(/Что меняется/i);
     await userEvent.click(
@@ -198,10 +198,10 @@ describe("CritiquePanel — честный статус разбора", () => {
     // Кого просили — названо поимённо.
     expect(screen.getByText(/Canon Guard, Style, Editor, Reader/)).toBeInTheDocument();
     expect(screen.getByText(/\[canon\] таймаут/)).toBeInTheDocument();
-    // Ни счётчиков «blocking: 0», ни блока self-repair над пустым отчётом.
+    // Ни счётчиков «blocking: 0», ни блока правка над пустым отчётом.
     expect(screen.queryByText(/blocking:/)).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Запустить self-repair" }),
+      screen.queryByRole("button", { name: "Исправить главу" }),
     ).not.toBeInTheDocument();
   });
 
@@ -225,11 +225,11 @@ describe("CritiquePanel — честный статус разбора", () => {
   });
 });
 
-describe("CritiquePanel — остановка self-repair", () => {
-  it("идущий self-repair можно остановить по кнопке", async () => {
+describe("CritiquePanel — остановка правки", () => {
+  it("идущую правку можно остановить по кнопке", async () => {
     vi.mocked(api.cancelProposal).mockReset().mockResolvedValue({ stopping: true });
     // Поток, который сообщает id кандидата и дальше молчит, — это и есть
-    // «Reviser пишет»: именно в этот момент нужна кнопка.
+    // «Идёт правка…»: именно в этот момент нужна кнопка.
     let finish: (() => void) | undefined;
     vi.mocked(streamRepair).mockImplementation(
       async (_versionId, _severities, handlers) => {
@@ -245,7 +245,7 @@ describe("CritiquePanel — остановка self-repair", () => {
     renderPanel();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: "Запустить self-repair" }),
+      await screen.findByRole("button", { name: "Исправить главу" }),
     );
     const stop = await screen.findByRole("button", { name: "Остановить" });
     await userEvent.click(stop);
@@ -253,7 +253,7 @@ describe("CritiquePanel — остановка self-repair", () => {
 
     finish?.();
     expect(
-      await screen.findByText(/Self-repair остановлен/i),
+      await screen.findByText(/Правка остановлена/i),
     ).toBeInTheDocument();
     // Остановленного кандидата принять нельзя — его и не предлагают.
     expect(
@@ -428,14 +428,14 @@ describe("CritiquePanel — выбор замечаний и защита кус
   it("отмеченное замечание уезжает в правку, неотмеченное — нет", async () => {
     await openPanel();
     await userEvent.click(screen.getByLabelText("Править это замечание: Ворт знает лишнее"));
-    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Исправить главу/ }));
     const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
     expect(opts?.selectedIssueIds).toEqual(["character:0"]);
   });
 
   it("без отметок правка идёт по-старому, фильтром серьёзности", async () => {
     await openPanel();
-    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Исправить главу/ }));
     const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
     expect(opts?.selectedIssueIds).toBeUndefined();
     expect(opts?.severities).toBeTruthy();
@@ -447,7 +447,7 @@ describe("CritiquePanel — выбор замечаний и защита кус
       screen.getByLabelText(/Не трогать/),
       "Металл был тёплый.{enter}{enter}Она не обернулась.",
     );
-    await userEvent.click(screen.getByRole("button", { name: /Запустить self-repair/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Исправить главу/ }));
     const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
     expect(opts?.protectedFragments).toEqual([
       "Металл был тёплый.",
