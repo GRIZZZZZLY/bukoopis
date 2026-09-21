@@ -130,21 +130,111 @@ describe("глава по беатам", () => {
     expect(done.proposal.contentText).toBe("Беат 0.\n\nБеат 1.");
   });
 
-  it("дописать с беата берёт префикс из принятой версии", async () => {
+  // Версия на ДВА абзаца: `content_text` склеен `extractText` в одну строку,
+  // и на одноабзацной главе оба источника префикса неотличимы. Пустая строка
+  // между абзацами — единственное, что отличает верный префикс от склеенного.
+  it("дописать с беата берёт префикс из принятой версии, сохраняя абзацы", async () => {
     await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
       contentJson: {
         type: "doc",
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Принятое начало." }] }],
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Принятое начало." }] },
+          { type: "paragraph", content: [{ type: "text", text: "Второй абзац начала." }] },
+        ],
       },
     });
     const body = await (
       await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats", fromBeat: 2 })
     ).text();
     expect(writerMock).toHaveBeenCalledTimes(1);
-    expect(writerMock.mock.calls[0]?.[0].beat).toEqual({ index: 2, textSoFar: "Принятое начало." });
+    expect(writerMock.mock.calls[0]?.[0].beat).toEqual({
+      index: 2,
+      textSoFar: "Принятое начало.\n\nВторой абзац начала.",
+    });
     const done = events(body, "done")[0] as { proposal: { contentText: string; beatsDone: number } };
-    expect(done.proposal.contentText).toBe("Принятое начало.\n\nАбзац беата 2.");
+    expect(done.proposal.contentText).toBe(
+      "Принятое начало.\n\nВторой абзац начала.\n\nАбзац беата 2.",
+    );
     expect(done.proposal.beatsDone).toBe(3);
+  });
+
+  it("написанный беат лежит в кандидате ещё до конца прогона", async () => {
+    let midRun: { content_text: string; beats_done: number | null; status: string } | undefined;
+    writerMock.mockImplementation(async function* (input) {
+      const i = input.beat?.index ?? -1;
+      // Снимок читаем ПЕРЕД вторым беатом: первый уже дописан, прогон ещё идёт.
+      if (i === 1) {
+        midRun = t.sqlite
+          .prepare(
+            "SELECT content_text, beats_done, status FROM prose_proposals ORDER BY id DESC LIMIT 1",
+          )
+          .get() as typeof midRun;
+      }
+      const text = `Абзац беата ${i}.`;
+      yield text;
+      return okResult(text);
+    });
+    // Тело SSE ленивое: без вычитывания обработчик не начнёт работу вовсе.
+    await (await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats" })).text();
+    expect(midRun?.status).toBe("streaming");
+    expect(midRun?.content_text).toBe("Абзац беата 0.");
+    expect(midRun?.beats_done).toBe(1);
+  });
+
+  it("падение на втором беате оставляет первый принимаемым", async () => {
+    writerMock.mockImplementation(async function* (input) {
+      const i = input.beat?.index ?? -1;
+      if (i === 1) throw new Error("бэкенд отвалился");
+      const text = `Абзац беата ${i}.`;
+      yield text;
+      return okResult(text);
+    });
+    const body = await (
+      await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats" })
+    ).text();
+    const { proposalId } = events(body, "proposal")[0] as { proposalId: number };
+    const proposal = await sendJson<{
+      status: string;
+      stopReason: string | null;
+      contentText: string;
+      beatsDone: number;
+      errorMessage: string | null;
+    }>(t.app, `/api/prose-proposals/${proposalId}`, "GET");
+    expect(proposal.status).toBe("incomplete");
+    expect(proposal.stopReason).toBe("interrupted");
+    expect(proposal.contentText).toBe("Абзац беата 0.");
+    expect(proposal.beatsDone).toBe(1);
+    // Ошибка остаётся видимой: обрыв не превращается в тихий обычный кандидат.
+    expect(proposal.errorMessage).toContain("бэкенд отвалился");
+
+    // Главное: написанное можно взять, а не только увидеть.
+    const accepted = await send(t.app, `/api/prose-proposals/${proposalId}/accept`, "POST", {
+      requestId: "req-interrupted",
+      expectedVersionId: null,
+      expectedDraftRevision: null,
+      acknowledgeUnconfirmed: true,
+      acknowledgeContextDrift: true,
+    });
+    expect(accepted.status).toBe(200);
+  });
+
+  it("падение на первом беате — обычный отказ, принимать нечего", async () => {
+    writerMock.mockImplementation(async function* () {
+      throw new Error("бэкенд отвалился сразу");
+      // eslint-disable-next-line no-unreachable
+      yield "";
+    });
+    const body = await (
+      await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats" })
+    ).text();
+    const { proposalId } = events(body, "proposal")[0] as { proposalId: number };
+    const proposal = await sendJson<{ status: string; beatsDone: number | null }>(
+      t.app,
+      `/api/prose-proposals/${proposalId}`,
+      "GET",
+    );
+    expect(proposal.status).toBe("failed");
+    expect(proposal.beatsDone).toBeNull();
   });
 
   it("fromBeat без mode=beats и за пределами плана — 400", async () => {

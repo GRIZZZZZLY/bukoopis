@@ -601,6 +601,11 @@ export function ChapterPage() {
     writerAbortRef.current = ctrl;
     setWriting(true);
     setWriterBuffer("");
+    // Хвост прошлого запуска: иначе после остановленной генерации по беатам
+    // целая глава писалась бы под «Беат 2 из 3» и с живой кнопкой удержания,
+    // которую этот путь всё равно не слушает.
+    setBeatProgress(null);
+    setHolding(false);
     try {
       await streamWriteChapter(
         id,
@@ -652,10 +657,14 @@ export function ChapterPage() {
             });
             setWriting(false);
             writerAbortRef.current = null;
+            setBeatProgress(null);
+            setHolding(false);
           },
           onAbort: () => {
             setWriting(false);
             writerAbortRef.current = null;
+            setBeatProgress(null);
+            setHolding(false);
             toast.success("Стрим остановлен", {
               description: "Уже сгенерированный текст оставлен в буфере.",
             });

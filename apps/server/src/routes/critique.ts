@@ -104,7 +104,6 @@ function countRepairAncestors(
   return count;
 }
 
-
 export function createCritiqueRoute(
   sqlite: DatabaseType,
   hasVec: boolean,

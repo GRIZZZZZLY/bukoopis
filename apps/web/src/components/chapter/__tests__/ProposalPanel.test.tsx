@@ -150,6 +150,22 @@ describe("ProposalPanel", () => {
     expect(screen.getByText(/не сообщает, дописала ли модель/i)).toBeInTheDocument();
   });
 
+  it("удержанный кандидат объясняется один раз и по делу", () => {
+    renderPanel({
+      status: "incomplete",
+      completion: "unconfirmed",
+      stopReason: "held",
+      beatsDone: 2,
+      beatsTotal: 5,
+    });
+    expect(screen.getByText(/остановлено по вашей просьбе после беата 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/написано беатов: 2 из 5/i)).toBeInTheDocument();
+    // Причина остановки известна, и текст намеренно не вся глава: догадки про
+    // оборванность и про молчащий бэкенд здесь были бы просто неправдой.
+    expect(screen.queryByText(/похоже, текст оборван/i)).toBeNull();
+    expect(screen.queryByText(/не сообщает, дописала ли модель/i)).toBeNull();
+  });
+
   it("конфликт версии объясняется словами, а не кодом 409", async () => {
     vi.mocked(api.acceptProposal).mockRejectedValueOnce(conflict("version"));
     renderPanel();

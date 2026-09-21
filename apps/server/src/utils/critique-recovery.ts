@@ -31,15 +31,24 @@ export function recoverStaleProseProposals(
   // `streaming`, выбросил бы уже написанный текст главы. Полчаса — заведомо
   // больше самой долгой генерации: свой предел ожидания у неё 10 минут.
   const cutoff = new Date(nowMs - 30 * 60 * 1000).toISOString();
+  // Глава по беатам дописывает кандидата после каждого беата, и `failed`
+  // здесь обесценивал бы всю эту работу: `acceptProposal` такой статус не
+  // принимает, и автор видел бы строку с готовым текстом, которую нельзя
+  // взять. Написанные беаты обрываются, а не пропадают.
   return sqlite
     .prepare(
       `UPDATE prose_proposals
-       SET status = 'failed',
-           error_message = COALESCE(error_message, ?),
+       SET status = CASE WHEN COALESCE(beats_done, 0) > 0 THEN 'incomplete' ELSE 'failed' END,
+           stop_reason = CASE WHEN COALESCE(beats_done, 0) > 0 THEN 'interrupted' ELSE stop_reason END,
+           error_message = COALESCE(
+             error_message,
+             CASE WHEN COALESCE(beats_done, 0) > 0 THEN ? ELSE ? END
+           ),
            updated_at = ?
        WHERE status = 'streaming' AND created_at < ?`,
     )
     .run(
+      "Генерация прервалась вместе с работой сервера. Написанные беаты можно принять.",
       "Генерация прервалась вместе с работой сервера. Запустите её заново.",
       now,
       cutoff,

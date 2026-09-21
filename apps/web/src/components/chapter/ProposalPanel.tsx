@@ -283,7 +283,11 @@ export function ProposalPanel({
           Из правленных абзацев исчезли имена: {lostNames.join(", ")}
         </p>
       )}
-      {looksCut && (
+      {/* Удержание — известная причина остановки, и текст намеренно не вся
+          глава. Догадки про оборванность и про молчащий бэкенд здесь лишние:
+          ниже стоит точное объяснение, а два объяснения подряд, из которых
+          первое неверно, хуже одного. */}
+      {looksCut && proposal.stopReason !== "held" && (
         <p className="text-sm" style={{ color: "var(--color-ink-red-fg)" }}>
           Похоже, текст оборван
           {proposal.stopReason === "max_tokens"
@@ -292,7 +296,7 @@ export function ProposalPanel({
           Принять его можно, но проверьте конец главы.
         </p>
       )}
-      {unknownEnding && (
+      {unknownEnding && proposal.stopReason !== "held" && (
         <p className="text-sm" style={{ color: "var(--color-ink-muted)" }}>
           Бэкенд подписки не сообщает, дописала ли модель до конца. Текст
           выглядит законченным.

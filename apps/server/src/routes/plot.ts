@@ -350,8 +350,13 @@ export function createPlotRoute(
         | undefined;
       // Абзацы берём из документа, а не из `content_text`: тот склеен
       // `extractText` в одну строку с пробелами, и дописанная глава начиналась
-      // бы одним абзацем на всё принятое. Битый JSON — не повод срывать
-      // запуск, тогда склеенный текст лучше пустого.
+      // бы одним абзацем на всё принятое. Потолок здесь всё равно есть:
+      // `docToBlocks` берёт ТЕКСТ любого верхнеуровневого узла, так что
+      // заголовок, цитата и пункт списка возвращаются обычными абзацами, а
+      // начертания теряются. Проза дописывается плоским текстом, и принятие
+      // дописанного кандидата это форматирование в главе уносит — цена
+      // режима «дописать с беата», а не дефект этого места. Битый JSON — не
+      // повод срывать запуск, тогда склеенный текст лучше пустого.
       try {
         prefixText = v
           ? docToBlocks(JSON.parse(v.content_json))
@@ -422,6 +427,11 @@ export function createPlotRoute(
       let modelId = "";
       let stopReason: string | null = null;
       let finalized = false;
+      let held = false;
+      // Объявлены здесь, а не в цикле: `catch` обязан знать, сколько беатов
+      // уже легло в кандидата — от этого зависит, можно ли его принять.
+      let beatsDone: number | null = null;
+      const beatsTotal = mode === "beats" ? beatSheet.beats.length : null;
 
       // Кандидат заводится до первого токена: он же — то, что отменяют, и то,
       // что остаётся в базе, если процесс умрёт на середине.
@@ -551,9 +561,6 @@ export function createPlotRoute(
           return text;
         };
 
-        let held = false;
-        let beatsDone: number | null = null;
-        const beatsTotal = mode === "beats" ? beatSheet.beats.length : null;
         if (mode === "beats") {
           fullText = prefixText;
           for (let i = fromBeat; i < beatSheet.beats.length; i += 1) {
@@ -661,10 +668,18 @@ export function createPlotRoute(
         // и правильный статус — перезаписывать его в failed значило бы
         // потерять принимаемый прогон только из-за сбоя после генерации.
         if (!finalized) {
+          // Беаты уже легли в кандидата (`appendProposalProgress`), и назвать
+          // такой прогон `failed` значило бы показать автору строку с текстом,
+          // которую `acceptProposal` принять откажется — ровно то, ради чего
+          // кандидат и растёт по ходу. Прогон обрывается, а не пропадает:
+          // статус принимаемый, причина названа, ошибка по-прежнему видна.
+          const partial = beatsDone !== null && beatsDone > 0;
           finishProposal(sqlite, proposalId, {
-            status: "failed",
+            status: partial ? "incomplete" : "failed",
             errorMessage: message,
-            stopReason,
+            stopReason: partial ? "interrupted" : stopReason,
+            beatsDone,
+            beatsTotal,
           });
         }
         await stream.writeSSE({
