@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, streamChatMessage } from "@/api/client";
-import type { ChatMessage, ChatThread } from "@book-forge/shared";
+import { CHAT_TITLE_CHARS, type ChatMessage, type ChatThread } from "@book-forge/shared";
 
 interface Props {
   chapterId: number;
@@ -95,10 +95,19 @@ export function ChatPanel({ chapterId }: Props) {
           setBuffer(null);
           setInput("");
           // Не перечитываем список с сервера: тред и так уже в состоянии
-          // (заведён выше при первом сообщении), а список тредов книги
-          // меняется редко — реального читателя у этого рефреша нет, а
-          // гонка «сервер ещё не увидел только что созданный тред» стирала
-          // бы activeId и вместе с ним всю переписку с экрана.
+          // (заведён выше при первом сообщении), а рефетч уже однажды стирал
+          // и activeId, и всю переписку той же гонкой, что чинит
+          // skipNextLoadRef. Название треда сервер выводит из первого
+          // сообщения тем же правилом (см. CHAT_TITLE_CHARS в маршруте) —
+          // применяем его локально, не дожидаясь следующей перезагрузки
+          // списка, иначе тред висел бы «Без названия» до перемонтирования.
+          setThreads((prev) =>
+            (prev ?? []).map((t) =>
+              t.id === threadId && t.title === null
+                ? { ...t, title: content.slice(0, CHAT_TITLE_CHARS) }
+                : t,
+            ),
+          );
         },
         onError: (msg) => {
           setError(msg);

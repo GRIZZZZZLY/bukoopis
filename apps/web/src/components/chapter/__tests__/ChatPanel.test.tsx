@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatPanel } from "../ChatPanel";
 
@@ -42,6 +42,27 @@ describe("ChatPanel", () => {
     await waitFor(() => expect(streamChatMessage).toHaveBeenCalledWith(1, "Что дальше?", expect.anything()));
     expect(await screen.findByText("Она уйдёт.")).toBeTruthy();
     expect(screen.getByText("Что дальше?")).toBeTruthy();
+  });
+
+  it("тред получает настоящее название из первого сообщения, а не «Без названия»", async () => {
+    // Сервер отдаёт новый тред без названия — оно выставляется из первого
+    // сообщения (см. CHAT_TITLE_CHARS), но это отдельный маршрут, чей ответ
+    // сюда не долетает: onDone несёт только реплику ассистента.
+    const created = { ...THREAD, title: null };
+    vi.mocked(api.listChatThreads).mockResolvedValue([]);
+    vi.mocked(api.createChatThread).mockResolvedValue(created);
+    vi.mocked(api.listChatMessages).mockResolvedValue([]);
+    vi.mocked(streamChatMessage).mockImplementation(async (_id, _content, h) => {
+      h.onDone({ message: { id: 9, threadId: 1, role: "assistant", content: "Она уйдёт.", createdAt: "x" } });
+    });
+    render(<ChatPanel chapterId={2} />);
+    expect(await screen.findByText(/разговоров пока нет/i)).toBeTruthy();
+    await userEvent.type(screen.getByRole("textbox"), "Что дальше?");
+    await userEvent.click(screen.getByRole("button", { name: /отправить/i }));
+    await waitFor(() => expect(streamChatMessage).toHaveBeenCalled());
+    const select = await screen.findByLabelText("Разговор");
+    expect(within(select).getByText("Что дальше?")).toBeTruthy();
+    expect(within(select).queryByText("Без названия")).toBeNull();
   });
 
   it("показывает историю выбранного треда", async () => {

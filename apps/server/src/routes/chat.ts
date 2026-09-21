@@ -183,6 +183,12 @@ export function createChatRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       assembled.loreContext,
       assembled.retrieval,
       assembled.notesPrompt,
+      // Паспорт стиля — а не образцы (`styleFewShot: 0` их и не собирает):
+      // системный промпт агента прямо просит писать «в голосе книги», и без
+      // описания голоса это требование не о чем. Образцы речи тут не нужны —
+      // это разговор, а не проза, и они только тянули бы модель копировать
+      // конкретные фразы вместо тона.
+      assembled.styleContext.prompt,
     ].filter((b): b is string => typeof b === "string" && b.length > 0);
 
     return streamSSE(c, async (stream) => {
