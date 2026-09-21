@@ -35,6 +35,8 @@ export interface ProseProposalRow {
   stop_reason: string | null;
   model_id: string | null;
   backend: string | null;
+  beats_done: number | null;
+  beats_total: number | null;
   accepted_version_id: number | null;
   accept_request_id: string | null;
   error_message: string | null;
@@ -59,6 +61,8 @@ export function toProposal(row: ProseProposalRow): ProseProposal {
     stopReason: row.stop_reason,
     modelId: row.model_id,
     backend: row.backend,
+    beatsDone: row.beats_done,
+    beatsTotal: row.beats_total,
     acceptedVersionId: row.accepted_version_id,
     acceptRequestId: row.accept_request_id,
     errorMessage: row.error_message,

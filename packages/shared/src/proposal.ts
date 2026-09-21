@@ -56,6 +56,10 @@ export const proseProposalSchema = z.object({
   stopReason: z.string().nullable(),
   modelId: z.string().nullable(),
   backend: z.string().nullable(),
+  /** Глава по беатам: сколько беатов уже написано и сколько их в плане.
+   *  null у обоих — кандидат писался целиком. */
+  beatsDone: z.number().int().nonnegative().nullable(),
+  beatsTotal: z.number().int().positive().nullable(),
   acceptedVersionId: z.number().int().positive().nullable(),
   acceptRequestId: z.string().nullable(),
   errorMessage: z.string().nullable(),

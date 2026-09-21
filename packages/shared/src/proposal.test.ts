@@ -21,6 +21,8 @@ const valid = {
   stopReason: "end_turn",
   modelId: "claude-opus-4-7",
   backend: "subscription",
+  beatsDone: null,
+  beatsTotal: null,
   acceptedVersionId: null,
   acceptRequestId: null,
   errorMessage: null,

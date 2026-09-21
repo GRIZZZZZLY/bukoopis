@@ -25,6 +25,7 @@ function makeBook(outlineJson: string | null): Book {
     criticModel: "sonnet",
     writerProvider: "anthropic",
     writerLocalModel: null,
+    authorNotes: null,
     createdAt: "2026-09-04T00:00:00.000Z",
     updatedAt: "2026-09-04T00:00:00.000Z",
   };

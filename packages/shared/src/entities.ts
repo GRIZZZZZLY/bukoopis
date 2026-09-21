@@ -52,6 +52,8 @@ export const characterSchema = z.object({
   profile: characterProfileV2Schema,
   /** Счётчик правок профиля: 0 у строк, которых этап 2 ещё не касался. */
   revision: z.number().int().nonnegative(),
+  /** «Глазок»: герой снят с запросов к модели. */
+  hiddenFromPrompts: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -78,6 +80,18 @@ export const updateCharacterInputSchema = z
     message: "at least one field required",
   });
 export type UpdateCharacterInput = z.infer<typeof updateCharacterInputSchema>;
+
+export const promptVisibilityInputSchema = z.object({ hidden: z.boolean() });
+export type PromptVisibilityInput = z.infer<typeof promptVisibilityInputSchema>;
+
+/** Другое имя героя (прозвище, титул, вариант): по нему резолвер сводит
+ *  упоминания к одному id. */
+export const entityAliasSchema = z.object({
+  id: z.number().int().positive(),
+  alias: z.string().min(1),
+  createdAt: z.string(),
+});
+export type EntityAlias = z.infer<typeof entityAliasSchema>;
 
 // ─────────────── Location ───────────────
 

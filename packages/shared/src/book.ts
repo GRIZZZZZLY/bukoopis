@@ -20,6 +20,8 @@ export const bookSchema = z.object({
   criticModel: modelChoiceSchema,
   writerProvider: writerProviderSchema,
   writerLocalModel: z.string().nullable(),
+  /** Сырые заметки автора; в запросы к модели не уходят. */
+  authorNotes: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -52,6 +54,7 @@ export const updateBookInputSchema = z
     criticModel: modelChoiceSchema.optional(),
     writerProvider: writerProviderSchema.optional(),
     writerLocalModel: z.string().min(1).max(120).nullable().optional(),
+    authorNotes: z.string().max(200_000).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "at least one field required",

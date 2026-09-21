@@ -50,6 +50,7 @@ export interface BookRow {
   writer_local_model: string | null;
   concept: string | null;
   studio_state: string | null;
+  author_notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +95,7 @@ export function toBook(r: BookRow): Book {
     criticModel: r.critic_model as ModelChoice,
     writerProvider: r.writer_provider as WriterProvider,
     writerLocalModel: r.writer_local_model,
+    authorNotes: r.author_notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -137,6 +139,7 @@ export interface CharacterRow {
   canonical_name: string;
   profile_json: string;
   revision: number;
+  hidden_from_prompts: number;
   created_at: string;
   updated_at: string;
 }
@@ -249,6 +252,7 @@ export function toCharacter(r: CharacterRow): Character {
     canonicalName: r.canonical_name,
     profile: normalizeCharacterProfile(parseJsonOrNull(r.profile_json)),
     revision: r.revision ?? 0,
+    hiddenFromPrompts: r.hidden_from_prompts === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

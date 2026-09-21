@@ -23,6 +23,7 @@ interface CharacterRow {
   canonical_name: string;
   profile_json: string;
   revision: number;
+  hidden_from_prompts: number;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +75,7 @@ function rowToCharacter(r: CharacterRow): Character {
     canonicalName: r.canonical_name,
     profile: normalizeCharacterProfile(parseJsonOrNull(r.profile_json)),
     revision: r.revision ?? 0,
+    hiddenFromPrompts: r.hidden_from_prompts === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
