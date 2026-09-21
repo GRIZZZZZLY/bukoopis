@@ -118,13 +118,17 @@ export function createBooksRoute(
         parsed.data.writerLocalModel === undefined
           ? existing.writer_local_model
           : parsed.data.writerLocalModel,
+      authorNotes:
+        parsed.data.authorNotes === undefined
+          ? existing.author_notes
+          : parsed.data.authorNotes,
     };
     sqlite
       .prepare(
         `UPDATE books
          SET title=?, premise=?, status=?, style_profile_id=?,
              writer_model=?, plot_model=?, critic_model=?,
-             writer_provider=?, writer_local_model=?,
+             writer_provider=?, writer_local_model=?, author_notes=?,
              updated_at=?
          WHERE id=?`,
       )
@@ -138,6 +142,7 @@ export function createBooksRoute(
         next.criticModel,
         next.writerProvider,
         next.writerLocalModel,
+        next.authorNotes,
         now,
         id,
       );

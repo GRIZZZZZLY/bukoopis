@@ -36,6 +36,7 @@ import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
 import { SceneStatePanel } from "@/components/chapter/SceneStatePanel";
+import { AuthorNotesPanel } from "@/components/chapter/AuthorNotesPanel";
 import {
   ProposalPanel,
   type ProposalReread,
@@ -1035,6 +1036,12 @@ export function ChapterPage() {
             </PanelBoundary>
             <PanelBoundary title="Состояние сцены">
               <SceneStatePanel chapterId={id} />
+            </PanelBoundary>
+            <PanelBoundary title="Заметки автора">
+              <AuthorNotesPanel
+                bookId={Number(bookId)}
+                initialNotes={book?.authorNotes ?? null}
+              />
             </PanelBoundary>
             <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>

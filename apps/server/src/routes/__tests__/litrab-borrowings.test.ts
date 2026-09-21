@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { makeTestApp, type TestApp } from "./_helpers.js";
+import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
+import { assembleGenerationContext } from "../../utils/generation-context.js";
+import { loadStudioContext, studioContextToPrompt } from "../../utils/studio-context.js";
+import type { BookRow, ChapterRow } from "../../db/rows.js";
 
 let t: TestApp;
 beforeEach(() => {
@@ -51,5 +54,75 @@ describe("миграция 0032", () => {
         )
         .run(th.lastInsertRowid),
     ).toThrow(/CHECK/);
+  });
+});
+
+describe("заметки автора", () => {
+  const SENTINEL = "ЗАМЕТКА-МАЯЧОК-7731";
+
+  async function bookWithNotes(): Promise<{ bookId: number; chapterId: number }> {
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", {
+      title: "Книга",
+      premise: "Премиса",
+    });
+    const patched = await sendJson<{ authorNotes: string | null }>(
+      t.app,
+      `/api/books/${b.id}`,
+      "PATCH",
+      { authorNotes: `План на завтра. ${SENTINEL}` },
+    );
+    expect(patched.authorNotes).toContain(SENTINEL);
+    const ch = await sendJson<{ id: number }>(
+      t.app,
+      `/api/books/${b.id}/chapters`,
+      "POST",
+      { title: "Глава 1" },
+    );
+    return { bookId: b.id, chapterId: ch.id };
+  }
+
+  it("сохраняются и очищаются через PATCH", async () => {
+    const { bookId } = await bookWithNotes();
+    const got = await sendJson<{ authorNotes: string | null }>(
+      t.app,
+      `/api/books/${bookId}`,
+      "GET",
+    );
+    expect(got.authorNotes).toContain(SENTINEL);
+    const cleared = await sendJson<{ authorNotes: string | null }>(
+      t.app,
+      `/api/books/${bookId}`,
+      "PATCH",
+      { authorNotes: null },
+    );
+    expect(cleared.authorNotes).toBeNull();
+  });
+
+  it("не попадают ни в одну сборку контекста", async () => {
+    const { bookId, chapterId } = await bookWithNotes();
+    const book = t.sqlite.prepare("SELECT * FROM books WHERE id = ?").get(bookId) as BookRow;
+    const chapter = t.sqlite
+      .prepare("SELECT * FROM chapters WHERE id = ?")
+      .get(chapterId) as ChapterRow;
+    const assembled = await assembleGenerationContext(t.sqlite, {
+      book,
+      chapter,
+      hasVec: false,
+      scanTexts: ["текст"],
+      retrievalQuery: "текст",
+      povName: null,
+      label: "test",
+    });
+    expect(JSON.stringify(assembled)).not.toContain(SENTINEL);
+    expect(studioContextToPrompt(loadStudioContext(t.sqlite, bookId)) ?? "").not.toContain(
+      SENTINEL,
+    );
+  });
+
+  it("уходят в полную выгрузку книги", async () => {
+    const { bookId } = await bookWithNotes();
+    const res = await send(t.app, `/api/books/${bookId}/export.json`, "GET");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(SENTINEL);
   });
 });
