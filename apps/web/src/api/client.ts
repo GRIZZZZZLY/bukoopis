@@ -522,6 +522,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  /** Остановиться после текущего беата, сохранив написанное. */
+  holdProposal: (id: number) =>
+    req<{ holding: boolean }>(`/api/prose-proposals/${id}/hold`, { method: "POST" }),
   listProposals: (chapterId: number) =>
     req<import("@book-forge/shared").ProseProposal[]>(
       `/api/chapters/${chapterId}/proposals`,
@@ -1358,9 +1361,12 @@ export interface WriterStreamHandlers {
   /** Подготовка сцены (этап 5). Деградацию видно автору, а не только в логе. */
   onSceneIntent?: (status: SceneIntentStatus) => void;
   onChunk: (text: string) => void;
+  /** Какой беат пошёл в работу — только в режиме «по беатам». */
+  onBeat?: (e: { index: number; total: number }) => void;
   onDone: (payload: {
     proposal: import("@book-forge/shared").ProseProposal;
     cancelled?: boolean;
+    held?: boolean;
     tokens?: { input: number; output: number };
   }) => void;
   onError: (message: string) => void;
@@ -1372,13 +1378,18 @@ export async function streamWriteChapter(
   config: GenerationConfig | undefined,
   handlers: WriterStreamHandlers,
   signal?: AbortSignal,
+  options?: { mode?: "whole" | "beats"; fromBeat?: number },
 ): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/chapters/${chapterId}/write`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ config }),
+      body: JSON.stringify({
+        config,
+        ...(options?.mode ? { mode: options.mode } : {}),
+        ...(options?.fromBeat !== undefined ? { fromBeat: options.fromBeat } : {}),
+      }),
       signal,
     });
   } catch (err) {
@@ -1403,6 +1414,8 @@ export async function streamWriteChapter(
         else if (event === "scene_intent")
           handlers.onSceneIntent?.(data as unknown as SceneIntentStatus);
         else if (event === "chunk") handlers.onChunk(d.text as string);
+        else if (event === "beat")
+          handlers.onBeat?.(data as { index: number; total: number });
         else if (event === "done")
           handlers.onDone(data as Parameters<WriterStreamHandlers["onDone"]>[0]);
         else if (event === "error") handlers.onError(d.message as string);

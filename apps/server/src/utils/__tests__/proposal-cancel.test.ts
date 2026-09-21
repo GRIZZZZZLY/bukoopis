@@ -32,6 +32,16 @@ describe("createProposalCancelRegistry", () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it("удержание не прерывает сигнал и не считается отменой", () => {
+    const reg = createProposalCancelRegistry();
+    reg.begin(1);
+    expect(reg.requestHold(1)).toBe(true);
+    expect(reg.shouldHold(1)).toBe(true);
+    expect(reg.shouldStop(1)).toBe(false);
+    expect(reg.signal(1)?.aborted).toBe(false);
+    expect(reg.requestHold(2)).toBe(false);
+  });
+
   it("завершённый запуск исчезает из реестра", () => {
     const reg = createProposalCancelRegistry();
     reg.begin(1);

@@ -11,6 +11,7 @@ import {
   type ChapterPlan,
   boundaryForChapter,
   renderChapterContract,
+  docToBlocks,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -53,9 +54,9 @@ import {
 } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { approvePlan, PlanApproveError } from "../utils/plan-approve.js";
-import { extractText, countWords } from "../utils/prosemirror.js";
-import { EMPTY_DOC } from "@book-forge/shared";
+import { countWords, prosePlainTextToProseMirror } from "../utils/prosemirror.js";
 import {
+  appendProposalProgress,
   createProposal,
   finishProposal,
   loadProposal,
@@ -331,6 +332,37 @@ export function createPlotRoute(
     const beatSheet = plan.variants[plan.selectedIndex];
     if (!beatSheet) return badRequest(c, "selected plan variant missing");
 
+    const mode = parsed.data.mode;
+    const fromBeat = parsed.data.fromBeat ?? 0;
+    if (mode === "beats" && fromBeat >= beatSheet.beats.length) {
+      return badRequest(c, `fromBeat ${fromBeat} за пределами плана (${beatSheet.beats.length} беатов)`);
+    }
+    // Дописать с беата: префикс — текст принятой версии, автор его уже принял.
+    let prefixText = "";
+    if (mode === "beats" && fromBeat > 0) {
+      if (ch.current_version_id === null) {
+        return badRequest(c, "дописать с беата можно только поверх принятой версии главы");
+      }
+      const v = sqlite
+        .prepare("SELECT content_text, content_json FROM chapter_versions WHERE id = ?")
+        .get(ch.current_version_id) as
+        | { content_text: string; content_json: string }
+        | undefined;
+      // Абзацы берём из документа, а не из `content_text`: тот склеен
+      // `extractText` в одну строку с пробелами, и дописанная глава начиналась
+      // бы одним абзацем на всё принятое. Битый JSON — не повод срывать
+      // запуск, тогда склеенный текст лучше пустого.
+      try {
+        prefixText = v
+          ? docToBlocks(JSON.parse(v.content_json))
+              .filter((b) => b.trim().length > 0)
+              .join("\n\n")
+          : "";
+      } catch {
+        prefixText = v?.content_text ?? "";
+      }
+    }
+
     const ctx = loadBookContext(sqlite, ch.book_id);
     if (!ctx) return notFound(c, "book");
     const book = sqlite
@@ -471,7 +503,7 @@ export function createPlotRoute(
           }),
         });
 
-        const gen = runChapterWriter({
+        const writerInput = {
           bookTitle: ctx.title,
           bookPremise: ctx.premise,
           bookOutline: ctx.outlineSelected,
@@ -495,23 +527,59 @@ export function createPlotRoute(
           provider: ctx.writerProvider,
           ...(ctx.writerLocalModel ? { localModelTag: ctx.writerLocalModel } : {}),
           ...(signal !== undefined ? { signal } : {}),
-        });
-        while (true) {
-          const next = await gen.next();
-          if (next.done) {
-            fullText = next.value.text;
-            modelId = next.value.modelId;
-            stopReason = next.value.stopReason;
-            inputTokens = next.value.tokens.input;
-            outputTokens = next.value.tokens.output;
-            cacheCreationTokens = next.value.tokens.cacheCreation;
-            cacheReadTokens = next.value.tokens.cacheRead;
-            break;
+        };
+
+        // Один проход Писателя: целая глава или один беат. Статистика
+        // копится по всем проходам — расход главы считается разом.
+        const runOnce = async (beat?: { index: number; textSoFar: string }): Promise<string> => {
+          const gen = runChapterWriter(beat ? { ...writerInput, beat } : writerInput);
+          let text = "";
+          while (true) {
+            const next = await gen.next();
+            if (next.done) {
+              text = next.value.text;
+              modelId = next.value.modelId;
+              stopReason = next.value.stopReason;
+              inputTokens += next.value.tokens.input;
+              outputTokens += next.value.tokens.output;
+              cacheCreationTokens += next.value.tokens.cacheCreation;
+              cacheReadTokens += next.value.tokens.cacheRead;
+              break;
+            }
+            await stream.writeSSE({ event: "chunk", data: JSON.stringify({ text: next.value }) });
           }
-          await stream.writeSSE({
-            event: "chunk",
-            data: JSON.stringify({ text: next.value }),
-          });
+          return text;
+        };
+
+        let held = false;
+        let beatsDone: number | null = null;
+        const beatsTotal = mode === "beats" ? beatSheet.beats.length : null;
+        if (mode === "beats") {
+          fullText = prefixText;
+          for (let i = fromBeat; i < beatSheet.beats.length; i += 1) {
+            await stream.writeSSE({
+              event: "beat",
+              data: JSON.stringify({ index: i, total: beatSheet.beats.length }),
+            });
+            const piece = (await runOnce({ index: i, textSoFar: fullText })).trim();
+            fullText = fullText.trim().length > 0 ? `${fullText.trim()}\n\n${piece}` : piece;
+            beatsDone = i + 1;
+            // Кандидат растёт по ходу: падение процесса не теряет написанное.
+            appendProposalProgress(sqlite, proposalId, {
+              contentText: fullText,
+              wordCount: countWords(fullText),
+              beatsDone,
+              beatsTotal: beatSheet.beats.length,
+            });
+            if (cancels.shouldStop(proposalId)) break;
+            // На последнем беате удерживать нечего: кандидат и так дописан.
+            if (cancels.shouldHold(proposalId) && i < beatSheet.beats.length - 1) {
+              held = true;
+              break;
+            }
+          }
+        } else {
+          fullText = await runOnce();
         }
 
         // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
@@ -534,14 +602,18 @@ export function createPlotRoute(
         const verdict = judgeProseCompletion(stopReason, fullText);
         const confirmed = isConfirmedCompletion(stopReason);
         finishProposal(sqlite, proposalId, {
-          status: verdict.looksComplete ? "ready" : "incomplete",
+          // Удержание — не готовая глава: остаток беатов не написан, и автор
+          // принимает кандидата осознанно, как всякий `incomplete`.
+          status: held ? "incomplete" : verdict.looksComplete ? "ready" : "incomplete",
           contentText: fullText,
           contentJson: JSON.stringify(prosePlainTextToProseMirror(fullText)),
           wordCount: countWords(fullText),
-          completion: confirmed ? "confirmed" : "unconfirmed",
-          stopReason,
+          completion: confirmed && !held ? "confirmed" : "unconfirmed",
+          stopReason: held ? "held" : stopReason,
           modelId,
           backend: ctx.writerProvider,
+          beatsDone,
+          beatsTotal,
         });
         finalized = true;
 
@@ -562,6 +634,7 @@ export function createPlotRoute(
           event: "done",
           data: JSON.stringify({
             proposal: loadProposal(sqlite, proposalId),
+            ...(held ? { held: true } : {}),
             tokens: {
               input: inputTokens,
               output: outputTokens,
@@ -608,22 +681,3 @@ export function createPlotRoute(
 
   return r;
 }
-
-// Convert plain prose text (paragraph-separated) to ProseMirror doc JSON.
-function prosePlainTextToProseMirror(text: string): unknown {
-  const paragraphs = text
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  if (paragraphs.length === 0) return EMPTY_DOC;
-  return {
-    type: "doc",
-    content: paragraphs.map((p) => ({
-      type: "paragraph",
-      content: [{ type: "text", text: p }],
-    })),
-  };
-}
-
-// Suppress unused import warning if extractText isn't used here
-void extractText;

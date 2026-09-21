@@ -17,7 +17,11 @@ import { enqueueMemoryJobs, ENQUEUE_JOB_KINDS } from "./memory-queue.js";
 import { markMemoryStaleOnCommit } from "./memory-activation.js";
 import { attachManifestToVersion } from "./context-manifests.js";
 import { preserveDraftAsVersion } from "./chapter-drafts.js";
-import { extractText, countWords } from "./prosemirror.js";
+import {
+  extractText,
+  countWords,
+  prosePlainTextToProseMirror,
+} from "./prosemirror.js";
 
 export interface ProseProposalRow {
   id: number;
@@ -158,6 +162,8 @@ export interface FinishProposalInput {
   stopReason?: string | null;
   modelId?: string | null;
   backend?: string | null;
+  beatsDone?: number | null;
+  beatsTotal?: number | null;
   errorMessage?: string | null;
 }
 
@@ -182,6 +188,8 @@ export function finishProposal(
          model_id = ?,
          backend = ?,
          error_message = ?,
+         beats_done = COALESCE(?, beats_done),
+         beats_total = COALESCE(?, beats_total),
          updated_at = ?
        WHERE id = ? AND status = 'streaming'`,
     )
@@ -195,6 +203,34 @@ export function finishProposal(
       input.modelId ?? null,
       input.backend ?? null,
       input.errorMessage ?? null,
+      input.beatsDone ?? null,
+      input.beatsTotal ?? null,
+      new Date().toISOString(),
+      id,
+    );
+}
+
+/** Дописывает кандидата по ходу битовой генерации: текст всех беатов,
+ *  написанных к этому моменту. Только из `streaming` — поздний ответ после
+ *  отмены не имеет права ничего записать (тот же рубеж, что у finish). */
+export function appendProposalProgress(
+  sqlite: DatabaseType,
+  id: number,
+  input: { contentText: string; wordCount: number; beatsDone: number; beatsTotal: number },
+): void {
+  sqlite
+    .prepare(
+      `UPDATE prose_proposals SET
+         content_text = ?, content_json = ?, word_count = ?,
+         beats_done = ?, beats_total = ?, updated_at = ?
+       WHERE id = ? AND status = 'streaming'`,
+    )
+    .run(
+      input.contentText,
+      JSON.stringify(prosePlainTextToProseMirror(input.contentText)),
+      input.wordCount,
+      input.beatsDone,
+      input.beatsTotal,
       new Date().toISOString(),
       id,
     );

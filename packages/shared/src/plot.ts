@@ -415,7 +415,15 @@ export type SelectChapterPlanInput = z.infer<
   typeof selectChapterPlanInputSchema
 >;
 
-export const writeChapterInputSchema = z.object({
-  config: generationConfigSchema.optional(),
-});
+export const writeChapterInputSchema = z
+  .object({
+    config: generationConfigSchema.optional(),
+    /** `beats` — по одному вызову на беат, кандидат растёт по ходу. */
+    mode: z.enum(["whole", "beats"]).default("whole"),
+    /** Дописать с этого беата; префикс — текст принятой версии главы. */
+    fromBeat: z.number().int().nonnegative().optional(),
+  })
+  .refine((v) => v.fromBeat === undefined || v.mode === "beats", {
+    message: "fromBeat requires mode=beats",
+  });
 export type WriteChapterInput = z.infer<typeof writeChapterInputSchema>;

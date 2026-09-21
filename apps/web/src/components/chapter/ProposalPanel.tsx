@@ -249,6 +249,9 @@ export function ProposalPanel({
       <div className="caption">
         {proposal.kind === "write" ? "Черновик главы" : "Исправленный текст"} ·{" "}
         {proposal.wordCount} слов
+        {proposal.beatsDone !== null && proposal.beatsTotal !== null && (
+          <> · написано беатов: {proposal.beatsDone} из {proposal.beatsTotal}</>
+        )}
       </div>
       <p className="text-sm">
         Глава не изменена, пока вы не примете этот текст.
@@ -293,6 +296,12 @@ export function ProposalPanel({
         <p className="text-sm" style={{ color: "var(--color-ink-muted)" }}>
           Бэкенд подписки не сообщает, дописала ли модель до конца. Текст
           выглядит законченным.
+        </p>
+      )}
+      {proposal.stopReason === "held" && (
+        <p className="text-sm" style={{ color: "var(--color-ink-muted)" }}>
+          Остановлено по вашей просьбе после беата {proposal.beatsDone}. Принять можно;
+          дописать оставшиеся беаты — кнопкой на странице главы после принятия.
         </p>
       )}
 

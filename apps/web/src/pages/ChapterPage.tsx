@@ -106,6 +106,18 @@ export function ChapterPage() {
     null,
   );
   const [writing, setWriting] = useState(false);
+  /** Выбор автора живёт между главами: режим — привычка, а не свойство главы. */
+  const [writeMode, setWriteMode] = useState<"whole" | "beats">(() => {
+    try {
+      return localStorage.getItem("bf-write-mode") === "beats" ? "beats" : "whole";
+    } catch {
+      return "whole";
+    }
+  });
+  const [beatProgress, setBeatProgress] = useState<{ index: number; total: number } | null>(null);
+  const [holding, setHolding] = useState(false);
+  /** С какого беата дописывать: частично написанная и уже принятая глава. */
+  const [resumeFromBeat, setResumeFromBeat] = useState<number | null>(null);
   const [writerBuffer, setWriterBuffer] = useState("");
   const [proposal, setProposal] = useState<ProseProposal | null>(null);
   const [proposalChanges, setProposalChanges] = useState<ProseChange[]>([]);
@@ -318,6 +330,22 @@ export function ChapterPage() {
           debouncedSave.setBaseline(editor.getJSON());
           setDirty(false);
           setEditorTick((t) => t + 1);
+        }
+        // Частично написанная и принятая глава: с какого беата продолжать,
+        // видно по последнему принятому кандидату — без новых колонок у версии.
+        try {
+          const list = await api.listProposals(id);
+          const partial = list.find(
+            (p) =>
+              p.acceptedVersionId !== null &&
+              p.acceptedVersionId === ch.currentVersionId &&
+              p.beatsDone !== null &&
+              p.beatsTotal !== null &&
+              p.beatsDone < p.beatsTotal,
+          );
+          setResumeFromBeat(partial ? partial.beatsDone : null);
+        } catch {
+          setResumeFromBeat(null);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -551,7 +579,22 @@ export function ChapterPage() {
     writerAbortRef.current = null;
   }
 
-  async function onRunWriter() {
+  /** Остановиться после текущего беата, сохранив написанное. Не отмена: беат
+   *  дописывается, кандидат остаётся и его можно принять. */
+  async function onHoldWriter() {
+    if (runningProposalId === null) return;
+    setHolding(true);
+    try {
+      await api.holdProposal(runningProposalId);
+    } catch (e) {
+      setHolding(false);
+      toast.error("Не удалось остановить", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function onRunWriter(fromBeat?: number) {
     if (!selectedPlan) return;
     if (writing) return;
     const ctrl = new AbortController();
@@ -567,6 +610,7 @@ export function ChapterPage() {
             setWriterBuffer((b) => b + text);
           },
           onProposal: (proposalId) => setRunningProposalId(proposalId),
+          onBeat: (e) => setBeatProgress(e),
           // Деградация названа вслух: глава без замысла сцены пишется теми же
           // карточками, но герои действуют без намерений — и молча это
           // выглядело бы как обычная генерация.
@@ -581,9 +625,16 @@ export function ChapterPage() {
             setWriting(false);
             writerAbortRef.current = null;
             setRunningProposalId(null);
+            setBeatProgress(null);
+            setHolding(false);
             if (payload.cancelled) {
               toast.info("Генерация остановлена");
               return;
+            }
+            if (payload.held) {
+              toast.info("Остановлено после беата", {
+                description: "Написанное лежит в кандидате — примите его или отклоните.",
+              });
             }
             setProposal(payload.proposal);
             const { changes } = await api.getProposalChanges(payload.proposal.id);
@@ -611,6 +662,9 @@ export function ChapterPage() {
           },
         },
         ctrl.signal,
+        // Дописывание по определению идёт по беатам: иначе снятая галочка
+        // превращала бы кнопку «Дописать с беата» в отказ сервера.
+        fromBeat !== undefined ? { mode: "beats", fromBeat } : { mode: writeMode },
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -738,7 +792,7 @@ export function ChapterPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={onRunWriter}
+            onClick={() => void onRunWriter()}
             disabled={writing || !selectedPlan}
             variant="default"
             aria-busy={writing || undefined}
@@ -761,6 +815,40 @@ export function ChapterPage() {
             >
               <Square className="size-4" aria-hidden="true" />
               Стоп
+            </Button>
+          )}
+          <label className="text-xs flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={writeMode === "beats"}
+              onChange={(e) => {
+                const next = e.target.checked ? "beats" : "whole";
+                setWriteMode(next);
+                try {
+                  localStorage.setItem("bf-write-mode", next);
+                } catch {
+                  /* приватное окно */
+                }
+              }}
+              disabled={writing}
+            />
+            По беатам
+          </label>
+          {writing && beatProgress && (
+            <span className="text-xs">
+              Беат {beatProgress.index + 1} из {beatProgress.total}
+            </span>
+          )}
+          {/* По беатам ли идёт ЭТОТ запуск, говорит пришедший беат, а не
+              галочка: «Дописать с беата» работает и при снятой. */}
+          {writing && beatProgress !== null && (
+            <Button size="sm" variant="outline" onClick={() => void onHoldWriter()} disabled={holding}>
+              {holding ? "Дописываю беат…" : "Остановить после беата"}
+            </Button>
+          )}
+          {!writing && resumeFromBeat !== null && (
+            <Button size="sm" variant="outline" onClick={() => void onRunWriter(resumeFromBeat)}>
+              Дописать с беата {resumeFromBeat + 1}
             </Button>
           )}
           {!selectedPlan && !writing && (
