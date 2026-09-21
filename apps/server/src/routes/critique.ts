@@ -169,7 +169,7 @@ export function createCritiqueRoute(
     // Та же история, что у Writer (AC-36): одна сборка, один бюджет.
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
-      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext, compiled, assembled,
+      previousChaptersSummary: prevSummary, previousChapterTail, sceneState, retrievedContext, compiled, assembled,
       chapterContract,
     } = await loadChapterProseContext(sqlite, book, ch, version.content_text, { hasVec });
     if (compiled.requiredOverflow) {
@@ -210,6 +210,7 @@ export function createCritiqueRoute(
       bookContext,
       previousChaptersSummary: prevSummary,
       previousChapterTail,
+      sceneState,
       retrievedContext,
       chapterContract,
       characterContext,
@@ -404,7 +405,7 @@ export function createCritiqueRoute(
     // cannot silently miss the Reviser.
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
-      previousChaptersSummary: prevSummary, previousChapterTail, retrievedContext,
+      previousChaptersSummary: prevSummary, previousChapterTail, sceneState, retrievedContext,
       architectureContext, compiled, assembled, chapterContract,
     } = await loadChapterProseContext(sqlite, book, ch, v.content_text, { hasVec });
     if (compiled.requiredOverflow) {
@@ -476,6 +477,7 @@ export function createCritiqueRoute(
           fatigueWords: styleCtx.fatigueBlacklist,
           previousChaptersSummary: prevSummary,
           previousChapterTail,
+          sceneState,
           retrievedContext,
           originalText: v.content_text,
           critics: report.critics,

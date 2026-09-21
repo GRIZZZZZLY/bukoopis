@@ -45,6 +45,8 @@ export interface ChapterProseContext {
   previousChaptersSummary: string | null;
   /** Финал предыдущей главы дословно. */
   previousChapterTail: string | null;
+  /** Анкета непрерывности предыдущей главы. */
+  sceneState: string | null;
   /** Найденные фрагменты ранних глав. */
   retrievedContext: string | null;
   /** Карточки участников + действующие факты. */
@@ -181,6 +183,7 @@ export async function loadChapterProseContext(
       : null,
     previousChaptersSummary: assembled.previousChapters,
     previousChapterTail: assembled.previousTail,
+    sceneState: assembled.sceneState,
     retrievedContext: assembled.retrieval,
     characterContext: assembled.characterContext,
     loreContext: assembled.loreContext,

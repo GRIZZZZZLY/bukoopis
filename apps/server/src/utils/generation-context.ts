@@ -26,6 +26,7 @@ import {
 } from "./context-compiler.js";
 import { resolveEntityDetailed } from "./entity-resolve.js";
 import { loadBookContext } from "./book-context.js";
+import { loadBoundarySceneState } from "./scene-state.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
 /**
@@ -114,6 +115,9 @@ export interface AssembledContext {
   previousChapters: string | null;
   previousTail: string | null;
   retrieval: string | null;
+  /** Анкета непрерывности предыдущей главы: положение вещей, из которого
+   *  сцена начинается. `null` — анкеты нет или она не влезла в бюджет. */
+  sceneState: string | null;
   /** Открытые линии; не бюджетируется — только критикам и планировщику. */
   notesPrompt: string | null;
   styleContext: StyleContext;
@@ -266,6 +270,10 @@ export async function assembleGenerationContext(
       ? `${characterCards ? `${characterCards}\n\n` : ""}${factsPrompt}`
       : characterCards;
 
+  // Граница исключающая, как у событий персонажей: анкета этой главы в
+  // подготовку этой же сцены не входит.
+  const sceneState = loadBoundarySceneState(sqlite, book.id, ch.order_index);
+
   const studioContext = studioContextToPrompt(loadStudioContext(sqlite, book.id));
   const styleContext = loadStyleContext(
     sqlite,
@@ -290,6 +298,10 @@ export async function assembleGenerationContext(
   const compiled = compileContext(
     [
       { id: "characters", text: characterContext, priority: 1, required: true },
+      // Анкета непрерывности предыдущей главы: где герои остались, что при
+      // них и что осталось незакрытым. Рядом с хвостом по приоритету и не
+      // обязательная — нет анкеты, глава пишется без неё (INV-3).
+      { id: "sceneState", text: sceneState?.prompt ?? null, priority: 2 },
       { id: "prevTail", text: tailRow?.text ?? null, priority: 2 },
       { id: "rolling", text: rolling, priority: 2 },
       { id: "lore", text: loreContext, priority: 3 },
@@ -361,7 +373,8 @@ export async function assembleGenerationContext(
     loreContext: inc.has("lore") ? loreContext : null,
     studioContext: inc.has("studio") ? studioContext : null,
     previousChapters: inc.has("rolling") ? rolling : null,
-    previousTail: inc.has("prevTail") ? (tailRow?.text ?? null) : null,
+      previousTail: inc.has("prevTail") ? (tailRow?.text ?? null) : null,
+    sceneState: inc.has("sceneState") ? (sceneState?.prompt ?? null) : null,
     retrieval: inc.has("retrieval") ? retrieved.promptBlock : null,
     notesPrompt,
     styleContext: {

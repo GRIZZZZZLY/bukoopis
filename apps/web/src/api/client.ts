@@ -336,6 +336,27 @@ export const api = {
     ),
 
   // ── Проверка различий состава (ТЗ 9.1) ──
+  getSceneState: (chapterId: number) =>
+    req<{
+      chapterId: number;
+      versionId: number | null;
+      state: import("@book-forge/shared").SceneState | null;
+      origin: "llm" | "manual" | null;
+      updatedAt: string | null;
+    }>(`/api/chapters/${chapterId}/scene-state`),
+  saveSceneState: (
+    chapterId: number,
+    state: import("@book-forge/shared").SceneState,
+  ) =>
+    req<{ chapterId: number; state: import("@book-forge/shared").SceneState }>(
+      `/api/chapters/${chapterId}/scene-state`,
+      { method: "PATCH", body: JSON.stringify(state) },
+    ),
+  recomputeSceneState: (chapterId: number) =>
+    req<{ chapterId: number; versionId: number; enqueued: boolean }>(
+      `/api/chapters/${chapterId}/scene-state/recompute`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
   getCastCheck: (bookId: number) =>
     req<{ report: import("@book-forge/shared").CastCheckReport | null; stale: boolean }>(
       `/api/books/${bookId}/cast-check`,

@@ -35,6 +35,7 @@ import { VersionDiff } from "@/components/VersionDiff";
 import { FocusToggle } from "@/components/atmosphere/FocusToggle";
 import { InkwellStatus } from "@/components/atmosphere/InkwellStatus";
 import { OutlineRail } from "@/components/chapter/OutlineRail";
+import { SceneStatePanel } from "@/components/chapter/SceneStatePanel";
 import {
   ProposalPanel,
   type ProposalReread,
@@ -1031,6 +1032,9 @@ export function ChapterPage() {
                 onRereadProposal={rereadForProposal}
                 onRepairDone={load}
               />
+            </PanelBoundary>
+            <PanelBoundary title="Состояние сцены">
+              <SceneStatePanel chapterId={id} />
             </PanelBoundary>
             <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
           </div>

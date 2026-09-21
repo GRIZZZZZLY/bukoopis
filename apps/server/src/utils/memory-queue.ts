@@ -38,10 +38,25 @@ import {
 export const MEMORY_PIPELINE_VERSION = 2;
 export const MEMORY_MAX_ATTEMPTS = 5;
 
-/** Jobs enqueued atomically with every committed chapter version. */
+/** Виды, которых ЖДЁТ активация памяти версии: пока все они не `done`,
+ *  ничего не ложится в активные таблицы. */
 export const COMMIT_JOB_KINDS = ["index", "summary", "facts", "notes"] as const;
 
-export type MemoryJobKind = "index" | "summary" | "facts" | "notes" | "rollup";
+/** Что ставится в очередь при принятии версии главы.
+ *
+ *  `scene_state` сюда входит, а в `COMMIT_JOB_KINDS` — нет, и это не
+ *  оплошность: анкета сцены версионно замкнута (пишет свою строку сама и ни
+ *  от каких соседних глав не зависит), поэтому её отказ не должен задерживать
+ *  факты, заметки и события всей главы. */
+export const ENQUEUE_JOB_KINDS = [...COMMIT_JOB_KINDS, "scene_state"] as const;
+
+export type MemoryJobKind =
+  | "index"
+  | "summary"
+  | "facts"
+  | "notes"
+  | "rollup"
+  | "scene_state";
 export type MemoryJobStatus =
   | "pending"
   | "running"

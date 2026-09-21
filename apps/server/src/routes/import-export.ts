@@ -3,7 +3,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import JSZip from "jszip";
 import { z } from "zod";
 import { indexChapterVersion } from "@book-forge/retrieval";
-import { enqueueMemoryJobs, COMMIT_JOB_KINDS } from "../utils/memory-queue.js";
+import { enqueueMemoryJobs, ENQUEUE_JOB_KINDS } from "../utils/memory-queue.js";
 import {
   toBook,
   toChapter,
@@ -237,7 +237,7 @@ export async function insertChapters(
         bookId,
         chapterId,
         chapterVersionId: versionId,
-        kinds: COMMIT_JOB_KINDS.filter((k) => k !== "index"),
+        kinds: ENQUEUE_JOB_KINDS.filter((k) => k !== "index"),
       });
       created.push({
         chapterId,

@@ -25,6 +25,8 @@ export interface CriticInput {
    *  пересказами и не мог заметить, что она повторяет уже написанное
    *  предложение или рвёт незакрытое действие. */
   previousChapterTail?: string | null;
+  /** Анкета непрерывности предыдущей главы — та же, что у Писателя. */
+  sceneState?: string | null;
   retrievedContext?: string | null;
   /** Контракт главы (слайс 4.5), уже отрендеренный: что обязано случиться,
    *  чего быть не должно, что раскрывается и какие факты канона глава вправе
@@ -69,7 +71,7 @@ export const CRITIC_CALIBRATION_RULE = `Калибровка:
  * дошёл до Reviser'а.
  */
 export function renderHistoryBlocks(
-  input: Pick<CriticInput, "previousChaptersSummary" | "previousChapterTail" | "retrievedContext">,
+  input: Pick<CriticInput, "previousChaptersSummary" | "previousChapterTail" | "retrievedContext" | "sceneState">,
 ): string[] {
   const parts: string[] = [];
   if (input.retrievedContext) parts.push(input.retrievedContext);
@@ -81,6 +83,7 @@ export function renderHistoryBlocks(
       `Финал предыдущей главы (дословно, последние абзацы):\n${input.previousChapterTail}`,
     );
   }
+  if (input.sceneState) parts.push(input.sceneState);
   return parts;
 }
 

@@ -4,6 +4,7 @@ import {
   updateChapterInputSchema,
   createChapterVersionInputSchema,
   saveChapterDraftInputSchema,
+  sceneStateWriteSchema,
 } from "@book-forge/shared";
 import {
   toChapter,
@@ -17,7 +18,7 @@ import { extractText, countWords } from "../utils/prosemirror.js";
 import {
   enqueueMemoryJobs,
   pendingEarlierMemoryChapters,
-  COMMIT_JOB_KINDS,
+  ENQUEUE_JOB_KINDS,
 } from "../utils/memory-queue.js";
 import {
   markMemoryStaleOnCommit,
@@ -27,6 +28,10 @@ import {
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import { preserveDraftAsVersion } from "../utils/chapter-drafts.js";
 import { recordWritingDelta } from "../utils/writing-progress.js";
+import {
+  loadSceneStateForVersion,
+  saveSceneState,
+} from "../utils/scene-state.js";
 
 export function createChaptersRoute(
   sqlite: DatabaseType,
@@ -182,6 +187,86 @@ export function createChaptersRoute(
       .run(new Date().toISOString(), ch.current_version_id);
     if (res.changes > 0) memoryWorker?.kick();
     return c.json({ retried: res.changes });
+  });
+
+  // ── Анкета непрерывности (состояние сцены на конец главы) ──────────────
+  //
+  // Живёт на версии главы: у главы без принятой версии её не бывает, а у
+  // переписанной появляется своя, пока не посчитана — пусто.
+
+  function currentVersionOf(
+    id: number,
+  ): { id: number; book_id: number; current_version_id: number | null } | undefined {
+    return sqlite
+      .prepare("SELECT id, book_id, current_version_id FROM chapters WHERE id = ?")
+      .get(id) as
+      | { id: number; book_id: number; current_version_id: number | null }
+      | undefined;
+  }
+
+  r.get("/:id/scene-state", (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = currentVersionOf(id);
+    if (!ch) return notFound(c, "chapter");
+    const row = ch.current_version_id
+      ? loadSceneStateForVersion(sqlite, ch.current_version_id)
+      : null;
+    // «Анкеты нет» — штатный ответ, а не 404: опрос страницы главы не должен
+    // засыпать консоль браузера красным (та же правка, что у inflight).
+    return c.json({
+      chapterId: id,
+      versionId: ch.current_version_id,
+      state: row?.state ?? null,
+      origin: row?.origin ?? null,
+      updatedAt: row?.updatedAt ?? null,
+    });
+  });
+
+  r.patch("/:id/scene-state", async (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = currentVersionOf(id);
+    if (!ch) return notFound(c, "chapter");
+    if (!ch.current_version_id) return notFound(c, "chapter_version");
+    const body = await c.req.json().catch(() => null);
+    const parsed = sceneStateWriteSchema.safeParse(body);
+    if (!parsed.success) return validationFailed(c, parsed.error);
+    saveSceneState(sqlite, {
+      bookId: ch.book_id,
+      chapterId: id,
+      chapterVersionId: ch.current_version_id,
+      state: parsed.data,
+      origin: "manual",
+    });
+    return c.json({ chapterId: id, state: parsed.data, origin: "manual" });
+  });
+
+  r.post("/:id/scene-state/recompute", (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = currentVersionOf(id);
+    if (!ch) return notFound(c, "chapter");
+    if (!ch.current_version_id) return notFound(c, "chapter_version");
+    const versionId = ch.current_version_id;
+    sqlite.transaction(() => {
+      // Строку снимаем до постановки задания: без этого обработчик увидит
+      // авторскую анкету и откажется её затирать — а пересчёт заказан именно
+      // поверх неё.
+      sqlite
+        .prepare("DELETE FROM chapter_scene_states WHERE chapter_version_id = ?")
+        .run(versionId);
+      sqlite
+        .prepare(
+          "DELETE FROM memory_jobs WHERE chapter_version_id = ? AND kind = 'scene_state'",
+        )
+        .run(versionId);
+      enqueueMemoryJobs(sqlite, {
+        bookId: ch.book_id,
+        chapterId: id,
+        chapterVersionId: versionId,
+        kinds: ["scene_state"],
+      });
+    })();
+    memoryWorker?.kick();
+    return c.json({ chapterId: id, versionId, enqueued: true });
   });
 
   r.patch("/:id", async (c) => {
@@ -361,7 +446,7 @@ export function createChaptersRoute(
         bookId: ch.book_id,
         chapterId: ch.id,
         chapterVersionId: versionId,
-        kinds: COMMIT_JOB_KINDS,
+        kinds: ENQUEUE_JOB_KINDS,
       });
       markMemoryStaleOnCommit(sqlite, ch.book_id, ch.order_index);
       // The committed content came from the editor — the draft is stale now.

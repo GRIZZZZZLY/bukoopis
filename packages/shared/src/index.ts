@@ -1,6 +1,7 @@
 export * from "./book.js";
 export * from "./prose-completion.js";
 export * from "./scene-intent.js";
+export * from "./scene-state.js";
 export * from "./cast-check.js";
 export * from "./entity-names.js";
 export * from "./chapter.js";

@@ -43,6 +43,7 @@ function fakeAssembled(refs: AssembledContext["sourceRefs"]): AssembledContext {
     studioContext: null,
     previousChapters: null,
     previousTail: null,
+    sceneState: null,
     retrieval: null,
     notesPrompt: null,
     styleContext: { prompt: null, fatigueBlacklist: [] },

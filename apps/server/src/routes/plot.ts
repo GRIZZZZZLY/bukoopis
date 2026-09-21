@@ -480,6 +480,7 @@ export function createPlotRoute(
           sceneIntent: sceneIntent.prompt,
           previousChaptersSummary: assembled.previousChapters,
           previousChapterTail: assembled.previousTail,
+          sceneState: assembled.sceneState,
           characterContext: assembled.characterContext,
           loreContext: assembled.loreContext,
           styleContext: assembled.styleContext.prompt,

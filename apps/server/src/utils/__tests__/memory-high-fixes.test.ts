@@ -174,15 +174,20 @@ describe("импортированные главы (В1)", () => {
     expect(res.created).toHaveLength(2);
     const chapterId = res.created[0]!.chapterId;
 
-    // Три задания, не четыре: чанки маршрут кладёт сам, синхронно, чтобы
-    // поиск видел главы сразу, и второе задание `index` означало бы повторную
-    // индексацию той же версии.
+    // Без `index`: чанки маршрут кладёт сам, синхронно, чтобы поиск видел
+    // главы сразу, и второе задание `index` означало бы повторную индексацию
+    // той же версии. `scene_state` — анкета непрерывности принесённой главы.
     const jobs = t.sqlite
       .prepare(
         `SELECT kind FROM memory_jobs WHERE chapter_version_id = ? ORDER BY kind`,
       )
       .all(versionOf(chapterId)) as Array<{ kind: string }>;
-    expect(jobs.map((j) => j.kind)).toEqual(["facts", "notes", "summary"]);
+    expect(jobs.map((j) => j.kind)).toEqual([
+      "facts",
+      "notes",
+      "scene_state",
+      "summary",
+    ]);
     expect(
       (
         t.sqlite
