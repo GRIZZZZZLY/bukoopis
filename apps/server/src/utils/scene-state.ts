@@ -91,6 +91,42 @@ export function loadSceneStateForChapter(
   );
 }
 
+/**
+ * Авторская правка анкеты, оставшаяся на прежней версии главы.
+ *
+ * Перезапись главы заводит новую версию, а анкета замкнута на версию — правка
+ * автора остаётся у старой строки и с экрана исчезает. Переносим её НЕ молча:
+ * анкета описывает конец главы, а текст главы как раз изменился, поэтому
+ * машинный разбор новой версии обязан пройти, а перенос остаётся кнопкой.
+ *
+ * Предлагать нечего, когда автор уже правил текущую версию (его же решение
+ * новее) и когда правка пуста.
+ */
+export function loadCarryableSceneState(
+  sqlite: DatabaseType,
+  chapterId: number,
+): SceneStateRow | null {
+  const current = loadSceneStateForChapter(sqlite, chapterId);
+  if (current?.origin === "manual") return null;
+  const row = toRow(
+    sqlite
+      .prepare(
+        `SELECT s.id, s.chapter_id, s.chapter_version_id, s.state_json, s.origin, s.updated_at
+           FROM chapter_scene_states s
+           JOIN chapters c ON c.id = s.chapter_id
+          WHERE s.chapter_id = ?
+            AND s.origin = 'manual'
+            AND c.current_version_id IS NOT NULL
+            AND s.chapter_version_id <> c.current_version_id
+          ORDER BY s.chapter_version_id DESC
+          LIMIT 1`,
+      )
+      .get(chapterId) as RawRow | undefined,
+  );
+  if (!row || isEmptySceneState(row.state)) return null;
+  return row;
+}
+
 export function saveSceneState(
   sqlite: DatabaseType,
   args: {

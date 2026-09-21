@@ -100,6 +100,7 @@ function peopleToLines(items: readonly SceneStatePersonLine[]): string {
 export function SceneStatePanel({ chapterId }: Props) {
   const [state, setState] = useState<SceneState | null>(null);
   const [origin, setOrigin] = useState<"llm" | "manual" | null>(null);
+  const [carry, setCarry] = useState<SceneState | null>(null);
   const [draft, setDraft] = useState<DraftText | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export function SceneStatePanel({ chapterId }: Props) {
     const r = await api.getSceneState(chapterId);
     setState(r.state);
     setOrigin(r.origin);
+    setCarry(r.carry?.state ?? null);
   }, [chapterId]);
 
   useEffect(() => {
@@ -121,6 +123,7 @@ export function SceneStatePanel({ chapterId }: Props) {
         if (cancelled) return;
         setState(r.state);
         setOrigin(r.origin);
+        setCarry(r.carry?.state ?? null);
         setError(null);
       })
       .catch((e: unknown) => {
@@ -139,6 +142,23 @@ export function SceneStatePanel({ chapterId }: Props) {
       setState(null);
       setOrigin(null);
       setNotice("Считается. Обновите через минуту.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Перенос правки с прежней версии главы. Не в редактор, а сразу записью:
+   *  автор уже один раз согласился с этими словами. Дальше правится как своя. */
+  async function carryOver(): Promise<void> {
+    if (!carry) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.saveSceneState(chapterId, carry);
+      await load();
+      setNotice("Ваша правка перенесена.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -203,6 +223,19 @@ export function SceneStatePanel({ chapterId }: Props) {
 
       {error && <p className="text-sm text-[var(--danger,#b4443a)]">{error}</p>}
       {notice && !error && <p className="text-sm opacity-70">{notice}</p>}
+
+      {shown === null && carry && (
+        <div className="flex flex-col items-start gap-1 text-sm opacity-80">
+          <p>
+            На прежней версии главы анкету правили вы. Текст с тех пор
+            переписан — машина считает анкету заново, вашу правку можно
+            перенести.
+          </p>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={carryOver}>
+            Перенести мою правку
+          </Button>
+        </div>
+      )}
 
       {shown === null ? (
         hasAnything && state ? (

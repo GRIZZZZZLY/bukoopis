@@ -10,6 +10,7 @@ import { sceneStateSchema } from "@book-forge/shared";
 
 import {
   loadBoundarySceneState,
+  loadCarryableSceneState,
   loadSceneStateForChapter,
   loadSceneStateForVersion,
   saveSceneState,
@@ -48,6 +49,26 @@ function addChapter(orderIndex: number, title: string): { chapterId: number; ver
     .prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?")
     .run(versionId, chapterId);
   return { chapterId, versionId };
+}
+
+/** Перезапись главы: новая версия становится текущей, прежняя остаётся в базе
+ *  вместе со своей анкетой. */
+function rewrite(ch: { chapterId: number; versionId: number }): {
+  chapterId: number;
+  versionId: number;
+} {
+  const versionId = Number(
+    sqlite
+      .prepare(
+        `INSERT INTO chapter_versions (chapter_id, content_json, content_text, word_count, created_at)
+         VALUES (?, '{}', 'Переписано.', 100, ?)`,
+      )
+      .run(ch.chapterId, NOW).lastInsertRowid,
+  );
+  sqlite
+    .prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?")
+    .run(versionId, ch.chapterId);
+  return { chapterId: ch.chapterId, versionId };
 }
 
 function put(
@@ -165,5 +186,65 @@ describe("запись анкеты", () => {
       .prepare("SELECT COUNT(*) n FROM chapter_scene_states")
       .get() as { n: number };
     expect(left.n).toBe(0);
+  });
+});
+
+describe("перенос авторской правки на новую версию", () => {
+  it("правка прошлой версии предлагается к переносу", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал", carried: [{ name: "Нина", value: "ключ" }] }, "manual");
+    const v2 = rewrite(c1);
+
+    const carry = loadCarryableSceneState(sqlite, c1.chapterId);
+    expect(carry?.chapterVersionId).toBe(c1.versionId);
+    expect(carry?.state.place).toBe("причал");
+    expect(carry?.state.carried).toEqual([{ name: "Нина", value: "ключ" }]);
+    // Сама текущая версия при этом пуста — машина её ещё не разбирала.
+    expect(loadSceneStateForVersion(sqlite, v2.versionId)).toBeNull();
+  });
+
+  it("машинная анкета прошлой версии не предлагается: её машина посчитает заново", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал" });
+    rewrite(c1);
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)).toBeNull();
+  });
+
+  it("версия, которую автор уже правил, ничего не предлагает", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал" }, "manual");
+    const v2 = rewrite(c1);
+    put(v2, { place: "склад" }, "manual");
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)).toBeNull();
+  });
+
+  it("берётся самая поздняя авторская правка, а не первая", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал" }, "manual");
+    const v2 = rewrite(c1);
+    put(v2, { place: "склад" }, "manual");
+    rewrite(v2);
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)?.state.place).toBe("склад");
+  });
+
+  it("пустая авторская правка не предлагается", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, {}, "manual");
+    rewrite(c1);
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)).toBeNull();
+  });
+
+  it("машинная анкета текущей версии переносу не мешает", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал" }, "manual");
+    const v2 = rewrite(c1);
+    put(v2, { place: "склад" });
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)?.state.place).toBe("причал");
+  });
+
+  it("глава без перезаписи ничего не предлагает: правка на месте", () => {
+    const c1 = addChapter(10, "Прилив");
+    put(c1, { place: "причал" }, "manual");
+    expect(loadCarryableSceneState(sqlite, c1.chapterId)).toBeNull();
   });
 });
