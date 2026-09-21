@@ -388,6 +388,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  setCharacterPromptVisibility: (id: number, hidden: boolean) =>
+    req<Character>(`/api/characters/${id}/prompt-visibility`, {
+      method: "PATCH",
+      body: JSON.stringify({ hidden }),
+    }),
   /** Возвращает, что ушло вместе с героем: события, образцы речи,
    *  отношения, псевдонимы (С10). */
   deleteCharacter: (id: number) =>

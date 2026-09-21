@@ -3,6 +3,7 @@ import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 import { assembleGenerationContext } from "../../utils/generation-context.js";
 import { loadStudioContext, studioContextToPrompt } from "../../utils/studio-context.js";
 import type { BookRow, ChapterRow } from "../../db/rows.js";
+import { gatherCharacterContext } from "@book-forge/agents";
 
 let t: TestApp;
 beforeEach(() => {
@@ -124,5 +125,46 @@ describe("заметки автора", () => {
     const res = await send(t.app, `/api/books/${bookId}/export.json`, "GET");
     expect(res.status).toBe(200);
     expect(await res.text()).toContain(SENTINEL);
+  });
+});
+
+describe("глазок героя", () => {
+  async function twoCharacters(): Promise<{ bookId: number; nina: number; vort: number }> {
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "К" });
+    const nina = await sendJson<{ id: number }>(t.app, `/api/books/${b.id}/characters`, "POST", {
+      canonicalName: "Нина",
+      profile: { description: "инженер" },
+    });
+    const vort = await sendJson<{ id: number }>(t.app, `/api/books/${b.id}/characters`, "POST", {
+      canonicalName: "Ворт",
+      profile: { description: "механик" },
+    });
+    return { bookId: b.id, nina: nina.id, vort: vort.id };
+  }
+
+  it("переключается без роста ревизии и отдаётся в карточке", async () => {
+    const { vort } = await twoCharacters();
+    const hidden = await sendJson<{ hiddenFromPrompts: boolean; revision: number }>(
+      t.app,
+      `/api/characters/${vort}/prompt-visibility`,
+      "PATCH",
+      { hidden: true },
+    );
+    expect(hidden.hiddenFromPrompts).toBe(true);
+    expect(hidden.revision).toBe(0);
+    const res = await send(t.app, `/api/characters/${vort}/prompt-visibility`, "PATCH", {
+      hidden: "да",
+    });
+    expect(res.status).toBe(400);
+    expect((await send(t.app, `/api/characters/99999/prompt-visibility`, "PATCH", { hidden: true })).status).toBe(404);
+  });
+
+  it("скрытый герой не сканируется, но POV из плана берётся всегда", async () => {
+    const { bookId, vort } = await twoCharacters();
+    await send(t.app, `/api/characters/${vort}/prompt-visibility`, "PATCH", { hidden: true });
+    const scanned = gatherCharacterContext(t.sqlite, bookId, ["Нина и Ворт спорят у мотора"], [], null);
+    expect(scanned.characters.map((c) => c.character.canonicalName)).toEqual(["Нина"]);
+    const withPov = gatherCharacterContext(t.sqlite, bookId, ["Нина и Ворт спорят"], [vort], null);
+    expect(withPov.characters.map((c) => c.character.canonicalName).sort()).toEqual(["Ворт", "Нина"]);
   });
 });
