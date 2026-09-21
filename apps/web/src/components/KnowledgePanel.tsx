@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VoiceSamples } from "@/components/VoiceSamples";
+import { AliasEditor } from "@/components/AliasEditor";
 import { RelationshipQualities } from "@/components/RelationshipQualities";
 import { api } from "@/api/client";
 import type {
@@ -204,6 +205,7 @@ function CharactersTab({ bookId }: { bookId: number }) {
               {c.profile.want && <div>Хочет: {c.profile.want}</div>}
               {c.profile.need && <div>Нуждается: {c.profile.need}</div>}
               {c.profile.lie && <div>Самообман: {c.profile.lie}</div>}
+              <AliasEditor bookId={bookId} characterId={c.id} />
               <button
                 type="button"
                 onClick={() => setExpandedVoiceId(expandedVoiceId === c.id ? null : c.id)}

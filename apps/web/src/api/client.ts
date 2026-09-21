@@ -21,6 +21,7 @@ import type {
   CreateLocationInput,
   CreateRelationshipInput,
   CreateVoiceSampleInput,
+  EntityAlias,
   GenerationConfig,
   Hook,
   IntakeSummaryRow,
@@ -396,6 +397,19 @@ export const api = {
       deletedRelationships: number;
       deletedAliases: number;
     }>(`/api/characters/${id}`, { method: "DELETE" }),
+  /** Другие имена героя (прозвища, титулы) — по ним резолвер сводит
+   *  разные написания к одному id (ADR 0003). */
+  listCharacterAliases: (bookId: number, characterId: number) =>
+    req<EntityAlias[]>(
+      `/api/books/${bookId}/entities/character/${characterId}/aliases`,
+    ),
+  addCharacterAlias: (bookId: number, characterId: number, alias: string) =>
+    req<EntityAlias[]>(
+      `/api/books/${bookId}/entities/character/${characterId}/aliases`,
+      { method: "POST", body: JSON.stringify({ alias }) },
+    ),
+  deleteAlias: (bookId: number, aliasId: number) =>
+    req<void>(`/api/books/${bookId}/aliases/${aliasId}`, { method: "DELETE" }),
   listCharacterKnowledge: (id: number) =>
     req<CharacterKnowledge[]>(`/api/characters/${id}/knowledge`),
   addCharacterKnowledge: (
