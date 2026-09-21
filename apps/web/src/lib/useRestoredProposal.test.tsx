@@ -28,6 +28,8 @@ const base: ProseProposal = {
   stopReason: "end_turn",
   modelId: "test",
   backend: "anthropic",
+  beatsDone: null,
+  beatsTotal: null,
   acceptedVersionId: null,
   acceptRequestId: null,
   errorMessage: null,

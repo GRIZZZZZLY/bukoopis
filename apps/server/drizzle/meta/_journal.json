@@ -225,6 +225,13 @@
       "when": 1789967199770,
       "tag": "0031_scene_state",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1790009196930,
+      "tag": "0032_litrab_borrowings",
+      "breakpoints": true
     }
   ]
 }

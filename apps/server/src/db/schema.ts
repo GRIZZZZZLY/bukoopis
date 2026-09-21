@@ -41,6 +41,9 @@ export const books = sqliteTable(
     // ADR 0002: first chapter order whose derived memory (facts/notes/chunks)
     // is stale after an earlier-chapter edit; NULL = memory fresh.
     memoryStaleFromChapterOrder: integer("memory_stale_from_chapter_order"),
+    /** Сырые заметки автора. В промпт не уходят никогда — см. тест на маячок
+     *  в litrab-borrowings.test.ts. */
+    authorNotes: text("author_notes"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -128,6 +131,9 @@ export const characters = sqliteTable(
     /** Счётчик правок профиля: оптимистичная блокировка карточки (этап 2 ТЗ
      *  индивидуальности) и номер строки в entity_profile_versions. */
     revision: integer("revision").notNull().default(0),
+    /** «Глазок»: 1 — герой снят с запросов к модели (gatherCharacterContext
+     *  его не сканирует). Не часть профиля, ревизию не двигает. */
+    hiddenFromPrompts: integer("hidden_from_prompts").notNull().default(0),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -550,6 +556,41 @@ export const chapterSceneStates = sqliteTable(
   ],
 );
 
+/** Чат по книге: тред привязан к главе, разговор идёт над её текстом. */
+export const chatThreads = sqliteTable(
+  "chat_threads",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapterId: integer("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    title: text("title"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("idx_chat_threads_chapter").on(t.chapterId, t.id)],
+);
+
+export const chatMessages = sqliteTable(
+  "chat_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    threadId: integer("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("idx_chat_messages_thread").on(t.threadId, t.id),
+    check("chat_messages_role_check", sql`${t.role} IN ('user','assistant')`),
+  ],
+);
+
 // Time-scoped canon facts (migrations 0012, 0015, 0018). Three orthogonal
 // qualifiers ride on every row: `assertion_mode` is epistemic status inside the
 // fiction (narrated as fact vs. rumor), `source_kind` is who produced the row,
@@ -886,6 +927,10 @@ export const proseProposals = sqliteTable(
     stopReason: text("stop_reason"),
     modelId: text("model_id"),
     backend: text("backend"),
+    /** Глава по беатам: сколько беатов уже в тексте и сколько их в плане.
+     *  NULL — кандидат писался целиком. */
+    beatsDone: integer("beats_done"),
+    beatsTotal: integer("beats_total"),
     acceptedVersionId: integer("accepted_version_id").references(
       (): AnySQLiteColumn => chapterVersions.id,
       { onDelete: "set null" },

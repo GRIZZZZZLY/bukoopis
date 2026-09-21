@@ -1,5 +1,6 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { sameEntityName, type FactEntityType } from "@book-forge/shared";
+import type { EntityAlias } from "@book-forge/shared";
 
 /**
  * ADR 0003 slice 2 — resolve a canon-fact entity name to a stable entity id.
@@ -106,11 +107,7 @@ function canonicalNameOf(
   return row ? { entityId, canonicalName: row.n } : null;
 }
 
-export interface EntityAlias {
-  id: number;
-  alias: string;
-  createdAt: string;
-}
+export type { EntityAlias };
 
 /** Register an alias for an entity (idempotent). Returns false if the alias
  *  already maps to a DIFFERENT entity of the same type (conflict). */

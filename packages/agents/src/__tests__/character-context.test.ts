@@ -27,7 +27,7 @@ function ctx(over: Partial<CharacterAgentResult> = {}): CharacterAgentResult {
     characters: [
       {
         character: {
-          id: 1, bookId: 3, canonicalName: "Рин", revision: 0,
+          id: 1, bookId: 3, canonicalName: "Рин", revision: 0, hiddenFromPrompts: false,
           profile: normalizeCharacterProfile({ description: "Инженер." }),
           createdAt: "", updatedAt: "",
         },
@@ -54,7 +54,7 @@ const result = {
   characters: [
     {
       character: {
-        id: 1, bookId: 3, canonicalName: "Рин", revision: 0,
+        id: 1, bookId: 3, canonicalName: "Рин", revision: 0, hiddenFromPrompts: false,
         profile: normalizeCharacterProfile({ description: "Инженер." }),
         createdAt: "", updatedAt: "",
       },
@@ -232,7 +232,7 @@ describe("поля профиля V2 доходят до промпта (С3)", 
     characters: [
       {
         character: {
-          id: 1, bookId: 3, canonicalName: "Рин", revision: 0,
+          id: 1, bookId: 3, canonicalName: "Рин", revision: 0, hiddenFromPrompts: false,
           profile: normalizeCharacterProfile({
             description: "Инженер.",
             role: "напарница",
