@@ -105,6 +105,9 @@ export interface IntakeResponse {
   ideaSet: boolean;
   chapters: Array<{ chapterId: number; title: string; words: number }>;
   failures: Array<{ filename: string; message: string }>;
+  /** Легло черновиком, но просит взгляда: например, текст главы разошёлся с
+   *  исходным файлом. Нет у ответов старого сервера. */
+  warnings?: Array<{ title: string; message: string }>;
   revision: number;
 }
 

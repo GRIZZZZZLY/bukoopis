@@ -175,6 +175,12 @@ export async function insertChapters(
   hasVec: boolean,
   bookId: number,
   chapters: ParsedChapter[],
+  /** `asDraft` — главу кладут черновиком (`chapter_drafts`), без версии,
+   *  поиска и заданий памяти (F03 ревью 2026-09-22). Так приходит текст,
+   *  который переписала модель при разборе материалов: до того как автор
+   *  его сохранит, он не должен становиться текущей версией и участвовать
+   *  в генерации. Прямой импорт своего файла автором идёт как раньше. */
+  opts: { asDraft?: boolean } = {},
 ): Promise<InsertChaptersResult> {
   // Сопоставление по названию: текст автор правит, название держится. Точное
   // совпадение после нормализации пробелов и регистра.
@@ -218,6 +224,12 @@ export async function insertChapters(
   const bumpBook = sqlite.prepare(
     "UPDATE books SET updated_at = ? WHERE id = ?",
   );
+  const insertDraft = sqlite.prepare(
+    `INSERT INTO chapter_drafts
+       (chapter_id, content_json, content_text, word_count, base_version_id, revision, updated_at)
+     VALUES (?, ?, ?, ?, NULL, 1, ?)`,
+  );
+  const drafted: InsertedChapter[] = [];
 
   const created: {
     chapterId: number;
@@ -234,6 +246,12 @@ export async function insertChapters(
       const chapterId = Number(info.lastInsertRowid);
       const wordCount = countWords(ch.body);
       const contentJson = JSON.stringify(plainTextToProseMirror(ch.body));
+      if (opts.asDraft) {
+        insertDraft.run(chapterId, contentJson, ch.body, wordCount, now);
+        drafted.push({ chapterId, title: ch.title, words: wordCount });
+        nextOrder += 10;
+        continue;
+      }
       const vinfo = insertVersion.run(
         chapterId,
         contentJson,
@@ -308,11 +326,14 @@ export async function insertChapters(
   }
 
   return {
-    created: created.map(({ chapterId, title, words }) => ({
-      chapterId,
-      title,
-      words,
-    })),
+    created: [
+      ...drafted,
+      ...created.map(({ chapterId, title, words }) => ({
+        chapterId,
+        title,
+        words,
+      })),
+    ],
     skipped,
   };
 }

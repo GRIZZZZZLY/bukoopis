@@ -431,3 +431,39 @@ describe("runIntake — недоставленное (F13 ревью 2026-09-22)
     expect(count2.c).toBe(1);
   });
 });
+
+describe("runIntake — глава из материалов ложится черновиком (F03 ревью 2026-09-22)", () => {
+  const manuscript = (body: string) => ({ filename: "рукопись.md", content: `# Глава первая\n\n${body}` });
+
+  it("не становится текущей версией, не индексируется и не ставит заданий памяти", async () => {
+    const body = "Смотритель поднялся на маяк и зажёг огонь.";
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "chapters" as const, title: "Глава первая", body }],
+    });
+    const out = await runIntake(deps(), { files: [manuscript(body)] });
+
+    expect(out.chapters.map((c) => c.title)).toEqual(["Глава первая"]);
+    const ch = sqlite
+      .prepare("SELECT id, current_version_id, indexed_version_id FROM chapters WHERE book_id = ?")
+      .get(bookId) as { id: number; current_version_id: number | null; indexed_version_id: number | null };
+    expect(ch.current_version_id).toBeNull();
+    expect(ch.indexed_version_id).toBeNull();
+    const draft = sqlite.prepare("SELECT content_text FROM chapter_drafts WHERE chapter_id = ?").get(ch.id) as
+      | { content_text: string }
+      | undefined;
+    expect(draft?.content_text).toBe(body);
+    const jobs = sqlite.prepare("SELECT COUNT(*) c FROM memory_jobs WHERE chapter_id = ?").get(ch.id) as { c: number };
+    expect(jobs.c).toBe(0);
+    expect(out.warnings).toEqual([]);
+  });
+
+  it("пересказ вместо дословного переноса называется предупреждением", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "chapters" as const, title: "Глава первая", body: "Смотритель зажёг огонь на маяке." }],
+    });
+    const out = await runIntake(deps(), {
+      files: [manuscript("Смотритель поднялся на маяк и зажёг огонь.")],
+    });
+    expect(out.warnings.map((w) => w.title)).toEqual(["Глава первая"]);
+  });
+});

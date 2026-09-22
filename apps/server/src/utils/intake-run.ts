@@ -71,6 +71,9 @@ export interface IntakeRunResult {
   /** Сколько авторских оглавлений легло вариантами в books.outline_json. */
   planVariants: number;
   failures: Array<{ filename: string; message: string }>;
+  /** Легло, но требует взгляда автора: текст главы, переписанный
+   *  классификатором, не совпал с исходным файлом дословно (F03). */
+  warnings: Array<{ title: string; message: string }>;
   revision: number;
   cancelled: boolean;
   requestKey: string;
@@ -95,9 +98,11 @@ type IntakeResponseBody = Omit<IntakeRunResult, "cancelled" | "requestKey" | "re
  *
  *  Обе записи живут внутри `after`, который `studioEventPayloadSchema` держит
  *  как `z.unknown()` — расширять схему событий не требуется. */
-interface IntakeJournalAfter extends Omit<IntakeResponseBody, "planVariants"> {
+interface IntakeJournalAfter extends Omit<IntakeResponseBody, "planVariants" | "warnings"> {
   /** Нет у событий, записанных до фазы 5. */
   planVariants?: number;
+  /** Нет у событий, записанных до F03. */
+  warnings?: Array<{ title: string; message: string }>;
   /** Нет у событий, записанных до появления дочитывания. */
   processedFiles?: string[];
   landed?: IntakeLanded[];
@@ -152,6 +157,7 @@ function replayOf(after: IntakeJournalAfter, requestKey: string): IntakeRunResul
     // а «тогда планов ещё не приземляли».
     planVariants: after.planVariants ?? 0,
     failures: after.failures,
+    warnings: after.warnings ?? [],
     revision: after.revision,
     cancelled: false,
     requestKey,
@@ -275,6 +281,9 @@ export async function runIntake(
   let cancelled = false;
   /** Ключи файлов, которые классификатор прочитал в этом прогоне. */
   const processedNow: string[] = [];
+  /** Исходный текст файла, из которого пришёл фрагмент: по нему проверяется,
+   *  что классификатор перенёс главу дословно, а не пересказал (F03). */
+  const sourceOf = new Map<object, string>();
 
   // Последовательно, а не пачкой: одна единица разбора (файл или его часть) —
   // один вызов, и падение одного не уносит остальные. shouldStop проверяется
@@ -305,6 +314,7 @@ export async function runIntake(
         ...(existingStages.length > 0 ? { existingStages } : {}),
       });
       fragments.push(...out.fragments);
+      for (const f of out.fragments) sourceOf.set(f, file.content);
       processedNow.push(key);
       if (foundIdea === undefined && out.bookIdea && out.bookIdea.trim().length > 0) {
         foundIdea = out.bookIdea.trim();
@@ -365,6 +375,21 @@ export async function runIntake(
     ...retryChapters,
     ...landedFresh.chapterFragments.map((f) => ({ title: f.title, body: f.body })),
   ];
+  // F03 ревью 2026-09-22: текст главы — ответ модели, которой велено
+  // переносить дословно, но равенство исходнику ничто не проверяло. Глава
+  // всё равно ложится черновиком (ниже), а расхождение называется вслух.
+  const warnings: Array<{ title: string; message: string }> = [];
+  const squash = (t: string): string => t.replace(/\s+/g, " ").trim();
+  for (const f of landedFresh.chapterFragments) {
+    const source = sourceOf.get(f);
+    if (source !== undefined && !squash(source).includes(squash(f.body))) {
+      warnings.push({
+        title: f.title,
+        message:
+          "текст главы не совпал с исходным файлом дословно — сверьте черновик с файлом, прежде чем сохранять",
+      });
+    }
+  }
   const planVariants = [...retryPlans, ...landedFresh.planVariants];
   const undelivered: NonNullable<IntakeJournalAfter["undelivered"]> = {};
   log(
@@ -416,6 +441,9 @@ export async function runIntake(
         hasVec,
         bookId,
         chapterFragments,
+        // Черновиком: до сохранения автором текст модели не становится
+        // версией и не участвует ни в поиске, ни в памяти (F03).
+        { asDraft: true },
       );
       chapters = inserted.created;
       // Глава, отсеянная как повтор по названию, обязана быть названа:
@@ -528,6 +556,7 @@ export async function runIntake(
     ideaSet: (prior?.ideaSet ?? false) || ideaSet,
     chapters: [...(prior?.chapters ?? []), ...chapters],
     planVariants: (prior?.planVariants ?? 0) + planVariantsLanded,
+    warnings: [...(prior?.warnings ?? []), ...warnings],
     failures: [
       ...(prior?.failures ?? []).filter((f) => !decidedNow.has(f.filename)),
       ...failures,

@@ -22,7 +22,8 @@ export function IntakeSummary({ result, bookId, onDismiss }: Props) {
     <div className="card intake-summary" aria-label="Что легло из материалов">
       <h3>Материалы разобраны</h3>
       <p className="muted" style={{ fontSize: 13 }}>
-        Всё легло черновиками — ничего не утверждено. Откройте этап и примите то, что подходит.
+        Всё легло черновиками — ничего не утверждено. Откройте этап и примите то, что подходит;
+        главы станут текстом книги, когда вы сохраните их в редакторе.
       </p>
 
       {result.summary.length === 0 ? (
@@ -42,6 +43,21 @@ export function IntakeSummary({ result, bookId, onDismiss }: Props) {
             );
           })}
         </ul>
+      )}
+
+      {(result.warnings?.length ?? 0) > 0 && (
+        // Легло, но сверить надо: главу модель переписала, а не перенесла
+        // дословно (F03). Черновик до сохранения ни на что не влияет.
+        <div className="intake-summary-failures">
+          <p>Проверьте перед сохранением:</p>
+          <ul>
+            {result.warnings!.map((w, index) => (
+              <li key={index}>
+                <span className="intake-summary-failed-name">{w.title}</span> — {w.message}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {result.failures.length > 0 && (
