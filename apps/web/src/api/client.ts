@@ -1343,6 +1343,8 @@ export interface RepairOptions {
   selectedIssueIds?: string[];
   /** Куски, которых правка не касается. Сервер проверит их до вызова модели. */
   protectedFragments?: string[];
+  /** Отчёт, в котором выбраны замечания; обязателен вместе с ними. */
+  reportId?: number;
 }
 
 export async function streamRepair(
@@ -1353,6 +1355,7 @@ export async function streamRepair(
   const body: Record<string, unknown> = {};
   if (options?.severities) body.severities = options.severities;
   if (options?.selectedIssueIds?.length) body.selectedIssueIds = options.selectedIssueIds;
+  if (options?.reportId !== undefined) body.reportId = options.reportId;
   if (options?.protectedFragments?.length) {
     body.protectedFragments = options.protectedFragments;
   }

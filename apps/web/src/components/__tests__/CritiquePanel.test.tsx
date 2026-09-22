@@ -433,6 +433,8 @@ describe("CritiquePanel — выбор замечаний и защита кус
     await userEvent.click(screen.getByRole("button", { name: /Исправить главу/ }));
     const opts = vi.mocked(streamRepair).mock.calls[0]?.[1];
     expect(opts?.selectedIssueIds).toEqual(["character:0"]);
+    // Выбор привязан к отчёту, в котором его сделали (F16 ревью 2026-09-22).
+    expect(opts?.reportId).toBe(TWO_ISSUES.id);
   });
 
   it("без отметок правка идёт по-старому, фильтром серьёзности", async () => {

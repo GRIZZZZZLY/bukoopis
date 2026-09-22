@@ -177,7 +177,8 @@ export function issueIdFor(critic: CriticType, index: number): string {
  *  заведомо бесполезное до вызова модели. */
 export const MIN_PROTECTED_FRAGMENT_CHARS = 12;
 
-export const runRepairInputSchema = z.object({
+export const runRepairInputSchema = z
+  .object({
   // optional override: only address selected severity levels
   severities: z.array(issueSeveritySchema).min(1).optional(),
   /** Только эти замечания. Пустой список не принимается: «ничего не выбрал»
@@ -190,7 +191,16 @@ export const runRepairInputSchema = z.object({
     .min(1)
     .max(20)
     .optional(),
-});
+  /** Отчёт, в котором автор выбирал замечания. Номер замечания — индекс
+   *  внутри критика, и в новом отчёте `style:0` — уже другое замечание:
+   *  без привязки правка исправляла не то, что автор прочитал (F16 ревью
+   *  2026-09-22). Поэтому при выборе он обязателен. */
+  reportId: z.number().int().positive().optional(),
+  })
+  .refine((v) => v.selectedIssueIds === undefined || v.reportId !== undefined, {
+    message: "selectedIssueIds требует reportId",
+    path: ["reportId"],
+  });
 export type RunRepairInput = z.infer<typeof runRepairInputSchema>;
 
 export const REPAIR_BRANCH_PREFIX = "repair-";

@@ -97,6 +97,11 @@ export function CritiquePanel({
   /** Выбранные автором замечания (этап 5). Пустой набор = «не выбирал», и
    *  тогда работает прежний фильтр по серьёзности. */
   const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
+  // Выбор принадлежит отчёту: в новом отчёте те же номера значат другие
+  // замечания, и перенос выбора молча подменил бы смысл (F16).
+  useEffect(() => {
+    setSelectedIssues(new Set());
+  }, [report?.id]);
   /** Куски, которых правка не касается: по одному на строку. */
   const [protectedText, setProtectedText] = useState("");
   const [severityFilter, setSeverityFilter] = useState<Set<IssueSeverity>>(
@@ -205,7 +210,9 @@ export function CritiquePanel({
         versionId,
         {
           ...(severities ? { severities } : {}),
-          ...(selectedIssues.size > 0 ? { selectedIssueIds: [...selectedIssues] } : {}),
+          ...(selectedIssues.size > 0 && report
+            ? { selectedIssueIds: [...selectedIssues], reportId: report.id }
+            : {}),
           ...(protectedFragments.length > 0 ? { protectedFragments } : {}),
         },
         {

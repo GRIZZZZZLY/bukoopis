@@ -132,11 +132,18 @@ describe("runRepairInputSchema — выбранные замечания и за
     expect(runRepairInputSchema.safeParse({}).success).toBe(true);
   });
 
-  it("принимает выбранные замечания", () => {
+  it("принимает выбранные замечания вместе с номером отчёта", () => {
     const out = runRepairInputSchema.safeParse({
       selectedIssueIds: ["character:0", "style:2"],
+      reportId: 3,
     });
     expect(out.success).toBe(true);
+  });
+
+  it("выбранные замечания без номера отчёта не принимаются (F16)", () => {
+    expect(
+      runRepairInputSchema.safeParse({ selectedIssueIds: ["character:0"] }).success,
+    ).toBe(false);
   });
 
   it("принимает защищённые фрагменты", () => {

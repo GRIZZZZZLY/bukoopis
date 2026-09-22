@@ -305,9 +305,9 @@ describe("critic_character запускается только при двух �
 // игнорирование; фрагмент, которого нет в тексте или который встречается
 // дважды, защитить нельзя (AC-29).
 describe("repair: выбранные замечания и защищённые фрагменты", () => {
-  async function seedReport(): Promise<void> {
+  async function seedReport(): Promise<number> {
     const now = new Date().toISOString();
-    t.sqlite
+    return Number(t.sqlite
       .prepare(
         `INSERT INTO critique_reports (chapter_version_id, status, report_json, created_at, completed_at)
          VALUES (?, 'done', ?, ?, ?)`,
@@ -332,7 +332,7 @@ describe("repair: выбранные замечания и защищённые 
         }),
         now,
         now,
-      );
+      ).lastInsertRowid);
   }
 
   async function repair(body: unknown): Promise<{ status: number; text: string }> {
@@ -346,10 +346,25 @@ describe("repair: выбранные замечания и защищённые 
   }
 
   it("ссылка на несуществующее замечание — 400, а не тихое игнорирование", async () => {
-    await seedReport();
-    const r = await repair({ selectedIssueIds: ["style:7"] });
+    const reportId = await seedReport();
+    const r = await repair({ selectedIssueIds: ["style:7"], reportId });
     expect(r.status).toBe(400);
     expect(r.text).toContain("style:7");
+  });
+
+  it("выбор из прежнего отчёта — 409, а не правка чужого замечания (F16 ревью 2026-09-22)", async () => {
+    const old = await seedReport();
+    await new Promise((r) => setTimeout(r, 5));
+    await seedReport();
+    const r = await repair({ selectedIssueIds: ["character:0"], reportId: old });
+    expect(r.status).toBe(409);
+    expect(r.text).toContain("report_changed");
+  });
+
+  it("выбор без номера отчёта не принимается", async () => {
+    await seedReport();
+    const r = await repair({ selectedIssueIds: ["character:0"] });
+    expect(r.status).toBe(400);
   });
 
   it("фрагмент, которого нет в главе, защитить нельзя", async () => {

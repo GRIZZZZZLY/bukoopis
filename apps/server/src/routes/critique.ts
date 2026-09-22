@@ -344,6 +344,18 @@ export function createCritiqueRoute(
     if (!reportRow || !reportRow.report_json) {
       return badRequest(c, "no critique report exists for this version");
     }
+    // Выбор сделан в другом отчёте: индексы замечаний в нём значат другое.
+    if (parsed.data.reportId !== undefined && parsed.data.reportId !== reportRow.id) {
+      return c.json(
+        {
+          error: "report_changed",
+          message:
+            "Отчёт критики сменился после того, как вы выбрали замечания. Перечитайте разбор и выберите заново.",
+          details: { currentReportId: reportRow.id },
+        },
+        409,
+      );
+    }
     const report = fullCritiqueReportSchema.parse(JSON.parse(reportRow.report_json));
 
     // Выбор автора проверяется ДО вызова модели. Ссылка на замечание, которого
