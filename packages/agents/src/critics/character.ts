@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 
 /**
  * Критик персонажей (ТЗ индивидуальности, раздел 10, этап 5).
@@ -120,7 +120,7 @@ export function registerCharacterCriticContract(): void {
 const CHARACTER_CRITIC_TIMEOUT_MS = 600_000;
 
 export async function runCharacterCritic(input: CriticInput): Promise<CriticReport> {
-  const { raw } = await dispatchStructured<CriticInput, CharacterCriticOutput>({
+  const { raw, diagnostics } = await dispatchStructured<CriticInput, CharacterCriticOutput>({
     agentName: "critic_character",
     payload: input,
     model: input.config?.model ?? "sonnet",
@@ -130,5 +130,6 @@ export async function runCharacterCritic(input: CriticInput): Promise<CriticRepo
     maxTokens: 8000,
     timeoutMs: CHARACTER_CRITIC_TIMEOUT_MS,
   });
+  reportCriticUsage(input, "character", diagnostics);
   return { ...raw, critic: "character" } as CriticReport;
 }

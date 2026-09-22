@@ -12,3 +12,11 @@ describe("estimatePerChapterUsd", () => {
     expect(opus).toBeGreaterThan(sonnet);
   });
 });
+
+describe("PER_CHAPTER_TOKENS", () => {
+  it("пачка критиков считается по их числу, а не константой четырёх (F11)", async () => {
+    const { PER_CHAPTER_TOKENS } = await import("./chapter-cost");
+    const { ALL_CRITIC_TYPES } = await import("@book-forge/shared");
+    expect(PER_CHAPTER_TOKENS.critic.input).toBe(3000 * ALL_CRITIC_TYPES.length);
+  });
+});

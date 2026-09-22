@@ -10,7 +10,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 
 export const STYLE_CRITIC_SYSTEM = `Ты — Style критик художественной прозы на русском языке.
 
@@ -91,7 +91,7 @@ export function registerStyleCriticContract(): void {
 }
 
 export async function runStyleAgent(input: CriticInput): Promise<CriticReport> {
-  const { raw } = await dispatchStructured<CriticInput, StyleCriticOutput>({
+  const { raw, diagnostics } = await dispatchStructured<CriticInput, StyleCriticOutput>({
     agentName: "critic_style",
     payload: input,
     model: input.config?.model ?? "sonnet",
@@ -100,5 +100,6 @@ export async function runStyleAgent(input: CriticInput): Promise<CriticReport> {
       : {}),
     maxTokens: 4096,
   });
+  reportCriticUsage(input, "style", diagnostics);
   return { ...raw, critic: "style" } as CriticReport;
 }

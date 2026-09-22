@@ -1,6 +1,7 @@
 import { aspectModelLabel } from "../utils/aspect-model-label.js";
 import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
+import type { StructuredUsage } from "@book-forge/llm";
 import {
   bookConceptSchema,
   studioStateSchema,
@@ -295,6 +296,25 @@ interface IntakeInFlightRun {
 }
 
 export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
+  /** Журнал расхода для потоковых путей Мастерской (F11 ревью 2026-09-22):
+   *  синхронные обработчики писали `onUsage`, а потоковые — те, что зовёт
+   *  интерфейс, — передавали только `onProgress`, и их расход не попадал в
+   *  `llm_usage` вовсе. */
+  const usageLoggerFor =
+    (route: string, bookId: number) =>
+    (usage: StructuredUsage & { modelId: string }): void =>
+      logUsage(sqlite, {
+        route,
+        model: usage.modelId,
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheCreationInputTokens: usage.cacheCreationInputTokens,
+          cacheReadInputTokens: usage.cacheReadInputTokens,
+        },
+        bookId,
+      });
+
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
   const intakeCancels = createIntakeCancelRegistry();
@@ -1158,7 +1178,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
                 accumulated: accumulatedEntities,
                 contextRef,
               },
-              { onProgress },
+              { onProgress, onUsage: usageLoggerFor("studio.aspect_entity_variants", id) },
             ),
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
@@ -1204,7 +1224,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
               ...(payload.draft !== undefined ? { draft: payload.draft } : {}),
               contextRef,
             },
-            { onProgress },
+            { onProgress, onUsage: usageLoggerFor("studio.aspect_variants", id) },
           ),
         buildDone: (result) => ({
           variants: toStoredVariants(result, {
@@ -1267,7 +1287,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
               accumulated: payload.accumulated,
               contextRef,
             },
-            { onProgress },
+            { onProgress, onUsage: usageLoggerFor("studio.aspect_refine", id) },
           ),
         buildDone: (result) => ({
           variant: toStoredRefinedVariant(result, {
@@ -1313,7 +1333,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       run: (onProgress) =>
         runAspectPlaybook(
           { stageId, concept, existingAspectNames, contextRef },
-          { onProgress },
+          { onProgress, onUsage: usageLoggerFor("studio.aspect_playbook", id) },
         ),
       // Для entity-стадий сервер сам проставляет payloadKind — фронт больше не
       // угадывает (иначе аспект уходил в state как markdown, см. инвариант

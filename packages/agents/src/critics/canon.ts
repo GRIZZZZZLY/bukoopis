@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { renderHistoryBlocks, type CriticInput } from "./base.js";
+import { renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 
 export const CANON_SYSTEM = `Ты — Canon Guard, критик канона художественной книги. Работаешь на русском.
 
@@ -74,7 +74,7 @@ export function registerCanonCriticContract(): void {
 }
 
 export async function runCanonGuard(input: CriticInput): Promise<CriticReport> {
-  const { raw } = await dispatchStructured<CriticInput, CanonCriticOutput>({
+  const { raw, diagnostics } = await dispatchStructured<CriticInput, CanonCriticOutput>({
     agentName: "critic_canon",
     payload: input,
     model: input.config?.model ?? "sonnet",
@@ -83,5 +83,6 @@ export async function runCanonGuard(input: CriticInput): Promise<CriticReport> {
       : {}),
     maxTokens: 4096,
   });
+  reportCriticUsage(input, "canon", diagnostics);
   return { ...raw, critic: "canon" } as CriticReport;
 }

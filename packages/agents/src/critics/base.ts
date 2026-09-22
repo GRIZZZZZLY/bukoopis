@@ -51,6 +51,25 @@ export interface CriticInput {
   onUsage?: (usage: StructuredUsage & { critic: CriticType }) => void;
 }
 
+/** Расход вызова критика — в `onUsage` маршрута (F11 ревью 2026-09-22).
+ *  Обёртки над `dispatchStructured` брали из ответа только `raw` и отдавали
+ *  диагностику в никуда: отчёт критики приходил, а журнал расходов о нём
+ *  молчал. Одна функция на всех пятерых, чтобы шестой не забыл. */
+export function reportCriticUsage(
+  input: Pick<CriticInput, "onUsage">,
+  critic: CriticType,
+  d: StructuredUsage,
+): void {
+  input.onUsage?.({
+    modelId: d.modelId,
+    inputTokens: d.inputTokens,
+    outputTokens: d.outputTokens,
+    cacheCreationInputTokens: d.cacheCreationInputTokens,
+    cacheReadInputTokens: d.cacheReadInputTokens,
+    critic,
+  });
+}
+
 /**
  * Shared calibration for the prose critics. Distilled from the sepia review
  * protocol and Wikipedia's "Signs of AI writing" ineffective-indicators list:

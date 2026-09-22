@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, type CriticInput } from "./base.js";
+import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 
 export const READER_CRITIC_SYSTEM = `Ты — Reader-Experience критик. Твоя задача — представить себя обычным читателем и оценить эмоциональный отклик на текст.
 
@@ -83,7 +83,7 @@ export function registerReaderCriticContract(): void {
 export async function runReaderExperienceAgent(
   input: CriticInput,
 ): Promise<CriticReport> {
-  const { raw } = await dispatchStructured<CriticInput, ReaderCriticOutput>({
+  const { raw, diagnostics } = await dispatchStructured<CriticInput, ReaderCriticOutput>({
     agentName: "critic_reader",
     payload: input,
     model: input.config?.model ?? "sonnet",
@@ -92,5 +92,6 @@ export async function runReaderExperienceAgent(
       : {}),
     maxTokens: 4096,
   });
+  reportCriticUsage(input, "reader", diagnostics);
   return { ...raw, critic: "reader" } as CriticReport;
 }

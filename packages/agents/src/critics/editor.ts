@@ -6,7 +6,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { renderHistoryBlocks, type CriticInput } from "./base.js";
+import { renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 
 export const EDITOR_SYSTEM = `Ты — Editor, литературный редактор русскоязычной художественной прозы.
 
@@ -88,7 +88,7 @@ export function registerEditorCriticContract(): void {
 }
 
 export async function runEditorAgent(input: CriticInput): Promise<CriticReport> {
-  const { raw } = await dispatchStructured<CriticInput, EditorCriticOutput>({
+  const { raw, diagnostics } = await dispatchStructured<CriticInput, EditorCriticOutput>({
     agentName: "critic_editor",
     payload: input,
     model: input.config?.model ?? "sonnet",
@@ -97,5 +97,6 @@ export async function runEditorAgent(input: CriticInput): Promise<CriticReport> 
       : {}),
     maxTokens: 4096,
   });
+  reportCriticUsage(input, "editor", diagnostics);
   return { ...raw, critic: "editor" } as CriticReport;
 }
