@@ -156,6 +156,52 @@ describe("DocumentStageRunner", () => {
     ).toBeInTheDocument();
   });
 
+  it("конфликт ревизии при сборке не выбрасывает документ", async () => {
+    const user = userEvent.setup();
+    const conflict = Object.assign(new Error("conflict"), { status: 409 });
+    const stage = emptyStage();
+    const onPatch = vi
+      .fn()
+      .mockRejectedValueOnce(conflict)
+      .mockImplementation(async (_r: number, next: StageState) => ({ stage: next, revision: 10 }));
+    const onReloadStage = vi.fn().mockResolvedValue({ stage, revision: 9 });
+    render(
+      <DocumentStageRunner bookId={1} stageId="world" stageLabel="Мир" stage={stage}
+        revision={1} onPatch={onPatch} onReloadStage={onReloadStage} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Собрать мир" }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(2));
+    // Второй раз — от свежей ревизии, и документ на месте.
+    expect(onPatch.mock.calls[1]?.[0]).toBe(9);
+    expect((onPatch.mock.calls[1]?.[1] as StageState).aspects).toHaveLength(2);
+    expect(streamDocumentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("конфликт при сборке не затирает раздел, заполненный за это время", async () => {
+    const user = userEvent.setup();
+    const conflict = Object.assign(new Error("conflict"), { status: 409 });
+    const stage = emptyStage();
+    const fresh = emptyStage({
+      status: "in_progress",
+      aspects: [{
+        id: "x1", name: "география", status: "accepted", order: 0, required: false,
+        source: "llm", payloadKind: "markdown", variants: [], finalPayload: "Написано в другой вкладке.",
+      }],
+    } as Partial<StageState>);
+    const onPatch = vi.fn().mockRejectedValueOnce(conflict)
+      .mockImplementation(async (_r: number, next: StageState) => ({ stage: next, revision: 10 }));
+    const onReloadStage = vi.fn().mockResolvedValue({ stage: fresh, revision: 9 });
+    render(
+      <DocumentStageRunner bookId={1} stageId="world" stageLabel="Мир" stage={stage}
+        revision={1} onPatch={onPatch} onReloadStage={onReloadStage} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Собрать мир" }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(2));
+    const saved = onPatch.mock.calls[1]?.[1] as StageState;
+    expect(saved.aspects.find((a) => a.name === "география")?.finalPayload)
+      .toBe("Написано в другой вкладке.");
+  });
+
   it("«Утвердить мир» принимает весь документ одним изменением", async () => {
     const user = userEvent.setup();
     const { onPatch } = renderRunner(
@@ -190,6 +236,62 @@ describe("DocumentStageRunner", () => {
     const next = onPatch.mock.calls[0]?.[1] as StageState;
     expect(next.aspects[0]?.status).toBe("accepted");
     expect(next.aspects[0]?.finalPayload).toBe("Город на сваях.");
+  });
+
+  it("конфликт при утверждении утверждает свежий документ", async () => {
+    const user = userEvent.setup();
+    const conflict = Object.assign(new Error("conflict"), { status: 409 });
+    const stage = emptyStage({
+      status: "in_progress",
+      aspects: [
+        {
+          id: "a1",
+          name: "география",
+          status: "reviewing",
+          order: 0,
+          required: false,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [
+            {
+              id: "v1",
+              label: "документ",
+              payloadKind: "markdown",
+              payload: "Город на сваях.",
+              status: "generated",
+              editSource: "llm",
+              generatedAt: "2026-09-22T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    } as Partial<StageState>);
+    const onPatch = vi
+      .fn()
+      .mockRejectedValueOnce(conflict)
+      .mockImplementation(async (_r: number, next: StageState) => ({
+        stage: next,
+        revision: 10,
+      }));
+    const onReloadStage = vi.fn().mockResolvedValue({ stage, revision: 9 });
+    render(
+      <DocumentStageRunner
+        bookId={1}
+        stageId="world"
+        stageLabel="Мир"
+        stage={stage}
+        revision={1}
+        onPatch={onPatch}
+        onReloadStage={onReloadStage}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Утвердить мир" }));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(2));
+    // Второй раз — от свежей ревизии, и документ утверждён, а не потерян.
+    expect(onPatch.mock.calls[1]?.[0]).toBe(9);
+    const saved = onPatch.mock.calls[1]?.[1] as StageState;
+    expect(saved.aspects[0]?.status).toBe("accepted");
+    expect(saved.aspects[0]?.finalPayload).toBe("Город на сваях.");
   });
 
   it("утверждать нечего — кнопка выключена", () => {

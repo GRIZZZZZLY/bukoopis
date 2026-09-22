@@ -51,6 +51,7 @@ export function DocumentStageRunner({
   onReloadStage,
 }: DocumentStageRunnerProps) {
   const [assembling, setAssembling] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>({});
   const [stageError, setStageError] = useState<string | null>(null);
@@ -150,6 +151,28 @@ export function DocumentStageRunner({
     }
   }
 
+  /** Запись всего этапа (сборка, утверждение). На 409 состояние перечитывается
+   *  и изменение строится ЗАНОВО от свежего этапа: обе операции — чистые
+   *  функции состояния, и слияние по построению не трогает разделы с текстом,
+   *  поэтому чужая работа, легшая за время сборки, сохраняется. Без этого
+   *  конфликт выбрасывал оплаченный документ, а экран оставался на старой
+   *  ревизии и получал 409 на каждое следующее нажатие до перезагрузки. */
+  async function patchWholeStage(
+    build: (s: StageState) => StageState | null,
+  ): Promise<void> {
+    const first = build(stage);
+    if (first === null) return;
+    try {
+      await onPatch(revision, first);
+    } catch (e) {
+      if ((e as { status?: number } | null)?.status !== 409) throw e;
+      const fresh = await onReloadStage();
+      const again = build(fresh.stage);
+      if (again === null) return;
+      await onPatch(fresh.revision, again);
+    }
+  }
+
   async function handleAssemble(): Promise<void> {
     setStageError(null);
     setStageNote(null);
@@ -184,11 +207,14 @@ export function DocumentStageRunner({
           },
         ).catch(reject);
       });
-      const merged = mergeDocumentSections(stage, done.sections, {
-        contextRef: done.contextRef,
-        modelId: done.modelId,
+      const meta = { contextRef: done.contextRef, modelId: done.modelId };
+      let nothingNew = false;
+      await patchWholeStage((s) => {
+        const merged = mergeDocumentSections(s, done.sections, meta);
+        nothingNew = merged === s;
+        return withNotes(merged, trimmedNotes);
       });
-      if (merged === stage) {
+      if (nothingNew) {
         // Слияние вернуло тот же объект: всё, что прислала модель, уже есть
         // или помечено «Не нужен». Записывать нечего, но молчать нельзя —
         // иначе нажатие выглядит как потерянное. И это не ошибка: красная
@@ -196,10 +222,7 @@ export function DocumentStageRunner({
         setStageNote(
           "Новых разделов не добавилось: всё, что предложила модель, уже есть в документе.",
         );
-        await onPatch(revision, withNotes(stage, trimmedNotes));
-        return;
       }
-      await onPatch(revision, withNotes(merged, trimmedNotes));
     } catch (e) {
       setStageError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -209,21 +232,24 @@ export function DocumentStageRunner({
   }
 
   async function handleApprove(): Promise<void> {
-    const next = approveAllSections(stage);
-    if (!next) return;
+    if (approveAllSections(stage) === null) return;
     setStageError(null);
-    setAssembling(true);
+    setApproving(true);
     try {
-      await onPatch(revision, withNotes(next, notes.trim()));
+      const trimmedNotes = notes.trim();
+      await patchWholeStage((s) => {
+        const approved = approveAllSections(s);
+        return approved === null ? null : withNotes(approved, trimmedNotes);
+      });
     } catch (e) {
       setStageError(e instanceof Error ? e.message : String(e));
     } finally {
-      setAssembling(false);
+      setApproving(false);
     }
   }
 
   const accusative = ACCUSATIVE[stageId];
-  const busy = assembling || busyAspectId !== null;
+  const busy = assembling || approving || busyAspectId !== null;
   const hasSomethingToApprove = approveAllSections(stage) !== null;
   const emptyCount = stage.aspects.filter(
     (a) => a.status !== "skipped" && sectionText(a) === null,
@@ -240,6 +266,7 @@ export function DocumentStageRunner({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
+          maxLength={4000}
           aria-label={`Ваши заметки к этапу «${stageLabel}»`}
           placeholder="Что здесь обязательно должно быть. Модель это не отменит."
           className="w-full border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
