@@ -158,6 +158,15 @@ const xhtmlParser = new XMLParser({
   textNodeName: "_text",
 });
 
+// OPF нужен со своими атрибутами: `id`, `href` и `idref` и задают порядок
+// spine. Общий xhtmlParser их выбрасывает — spine оставался пустым, и корпус
+// читался в алфавитном порядке имён файлов, со служебными страницами вместе.
+const opfParser = new XMLParser({
+  ignoreAttributes: false,
+  preserveOrder: false,
+  textNodeName: "_text",
+});
+
 function stripXhtmlText(node: unknown): string {
   const parts: string[] = [];
   function walk(n: unknown): void {
@@ -207,7 +216,7 @@ export async function parseEpub(buffer: Buffer): Promise<ParsedReference> {
   let spineFiles: string[] = [];
   if (opfFile) {
     const opfRaw = await zip.files[opfFile]!.async("string");
-    const opf = xhtmlParser.parse(opfRaw) as {
+    const opf = opfParser.parse(opfRaw) as {
       package?: {
         manifest?: { item?: Array<{ "@_id"?: string; "@_href"?: string }> };
         spine?: { itemref?: Array<{ "@_idref"?: string }> };
@@ -229,7 +238,7 @@ export async function parseEpub(buffer: Buffer): Promise<ParsedReference> {
     for (const ref of refs) {
       if (ref && ref["@_idref"]) {
         const href = idToHref.get(ref["@_idref"]);
-        if (href) spineFiles.push(opfDir + href);
+        if (href) spineFiles.push(opfDir + decodeURIComponent(href));
       }
     }
   }
