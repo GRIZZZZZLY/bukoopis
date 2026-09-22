@@ -13,7 +13,11 @@ export interface DocumentSectionProps {
   progress?: AspectGenerationProgress;
   generator: VariantGenerator<string>;
   accumulated: AccumulatedContext;
-  /** Записать раздел. `true` — записано; только тогда закрываются окна. */
+  /** Записать раздел. `true` — записано; только тогда закрываются окна.
+   *  Контракт: НИКОГДА не отклоняется — отказ приходит значением `false`, а
+   *  текст ошибки родитель кладёт сам через `onError`. Поэтому здесь вокруг
+   *  вызова нет try/catch: он защищал бы от нарушения контракта, а не от
+   *  достижимого состояния. */
   onPatchAspect: (aspectId: string, next: StageAspect) => Promise<boolean>;
   onBusy: (aspectId: string | null) => void;
   onError: (aspectId: string, message: string) => void;
@@ -55,6 +59,11 @@ export function DocumentSection({
       onError(aspect.id, "Пустой раздел сохранить нельзя — используйте «Не нужен».");
       return;
     }
+    // Родителем правки становится тот вариант, который автор ВИДЕЛ, а не тот,
+    // что записан в `selectedVariantId`: у раздела, пришедшего из сборки,
+    // выбора нет вовсе, и по прежнему правилу заменённый вариант оставался
+    // живой альтернативой рядом с правкой, которая его и заменила.
+    const parent = currentVariant(aspect);
     const variant: AspectVariant = {
       id: crypto.randomUUID(),
       label: "моя правка",
@@ -63,9 +72,7 @@ export function DocumentSection({
       status: "accepted",
       editSource: "manual",
       generatedAt: new Date().toISOString(),
-      ...(aspect.selectedVariantId !== undefined
-        ? { parentVariantId: aspect.selectedVariantId }
-        : {}),
+      ...(parent ? { parentVariantId: parent.id } : {}),
     };
     const next: StageAspect = {
       ...aspect,
@@ -74,7 +81,7 @@ export function DocumentSection({
       finalPayload: payload,
       variants: [
         ...aspect.variants.map((v) =>
-          v.id === aspect.selectedVariantId
+          v.id === parent?.id
             ? { ...v, status: "superseded" as const }
             : v.status === "accepted"
               ? { ...v, status: "rejected" as const }
@@ -105,9 +112,15 @@ export function DocumentSection({
         },
         (p) => onProgress(aspect.id, p),
       );
+      // Раздел возвращается в черновик, и принятый текст с него снимается.
+      // Оставить его нельзя: `sectionText` предпочитает `finalPayload`
+      // вариантам, и на утверждённом разделе экран показывал бы старый текст
+      // поверх только что сгенерированного (и оплаченного), а список рядом
+      // называл бы показанным другой вариант.
+      const { finalPayload: _dropped, ...base } = aspect;
       const next: StageAspect = refine
         ? {
-            ...aspect,
+            ...base,
             status: "reviewing",
             variants: [
               ...aspect.variants.map((v) =>
@@ -122,7 +135,7 @@ export function DocumentSection({
               : {}),
           }
         : {
-            ...aspect,
+            ...base,
             status: "reviewing",
             variants: [...aspect.variants, ...variants],
             ...(aspect.selectedVariantId !== undefined

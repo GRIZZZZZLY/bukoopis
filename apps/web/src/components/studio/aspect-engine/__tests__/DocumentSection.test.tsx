@@ -130,6 +130,50 @@ describe("DocumentSection", () => {
     expect(next.variants.find((v) => v.id === "v1")?.status).toBe("superseded");
   });
 
+  it("«Другие варианты» на утверждённом разделе снимает прежний принятый текст", async () => {
+    // Иначе sectionText показывает старый finalPayload поверх только что
+    // сгенерированного варианта, а список рядом называет показанным другой.
+    const user = userEvent.setup();
+    const generate = vi.fn().mockResolvedValue([
+      {
+        id: "v2",
+        label: "морской",
+        payloadKind: "markdown",
+        payload: "Новый вариант.",
+        status: "generated",
+        editSource: "llm",
+        generatedAt: "2026-09-22T00:00:00.000Z",
+      },
+    ]);
+    const { onPatchAspect } = renderSection(
+      {
+        status: "accepted",
+        finalPayload: "Старый принятый текст.",
+        selectedVariantId: "v1",
+      } as Partial<StageAspect>,
+      { generate },
+    );
+    await user.click(screen.getByRole("button", { name: "Другие варианты" }));
+    await waitFor(() => expect(onPatchAspect).toHaveBeenCalled());
+    const next = onPatchAspect.mock.calls[0]?.[1] as StageAspect;
+    expect(next.status).toBe("reviewing");
+    expect(next.finalPayload).toBeUndefined();
+  });
+
+  it("правка вытесняет показанный вариант, даже когда выбор не записан", async () => {
+    const user = userEvent.setup();
+    const { onPatchAspect } = renderSection();
+    await user.click(screen.getByRole("button", { name: "Править" }));
+    const box = screen.getByLabelText("Текст раздела «география»");
+    await user.clear(box);
+    await user.type(box, "Мой текст.");
+    await user.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(onPatchAspect).toHaveBeenCalled());
+    const next = onPatchAspect.mock.calls[0]?.[1] as StageAspect;
+    expect(next.variants.find((v) => v.id === "v1")?.status).toBe("superseded");
+    expect(next.variants.at(-1)?.parentVariantId).toBe("v1");
+  });
+
   it("«Другие варианты» кладёт альтернативы рядом и даёт выбрать", async () => {
     const user = userEvent.setup();
     const generate = vi.fn().mockResolvedValue([
