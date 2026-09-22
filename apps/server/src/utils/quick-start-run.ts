@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   bookOutlineSchema,
+  isDocumentStage,
   type AspectVariant,
   type BookConcept,
   type BookOutline,
+  type ContextRef,
   type StageAspect,
   type StageId,
   type StageState,
@@ -20,6 +22,11 @@ import {
   runAspectEntityVariants,
   toStoredEntityVariants,
 } from "@book-forge/agents/aspects/entity-variants";
+import {
+  runAspectDocument,
+  toStoredDocumentVariant,
+  type DocumentSectionOut,
+} from "@book-forge/agents/aspects/document";
 import { runBookPlanning } from "@book-forge/agents";
 import type { StudioRepository } from "../db/studio.js";
 import { buildContextRef } from "../services/studio/contextHash.js";
@@ -191,6 +198,12 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
     await generatePlan(deps);
     return;
   }
+  // Мир и лор — документные этапы (фаза 3): ветка стоит до чтения плейбука,
+  // потому что для них плейбука с вариантами на раздел больше нет вовсе.
+  if (isDocumentStage(stageId)) {
+    await generateDocumentStage(deps, stageId);
+    return;
+  }
   const { repo, bookId } = deps;
   const concept: BookConcept = repo.loadConcept(bookId);
   const isEntity = ENTITY_STAGES.has(stageId);
@@ -335,6 +348,179 @@ async function generateVariants(
     contextRef,
     modelId: aspectModelLabel("aspect_variants"),
   });
+}
+
+/** Живой вариант раздела: выбранный автором, если он не вытеснен и не
+ *  отвергнут, иначе последний живой. Дублирует `currentVariant` из
+ *  `apps/web/src/components/studio/aspect-engine/documentSections.ts` (commit
+ *  83be751) нарочно — общего кода между apps/server и apps/web для документных
+ *  этапов нет (решение фазы 3), но правило обязано совпадать: иначе кнопка на
+ *  экране и быстрый сбор разошлись бы в том, что считать «уже заполненным». */
+function currentDocumentVariant(aspect: StageAspect): AspectVariant | null {
+  if (aspect.selectedVariantId) {
+    const picked = aspect.variants.find((v) => v.id === aspect.selectedVariantId);
+    // Прежний экран при уточнении помечал вариант superseded, не снимая
+    // selectedVariantId — старые разделы мира/лора хранят выбор, указывающий
+    // на мёртвый вариант.
+    if (picked && picked.status !== "superseded" && picked.status !== "rejected") {
+      return picked;
+    }
+  }
+  for (let i = aspect.variants.length - 1; i >= 0; i -= 1) {
+    const v = aspect.variants[i];
+    if (!v) continue;
+    if (v.status === "superseded" || v.status === "rejected") continue;
+    return v;
+  }
+  return null;
+}
+
+/** Текст раздела или `null`, если его по сути ещё нет. Принятый текст сильнее
+ *  вариантов. Зеркало `sectionText` того же файла веба. */
+function documentSectionText(aspect: StageAspect): string | null {
+  if (typeof aspect.finalPayload === "string" && aspect.finalPayload.trim()) {
+    return aspect.finalPayload;
+  }
+  const v = currentDocumentVariant(aspect);
+  if (v && typeof v.payload === "string" && v.payload.trim()) return v.payload;
+  return null;
+}
+
+/** Имена разделов — не канон сущностей: живут внутри одного этапа, тёзок не
+ *  бывает, падежей у них нет. Поэтому регистра и краёв достаточно. */
+function normalizeSectionName(name: string): string {
+  return name.trim().toLocaleLowerCase("ru");
+}
+
+/** Слияние ответа `aspect_document` в состояние этапа. Зеркалит
+ *  `mergeDocumentSections` из документного экрана веба (тот же файл, что и
+ *  выше) — две реализации намеренно, но правила обязаны совпадать:
+ *  · раздел с текстом (по правилу `documentSectionText`) не трогается;
+ *  · пропущенный раздел не воскрешается;
+ *  · один и тот же раздел дважды в ответе модели не удваивает запись —
+ *    только первое вхождение считается. */
+function mergeDocumentSections(
+  stage: StageState,
+  sections: DocumentSectionOut[],
+  meta: { contextRef: ContextRef; modelId: string },
+): StageState {
+  const byName = new Map<string, StageAspect>();
+  for (const a of stage.aspects) byName.set(normalizeSectionName(a.name), a);
+
+  let maxOrder = stage.aspects.reduce((m, a) => Math.max(m, a.order), -1);
+  const updates = new Map<string, StageAspect>();
+  const added: StageAspect[] = [];
+  const handled = new Set<string>();
+
+  for (const section of sections) {
+    const key = normalizeSectionName(section.name);
+    // Модель возвращает один раздел дважды чаще, чем кажется. Второй экземпляр
+    // не должен завести второй раздел с тем же именем.
+    if (handled.has(key)) continue;
+    handled.add(key);
+    const variant = toStoredDocumentVariant(section, meta);
+    const existing = byName.get(key);
+    if (!existing) {
+      maxOrder += 1;
+      added.push({
+        id: randomUUID(),
+        name: section.name,
+        description: section.description,
+        status: "reviewing",
+        order: maxOrder,
+        required: false,
+        source: "llm",
+        payloadKind: "markdown",
+        variants: [variant],
+      });
+      continue;
+    }
+    if (existing.status === "skipped") continue;
+    if (documentSectionText(existing) !== null) continue;
+    updates.set(existing.id, {
+      ...existing,
+      status: "reviewing",
+      variants: [...existing.variants, variant],
+    });
+  }
+
+  if (updates.size === 0 && added.length === 0) return stage;
+  return {
+    ...stage,
+    status: stage.status === "not_started" ? "in_progress" : stage.status,
+    aspects: [...stage.aspects.map((a) => updates.get(a.id) ?? a), ...added],
+  };
+}
+
+/** Мир и лор собираются одним вызовом: раздел документа и есть аспект этапа.
+ *  Плейбук с вариантами на каждый раздел давал те же черновики за шесть-семь
+ *  вызовов вместо одного — фаза 3 конвейера. Разделы, где текст уже есть,
+ *  уходят в промпт как материал автора и не переписываются. */
+async function generateDocumentStage(
+  deps: QuickStartDeps,
+  stageId: StageId,
+): Promise<void> {
+  const { repo, bookId, sqlite } = deps;
+  const concept = repo.loadConcept(bookId);
+  const stage = repo.loadStudioState(bookId).stages[stageId];
+  const live = (stage?.aspects ?? []).filter((a) => a.status !== "skipped");
+
+  const existingSections: Array<{ name: string; text: string }> = [];
+  const emptySectionNames: string[] = [];
+  for (const a of live) {
+    const text = documentSectionText(a);
+    if (text !== null) {
+      existingSections.push({ name: a.name, text });
+    } else {
+      emptySectionNames.push(a.name);
+    }
+  }
+
+  // Всё заполнено — писать нечего, платить за вызов не за что.
+  if (emptySectionNames.length === 0 && existingSections.length > 0) {
+    return;
+  }
+
+  const contextRef = buildContextRef({
+    stageId,
+    concept,
+    accumulated: existingSections.map((s) => ({
+      id: s.name,
+      name: s.name,
+      finalPayload: s.text,
+    })),
+    extra: { kind: "document", emptySectionNames },
+  });
+
+  const result = await runAspectDocument(
+    {
+      stageId,
+      concept,
+      existingSections,
+      emptySectionNames,
+      ...(stage?.authorNotes !== undefined ? { authorNotes: stage.authorNotes } : {}),
+      contextRef,
+    },
+    {
+      onUsage: (usage) =>
+        logUsage(sqlite, {
+          route: "studio.aspect_document",
+          model: usage.modelId,
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationInputTokens: usage.cacheCreationInputTokens,
+            cacheReadInputTokens: usage.cacheReadInputTokens,
+          },
+          bookId,
+        }),
+    },
+  );
+
+  const modelId = aspectModelLabel("aspect_document");
+  patchStage(deps, stageId, (current) =>
+    mergeDocumentSections(current, result.sections, { contextRef, modelId }),
+  );
 }
 
 /** План книги. Варианты дописываются к тем, что уже есть (их мог принести

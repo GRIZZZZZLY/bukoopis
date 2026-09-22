@@ -25,7 +25,13 @@ import { runQuickStart } from "../quick-start-run.js";
  *  вариантов (осознанно — иначе пятиминутное ожидание с упавшим бэкендом
  *  кончалось пустотой). Но если варианты не собрались, этап оставался с
  *  пустыми заголовками, а повторный сбор его ПРОПУСКАЛ: «здесь уже есть
- *  черновики». Автор оставался с именами разделов и без содержимого. */
+ *  черновики». Автор оставался с именами разделов и без содержимого.
+ *
+ *  Сценарий проверяется на этапе "characters", а не на "world": фаза 3
+ *  конвейера сделала мир и лор документными этапами (один вызов
+ *  `aspect_document` вместо плейбука с вариантами на раздел), и путь
+ *  playbook→fillVariants, который здесь проверяется, для них больше не
+ *  используется вовсе. */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = resolve(__dirname, "../../../drizzle");
@@ -88,7 +94,7 @@ function seedPendingOnlyStage(): void {
       ...state,
       stages: {
         ...state.stages,
-        world: { status: "in_progress", playbookGenerated: true, aspects },
+        characters: { status: "in_progress", playbookGenerated: true, aspects },
       },
     },
   });
@@ -108,10 +114,10 @@ describe("повторный быстрый сбор (В12)", () => {
 
     const res = await runQuickStart({ sqlite, hasVec: false, repo, bookId }, {});
 
-    const world = res.stages.filter((s) => s.stageId === "world");
-    expect(world.some((s) => s.status === "skipped")).toBe(false);
+    const charStages = res.stages.filter((s) => s.stageId === "characters");
+    expect(charStages.some((s) => s.status === "skipped")).toBe(false);
     const state = repo.loadStudioState(bookId);
-    const aspect = state.stages.world?.aspects[0];
+    const aspect = state.stages.characters?.aspects[0];
     expect(aspect?.variants.length).toBeGreaterThan(0);
     expect(aspect?.status).toBe("reviewing");
   });
@@ -124,7 +130,7 @@ describe("повторный быстрый сбор (В12)", () => {
         ...state,
         stages: {
           ...state.stages,
-          world: {
+          characters: {
             status: "in_progress",
             playbookGenerated: true,
             aspects: [
@@ -170,10 +176,10 @@ describe("повторный быстрый сбор (В12)", () => {
     await runQuickStart({ sqlite, hasVec: false, repo, bookId }, {});
 
     const after = repo.loadStudioState(bookId);
-    const climate = after.stages.world?.aspects.find((a) => a.name === "климат");
+    const climate = after.stages.characters?.aspects.find((a) => a.name === "климат");
     expect(climate?.variants.length).toBeGreaterThan(0);
     // Уже собранный раздел не переписан.
-    const geo = after.stages.world?.aspects.find((a) => a.name === "география");
+    const geo = after.stages.characters?.aspects.find((a) => a.name === "география");
     expect(geo?.variants[0]?.payload).toBe("готовый текст");
   });
 
@@ -185,7 +191,7 @@ describe("повторный быстрый сбор (В12)", () => {
         ...state,
         stages: {
           ...state.stages,
-          world: {
+          characters: {
             status: "in_progress",
             playbookGenerated: true,
             aspects: [
@@ -217,9 +223,9 @@ describe("повторный быстрый сбор (В12)", () => {
 
     const res = await runQuickStart({ sqlite, hasVec: false, repo, bookId }, {});
 
-    expect(res.stages.some((s) => s.stageId === "world" && s.status === "skipped")).toBe(true);
+    expect(res.stages.some((s) => s.stageId === "characters" && s.status === "skipped")).toBe(true);
     expect(vi.mocked(runAspectPlaybook)).not.toHaveBeenCalledWith(
-      expect.objectContaining({ stageId: "world" }),
+      expect.objectContaining({ stageId: "characters" }),
     );
   });
 });
