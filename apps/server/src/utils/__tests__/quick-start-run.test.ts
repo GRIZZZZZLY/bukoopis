@@ -334,7 +334,7 @@ describe("runQuickStart: документные этапы (мир и лор)", 
     });
     vi.mocked(runAspectDocument).mockClear();
 
-    await runQuickStart(d, { onStage: () => {} });
+    const result = await runQuickStart(d, { onStage: () => {} });
 
     const world = d.repo.loadStudioState(bookId).stages.world;
     expect(world?.aspects).toHaveLength(1);
@@ -344,14 +344,21 @@ describe("runQuickStart: документные этапы (мир и лор)", 
       .mocked(runAspectDocument)
       .mock.calls.filter((c) => (c[0] as { stageId: string }).stageId === "world");
     expect(worldCalls).toHaveLength(0);
+    // Это внешний gate «этап занят», а не решение внутри generateDocumentStage:
+    // generateStage для world вовсе не вызывается.
+    expect(
+      result.stages.some((s) => s.stageId === "world" && s.status === "skipped"),
+    ).toBe(true);
   });
 
-  it("раздел с мёртвым выбором (superseded-вариант) считается пустым, а не заполненным", async () => {
+  it("раздел с мёртвым выбором (superseded-вариант) считается пустым, а не заполненным — и внешним gate тоже", async () => {
     // Прежний экран при уточнении помечал вариант superseded, не снимая
     // selectedVariantId. Старые разделы мира/лора могут хранить именно такое
     // состояние: выбор указывает на вариант, которого больше нет в счёт.
-    // Наивная проверка "есть ли непустой вариант любого статуса" сочла бы
-    // раздел заполненным и не дописала бы его никогда.
+    // Наивная проверка "есть ли непустой вариант любого статуса" (её несёт и
+    // внешний gate «этап занят», и внутренний merge) сочла бы раздел
+    // заполненным и не дописала бы его никогда — ни то, ни другое место не
+    // должно на это купиться.
     const d = deps();
     const state = d.repo.loadStudioState(bookId);
     d.repo.patchStudioState(bookId, {
@@ -385,19 +392,6 @@ describe("runQuickStart: документные этапы (мир и лор)", 
                 ],
                 selectedVariantId: "v1",
               },
-              // Раздел без вариантов вовсе — только он открывает внешнюю
-              // проверку занятости этапа (иначе она сочла бы этап занятым и
-              // не позвала бы generateStage совсем).
-              {
-                id: "a2",
-                name: "власть",
-                status: "pending",
-                order: 1,
-                required: false,
-                source: "llm",
-                payloadKind: "markdown",
-                variants: [],
-              },
             ],
           },
         },
@@ -429,6 +423,9 @@ describe("runQuickStart: документные этапы (мир и лор)", 
     const geo = world?.aspects.find((a) => a.id === "a1");
     expect(geo?.variants).toHaveLength(2);
     expect(geo?.status).toBe("reviewing");
+    // Тем же вызовом заполняется и description, если у раздела его не было —
+    // тот же backfill, что делает web-версия слияния.
+    expect(geo?.description).toBe("рельеф");
   });
 
   it("модель, вернувшая один раздел дважды, не удваивает его в состоянии", async () => {

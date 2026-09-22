@@ -139,8 +139,18 @@ export async function runQuickStart(
     const already =
       stageId === "plot"
         ? planAlreadyThere(sqlite, bookId)
-        : stageAspects.length > 0 &&
-          !stageAspects.some((a) => a.variants.length === 0 && a.status === "pending");
+        : isDocumentStage(stageId)
+          ? // Для документа «занят» значит «пустых живых разделов нет» — по тому
+            // же правилу, что решает, что дописывать. Прежняя проверка считала
+            // заполненным раздел с ЛЮБЫМ вариантом, и мир, где остались одни
+            // вытесненные варианты (наследие прежнего экрана уточнения),
+            // пропускался как «уже есть черновики».
+            stageAspects.length > 0 &&
+            !stageAspects.some(
+              (a) => a.status !== "skipped" && documentSectionText(a) === null,
+            )
+          : stageAspects.length > 0 &&
+            !stageAspects.some((a) => a.variants.length === 0 && a.status === "pending");
     if (already) {
       const skipped: QuickStartStageEvent = {
         index,
@@ -398,7 +408,10 @@ function normalizeSectionName(name: string): string {
  *  · раздел с текстом (по правилу `documentSectionText`) не трогается;
  *  · пропущенный раздел не воскрешается;
  *  · один и тот же раздел дважды в ответе модели не удваивает запись —
- *    только первое вхождение считается. */
+ *    только первое вхождение считается;
+ *  · раздел без описания получает его от модели при дозаполнении — иначе один
+ *    и тот же раздел выглядел бы по-разному в зависимости от того, какая
+ *    кнопка его заполнила. */
 function mergeDocumentSections(
   stage: StageState,
   sections: DocumentSectionOut[],
@@ -440,6 +453,12 @@ function mergeDocumentSections(
     updates.set(existing.id, {
       ...existing,
       status: "reviewing",
+      // Тот же backfill, что у web-версии слияния: раздел без описания (его
+      // мог завести автор или интейк) получает описание модели, а не остаётся
+      // без него только потому, что заполнен другой кнопкой.
+      ...(existing.description === undefined
+        ? { description: section.description }
+        : {}),
       variants: [...existing.variants, variant],
     });
   }
@@ -476,10 +495,11 @@ async function generateDocumentStage(
     }
   }
 
-  // Всё заполнено — писать нечего, платить за вызов не за что.
-  if (emptySectionNames.length === 0 && existingSections.length > 0) {
-    return;
-  }
+  // Раньше здесь был ещё один "всё заполнено — не звать" выход. Он стал
+  // недостижим: внешний gate в runQuickStart теперь решает по тому же
+  // documentSectionText и не пускает generateStage дальше на занятый этап
+  // (см. вычисление `already` выше). Два места, решающие одно и то же,
+  // расходятся молча — оставлено одно.
 
   const contextRef = buildContextRef({
     stageId,
