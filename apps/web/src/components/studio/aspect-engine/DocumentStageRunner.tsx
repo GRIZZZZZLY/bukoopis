@@ -251,7 +251,13 @@ export function DocumentStageRunner({
             disabled={busy}
             className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {assembling ? "Собираем…" : `Собрать ${accusative}`}
+            {assembling
+              ? "Собираем…"
+              : stage.aspects.length === 0
+                ? `Собрать ${accusative}`
+                : emptyCount > 0
+                  ? `Дописать недостающее (${emptyCount})`
+                  : "Дополнить документ"}
           </button>
           <span className="text-xs text-[var(--color-muted-foreground)]">
             Разделы, где уже есть текст, остаются как есть.

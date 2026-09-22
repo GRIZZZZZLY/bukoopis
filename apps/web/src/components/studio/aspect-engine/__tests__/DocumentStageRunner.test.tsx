@@ -24,18 +24,21 @@ function renderRunner(stage: StageState) {
     revision: 2,
   }));
   const onReloadStage = vi.fn().mockResolvedValue({ stage, revision: 2 });
-  render(
-    <DocumentStageRunner
-      bookId={1}
-      stageId="world"
-      stageLabel="Мир"
-      stage={stage}
-      revision={1}
-      onPatch={onPatch}
-      onReloadStage={onReloadStage}
-    />,
-  );
-  return { onPatch, onReloadStage };
+  return {
+    onPatch,
+    onReloadStage,
+    ...render(
+      <DocumentStageRunner
+        bookId={1}
+        stageId="world"
+        stageLabel="Мир"
+        stage={stage}
+        revision={1}
+        onPatch={onPatch}
+        onReloadStage={onReloadStage}
+      />,
+    ),
+  };
 }
 
 describe("DocumentStageRunner", () => {
@@ -109,7 +112,11 @@ describe("DocumentStageRunner", () => {
         ],
       } as Partial<StageState>),
     );
-    await user.click(screen.getByRole("button", { name: "Собрать мир" }));
+    // Подпись кнопки зависит от состояния документа: здесь один раздел пуст,
+    // и кнопка обязана обещать ровно то, что сделает.
+    await user.click(
+      screen.getByRole("button", { name: "Дописать недостающее (1)" }),
+    );
     await waitFor(() => expect(streamDocumentMock).toHaveBeenCalled());
     const body = streamDocumentMock.mock.calls[0]?.[2] as {
       existingSections: Array<{ name: string; text: string }>;
@@ -119,6 +126,34 @@ describe("DocumentStageRunner", () => {
       { name: "власть", text: "Правит совет старейшин." },
     ]);
     expect(body.emptySectionNames).toEqual(["ремёсла"]);
+  });
+
+  it("кнопка обещает ровно то, что сделает", () => {
+    const { unmount } = renderRunner(emptyStage());
+    expect(screen.getByRole("button", { name: "Собрать мир" })).toBeInTheDocument();
+    unmount();
+
+    const filled = emptyStage({
+      status: "in_progress",
+      aspects: [
+        {
+          id: "a1",
+          name: "власть",
+          status: "accepted",
+          order: 0,
+          required: false,
+          source: "llm",
+          payloadKind: "markdown",
+          variants: [],
+          finalPayload: "Правит совет.",
+        },
+      ],
+    } as Partial<StageState>);
+    renderRunner(filled);
+    // Пустых разделов нет: «Собрать» обещало бы пересборку, которой не будет.
+    expect(
+      screen.getByRole("button", { name: "Дополнить документ" }),
+    ).toBeInTheDocument();
   });
 
   it("«Утвердить мир» принимает весь документ одним изменением", async () => {
