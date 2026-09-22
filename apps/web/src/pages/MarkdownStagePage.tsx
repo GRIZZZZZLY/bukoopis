@@ -1,24 +1,20 @@
 import { useEffect, useState } from "react";
 import { useParams, Navigate, Link } from "react-router-dom";
 import { api } from "@/api/client";
-import type {
-  BookConcept,
-  StageId,
-  StageState,
-  StudioState,
+import {
+  isDocumentStage,
+  stageIdSchema,
+  type BookConcept,
+  type StageId,
+  type StageState,
+  type StudioState,
 } from "@book-forge/shared";
 import { StageStepper } from "@/components/studio/StageStepper";
 import {
   StageSkipControl,
   StageOptionalBadge,
 } from "@/components/studio/StageSkipControl";
-import { AspectRunner } from "@/components/studio/aspect-engine/AspectRunner";
-import { PlaybookRunner } from "@/components/studio/aspect-engine/PlaybookRunner";
-import { createMarkdownAdapter } from "@/components/studio/aspect-engine/markdownAdapter";
-import {
-  createLLMMarkdownVariantGenerator,
-  createLLMPlaybookGenerator,
-} from "@/components/studio/aspect-engine/llmGenerators";
+import { DocumentStageRunner } from "@/components/studio/aspect-engine/DocumentStageRunner";
 
 const STAGE_LABELS: Record<StageId, string> = {
   concept: "Замысел",
@@ -35,15 +31,6 @@ const STAGE_HINTS: Record<"world" | "lore", string> = {
   lore: "Мифы, история, культурные коды. Внутренний слой смыслов.",
 };
 
-// `plot` ушёл отсюда в фазе 5: у него свой экран, PlanStagePage. Идентификатор
-// этапа остался — из STAGE_IDS его убирать нельзя, — но markdown-аспектами он
-// больше не живёт.
-const MARKDOWN_STAGES: ReadonlySet<string> = new Set(["world", "lore"]);
-
-function isMarkdownStage(s: string): s is "world" | "lore" {
-  return MARKDOWN_STAGES.has(s);
-}
-
 export function MarkdownStagePage() {
   const { bookId: rawBookId, stageId: rawStageId } = useParams<{
     bookId: string;
@@ -51,10 +38,14 @@ export function MarkdownStagePage() {
   }>();
   const bookId = Number(rawBookId);
 
-  if (!rawStageId || !isMarkdownStage(rawStageId)) {
+  // Список документных этапов живёт в @book-forge/shared, а не третьей копией
+  // здесь: две копии («мир, лор») уже разошлись бы молча, и этап оказался бы
+  // документным для одного читателя и аспектным для другого.
+  const stageParse = stageIdSchema.safeParse(rawStageId);
+  if (!stageParse.success || !isDocumentStage(stageParse.data)) {
     return <Navigate to={`/books/${bookId}/studio`} replace />;
   }
-  const stageId: "world" | "lore" = rawStageId;
+  const stageId: "world" | "lore" = stageParse.data;
 
   const [studio, setStudio] = useState<StudioState | null>(null);
   const [concept, setConcept] = useState<BookConcept | null>(null);
@@ -153,13 +144,6 @@ export function MarkdownStagePage() {
     aspects: [],
   };
 
-  const adapter = createMarkdownAdapter(stageId);
-  const playbookGenerator = createLLMPlaybookGenerator({ bookId, stageId });
-  const variantGenerator = createLLMMarkdownVariantGenerator({
-    bookId,
-    stageId,
-  });
-
   return (
     <div className="route" data-screen-label={`stage-${stageId}`}>
       <div className="page page-stage">
@@ -195,23 +179,16 @@ export function MarkdownStagePage() {
         <div className="card">
           {stage.status === "skipped" ? (
             <p className="muted" style={{ fontSize: 13 }}>
-              Этап пропущен. Генерация главы обойдётся без него — вернуть можно в
-              любой момент.
+              Этап отмечен как «не нужен». Генерация главы обойдётся без него
+              — вернуть можно в любой момент.
             </p>
-          ) : stage.aspects.length === 0 ? (
-            <PlaybookRunner
-              stage={stage}
-              revision={studio.revision}
-              payloadKind="markdown"
-              generator={playbookGenerator}
-              onPatch={handlePatch}
-            />
           ) : (
-            <AspectRunner
+            <DocumentStageRunner
+              bookId={bookId}
+              stageId={stageId}
+              stageLabel={STAGE_LABELS[stageId]}
               stage={stage}
               revision={studio.revision}
-              adapter={adapter}
-              generator={variantGenerator}
               onPatch={handlePatch}
               onReloadStage={handleReloadStage}
             />
