@@ -12,6 +12,7 @@ import {
   entityCandidateProfileSchema,
   mergeCharacterProfile,
   normalizeCharacterProfile,
+  normalizeItemProfile,
   type BookConcept,
   type CanonSummary,
   type ChapterProgress,
@@ -1743,10 +1744,11 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
             // У предметов нет схемы V2 и своей ревизии, но правка автора
             // через `PATCH /items/:id` теряется тем же способом — сливаем.
             const existing = parseJsonOrNull(current?.profile_json ?? null);
-            const merged =
+            const merged = normalizeItemProfile(
               existing !== null && typeof existing === "object" && !Array.isArray(existing)
                 ? { ...(existing as Record<string, unknown>), ...definedOnly(cand.profile) }
-                : cand.profile;
+                : cand.profile,
+            );
             updateItem.run(
               candidateName ?? current?.name ?? "Без имени",
               JSON.stringify(merged),
@@ -1758,7 +1760,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           const profile =
             parsed.data.stageId === "characters"
               ? normalizeCharacterProfile(cand.profile)
-              : cand.profile;
+              : normalizeItemProfile(cand.profile);
           const profileJson = JSON.stringify(profile);
           const name = candidateName ?? "Без имени";
           const info =

@@ -1,7 +1,7 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   locationProfileSchema,
-  itemProfileSchema,
+  normalizeItemProfile,
   type Hook,
   type HookStatus,
   type Item,
@@ -50,7 +50,7 @@ function rowToItem(r: ItemRow): Item {
     id: r.id,
     bookId: r.book_id,
     name: r.name,
-    profile: itemProfileSchema.parse(JSON.parse(r.profile_json)),
+    profile: normalizeItemProfile(JSON.parse(r.profile_json)),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

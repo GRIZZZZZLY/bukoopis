@@ -268,4 +268,42 @@ describe("повторная материализация состава (К4)",
       .get(bookId) as { c: number };
     expect(items.c).toBe(1);
   });
+
+  it("предмет из интейка ({ name, summary }) не ломает список предметов (F09 ревью 2026-09-22)", async () => {
+    await sendJson<MaterializeResponse>(
+      t.app,
+      `/api/books/${bookId}/aspects/aspect-items/materialize`,
+      "POST",
+      {
+        stageId: "items",
+        aspectName: "Предметы",
+        candidates: [
+          { tempId: "i1", decision: "accept", profile: { name: "Ключ", summary: "железный" } },
+          {
+            tempId: "i2",
+            decision: "accept",
+            profile: { name: "Лампа", type: "свет", description: "медная лампа смотрителя", properties: "коптит" },
+          },
+        ],
+      },
+    );
+
+    const res = await send(t.app, `/api/books/${bookId}/items`, "GET");
+    expect(res.status).toBe(200);
+    const items = (await res.json()) as Array<{ name: string; profile: Record<string, unknown> }>;
+    const key = items.find((i) => i.name === "Ключ")!;
+    const lamp = items.find((i) => i.name === "Лампа")!;
+    expect(key.profile.description).toBe("железный");
+    expect(lamp.profile.properties).toBe("коптит");
+    expect(lamp.profile.type).toBe("свет");
+  });
+
+  it("уже записанная строка { summary } читается, а не роняет список", async () => {
+    const now = new Date().toISOString();
+    t.sqlite
+      .prepare("INSERT INTO items (book_id, name, profile_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .run(bookId, "Старый", JSON.stringify({ name: "Старый", summary: "из прошлого интейка" }), now, now);
+    const res = await send(t.app, `/api/books/${bookId}/items`, "GET");
+    expect(res.status).toBe(200);
+  });
 });

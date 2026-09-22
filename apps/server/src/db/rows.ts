@@ -16,7 +16,6 @@ import type {
   CharacterVoiceSample,
   CharacterEvent,
   LocationProfile,
-  ItemProfile,
   WriterProvider,
   StudioEventType,
   StudioEventPayload,
@@ -24,8 +23,8 @@ import type {
 import {
   characterVoiceSampleSchema,
   locationProfileSchema,
-  itemProfileSchema,
   normalizeCharacterProfile,
+  normalizeItemProfile,
   normalizeRelationshipProfile,
   characterEventKindSchema,
   eventOriginSchema,
@@ -274,7 +273,7 @@ export function toItem(r: ItemRow): Item {
     id: r.id,
     bookId: r.book_id,
     name: r.name,
-    profile: safeProfile<ItemProfile>(r.profile_json, itemProfileSchema),
+    profile: normalizeItemProfile(parseJsonOrNull(r.profile_json)),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

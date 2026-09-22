@@ -43,6 +43,31 @@ export const itemProfileSchema = z.object({
 });
 export type ItemProfile = z.infer<typeof itemProfileSchema>;
 
+/** Схема ЧТЕНИЯ профиля предмета: без `min(1)` у описания и с сохранением
+ *  незнакомых ключей — генератор Мастерской кладёт ещё `type` и `properties`,
+ *  и материализация через эту схему не должна их терять. `itemProfileSchema`
+ *  остаётся схемой записи. */
+const itemProfileReadSchema = itemProfileSchema
+  .extend({ description: z.string() })
+  .catchall(z.unknown());
+
+/** Профиль предмета из базы или от кандидата — к канонической форме (F09
+ *  ревью 2026-09-22). Интейк кладёт кандидата `{ name, summary }`, а
+ *  материализация писала его как есть: одна такая строка роняла
+ *  `GET /books/:id/items` и сборку контекста Писателя целиком. Описание
+ *  берётся из `description`, иначе из `summary`, иначе пустое. */
+export function normalizeItemProfile(raw: unknown): ItemProfile {
+  const obj =
+    raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const text = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+  return itemProfileReadSchema.parse({
+    ...obj,
+    description: text(obj.description) ?? text(obj.summary) ?? "",
+  });
+}
+
 // ─────────────── Character ───────────────
 
 export const characterSchema = z.object({
