@@ -467,3 +467,29 @@ describe("runIntake — глава из материалов ложится че
     expect(out.warnings.map((w) => w.title)).toEqual(["Глава первая"]);
   });
 });
+
+describe("runIntake — падение посреди разбора (N1 живого прогона 2026-09-22)", () => {
+  it("прочитанное моделью до падения не читается заново, а приземляется повтором", async () => {
+    vi.mocked(runMaterialClassifier)
+      .mockResolvedValueOnce(worldFragment("Карта"))
+      .mockResolvedValueOnce(worldFragment("Кухня"));
+    const files = [file("а.md"), file("б.md")];
+    // Процесс «падает» после классификации, до приземления и журнала.
+    const spy = vi.spyOn(repo, "patchStudioState").mockImplementationOnce(() => {
+      throw new Error("процесс умер");
+    });
+    await expect(runIntake(deps(), { files })).rejects.toThrow("процесс умер");
+    spy.mockRestore();
+    const cached = sqlite.prepare("SELECT COUNT(*) c FROM intake_classifications").get() as { c: number };
+    expect(cached.c).toBe(2);
+
+    const again = await runIntake(deps(), { files });
+
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(2);
+    expect(again.summary.map((r) => r.target)).toEqual(["world"]);
+    expect(again.summary[0]!.count).toBe(2);
+    // Приземлено и записано в журнал — кеш своё отслужил.
+    const left = sqlite.prepare("SELECT COUNT(*) c FROM intake_classifications").get() as { c: number };
+    expect(left.c).toBe(0);
+  });
+});

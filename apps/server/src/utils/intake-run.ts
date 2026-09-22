@@ -165,6 +165,53 @@ function replayOf(after: IntakeJournalAfter, requestKey: string): IntakeRunResul
   };
 }
 
+type ClassifierOutput = Awaited<ReturnType<typeof runMaterialClassifier>>;
+
+/** Ответ классификатора, сохранённый прошлым прогоном, или `null`. Строка не
+ *  той формы считается отсутствующей: лучше заплатить за вызов, чем приземлить
+ *  мусор. */
+function loadCachedClassification(
+  sqlite: DatabaseType,
+  bookId: number,
+  fileKey: string,
+): ClassifierOutput | null {
+  const row = sqlite
+    .prepare("SELECT result_json FROM intake_classifications WHERE book_id = ? AND file_key = ?")
+    .get(bookId, fileKey) as { result_json: string } | undefined;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.result_json) as ClassifierOutput;
+    return Array.isArray(parsed?.fragments) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Сбой записи кеша файл не роняет: ответ уже есть, он просто не переживёт
+ *  падения процесса. */
+function saveCachedClassification(
+  sqlite: DatabaseType,
+  bookId: number,
+  fileKey: string,
+  out: ClassifierOutput,
+): void {
+  try {
+    sqlite
+      .prepare(
+        `INSERT OR REPLACE INTO intake_classifications (book_id, file_key, result_json, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(bookId, fileKey, JSON.stringify(out), new Date().toISOString());
+  } catch (e) {
+    console.warn("[intake] кеш классификатора не записан:", e instanceof Error ? e.message : e);
+  }
+}
+
+function dropCachedClassifications(sqlite: DatabaseType, bookId: number, keys: string[]): void {
+  const del = sqlite.prepare("DELETE FROM intake_classifications WHERE book_id = ? AND file_key = ?");
+  for (const k of keys) del.run(bookId, k);
+}
+
 export class IntakeBookNotFoundError extends Error {
   constructor(bookId: number) {
     super(`book ${bookId} not found`);
@@ -307,12 +354,22 @@ export async function runIntake(
       `book ${bookId}: ${index + 1}/${queue.length} «${file.filename}» — ${file.content.length} символов, вызываем классификатор`,
     );
     try {
-      const out = await runMaterialClassifier({
-        filename: file.filename,
-        content: file.content,
-        ...(idea.length > 0 ? { bookIdea: idea } : {}),
-        ...(existingStages.length > 0 ? { existingStages } : {}),
-      });
+      // N1 живого прогона: ответ, полученный до падения процесса, лежит в
+      // кеше — повтор берёт его, а не платит за вызов заново.
+      const cached = loadCachedClassification(sqlite, bookId, key);
+      const out =
+        cached ??
+        (await runMaterialClassifier({
+          filename: file.filename,
+          content: file.content,
+          ...(idea.length > 0 ? { bookIdea: idea } : {}),
+          ...(existingStages.length > 0 ? { existingStages } : {}),
+        }));
+      if (cached) {
+        log(`book ${bookId}: ${index + 1}/${queue.length} «${file.filename}» — ответ классификатора из кеша прошлого прогона`);
+      } else {
+        saveCachedClassification(sqlite, bookId, key, out);
+      }
       fragments.push(...out.fragments);
       for (const f of out.fragments) sourceOf.set(f, file.content);
       processedNow.push(key);
@@ -586,6 +643,8 @@ export async function runIntake(
       revisionBefore: state.revision,
       revisionAfter: revision,
     });
+    // Прогон приземлён и записан в журнал: дальше повтор отвечает журнал.
+    dropCachedClassifications(sqlite, bookId, processedNow);
   }
 
   log(

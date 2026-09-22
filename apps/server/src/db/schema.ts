@@ -999,3 +999,19 @@ export const contextManifests = sqliteTable(
     ),
   ],
 );
+
+// Migration 0033 (N1 живого прогона 2026-09-22): ответ классификатора по
+// единице разбора, пока прогон не приземлил и не записал журнал. Падение
+// процесса посреди разбора больше не обнуляет оплаченную работу.
+export const intakeClassifications = sqliteTable(
+  "intake_classifications",
+  {
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    fileKey: text("file_key").notNull(),
+    resultJson: text("result_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("intake_classifications_pk").on(t.bookId, t.fileKey)],
+);
