@@ -266,6 +266,56 @@ export function applyProseChangesToNodes(
   return out;
 }
 
+/**
+ * Трёхстороннее частичное принятие (F17 ревью 2026-09-22): выбранные правки
+ * кандидата (база → кандидат) накладываются вместе с правками черновика
+ * автора (база → черновик). Прежде слияние шло от базы, и черновик, в
+ * котором автор переписал соседний абзац, молча откатывался к базе.
+ *
+ * Пересечение — `conflict`, а не выбор за автора. Касание тоже считается
+ * пересечением: две вставки в одну точку или правка вплотную к правке
+ * дали бы порядок абзацев, который никто не выбирал.
+ */
+export function mergeSelectedOntoDraft(
+  baseNodes: readonly unknown[],
+  candidateNodes: readonly unknown[],
+  draftNodes: readonly unknown[],
+  selectedIds: readonly string[],
+): { nodes: unknown[] } | { conflict: true } {
+  const baseBlocks = nodesToBlocks(baseNodes);
+  const candChanges = diffProseBlocks(baseBlocks, nodesToBlocks(candidateNodes));
+  const draftChanges = diffProseBlocks(baseBlocks, nodesToBlocks(draftNodes));
+  const byId = new Map(candChanges.map((ch) => [ch.id, ch]));
+  const selected = selectedIds.map((id) => {
+    const ch = byId.get(id);
+    if (!ch) throw new Error(`unknown change: ${id}`);
+    return ch;
+  });
+  for (const s of selected) {
+    for (const d of draftChanges) {
+      if (s.baseFrom <= d.baseTo && d.baseFrom <= s.baseTo) return { conflict: true };
+    }
+  }
+  const candOffsets = candidateOffsets(candChanges);
+  const draftOffsets = candidateOffsets(draftChanges);
+  const ops = [
+    ...selected.map((ch) => ({ ch, source: candidateNodes, from: candOffsets.get(ch.id) ?? 0 })),
+    ...draftChanges.map((ch) => ({ ch, source: draftNodes, from: draftOffsets.get(ch.id) ?? 0 })),
+  ].sort((a, b) => a.ch.baseFrom - b.ch.baseFrom || a.ch.baseTo - b.ch.baseTo);
+
+  const out: unknown[] = [];
+  let cursor = 0;
+  for (const { ch, source, from } of ops) {
+    for (let k = cursor; k < ch.baseFrom; k++) out.push(baseNodes[k]);
+    for (let k = 0; k < ch.candidateText.length; k++) {
+      out.push(source[from + k] ?? textToParagraph(ch.candidateText[k]!));
+    }
+    cursor = Math.max(cursor, ch.baseTo);
+  }
+  for (let k = cursor; k < baseNodes.length; k++) out.push(baseNodes[k]);
+  return { nodes: out };
+}
+
 function textToParagraph(text: string): unknown {
   return text === ""
     ? { type: "paragraph" }

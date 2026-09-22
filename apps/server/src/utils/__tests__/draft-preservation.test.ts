@@ -127,7 +127,7 @@ describe("принятие кандидата (К2)", () => {
     expect(parent.p).toBe(rows[0]!.id);
   });
 
-  it("частичное принятие тоже сохраняет черновик, а правки считает от версии, которую видел автор", async () => {
+  it("частичное принятие, задевающее абзац, который правил автор, — конфликт, а не откат его правки (F17)", async () => {
     const v = await sendJson<{ id: number }>(
       t.app,
       `/api/chapters/${chapterId}/versions`,
@@ -137,22 +137,61 @@ describe("принятие кандидата (К2)", () => {
     seedDraft("Первый абзац.\n\nДописанное автором.", 2);
     const proposalId = readyProposal("Переписанный абзац.", v.id);
 
+    expect(() =>
+      acceptProposal(t.sqlite, proposalId, {
+        requestId: "r1",
+        expectedVersionId: v.id,
+        expectedDraftRevision: 2,
+        acknowledgeUnconfirmed: false,
+        acknowledgeContextDrift: false,
+        selectedChangeIds: ["c0"],
+      }),
+    ).toThrow(/\[overlap\]/);
+    // Ничего не записано: ни версии кандидата, ни снимка черновика.
+    expect(versions().map((x) => x.content_text)).toEqual(["Первый абзац."]);
+  });
+
+  it("частичное принятие сохраняет непересекающуюся правку черновика (F17 ревью 2026-09-22)", async () => {
+    const paras = (...texts: string[]) =>
+      JSON.stringify({
+        type: "doc",
+        content: texts.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })),
+      });
+    const v = await sendJson<{ id: number }>(
+      t.app,
+      `/api/chapters/${chapterId}/versions`,
+      "POST",
+      { contentJson: JSON.parse(paras("A", "B", "C")) },
+    );
+    t.sqlite
+      .prepare(
+        `INSERT INTO chapter_drafts
+           (chapter_id, content_json, content_text, word_count, base_version_id, revision, updated_at)
+         VALUES (?, ?, 'A AUTHOR_NEW_C', 2, ?, 3, ?)`,
+      )
+      .run(chapterId, paras("A", "B", "AUTHOR_NEW_C"), v.id, new Date().toISOString());
+    const proposalId = createProposal(t.sqlite, { bookId, chapterId, kind: "write", baseVersionId: v.id });
+    finishProposal(t.sqlite, proposalId, {
+      status: "ready",
+      contentText: "MODEL_A\n\nB\n\nC",
+      contentJson: paras("MODEL_A", "B", "C"),
+      wordCount: 3,
+      completion: "confirmed",
+      stopReason: "end_turn",
+      modelId: "test-model",
+    });
+
     acceptProposal(t.sqlite, proposalId, {
       requestId: "r1",
       expectedVersionId: v.id,
-      expectedDraftRevision: 2,
+      expectedDraftRevision: 3,
       acknowledgeUnconfirmed: false,
       acknowledgeContextDrift: false,
       selectedChangeIds: ["c0"],
     });
 
     const rows = versions();
-    expect(rows.map((x) => x.content_text)).toEqual([
-      "Первый абзац.",
-      "Первый абзац.\n\nДописанное автором.",
-      // Слияние считается от версии, которую видел автор, а не от черновика.
-      "Переписанный абзац.",
-    ]);
+    expect(rows[rows.length - 1]!.content_text).toBe("MODEL_A\n\nB\n\nAUTHOR_NEW_C");
   });
 
   it("черновик, совпадающий с текущей версией, лишней версией не становится", async () => {

@@ -6,6 +6,7 @@ import {
   type ProseProposal,
   type ProseProposalStatus,
   applyProseChangesToNodes,
+  mergeSelectedOntoDraft,
   diffProseBlocks,
   docToNodes,
   nodesToBlocks,
@@ -267,7 +268,10 @@ export type ProposalConflictReason =
   | "draft"
   | "status"
   | "unconfirmed"
-  | "stale";
+  | "stale"
+  /** Выбранная правка задевает абзац, который автор сам менял в черновике
+   *  (F17): слить нельзя, не выбрав за автора. */
+  | "overlap";
 
 export class ProposalConflictError extends Error {
   constructor(
@@ -396,16 +400,41 @@ export function acceptProposal(
       const candidateNodes = docToNodes(JSON.parse(proposal.contentJson));
       // Выбирают по тексту, сливают по узлам: иначе принятие одного абзаца
       // сносило бы жирное, заголовки и списки во всей остальной главе.
-      const changes = diffProseBlocks(
-        nodesToBlocks(baseNodes),
-        nodesToBlocks(candidateNodes),
-      );
-      const mergedNodes = applyProseChangesToNodes(
-        baseNodes,
-        candidateNodes,
-        changes,
-        input.selectedChangeIds,
-      );
+      //
+      // F17 ревью 2026-09-22: черновик автора — третья сторона слияния. От
+      // базы оно шло мимо него, и правка соседнего абзаца, сделанная автором
+      // после генерации, откатывалась к базе (текст оставался только в
+      // исторической копии черновика). Пересечение с правкой автора — 409.
+      const draftRow = sqlite
+        .prepare("SELECT content_json FROM chapter_drafts WHERE chapter_id = ?")
+        .get(proposal.chapterId) as { content_json: string } | undefined;
+      let mergedNodes: unknown[];
+      if (draftRow) {
+        const merged = mergeSelectedOntoDraft(
+          baseNodes,
+          candidateNodes,
+          docToNodes(JSON.parse(draftRow.content_json)),
+          input.selectedChangeIds,
+        );
+        if ("conflict" in merged) {
+          throw new ProposalConflictError(
+            "overlap",
+            "выбранная правка задевает абзац, который вы сами меняли в черновике — сохраните черновик версией или примите правку целиком",
+          );
+        }
+        mergedNodes = merged.nodes;
+      } else {
+        const changes = diffProseBlocks(
+          nodesToBlocks(baseNodes),
+          nodesToBlocks(candidateNodes),
+        );
+        mergedNodes = applyProseChangesToNodes(
+          baseNodes,
+          candidateNodes,
+          changes,
+          input.selectedChangeIds,
+        );
+      }
       const mergedDoc = nodesToDoc(mergedNodes);
       contentJson = JSON.stringify(mergedDoc);
       contentText = extractText(mergedDoc);

@@ -55,6 +55,13 @@ function recoveryFor(reason: string | undefined, message: string): Recovery {
           : "Текущая версия главы изменилась. Перечитайте главу — кандидат останется на месте.",
     };
   }
+  if (reason === "overlap") {
+    return {
+      kind: "none",
+      message:
+        "Выбранная правка задевает абзац, который вы сами меняли после генерации. Примите правку целиком или снимите с неё отметку — ваш текст на месте.",
+    };
+  }
   if (reason === "stale") {
     return {
       kind: "drift",
