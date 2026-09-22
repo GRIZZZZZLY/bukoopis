@@ -3,12 +3,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   runChapterWriter: vi.fn(),
+  runSceneIntent: vi.fn(),
 }));
 
-import { runChapterWriter } from "@book-forge/agents";
+import { runChapterWriter, runSceneIntent } from "@book-forge/agents";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
 const writerMock = vi.mocked(runChapterWriter);
+const sceneIntentMock = vi.mocked(runSceneIntent);
 let t: TestApp;
 let bookId: number;
 let chapterId: number;
@@ -47,6 +49,7 @@ beforeEach(async () => {
   t = makeTestApp();
   process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ writer: "api" });
   writerMock.mockReset();
+  sceneIntentMock.mockReset();
   writerMock.mockImplementation(async function* (input) {
     const i = input.beat?.index ?? -1;
     const text = `Абзац беата ${i}.`;
@@ -235,6 +238,113 @@ describe("глава по беатам", () => {
     );
     expect(proposal.status).toBe("failed");
     expect(proposal.beatsDone).toBeNull();
+  });
+
+  // Подготовка сцены — отдельный вызов модели, и на живом прогоне он занимал
+  // больше времени, чем сам беат. «Дописать с беата» продолжает ту же сцену
+  // того же плана, поэтому считать замысел заново незачем.
+  describe("замысел сцены при дописывании", () => {
+    async function twoCharacterScene(): Promise<void> {
+      for (const canonicalName of ["Нина", "Ворт"]) {
+        await send(t.app, `/api/books/${bookId}/characters`, "POST", {
+          canonicalName,
+          profile: { description: "инженер" },
+        });
+      }
+      const plan = {
+        ...PLAN,
+        variants: [
+          {
+            ...PLAN.variants[0]!,
+            beats: PLAN.variants[0]!.beats.map((b) => ({
+              ...b,
+              summary: `Нина и Ворт: ${b.summary}`,
+            })),
+          },
+        ],
+      };
+      t.sqlite
+        .prepare("UPDATE chapters SET plan_json = ? WHERE id = ?")
+        .run(JSON.stringify(plan), chapterId);
+      await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+        contentJson: {
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Принятое начало." }] }],
+        },
+      });
+    }
+
+    function storedIntent(characterIds: number[]): string {
+      return JSON.stringify({
+        sceneId: `${chapterId}:1`,
+        contextSnapshotId: 1,
+        participants: characterIds.map((characterId) => ({
+          characterId,
+          immediateGoal: "договориться о смене",
+          attentionFocus: [],
+          withheld: [],
+          influenceStrategy: null,
+          concessions: [],
+          boundaries: [],
+          relevantEventIds: [],
+        })),
+        interactionTensions: [],
+      });
+    }
+
+    it("дописывание берёт сохранённый замысел и не зовёт модель второй раз", async () => {
+      await twoCharacterScene();
+      const ids = (
+        t.sqlite.prepare("SELECT id FROM characters ORDER BY id").all() as Array<{ id: number }>
+      ).map((r) => r.id);
+      t.sqlite
+        .prepare("UPDATE chapters SET scene_intent_json = ? WHERE id = ?")
+        .run(storedIntent(ids), chapterId);
+
+      const body = await (
+        await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {
+          mode: "beats",
+          fromBeat: 2,
+        })
+      ).text();
+
+      expect(sceneIntentMock).not.toHaveBeenCalled();
+      expect(writerMock.mock.calls[0]?.[0].sceneIntent).toContain("договориться о смене");
+      const status = events(body, "scene_intent")[0] as { prepared: boolean; degraded: boolean };
+      expect(status).toMatchObject({ prepared: true, degraded: false });
+    });
+
+    it("без сохранённого замысла дописывание считает его обычным путём", async () => {
+      await twoCharacterScene();
+
+      // Поток надо дочитать: пока тело не выбрано, обработчик до подготовки
+      // сцены ещё не дошёл, и счётчик вызовов ничего не значит.
+      await (
+        await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {
+          mode: "beats",
+          fromBeat: 2,
+        })
+      ).text();
+
+      expect(sceneIntentMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("прогон с первого беата считает замысел заново, даже если старый лежит", async () => {
+      // Сцена начинается заново: прежний замысел принадлежит прошлому прогону.
+      await twoCharacterScene();
+      const ids = (
+        t.sqlite.prepare("SELECT id FROM characters ORDER BY id").all() as Array<{ id: number }>
+      ).map((r) => r.id);
+      t.sqlite
+        .prepare("UPDATE chapters SET scene_intent_json = ? WHERE id = ?")
+        .run(storedIntent(ids), chapterId);
+
+      await (
+        await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats" })
+      ).text();
+
+      expect(sceneIntentMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("fromBeat без mode=beats и за пределами плана — 400", async () => {

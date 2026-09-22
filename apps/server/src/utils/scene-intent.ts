@@ -2,6 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { runSceneIntent, type SceneIntentAvailableEvent } from "@book-forge/agents";
 import type { StructuredUsage } from "@book-forge/llm";
 import {
+  sceneIntentSchema,
   sceneIntentToolSchema,
   sceneKeyFor,
   renderSceneIntentPrompt,
@@ -61,6 +62,82 @@ const EMPTY: PrepareSceneIntentResult = {
   droppedEventIds: [],
   degraded: false,
 };
+
+export interface LoadStoredSceneIntentArgs {
+  chapterId: number;
+  participants: Array<{ characterId: number; name: string }>;
+  /** Номера событий, вошедшие в НОВУЮ сборку контекста. */
+  snapshotEventIds: number[];
+}
+
+/**
+ * Замысел, посчитанный в прогоне, который автор остановил.
+ *
+ * «Дописать с беата» продолжает ТУ ЖЕ сцену того же плана: считать замысел
+ * заново значит платить минуту ожидания и вызов модели за тот же ответ —
+ * живой прогон 2026-09-22 намерил 46–50 с на подготовку при 31–37 с на сам
+ * беат, то есть больше половины ожидания уходило на пересчёт уже известного.
+ *
+ * Сохранённый замысел не принимается как есть: снимок контекста собран
+ * заново, поэтому ссылки на события сверяются с ним (AC-25 держится и здесь),
+ * а участник, которого в сцене больше нет, уходит вместе со своими
+ * напряжениями — его карточки в промпте всё равно не будет.
+ *
+ * `null` — переиспользовать нечего: строки нет, она не разбирается, или из
+ * неё нечего печатать. Вызывающий тогда считает замысел обычным путём;
+ * тихо остаться без замысла хуже, чем заплатить за вызов.
+ */
+export function loadStoredSceneIntent(
+  sqlite: DatabaseType,
+  args: LoadStoredSceneIntentArgs,
+): PrepareSceneIntentResult | null {
+  const row = sqlite
+    .prepare("SELECT scene_intent_json FROM chapters WHERE id = ?")
+    .get(args.chapterId) as { scene_intent_json: string | null } | undefined;
+  if (!row?.scene_intent_json) return null;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(row.scene_intent_json);
+  } catch {
+    return null;
+  }
+  const parsed = sceneIntentSchema.safeParse(raw);
+  if (!parsed.success) return null;
+
+  const allowedCharacters = new Set(args.participants.map((p) => p.characterId));
+  const snapshot = new Set(args.snapshotEventIds);
+  const dropped: number[] = [];
+  const participants = parsed.data.participants
+    .filter((p) => allowedCharacters.has(p.characterId))
+    .map((p) => {
+      const kept: number[] = [];
+      for (const id of p.relevantEventIds) {
+        if (snapshot.has(id)) kept.push(id);
+        else if (!dropped.includes(id)) dropped.push(id);
+      }
+      return { ...p, relevantEventIds: kept };
+    });
+  const intent: SceneIntent = {
+    ...parsed.data,
+    participants,
+    interactionTensions: parsed.data.interactionTensions.filter(
+      (t) =>
+        allowedCharacters.has(t.fromCharacterId) && allowedCharacters.has(t.toCharacterId),
+    ),
+  };
+
+  const names = new Map(args.participants.map((p) => [p.characterId, p.name]));
+  const prompt = renderSceneIntentPrompt(intent, names);
+  if (prompt === null) return null;
+
+  if (dropped.length > 0) {
+    console.warn(
+      `[scene-intent] глава ${args.chapterId}: сохранённый замысел ссылался на события вне нового снимка ${dropped.length} (${dropped.join(", ")})`,
+    );
+  }
+  return { intent, prompt, droppedEventIds: dropped, degraded: false };
+}
 
 /** Короткая строка события для списка «Доступные события». Полные карточки
  *  участников идут рядом своим блоком — здесь нужен только номер и суть. */

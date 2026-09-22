@@ -37,7 +37,7 @@ import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import { assembleGenerationContext } from "../utils/generation-context.js";
 import { recordContextManifest } from "../utils/context-manifests.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
-import { prepareSceneIntent } from "../utils/scene-intent.js";
+import { loadStoredSceneIntent, prepareSceneIntent } from "../utils/scene-intent.js";
 import { makeCharacterBoundaryReaders } from "../utils/character-events.js";
 import { resolveEntity } from "../utils/entity-resolve.js";
 import {
@@ -471,7 +471,24 @@ export function createPlotRoute(
         // модели на минуты, и снаружи автор смотрел бы в тишину, пока
         // соединение даже не открылось. Падение сюда не долетает —
         // `prepareSceneIntent` возвращает деградацию, а не бросает.
-        const sceneIntent = await prepareSceneIntent(sqlite, {
+        //
+        // «Дописать с беата» продолжает ТУ ЖЕ сцену того же плана, и замысел
+        // для неё уже посчитан прогоном, который автор остановил. Живой
+        // прогон 2026-09-22: подготовка 46–50 с при 31–37 с на сам беат —
+        // больше половины ожидания уходило на пересчёт известного. Берём
+        // сохранённое; если брать нечего, считаем обычным путём, потому что
+        // тихо остаться без замысла хуже, чем заплатить за вызов.
+        const stored =
+          mode === "beats" && fromBeat > 0
+            ? loadStoredSceneIntent(sqlite, {
+                chapterId: ch.id,
+                participants: assembled.participants,
+                snapshotEventIds: assembled.sourceRefs
+                  .filter((r) => r.kind === "event")
+                  .map((r) => r.id),
+              })
+            : null;
+        const sceneIntent = stored ?? (await prepareSceneIntent(sqlite, {
           bookId: ch.book_id,
           chapterId: ch.id,
           chapterOrder: ch.order_index,
@@ -501,7 +518,7 @@ export function createPlotRoute(
               bookId: ch.book_id,
               chapterId: ch.id,
             }),
-        });
+        }));
         await stream.writeSSE({
           event: "scene_intent",
           data: JSON.stringify({
