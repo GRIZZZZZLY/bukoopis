@@ -67,6 +67,20 @@ describe("промпт документа", () => {
   it("системный промпт запрещает служебные слова интерфейса", () => {
     expect(documentSystemPrompt).not.toContain("аспект");
   });
+
+  it("на полном этапе просит дополнить, а не пересобрать", () => {
+    // Иначе промпт говорит «не переписывай перечисленное» и «собери 5–9
+    // разделов» одновременно, и модель выбирает сама.
+    const prompt = buildDocumentPrompt({
+      stageId: "world",
+      concept,
+      existingSections: [{ name: "география", text: "Город на сваях." }],
+      emptySectionNames: [],
+      contextRef,
+    });
+    expect(prompt).toContain("Добавь 1–4 раздела");
+    expect(prompt).not.toContain("целиком: 5–9");
+  });
 });
 
 describe("toStoredDocumentVariant", () => {
