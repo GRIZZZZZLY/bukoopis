@@ -33,6 +33,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   aspect_variants: "subscription",
   aspect_refine: "subscription",
   aspect_entity_variants: "subscription",
+  aspect_document: "subscription",
   canon_fact_extractor: "subscription",
   character_event_extractor: "subscription",
   episodic_note_extractor: "subscription",
