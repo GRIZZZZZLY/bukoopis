@@ -5,6 +5,7 @@ import {
   createChapterVersionInputSchema,
   saveChapterDraftInputSchema,
   sceneStateWriteSchema,
+  sceneStateExpectationSchema,
 } from "@book-forge/shared";
 import {
   toChapter,
@@ -238,13 +239,52 @@ export function createChaptersRoute(
     const body = await c.req.json().catch(() => null);
     const parsed = sceneStateWriteSchema.safeParse(body);
     if (!parsed.success) return validationFailed(c, parsed.error);
-    saveSceneState(sqlite, {
-      bookId: ch.book_id,
-      chapterId: id,
-      chapterVersionId: ch.current_version_id,
-      state: parsed.data,
-      origin: "manual",
-    });
+    // F23 ревью 2026-09-22: анкета писалась UPSERT'ом без проверки, на что
+    // смотрел автор. Две вкладки молча перетирали друг друга, а форма,
+    // открытая на версии 1, после принятия версии 2 сохранялась «ручной
+    // анкетой» новой версии — мимо кнопки переноса. Теперь автор называет
+    // версию главы и отметку строки, которые он видел (`null` — анкеты не
+    // было), и расхождение — 409 без записи.
+    const expected = sceneStateExpectationSchema.safeParse(body);
+    if (!expected.success) return validationFailed(c, expected.error);
+    const versionId = ch.current_version_id;
+    const conflict = sqlite.transaction(() => {
+      const current = loadSceneStateForVersion(sqlite, versionId);
+      const currentUpdatedAt = current?.updatedAt ?? null;
+      if (
+        expected.data.expectedVersionId !== versionId ||
+        expected.data.expectedUpdatedAt !== currentUpdatedAt
+      ) {
+        return {
+          reason: expected.data.expectedVersionId !== versionId ? "version" : "state",
+          currentVersionId: versionId,
+          currentUpdatedAt,
+        };
+      }
+      saveSceneState(sqlite, {
+        bookId: ch.book_id,
+        chapterId: id,
+        chapterVersionId: versionId,
+        state: parsed.data,
+        origin: "manual",
+      });
+      return null;
+    })();
+    if (conflict) {
+      return c.json(
+        {
+          error: "scene_state_conflict",
+          details: {
+            ...conflict,
+            message:
+              conflict.reason === "version"
+                ? "Глава сменила версию, пока вы правили анкету. Ваш текст остался в форме — перечитайте анкету и перенесите нужное."
+                : "Анкету изменили в другом месте, пока вы правили. Ваш текст остался в форме — перечитайте анкету и перенесите нужное.",
+          },
+        },
+        409,
+      );
+    }
     return c.json({ chapterId: id, state: parsed.data, origin: "manual" });
   });
 

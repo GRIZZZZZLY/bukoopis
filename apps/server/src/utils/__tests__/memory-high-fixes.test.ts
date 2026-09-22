@@ -331,8 +331,16 @@ describe("перестроение памяти и анкета сцены (F15 
   it("авторская анкета переживает перестроение, машинная — нет", async () => {
     const mine = await chapter("Первая", long("ПЕРВАЯ"));
     const machine = await chapter("Вторая", long("ВТОРАЯ"));
-    await send(t.app, `/api/chapters/${mine}/scene-state`, "PATCH", { place: "AUTHOR_ONLY_PLACE" });
-    await send(t.app, `/api/chapters/${machine}/scene-state`, "PATCH", { place: "X" });
+    await send(t.app, `/api/chapters/${mine}/scene-state`, "PATCH", {
+      place: "AUTHOR_ONLY_PLACE",
+      expectedVersionId: versionOf(mine),
+      expectedUpdatedAt: null,
+    });
+    await send(t.app, `/api/chapters/${machine}/scene-state`, "PATCH", {
+      place: "X",
+      expectedVersionId: versionOf(machine),
+      expectedUpdatedAt: null,
+    });
     t.sqlite
       .prepare("UPDATE chapter_scene_states SET origin = 'llm' WHERE chapter_id = ?")
       .run(machine);

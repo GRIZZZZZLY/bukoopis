@@ -101,6 +101,9 @@ export function SceneStatePanel({ chapterId }: Props) {
   const [state, setState] = useState<SceneState | null>(null);
   const [origin, setOrigin] = useState<"llm" | "manual" | null>(null);
   const [carry, setCarry] = useState<SceneState | null>(null);
+  /** Что автор видит сейчас: сохранение сверяется с этим, чтобы не лечь на
+   *  чужую правку или на версию главы, которой он не читал (F23). */
+  const [seen, setSeen] = useState<{ versionId: number; updatedAt: string | null } | null>(null);
   const [draft, setDraft] = useState<DraftText | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +114,7 @@ export function SceneStatePanel({ chapterId }: Props) {
     setState(r.state);
     setOrigin(r.origin);
     setCarry(r.carry?.state ?? null);
+    setSeen(r.versionId !== null ? { versionId: r.versionId, updatedAt: r.updatedAt } : null);
   }, [chapterId]);
 
   useEffect(() => {
@@ -124,6 +128,7 @@ export function SceneStatePanel({ chapterId }: Props) {
         setState(r.state);
         setOrigin(r.origin);
         setCarry(r.carry?.state ?? null);
+        setSeen(r.versionId !== null ? { versionId: r.versionId, updatedAt: r.updatedAt } : null);
         setError(null);
       })
       .catch((e: unknown) => {
@@ -152,11 +157,11 @@ export function SceneStatePanel({ chapterId }: Props) {
   /** Перенос правки с прежней версии главы. Не в редактор, а сразу записью:
    *  автор уже один раз согласился с этими словами. Дальше правится как своя. */
   async function carryOver(): Promise<void> {
-    if (!carry) return;
+    if (!carry || !seen) return;
     setBusy(true);
     setError(null);
     try {
-      await api.saveSceneState(chapterId, carry);
+      await api.saveSceneState(chapterId, carry, seen);
       await load();
       setNotice("Ваша правка перенесена.");
     } catch (e) {
@@ -167,11 +172,13 @@ export function SceneStatePanel({ chapterId }: Props) {
   }
 
   async function save(): Promise<void> {
-    if (!draft) return;
+    if (!draft || !seen) return;
     setBusy(true);
     setError(null);
     try {
-      await api.saveSceneState(chapterId, fromDraftText(draft));
+      // На 409 форма остаётся открытой с текстом автора: сообщение сервера
+      // говорит, что делать, а набранное не пропадает.
+      await api.saveSceneState(chapterId, fromDraftText(draft), seen);
       setDraft(null);
       await load();
       setNotice("Сохранено.");

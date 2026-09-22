@@ -68,6 +68,14 @@ export const sceneStateWriteSchema = z.object({
   changes: z.array(z.string().max(300)).max(12).default([]),
 });
 
+/** Что видел автор, когда правил анкету: версию главы и отметку строки
+ *  (`null` — анкеты ещё не было). Без этого правка молча перетирала чужую
+ *  или ложилась на версию, которой автор не читал (F23). */
+export const sceneStateExpectationSchema = z.object({
+  expectedVersionId: z.number().int().positive(),
+  expectedUpdatedAt: z.string().nullable(),
+});
+
 const toolLine = z.string().max(300).nullable();
 const toolList = z.array(z.string().max(300)).max(12);
 const toolPersonList = z

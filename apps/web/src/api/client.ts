@@ -364,13 +364,23 @@ export const api = {
         updatedAt: string;
       } | null;
     }>(`/api/chapters/${chapterId}/scene-state`),
+  /** `expected` — что автор видел: версию главы и отметку строки из
+   *  `getSceneState`. Расхождение — 409, анкета не записывается. */
   saveSceneState: (
     chapterId: number,
     state: import("@book-forge/shared").SceneState,
+    expected: { versionId: number; updatedAt: string | null },
   ) =>
     req<{ chapterId: number; state: import("@book-forge/shared").SceneState }>(
       `/api/chapters/${chapterId}/scene-state`,
-      { method: "PATCH", body: JSON.stringify(state) },
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...state,
+          expectedVersionId: expected.versionId,
+          expectedUpdatedAt: expected.updatedAt,
+        }),
+      },
     ),
   recomputeSceneState: (chapterId: number) =>
     req<{ chapterId: number; versionId: number; enqueued: boolean }>(
