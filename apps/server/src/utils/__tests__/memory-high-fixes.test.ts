@@ -327,6 +327,31 @@ describe("перестроение памяти (В5)", () => {
   });
 });
 
+describe("перестроение памяти и анкета сцены (F15 ревью 2026-09-22)", () => {
+  it("авторская анкета переживает перестроение, машинная — нет", async () => {
+    const mine = await chapter("Первая", long("ПЕРВАЯ"));
+    const machine = await chapter("Вторая", long("ВТОРАЯ"));
+    await send(t.app, `/api/chapters/${mine}/scene-state`, "PATCH", { place: "AUTHOR_ONLY_PLACE" });
+    await send(t.app, `/api/chapters/${machine}/scene-state`, "PATCH", { place: "X" });
+    t.sqlite
+      .prepare("UPDATE chapter_scene_states SET origin = 'llm' WHERE chapter_id = ?")
+      .run(machine);
+
+    await send(t.app, `/api/books/${bookId}/memory/rebuild`, "POST", { fromOrder: 10 });
+
+    const got = await sendJson<{ state: { place: string | null } | null; origin: string | null }>(
+      t.app,
+      `/api/chapters/${mine}/scene-state`,
+      "GET",
+    );
+    expect(got.origin).toBe("manual");
+    expect(got.state?.place).toBe("AUTHOR_ONLY_PLACE");
+    expect(
+      t.sqlite.prepare("SELECT 1 FROM chapter_scene_states WHERE chapter_id = ?").get(machine),
+    ).toBeUndefined();
+  });
+});
+
 describe("страховка очереди", () => {
   it("enqueueMemoryJobs остаётся идемпотентным", async () => {
     const ch = await chapter("Глава", long("ГЛАВА"));

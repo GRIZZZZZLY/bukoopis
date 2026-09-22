@@ -377,10 +377,15 @@ export function createBooksRoute(
              WHERE chapter_version_id = ? AND kind IN ('index','summary','facts','notes','scene_state')`,
           )
           .run(ch.current_version_id);
-        // Анкета сцены — тоже производная память: оставленная на месте, она
-        // пережила бы перестроение и продолжила описывать прежний разбор.
+        // Машинная анкета сцены — тоже производная память: оставленная на
+        // месте, она пережила бы перестроение и продолжила описывать прежний
+        // разбор. Авторскую (`manual`) не трогаем: истории у неё нет, и
+        // стереть её значит потерять правку навсегда (F15 ревью 2026-09-22).
+        // Заказанное ниже задание `scene_state` авторскую строку не затирает.
         sqlite
-          .prepare("DELETE FROM chapter_scene_states WHERE chapter_version_id = ?")
+          .prepare(
+            "DELETE FROM chapter_scene_states WHERE chapter_version_id = ? AND origin <> 'manual'",
+          )
           .run(ch.current_version_id);
         // Пересказ главы тоже собирается заново: он лежит на версии, и без
         // очистки задание `summary` увидит его на месте и пропустит работу.
