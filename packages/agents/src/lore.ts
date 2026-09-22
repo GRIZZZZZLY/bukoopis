@@ -96,19 +96,26 @@ export function gatherLoreContext(
     .filter((i) => blob.includes(i.name.toLowerCase()))
     .map(rowToItem);
 
-  // Open hooks always returned (writer should weave them in / keep them alive).
-  // Filter by expected_resolution_chapter_order: only show hooks expected at or
-  // before the current chapter.
+  // Открытые крючки — чтобы Писатель держал их живыми. Две проверки, и они
+  // про разное. Происхождение: крючок, посеянный в главе N или позже, при
+  // подготовке главы N — это содержимое будущей главы (F02 ревью 2026-09-22),
+  // поэтому граница ИСКЛЮЧАЮЩАЯ, как у событий персонажей; порядок главы
+  // берётся join'ом к `chapters`, а не копией. Крючок без главы-источника
+  // завёл автор — он виден везде. Срок: крючок, который должен был
+  // разрешиться раньше этой главы, уже не нужен.
   const hooksBase = sqlite
     .prepare(
-      `SELECT * FROM hooks
-       WHERE book_id = ? AND status IN ('open','mentioned')
-       ORDER BY created_at ASC`,
+      `SELECT h.*, seed.order_index AS seed_order
+       FROM hooks h
+       LEFT JOIN chapters seed ON seed.id = h.seed_chapter_id
+       WHERE h.book_id = ? AND h.status IN ('open','mentioned')
+       ORDER BY h.created_at ASC`,
     )
-    .all(bookId) as HookRow[];
+    .all(bookId) as Array<HookRow & { seed_order: number | null }>;
   const openHooks = hooksBase
     .filter((h) => {
       if (currentChapterOrder === undefined) return true;
+      if (h.seed_order !== null && h.seed_order >= currentChapterOrder) return false;
       if (h.expected_resolution_chapter_order === null) return true;
       return h.expected_resolution_chapter_order >= currentChapterOrder;
     })
