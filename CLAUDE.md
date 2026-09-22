@@ -74,6 +74,7 @@ Adding an agent takes three steps:
 **The author decides.**
 - Nothing becomes canon without the author. Aspects arrive `reviewing`; entities arrive `proposed`; prose is a *proposal* (`prose_proposals`) until `acceptProposal` ([prose-proposals.ts](apps/server/src/utils/prose-proposals.ts)).
 - Chapters from material intake land as a **draft** (`chapter_drafts`, `insertChapters(..., { asDraft: true })`): no version, no search, no memory until the author saves. Quick start creates no chapters and approves nothing.
+- Intake persists each classifier answer at once (`intake_classifications`, keyed by book + `intakeFileKey`) and drops it after landing + journal. A crash mid-run must not cost a second paid call. Undelivered chapters/plans are kept in the journal (`undelivered`) and redelivered on re-drop.
 - Author text becomes a version before anything replaces it (`preserveDraftAsVersion`, [chapter-drafts.ts](apps/server/src/utils/chapter-drafts.ts)).
 - Partial accept is three-way (`mergeSelectedOntoDraft`, [prose-diff.ts](packages/shared/src/prose-diff.ts)). If a selected change overlaps the author's draft edit: 409 `overlap`.
 - Undo of an accepted canon candidate deletes only `createdEntityId`, and refuses (409) if the card was edited since.
