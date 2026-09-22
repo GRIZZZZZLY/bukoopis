@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import JSZip from "jszip";
-import { parseEpub } from "../parsers";
+import { parseEpub } from "../parsers.js";
 
 /** F20 ревью 2026-09-22: OPF разбирался парсером без атрибутов, spine был
  *  пуст, и главы шли в алфавитном порядке имён файлов. */
