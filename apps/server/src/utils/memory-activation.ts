@@ -114,6 +114,14 @@ export function tryActivateMemoryVersion(
     if (ch.current_version_id !== versionId) return "obsolete";
     if (ch.memory_version_id === versionId) return "already";
 
+    // F06 ревью 2026-09-22: память главы — это память её ТЕКУЩЕЙ версии.
+    // Прежде машинные выводы прошлых версий оставались действующими: герой
+    // «знал» код из абзаца, который автор уже вычеркнул, потому что события
+    // и факты читались по границе главы, а не по активной версии, а
+    // `persistExtractedFacts` чистит только те тройки, что пришли в новом
+    // ответе. Пустой новый разбор не снимал ничего.
+    dropOtherVersionsMemory(sqlite, ch.book_id, chapterId, ch.order_index, versionId);
+
     if (factsResult?.staged?.facts?.length) {
       persistExtractedFacts(
         sqlite,
@@ -187,6 +195,63 @@ export function tryActivateMemoryVersion(
     return "activated";
   });
   return tx.immediate();
+}
+
+/**
+ * Снимает машинную память, выведенную из ДРУГИХ версий этой главы: факты и
+ * заметки (`origin = 'extracted'`) и события (`origin = 'llm'`). Авторское
+ * (`manual`, `studio`, `migration`, `legacy`) не трогается, как и событие,
+ * которое автор подтвердил, — его решение сильнее переписанного текста;
+ * расхождение с новой версией он увидит сам.
+ *
+ * Факт, который закрывал удаляемый, открывается обратно — до удаления, пока
+ * ссылка цела (то же правило, что у «Перестроить память»). Новая версия
+ * закроет его снова, если в её тексте он и правда отменён.
+ */
+function dropOtherVersionsMemory(
+  sqlite: DatabaseType,
+  bookId: number,
+  chapterId: number,
+  chapterOrder: number,
+  versionId: number,
+): void {
+  const otherVersions = `SELECT id FROM chapter_versions WHERE chapter_id = ? AND id <> ?`;
+  sqlite
+    .prepare(
+      `UPDATE book_facts SET valid_to_chapter = NULL, superseded_by = NULL
+       WHERE book_id = ? AND superseded_by IN (
+         SELECT id FROM book_facts
+         WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN (${otherVersions}))`,
+    )
+    .run(bookId, bookId, chapterId, versionId);
+  sqlite
+    .prepare(
+      `DELETE FROM book_facts
+       WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN (${otherVersions})`,
+    )
+    .run(bookId, chapterId, versionId);
+  sqlite
+    .prepare(
+      `DELETE FROM book_notes
+       WHERE book_id = ? AND origin = 'extracted' AND source_version_id IN (${otherVersions})`,
+    )
+    .run(bookId, chapterId, versionId);
+  // Нить, которую закрыл разбор прежней версии этой главы, снова открыта:
+  // закроет ли её новая версия, решит её собственный разбор ниже.
+  sqlite
+    .prepare(
+      `UPDATE book_notes SET chapter_order_resolved = NULL
+       WHERE book_id = ? AND origin = 'extracted' AND chapter_order_resolved = ?`,
+    )
+    .run(bookId, chapterOrder);
+  sqlite
+    .prepare(
+      `DELETE FROM character_events
+       WHERE book_id = ? AND chapter_id = ? AND origin = 'llm'
+         AND verification <> 'confirmed'
+         AND source_version_id IS NOT NULL AND source_version_id <> ?`,
+    )
+    .run(bookId, chapterId, versionId);
 }
 
 function parseJson<T>(raw: string | null): T | null {
