@@ -4,6 +4,8 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import {
   generateBookOutlineInputSchema,
   selectBookOutlineInputSchema,
+  bookOutlineSchema,
+  mergeOutlineVariants,
   generateChapterPlanInputSchema,
   selectChapterPlanInputSchema,
   writeChapterInputSchema,
@@ -115,12 +117,19 @@ export function createPlotRoute(
         }),
     });
 
-    const outline: BookOutline = {
-      variants,
-      selectedIndex: null,
-      generatedAt: new Date().toISOString(),
-    };
+    // Новая партия дописывается, а не заменяет прежнюю: заменой уходили и
+    // выбор автора, и оглавления из его материалов (F04 ревью 2026-09-22).
+    // Перечитываем перед записью — генерация шла минутами.
     const now = new Date().toISOString();
+    const stored = sqlite
+      .prepare("SELECT outline_json FROM books WHERE id = ?")
+      .get(id) as { outline_json: string | null } | undefined;
+    let current: BookOutline | null = null;
+    if (stored?.outline_json) {
+      const prev = bookOutlineSchema.safeParse(JSON.parse(stored.outline_json));
+      if (prev.success) current = prev.data;
+    }
+    const { outline } = mergeOutlineVariants(current, variants, now);
     sqlite
       .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(outline), now, id);

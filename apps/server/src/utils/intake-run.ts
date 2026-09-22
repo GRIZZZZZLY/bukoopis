@@ -1,6 +1,7 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   bookOutlineSchema,
+  mergeOutlineVariants,
   summarizeIntake,
   type BookOutline,
   type BookOutlineVariant,
@@ -421,31 +422,25 @@ export async function runIntake(
       const row = sqlite
         .prepare("SELECT outline_json FROM books WHERE id = ?")
         .get(bookId) as { outline_json: string | null } | undefined;
-      let outline: BookOutline = { variants: [], selectedIndex: null, generatedAt: now };
+      let outline: BookOutline | null = null;
       if (row?.outline_json) {
         const parsed = bookOutlineSchema.safeParse(JSON.parse(row.outline_json));
         if (parsed.success) outline = parsed.data;
       }
-      // Схема держит не больше пяти вариантов: место освобождают самые старые
-      // сгенерированные, авторские не вытесняются никогда.
-      const merged: BookOutlineVariant[] = [...outline.variants, ...planVariants];
-      const trimmed =
-        merged.length <= 5
-          ? merged
-          : [
-              ...merged.filter((v) => v.source === "author_material"),
-              ...merged.filter((v) => v.source !== "author_material"),
-            ].slice(0, 5);
+      // Выбор автора и авторские варианты не вытесняются (F04).
+      const { outline: next, dropped } = mergeOutlineVariants(outline, planVariants, now);
       sqlite
         .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
-        .run(
-          JSON.stringify({ ...outline, variants: trimmed, generatedAt: now }),
-          now,
-          bookId,
-        );
-      planVariantsLanded = planVariants.length;
+        .run(JSON.stringify(next), now, bookId);
+      if (dropped > 0) {
+        failures.push({
+          filename: "План книги",
+          message: `В плане уже ${next.variants.length} вариантов, все авторские или выбранные: ${dropped} из материалов не добавлены. Удалите ненужные варианты и перетащите материал ещё раз.`,
+        });
+      }
+      planVariantsLanded = planVariants.length - dropped;
       log(
-        `book ${bookId}: планов из материалов ${planVariants.length} → в outline_json вариантов ${trimmed.length}`,
+        `book ${bookId}: планов из материалов ${planVariants.length} (не влезло ${dropped}) → в outline_json вариантов ${next.variants.length}`,
       );
     } catch (e) {
       failures.push({

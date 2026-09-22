@@ -188,12 +188,65 @@ export const bookOutlineVariantSchema = z.object({
 });
 export type BookOutlineVariant = z.infer<typeof bookOutlineVariantSchema>;
 
+/** Сколько вариантов плана хранится. Генератор за раз даёт не больше пяти;
+ *  запас — под авторские оглавления из материалов, которые не вытесняются. */
+export const MAX_OUTLINE_VARIANTS = 10;
+
 export const bookOutlineSchema = z.object({
-  variants: z.array(bookOutlineVariantSchema).min(1).max(5),
+  variants: z.array(bookOutlineVariantSchema).min(1).max(MAX_OUTLINE_VARIANTS),
   selectedIndex: z.number().int().nonnegative().nullable(),
   generatedAt: z.string(),
 });
 export type BookOutline = z.infer<typeof bookOutlineSchema>;
+
+/**
+ * Добавляет варианты плана к сохранённым — одно правило для интейка, быстрого
+ * сбора и перегенерации (F04 ревью 2026-09-22). Прежде каждый резал массив
+ * по-своему: интейк переставлял авторские вперёд и сохранял старый
+ * `selectedIndex`, отчего выбор молча переезжал на вариант, которого автор не
+ * утверждал; быстрый сбор отрезал новые; перегенерация заменяла всё целиком
+ * вместе с выбором.
+ *
+ * Выбранный вариант и авторские (`author_material`) не вытесняются никогда.
+ * Место освобождают сгенерированные невыбранные, самые старые первыми. Если
+ * и так не влезает — лишние входящие не добавляются и считаются в `dropped`:
+ * вызывающий обязан сказать об этом автору, а не промолчать.
+ */
+export function mergeOutlineVariants(
+  current: BookOutline | null,
+  incoming: ReadonlyArray<BookOutlineVariant>,
+  now: string,
+): { outline: BookOutline; dropped: number } {
+  const existing = current?.variants ?? [];
+  const selected =
+    current?.selectedIndex !== null && current?.selectedIndex !== undefined
+      ? existing[current.selectedIndex]
+      : undefined;
+  const merged: BookOutlineVariant[] = [...existing, ...incoming];
+  const protectedVariant = (v: BookOutlineVariant) =>
+    v === selected || v.source === "author_material";
+  while (merged.length > MAX_OUTLINE_VARIANTS) {
+    const evict = merged.findIndex((v) => !protectedVariant(v));
+    if (evict === -1) break;
+    merged.splice(evict, 1);
+  }
+  let dropped = 0;
+  while (merged.length > MAX_OUTLINE_VARIANTS) {
+    // Остались только защищённые; входящие авторские — в конце, и
+    // сохранённые раньше важнее принесённых сейчас.
+    merged.pop();
+    dropped++;
+  }
+  const idx = selected ? merged.indexOf(selected) : -1;
+  return {
+    outline: {
+      variants: merged,
+      selectedIndex: idx === -1 ? null : idx,
+      generatedAt: now,
+    },
+    dropped,
+  };
+}
 
 /** План утверждён, если вариант выбран и в нём есть поглавные строки. Само
  *  наличие глав в книге признаком не служит: главы бывают заведены руками. */

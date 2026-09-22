@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
   bookOutlineSchema,
+  mergeOutlineVariants,
   isDocumentStage,
   type AspectVariant,
   type BookConcept,
@@ -597,19 +598,17 @@ async function generatePlan(deps: QuickStartDeps): Promise<void> {
     .prepare("SELECT outline_json FROM books WHERE id = ?")
     .get(bookId) as { outline_json: string | null } | undefined;
   const now = new Date().toISOString();
-  let outline: BookOutline = { variants: [], selectedIndex: null, generatedAt: now };
+  let outline: BookOutline | null = null;
   if (row?.outline_json) {
     const parsed = bookOutlineSchema.safeParse(JSON.parse(row.outline_json));
     if (parsed.success) outline = parsed.data;
   }
-  const merged = [...outline.variants, ...variants].slice(0, 5);
+  // Прежде `.slice(0, 5)` молча отрезал новые варианты у книги, где их уже
+  // пять (F04). Сгенерированные вытесняют старые сгенерированные.
+  const { outline: next } = mergeOutlineVariants(outline, variants, now);
   sqlite
     .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
-    .run(
-      JSON.stringify({ ...outline, variants: merged, generatedAt: now }),
-      now,
-      bookId,
-    );
+    .run(JSON.stringify(next), now, bookId);
 }
 
 /** Читает состояние заново перед каждой записью: между двумя патчами одного
