@@ -192,6 +192,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** «Ничего не идёт» сервер отвечает `200 {running:false}` (404 остался за
+ *  несуществующей книгой). Панели проверяют объект на истинность и зовут
+ *  `rows.map`, поэтому `running:false` обязан стать `null` здесь, на границе,
+ *  а не проскочить под типом прогона. */
+async function inflightOrNull<T>(path: string): Promise<T | null> {
+  const r = await req<(T & { running?: true }) | { running: false }>(path);
+  return r.running === false ? null : (r as T);
+}
+
 export const api = {
   listBooks: () => req<Book[]>("/api/books"),
   getBooksStats: () =>
@@ -966,16 +975,9 @@ export const api = {
   /** Что разбирается для книги прямо сейчас — или `null`, если ничего. SSE-поток
    *  виден только той вкладке, которая его открыла, а разбор живёт в процессе
    *  сервера и переживает обновление страницы; это единственный способ новой
-   *  вкладке узнать, что работа идёт, и показать тот же прогресс. 404 —
-   *  штатный ответ «ничего не идёт», а не сбой. */
-  intakeInflight: async (bookId: number): Promise<IntakeInflight | null> => {
-    try {
-      return await req<IntakeInflight>(`/api/books/${bookId}/intake/inflight`);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) return null;
-      throw e;
-    }
-  },
+   *  вкладке узнать, что работа идёт, и показать тот же прогресс. */
+  intakeInflight: (bookId: number) =>
+    inflightOrNull<IntakeInflight>(`/api/books/${bookId}/intake/inflight`),
 
   /** Останавливает разбор перед следующим файлом; файл, который уже читается,
    *  дочитывается — сервер не умеет прерывать вызов LLM на середине. 404,
@@ -986,16 +988,9 @@ export const api = {
       body: JSON.stringify({ requestKey }),
     }),
 
-  /** Что собирается для книги прямо сейчас — или `null`. Как и у приёма
-   *  материала: 404 значит «ничего не идёт». */
-  getQuickStartInflight: async (bookId: number): Promise<QuickStartInflight | null> => {
-    try {
-      return await req<QuickStartInflight>(`/api/books/${bookId}/quick-start/inflight`);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) return null;
-      throw e;
-    }
-  },
+  /** Что собирается для книги прямо сейчас — или `null`. */
+  getQuickStartInflight: (bookId: number) =>
+    inflightOrNull<QuickStartInflight>(`/api/books/${bookId}/quick-start/inflight`),
 
   /** Останавливает сбор перед следующим этапом; идущий вызов агента
    *  дочитывается — прервать его нечем. */
