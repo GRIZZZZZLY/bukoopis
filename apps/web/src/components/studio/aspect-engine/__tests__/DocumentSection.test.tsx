@@ -208,4 +208,54 @@ describe("DocumentSection", () => {
     renderSection({ status: "pending", variants: [] });
     expect(screen.getByText(/пуст/i)).toBeInTheDocument();
   });
+
+  it("обязательный раздел помечен пилюлей", () => {
+    renderSection({ required: true });
+    expect(screen.getByText("обязательный")).toBeInTheDocument();
+  });
+
+  it("необязательный раздел пилюли не получает", () => {
+    renderSection({ required: false });
+    expect(screen.queryByText("обязательный")).not.toBeInTheDocument();
+  });
+
+  it("«Показать этот» на утверждённом разделе делает выбранный вариант принятым", async () => {
+    // Раньше кнопка только переключала витрину (`selectedVariantId`), а
+    // `finalPayload` — то, что реально уходит в промпты — оставался старым:
+    // автор смотрит на вариант Б, модель работает с вариантом А.
+    const user = userEvent.setup();
+    const { onPatchAspect } = renderSection({
+      status: "accepted",
+      selectedVariantId: "v1",
+      finalPayload: "Текст А.",
+      variants: [
+        {
+          id: "v1",
+          label: "документ",
+          payloadKind: "markdown",
+          payload: "Текст А.",
+          status: "accepted",
+          editSource: "llm",
+          generatedAt: "2026-09-22T00:00:00.000Z",
+        },
+        {
+          id: "v2",
+          label: "другой",
+          payloadKind: "markdown",
+          payload: "Текст Б.",
+          status: "generated",
+          editSource: "llm",
+          generatedAt: "2026-09-22T00:00:00.000Z",
+        },
+      ],
+    } as Partial<StageAspect>);
+    await user.click(screen.getByRole("button", { name: "Показать этот" }));
+    await waitFor(() => expect(onPatchAspect).toHaveBeenCalled());
+    const next = onPatchAspect.mock.calls[0]?.[1] as StageAspect;
+    expect(next.finalPayload).toBe("Текст Б.");
+    expect(next.selectedVariantId).toBe("v2");
+    const accepted = next.variants.filter((v) => v.status === "accepted");
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]?.id).toBe("v2");
+  });
 });

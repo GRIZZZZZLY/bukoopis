@@ -169,6 +169,28 @@ export function DocumentSection({
   }
 
   async function handlePick(variant: AspectVariant): Promise<void> {
+    if (aspect.status === "accepted") {
+      // На утверждённом разделе «Показать этот» — не смена витрины: то, что
+      // видит автор, обязано совпасть с тем, что уходит в промпты
+      // (`finalPayload`). Раньше кнопка меняла только `selectedVariantId`, и
+      // экран показывал вариант Б, а Писатель по-прежнему получал текст А —
+      // расхождение, которое `studio-invariants` не ловит, потому что оба
+      // поля порознь валидны.
+      if (typeof variant.payload !== "string") return;
+      await onPatchAspect(aspect.id, {
+        ...aspect,
+        selectedVariantId: variant.id,
+        finalPayload: variant.payload,
+        variants: aspect.variants.map((v) =>
+          v.id === variant.id
+            ? { ...v, status: "accepted" as const }
+            : v.status === "accepted"
+              ? { ...v, status: "rejected" as const }
+              : v,
+        ),
+      });
+      return;
+    }
     await onPatchAspect(aspect.id, { ...aspect, selectedVariantId: variant.id });
   }
 
@@ -212,6 +234,9 @@ export function DocumentSection({
           {aspect.name}
         </h3>
         <div className="flex items-center gap-2">
+          {aspect.required && (
+            <span className="lw-pill" data-tone="amber">обязательный</span>
+          )}
           {aspect.source === "import" && (
             <span className="pill pill-brass">из ваших материалов</span>
           )}
