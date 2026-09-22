@@ -23,11 +23,19 @@ interface ParsedChapter {
 //   1) If file has any line matching ^#\s+ (markdown H1) or ^Глава\s+\d+ — split there.
 //   2) Else: if any line ^##\s+ — split there.
 //   3) Else: whole file is one chapter; title = filename stem or first non-empty line.
+/** Пометка, которой экспорт отмечает главу, выгруженную из черновика: при
+ *  обратном импорте её место не в тексте главы. */
+const DRAFT_MARKER = "*(черновик: не сохранён версией)*";
+const DRAFT_MARKER_RE = /^\*\(черновик: не сохранён версией\)\*\n*/;
+
 export function parseChapters(
   raw: string,
   fallbackTitle: string,
 ): ParsedChapter[] {
-  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  // Собственный экспорт начинается с YAML-шапки; в тело главы она попадать
+  // не должна (F19 ревью 2026-09-22).
+  const normalized = raw.replace(/\r\n/g, "\n").replace(/^---\n[\s\S]*?\n---\n/, "");
+  const lines = normalized.split("\n");
   const h1Re = /^#\s+(.+?)\s*$/;
   const h2Re = /^##\s+(.+?)\s*$/;
   // Числами, римскими цифрами и словами: «Глава первая» — обычная запись в
@@ -40,13 +48,16 @@ export function parseChapters(
   let useH2 = false;
   let useChapterRe = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    if (h1Re.test(lines[i]!)) {
-      useH1 = true;
-      break;
-    }
-  }
-  if (!useH1) {
+  const h1Count = lines.filter((l) => h1Re.test(l)).length;
+  const hasH2 = lines.some((l) => h2Re.test(l));
+  // Один H1 и под ним H2 — это название книги и главы: так пишет наш же
+  // экспорт. Прежде любой H1 делал H2 невидимыми, и выгруженная книга
+  // возвращалась одной главой с именем книги (F19).
+  const h1IsBookTitle = h1Count === 1 && hasH2;
+  useH1 = h1Count > 0 && !h1IsBookTitle;
+  if (h1IsBookTitle) {
+    useH2 = true;
+  } else if (!useH1) {
     for (let i = 0; i < lines.length; i++) {
       if (chapterRe.test(lines[i]!)) {
         useChapterRe = true;
@@ -54,7 +65,7 @@ export function parseChapters(
       }
     }
   }
-  if (!useH1 && !useChapterRe) {
+  if (!useH1 && !useChapterRe && !useH2) {
     for (let i = 0; i < lines.length; i++) {
       if (h2Re.test(lines[i]!)) {
         useH2 = true;
@@ -85,16 +96,23 @@ export function parseChapters(
   }
 
   if (splits.length === 0) {
-    return [{ title: fallbackTitle, body: raw.trim() }];
+    return [{ title: fallbackTitle, body: normalized.trim() }];
   }
 
   const out: ParsedChapter[] = [];
+  // Текст до первого разделителя молча пропадал. Под названием книги это её
+  // аннотация (экспорт кладёт туда премису, она же есть в шапке) —
+  // пропускаем; в остальных случаях это текст автора — отдельной главой.
+  if (!h1IsBookTitle) {
+    const preamble = lines.slice(0, splits[0]!.idx).join("\n").trim();
+    if (preamble.length > 0) out.push({ title: fallbackTitle, body: preamble });
+  }
   for (let s = 0; s < splits.length; s++) {
     const start = splits[s]!.idx + 1;
     const end = s + 1 < splits.length ? splits[s + 1]!.idx : lines.length;
     out.push({
       title: splits[s]!.title.trim(),
-      body: lines.slice(start, end).join("\n").trim(),
+      body: lines.slice(start, end).join("\n").trim().replace(DRAFT_MARKER_RE, "").trim(),
     });
   }
   return out.filter((c) => c.body.length > 0 || c.title.length > 0);
@@ -482,7 +500,7 @@ export function createImportExportRoute(
       lines.push(`## ${ch.title}`);
       lines.push("");
       if (useDraft) {
-        lines.push("*(черновик: не сохранён версией)*");
+        lines.push(DRAFT_MARKER);
         lines.push("");
       }
       lines.push(useDraft ? draft : version);

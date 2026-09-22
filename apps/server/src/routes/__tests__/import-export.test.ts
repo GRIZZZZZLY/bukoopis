@@ -153,3 +153,27 @@ describe("export endpoints", () => {
     expect(buf[1]).toBe(0x4b);
   });
 });
+
+describe("parseChapters — собственный экспорт (F19 ревью 2026-09-22)", () => {
+  it("экспорт в Markdown возвращается теми же главами", async () => {
+    const bookId = (await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Маяк", premise: "Про смотрителя." })).id;
+    for (const [title, text] of [["Первая", "Текст первой."], ["Вторая", "Текст второй."]] as const) {
+      const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title });
+      await send(t.app, `/api/chapters/${ch.id}/versions`, "POST", {
+        contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+      });
+    }
+    const md = await (await send(t.app, `/api/books/${bookId}/export.md`, "GET")).text();
+
+    const result = parseChapters(md, "fallback");
+    expect(result.map((c) => c.title)).toEqual(["Первая", "Вторая"]);
+    expect(result[0]!.body).toBe("Текст первой.");
+    expect(result[1]!.body).toBe("Текст второй.");
+  });
+
+  it("текст до первого заголовка не пропадает", () => {
+    const result = parseChapters("Эпиграф.\n\n## Первая\n\nТекст.", "Начало");
+    expect(result.map((c) => c.title)).toEqual(["Начало", "Первая"]);
+    expect(result[0]!.body).toBe("Эпиграф.");
+  });
+});
