@@ -299,13 +299,16 @@ describe("POST /api/books/:id/intake", () => {
     const state = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
     expect(state.stages.world!.aspects).toHaveLength(1);
 
-    // A retry with the same files must replay the journaled response, not
-    // re-classify and append a second copy of the aspect that already landed.
+    // A retry with the same files must not re-classify and append a second
+    // copy of the aspect that already landed — but it delivers the chapters
+    // whose write failed, instead of replaying the failure (F13 ревью
+    // 2026-09-22: the summary promises «перетащите ещё раз»).
     const again = await sendJson<IntakeResponse>(t.app, `/api/books/${id}/intake`, "POST", {
       files: [WORLD_FILE],
     });
-    expect(again).toEqual(out);
     expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
+    expect(again.chapters.map((c) => c.title)).toEqual(["Глава 01"]);
+    expect(again.failures).toEqual([]);
     const state2 = await sendJson<StudioState>(t.app, `/api/books/${id}/studio-state`, "GET");
     expect(state2.stages.world!.aspects).toHaveLength(1);
   });

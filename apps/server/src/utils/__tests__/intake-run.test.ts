@@ -401,3 +401,33 @@ describe("runIntake", () => {
     expect(out.summary.map((r) => [r.target, r.count])).toEqual([["world", 1]]);
   });
 });
+
+describe("runIntake — недоставленное (F13 ревью 2026-09-22)", () => {
+  it("главы, которые не удалось записать, доставляются повтором без нового вызова классификатора", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "chapters" as const, title: "Глава первая", body: "Смотритель поднялся на маяк." }],
+    });
+    // Отказ записи ПОСЛЕ классификации: файл уже засчитан прочитанным.
+    sqlite.exec(
+      "CREATE TEMP TRIGGER fail_chapters BEFORE INSERT ON chapters BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+    );
+    const files = [file("рукопись.md")];
+    const first = await runIntake(deps(), { files });
+    expect(first.chapters).toHaveLength(0);
+    expect(first.failures.map((f) => f.filename)).toContain("Главы");
+
+    sqlite.exec("DROP TRIGGER fail_chapters;");
+    const again = await runIntake(deps(), { files });
+
+    expect(vi.mocked(runMaterialClassifier)).toHaveBeenCalledTimes(1);
+    expect(again.chapters.map((c) => c.title)).toEqual(["Глава первая"]);
+    expect(again.failures.map((f) => f.filename)).not.toContain("Главы");
+    const count = sqlite.prepare("SELECT COUNT(*) c FROM chapters WHERE book_id = ?").get(bookId) as { c: number };
+    expect(count.c).toBe(1);
+
+    // Третий раз — чистый повтор из журнала, без второй копии главы.
+    await runIntake(deps(), { files });
+    const count2 = sqlite.prepare("SELECT COUNT(*) c FROM chapters WHERE book_id = ?").get(bookId) as { c: number };
+    expect(count2.c).toBe(1);
+  });
+});

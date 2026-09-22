@@ -101,6 +101,14 @@ interface IntakeJournalAfter extends Omit<IntakeResponseBody, "planVariants"> {
   /** Нет у событий, записанных до появления дочитывания. */
   processedFiles?: string[];
   landed?: IntakeLanded[];
+  /** Классифицировано, но не доставлено: запись глав или плана упала после
+   *  того, как файлы уже засчитаны прочитанными (F13 ревью 2026-09-22).
+   *  Повтор того же перетаскивания доставляет их, не зовя классификатор, —
+   *  иначе он проигрывал старый отказ, а автору обещано «перетащите ещё раз». */
+  undelivered?: {
+    chapters?: Array<{ title: string; body: string }>;
+    planVariants?: BookOutlineVariant[];
+  };
 }
 
 /** Прошлый прогон ровно этой папки. Ищем по ключу, а не «последнее событие
@@ -242,7 +250,9 @@ export async function runIntake(
     // У события без processedFiles (записано до дочитывания) нет способа
     // узнать, что именно оно разобрало. Верим ему как раньше — целиком:
     // иначе повтор удвоил бы всё, что уже легло.
-    if (prior.processedFiles === undefined || queue.length === 0) {
+    const retryCount =
+      (prior.undelivered?.chapters?.length ?? 0) + (prior.undelivered?.planVariants?.length ?? 0);
+    if ((prior.processedFiles === undefined || queue.length === 0) && retryCount === 0) {
       log(
         `book ${bookId}: всё уже разобрано этим ключом — отвечаем из журнала, классификатор не зовём`,
       );
@@ -347,7 +357,16 @@ export async function runIntake(
   }
 
   const now = new Date().toISOString();
-  const { landed, chapterFragments, planVariants } = landFragments(state, fragments, now);
+  const landedFresh = landFragments(state, fragments, now);
+  const { landed } = landedFresh;
+  const retryChapters = prior?.undelivered?.chapters ?? [];
+  const retryPlans = prior?.undelivered?.planVariants ?? [];
+  const chapterFragments = [
+    ...retryChapters,
+    ...landedFresh.chapterFragments.map((f) => ({ title: f.title, body: f.body })),
+  ];
+  const planVariants = [...retryPlans, ...landedFresh.planVariants];
+  const undelivered: NonNullable<IntakeJournalAfter["undelivered"]> = {};
   log(
     `book ${bookId}: фрагментов всего ${fragments.length} [${countByTarget(fragments)}] → аспектов ${landed.length}, глав ${chapterFragments.length}, планов ${planVariants.length}` +
       (conceptFragments.length > 0 ? `, concept-фрагментов ${conceptFragments.length}` : ""),
@@ -396,7 +415,7 @@ export async function runIntake(
         sqlite,
         hasVec,
         bookId,
-        chapterFragments.map((f) => ({ title: f.title, body: f.body })),
+        chapterFragments,
       );
       chapters = inserted.created;
       // Глава, отсеянная как повтор по названию, обязана быть названа:
@@ -406,6 +425,7 @@ export async function runIntake(
         failures.push({ filename: s.title, message: `Глава не добавлена: ${s.reason}` });
       }
     } catch (e) {
+      undelivered.chapters = chapterFragments;
       failures.push({
         filename: "Главы",
         message: `Не удалось сохранить главы (${chapterFragments.map((f) => f.title).join(", ")}): ${e instanceof Error ? e.message : String(e)}`,
@@ -443,6 +463,7 @@ export async function runIntake(
         `book ${bookId}: планов из материалов ${planVariants.length} (не влезло ${dropped}) → в outline_json вариантов ${next.variants.length}`,
       );
     } catch (e) {
+      undelivered.planVariants = planVariants;
       failures.push({
         filename: "План книги",
         message: `Не удалось сохранить план из материалов: ${e instanceof Error ? e.message : String(e)}`,
@@ -497,6 +518,9 @@ export async function runIntake(
   const decidedNow = new Set([
     ...queue.filter((e) => processedNowSet.has(e.key)).map((e) => e.file.filename),
     ...failures.map((f) => f.filename),
+    // Повторная доставка сама отвечает за прежний отказ записи.
+    ...(retryChapters.length > 0 ? ["Главы"] : []),
+    ...(retryPlans.length > 0 ? ["План книги"] : []),
   ]);
   const landedAll = [...(prior?.landed ?? []), ...landedNow];
   const response: IntakeResponseBody = {
@@ -518,11 +542,13 @@ export async function runIntake(
   // не попробовав заново, — а сводка при этом обещает автору «Их можно
   // перетащить ещё раз». Ничего не добившийся прогон повторяем, и запись
   // прошлого прогона при этом остаётся нетронутой.
-  if (landedNow.length > 0 || processedNow.length > 0) {
+  const retried = retryChapters.length + retryPlans.length > 0;
+  if (landedNow.length > 0 || processedNow.length > 0 || retried) {
     const after: IntakeJournalAfter = {
       ...response,
       processedFiles: [...priorProcessed, ...processedNow],
       landed: landedAll,
+      ...(undelivered.chapters || undelivered.planVariants ? { undelivered } : {}),
     };
     repo.events.log({
       bookId,
