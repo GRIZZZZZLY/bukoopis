@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   studioStateSchema,
+  stageStateSchema,
   stageAspectSchema,
   aspectVariantSchema,
   entitySetPayloadSchema,
@@ -12,6 +13,7 @@ import {
   emptyStudioState,
   deriveStageStatus,
   withDerivedStageStatuses,
+  isDocumentStage,
   type StageAspect,
   type StageState,
 } from "./studio-state.js";
@@ -197,12 +199,51 @@ describe("deriveStageStatus", () => {
     expect(deriveStageStatus(s)).toBe("complete");
   });
 
-  it("reads as skipped when the author skipped every aspect", () => {
+  it("этап, где автор пропустил все разделы поштучно, остаётся черновиком", () => {
+    // Фаза 3: «ничего не принял» больше не значит «готово». Пропуск этапа —
+    // это отдельная кнопка «Не нужен», и только она ставит skipped.
     const s = stage({
       playbookGenerated: true,
       aspects: [aspect({ status: "skipped" }), aspect({ order: 1, status: "skipped" })],
     });
+    expect(deriveStageStatus(s)).toBe("in_progress");
+  });
+
+  it("явный пропуск этапа переживает вывод статуса", () => {
+    const s = stage({
+      status: "skipped",
+      aspects: [aspect({ status: "skipped" })],
+    });
     expect(deriveStageStatus(s)).toBe("skipped");
+  });
+
+  it("заметки автора читаются и переживают разбор состояния", () => {
+    const parsed = stageStateSchema.parse({
+      status: "in_progress",
+      playbookGenerated: false,
+      aspects: [],
+      authorNotes: "Мир холодный, без магии.",
+    });
+    expect(parsed.authorNotes).toBe("Мир холодный, без магии.");
+  });
+
+  it("состояние без заметок разбирается по-прежнему", () => {
+    const parsed = stageStateSchema.parse({
+      status: "not_started",
+      playbookGenerated: false,
+      aspects: [],
+    });
+    expect(parsed.authorNotes).toBeUndefined();
+  });
+
+  it("документные этапы — только мир и лор", () => {
+    expect(isDocumentStage("world")).toBe(true);
+    expect(isDocumentStage("lore")).toBe(true);
+    // Предметы остались составом кандидатов: их материализация пишет в
+    // таблицу `items`, которую читает агент лора.
+    expect(isDocumentStage("items")).toBe(false);
+    expect(isDocumentStage("characters")).toBe(false);
+    expect(isDocumentStage("plot")).toBe(false);
   });
 
   it("is in_progress while an optional aspect still awaits a decision", () => {

@@ -67,7 +67,11 @@ export function StageSkipControl({ stageId, stage, revision, onPatch }: Props) {
               : "Можно вернуться к этапу позже"
           }
         >
-          {busy ? "…" : "Пропустить этап"}
+          {busy
+            ? "…"
+            : isOptionalStage(stageId)
+              ? "Этап не нужен"
+              : "Пропустить этап"}
         </button>
       )}
       {error && (

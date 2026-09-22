@@ -17,8 +17,10 @@ describe("StageSkipControl", () => {
       .fn()
       .mockResolvedValue({ stage: stage({ status: "skipped" }), revision: 4 });
     render(
+      // Обязательный этап: у него кнопка называется «Пропустить этап», а не
+      // «Этап не нужен» — эта разница проверяется отдельными тестами ниже.
       <StageSkipControl
-        stageId="world"
+        stageId="characters"
         stage={stage({ playbookGenerated: true })}
         revision={3}
         onPatch={onPatch}
@@ -59,7 +61,7 @@ describe("StageSkipControl", () => {
     const onPatch = vi.fn().mockRejectedValue(new Error("revision_conflict"));
     render(
       <StageSkipControl
-        stageId="lore"
+        stageId="characters"
         stage={stage()}
         revision={1}
         onPatch={onPatch}
@@ -71,6 +73,34 @@ describe("StageSkipControl", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/revision_conflict/),
     );
+  });
+
+  it("у необязательного этапа кнопка называет решение, а не действие", () => {
+    render(
+      <StageSkipControl
+        stageId="lore"
+        stage={stage()}
+        revision={1}
+        onPatch={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Этап не нужен" }),
+    ).toBeInTheDocument();
+  });
+
+  it("у обязательного этапа остаётся «Пропустить этап»", () => {
+    render(
+      <StageSkipControl
+        stageId="plot"
+        stage={stage()}
+        revision={1}
+        onPatch={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Пропустить этап" }),
+    ).toBeInTheDocument();
   });
 });
 

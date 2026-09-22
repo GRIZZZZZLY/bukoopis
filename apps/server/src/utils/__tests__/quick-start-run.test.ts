@@ -18,11 +18,16 @@ vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   runBookPlanning: vi.fn(),
 }));
+vi.mock("@book-forge/agents/aspects/document", async (orig) => ({
+  ...(await orig<typeof import("@book-forge/agents/aspects/document")>()),
+  runAspectDocument: vi.fn(),
+}));
 
 import Database, { type Database as DatabaseType } from "better-sqlite3";
 import { runAspectPlaybook } from "@book-forge/agents/aspects/playbook";
 import { runAspectVariants } from "@book-forge/agents/aspects/variants";
 import { runAspectEntityVariants } from "@book-forge/agents/aspects/entity-variants";
+import { runAspectDocument } from "@book-forge/agents/aspects/document";
 import { runBookPlanning } from "@book-forge/agents";
 import { makeTestApp, sendJson, type TestApp } from "../../routes/__tests__/_helpers.js";
 import { createQuickStartCancelRegistry } from "../quick-start-cancel.js";
@@ -61,6 +66,7 @@ beforeEach(async () => {
   vi.mocked(runAspectPlaybook).mockReset();
   vi.mocked(runAspectVariants).mockReset();
   vi.mocked(runAspectEntityVariants).mockReset();
+  vi.mocked(runAspectDocument).mockReset();
   vi.mocked(runBookPlanning).mockReset();
 
   vi.mocked(runAspectPlaybook).mockResolvedValue({
@@ -91,6 +97,18 @@ beforeEach(async () => {
             },
           },
         ],
+      },
+    ],
+  });
+  // Мир и лор — документные этапы (фаза 3): без дефолта здесь оба падали бы
+  // на `result.sections` из `undefined`, и тесты, не знающие о документах
+  // (падение одного этапа, повтор сбора и т.п.), ловили бы лишние "failed".
+  vi.mocked(runAspectDocument).mockResolvedValue({
+    sections: [
+      {
+        name: "раздел",
+        description: "о чём раздел",
+        markdown: "Текст раздела документа, достаточно длинный для схемы.",
       },
     ],
   });
@@ -231,13 +249,235 @@ describe("runQuickStart", () => {
     expect(vi.mocked(runAspectPlaybook).mock.calls.length).toBe(callsAfterFirst);
   });
 
+  it("явно пропущенный этап («Не нужен» / «Пропустить этап») быстрый сбор не трогает", async () => {
+    // Кнопка пишет status: "skipped" на СТЕ этапа целиком, а не на его
+    // аспектах — старая проверка «уже есть черновики» этого не видела и
+    // тратила платный вызов в ту же секунду, как автор жал «Собрать всё».
+    const d = deps();
+    const state = d.repo.loadStudioState(bookId);
+    d.repo.patchStudioState(bookId, {
+      expectedRevision: state.revision,
+      next: {
+        ...state,
+        stages: {
+          ...state.stages,
+          world: { status: "skipped", playbookGenerated: false, aspects: [] },
+        },
+      },
+    });
+
+    const result = await runQuickStart(d, {});
+
+    const worldEvents = result.stages.filter((s) => s.stageId === "world");
+    expect(worldEvents.map((e) => e.status)).toEqual(["started", "skipped"]);
+    expect(worldEvents.find((e) => e.status === "skipped")?.message).toBe(
+      "этап помечен как не нужный",
+    );
+    expect(
+      vi.mocked(runAspectDocument).mock.calls.some(
+        (c) => (c[0] as { stageId: string }).stageId === "world",
+      ),
+    ).toBe(false);
+  });
+
   it("список разделов сохраняется, даже если варианты не собрались", async () => {
-    vi.mocked(runAspectVariants).mockRejectedValue(new Error("вариант не собрался"));
+    // До фазы 3 этот сценарий проверялся на "world" через `runAspectVariants`.
+    // Мир теперь документный этап (см. describe ниже) и вариантов не собирает
+    // вовсе — сценарий "список сохранён, вариант не собрался" по-прежнему жив
+    // на "characters", который варианты собирает через `runAspectEntityVariants`.
+    vi.mocked(runAspectEntityVariants).mockRejectedValue(new Error("вариант не собрался"));
     const result = await runQuickStart(deps(), {});
     expect(result.stages.some((s) => s.status === "failed")).toBe(true);
     // Раздел лежит в pending: пятиминутное ожидание не должно кончаться пустотой.
-    const world = studioState().stages?.["world"];
-    expect(world?.aspects ?? []).toHaveLength(1);
-    expect(world?.aspects?.[0]?.status).toBe("pending");
+    const characters = studioState().stages?.["characters"];
+    expect(characters?.aspects ?? []).toHaveLength(1);
+    expect(characters?.aspects?.[0]?.status).toBe("pending");
+  });
+});
+
+describe("runQuickStart: документные этапы (мир и лор)", () => {
+  it("мир собирается одним вызовом, а не плейбуком и вариантами", async () => {
+    vi.mocked(runAspectDocument).mockResolvedValue({
+      sections: [
+        { name: "география", description: "рельеф", markdown: "Текст географии." },
+        { name: "власть", description: "кто правит", markdown: "Текст власти." },
+      ],
+    });
+    const d = deps();
+    await runQuickStart(d, { onStage: () => {} });
+
+    expect(
+      vi.mocked(runAspectDocument).mock.calls.some(
+        (c) => (c[0] as { stageId: string }).stageId === "world",
+      ),
+    ).toBe(true);
+    expect(
+      vi.mocked(runAspectPlaybook).mock.calls.some(
+        (c) => (c[0] as { stageId: string }).stageId === "world",
+      ),
+    ).toBe(false);
+
+    const world = d.repo.loadStudioState(bookId).stages.world;
+    expect(world?.aspects).toHaveLength(2);
+    // Правило «без автора ничего не утверждается» держится и здесь.
+    expect(world?.aspects.every((a) => a.status === "reviewing")).toBe(true);
+  });
+
+  it("этап с уже заполненными разделами быстрый сбор не трогает и вызова не тратит", async () => {
+    const d = deps();
+    const state = d.repo.loadStudioState(bookId);
+    d.repo.patchStudioState(bookId, {
+      expectedRevision: state.revision,
+      next: {
+        ...state,
+        stages: {
+          ...state.stages,
+          world: {
+            status: "in_progress",
+            playbookGenerated: true,
+            aspects: [
+              {
+                id: "a1",
+                name: "власть",
+                status: "accepted",
+                order: 0,
+                required: false,
+                source: "import",
+                payloadKind: "markdown",
+                variants: [
+                  {
+                    id: "v1",
+                    label: "из материалов",
+                    payloadKind: "markdown",
+                    payload: "Правит совет.",
+                    status: "accepted",
+                    editSource: "manual",
+                    generatedAt: "2026-09-22T00:00:00.000Z",
+                  },
+                ],
+                selectedVariantId: "v1",
+                finalPayload: "Правит совет.",
+              },
+            ],
+          },
+        },
+      },
+    });
+    vi.mocked(runAspectDocument).mockClear();
+
+    const result = await runQuickStart(d, { onStage: () => {} });
+
+    const world = d.repo.loadStudioState(bookId).stages.world;
+    expect(world?.aspects).toHaveLength(1);
+    expect(world?.aspects[0]?.finalPayload).toBe("Правит совет.");
+    // Пустых разделов нет, писать нечего — платить за вызов не за что.
+    const worldCalls = vi
+      .mocked(runAspectDocument)
+      .mock.calls.filter((c) => (c[0] as { stageId: string }).stageId === "world");
+    expect(worldCalls).toHaveLength(0);
+    // Это внешний gate «этап занят», а не решение внутри generateDocumentStage:
+    // generateStage для world вовсе не вызывается.
+    expect(
+      result.stages.some((s) => s.stageId === "world" && s.status === "skipped"),
+    ).toBe(true);
+  });
+
+  it("раздел с мёртвым выбором (superseded-вариант) считается пустым, а не заполненным — и внешним gate тоже", async () => {
+    // Прежний экран при уточнении помечал вариант superseded, не снимая
+    // selectedVariantId. Старые разделы мира/лора могут хранить именно такое
+    // состояние: выбор указывает на вариант, которого больше нет в счёт.
+    // Наивная проверка "есть ли непустой вариант любого статуса" (её несёт и
+    // внешний gate «этап занят», и внутренний merge) сочла бы раздел
+    // заполненным и не дописала бы его никогда — ни то, ни другое место не
+    // должно на это купиться.
+    const d = deps();
+    const state = d.repo.loadStudioState(bookId);
+    d.repo.patchStudioState(bookId, {
+      expectedRevision: state.revision,
+      next: {
+        ...state,
+        stages: {
+          ...state.stages,
+          world: {
+            status: "in_progress",
+            playbookGenerated: true,
+            aspects: [
+              {
+                id: "a1",
+                name: "география",
+                status: "reviewing",
+                order: 0,
+                required: false,
+                source: "llm",
+                payloadKind: "markdown",
+                variants: [
+                  {
+                    id: "v1",
+                    label: "документ",
+                    payloadKind: "markdown",
+                    payload: "Старый текст, вытесненный уточнением.",
+                    status: "superseded",
+                    editSource: "llm",
+                    generatedAt: "2026-09-01T00:00:00.000Z",
+                  },
+                ],
+                selectedVariantId: "v1",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    vi.mocked(runAspectDocument).mockResolvedValue({
+      sections: [
+        {
+          name: "география",
+          description: "рельеф",
+          markdown: "Новый текст географии вместо вытесненного старого.",
+        },
+      ],
+    });
+
+    await runQuickStart(d, { onStage: () => {} });
+
+    const call = vi
+      .mocked(runAspectDocument)
+      .mock.calls.find((c) => (c[0] as { stageId: string }).stageId === "world");
+    const input = call?.[0] as
+      | { existingSections: Array<{ name: string }>; emptySectionNames: string[] }
+      | undefined;
+    expect(input?.emptySectionNames).toContain("география");
+    expect(input?.existingSections.some((s) => s.name === "география")).toBe(false);
+
+    const world = d.repo.loadStudioState(bookId).stages.world;
+    const geo = world?.aspects.find((a) => a.id === "a1");
+    expect(geo?.variants).toHaveLength(2);
+    expect(geo?.status).toBe("reviewing");
+    // Тем же вызовом заполняется и description, если у раздела его не было —
+    // тот же backfill, что делает web-версия слияния.
+    expect(geo?.description).toBe("рельеф");
+  });
+
+  it("модель, вернувшая один раздел дважды, не удваивает его в состоянии", async () => {
+    vi.mocked(runAspectDocument).mockResolvedValue({
+      sections: [
+        {
+          name: "география",
+          description: "рельеф",
+          markdown: "Первый текст раздела географии.",
+        },
+        {
+          name: "география",
+          description: "рельеф (снова)",
+          markdown: "Второй текст раздела географии.",
+        },
+      ],
+    });
+    const d = deps();
+    await runQuickStart(d, { onStage: () => {} });
+
+    const world = d.repo.loadStudioState(bookId).stages.world;
+    expect(world?.aspects.filter((a) => a.name === "география")).toHaveLength(1);
   });
 });

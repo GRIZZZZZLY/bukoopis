@@ -14,6 +14,7 @@ import type {
   CharacterVoiceSample,
   ChatMessage,
   ChatThread,
+  ContextRef,
   CreateBookInput,
   CreateChapterInput,
   CreateCharacterInput,
@@ -744,6 +745,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ existingAspectNames }),
     }),
+  generateStageDocument: (
+    bookId: number,
+    stageId: string,
+    body: {
+      existingSections?: Array<{ name: string; text: string }>;
+      emptySectionNames?: string[];
+      authorNotes?: string;
+    },
+  ) =>
+    req<{
+      sections: Array<{ name: string; description: string; markdown: string }>;
+      contextRef: ContextRef;
+      modelId: string;
+    }>(`/api/books/${bookId}/stages/${stageId}/document`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   generateAspectVariants: (
     bookId: number,
     stageId: string,
@@ -1277,6 +1295,33 @@ export function streamStagePlaybook(
   return postAspectStream(
     `/api/books/${bookId}/stages/${stageId}/playbook-stream`,
     { existingAspectNames },
+    handlers,
+  );
+}
+
+export interface StageDocumentSection {
+  name: string;
+  description: string;
+  markdown: string;
+}
+
+export function streamStageDocument(
+  bookId: number,
+  stageId: string,
+  body: {
+    existingSections: Array<{ name: string; text: string }>;
+    emptySectionNames: string[];
+    authorNotes?: string;
+  },
+  handlers: AspectStreamHandlers<{
+    sections: StageDocumentSection[];
+    contextRef: ContextRef;
+    modelId: string;
+  }>,
+): Promise<void> {
+  return postAspectStream(
+    `/api/books/${bookId}/stages/${stageId}/document-stream`,
+    body,
     handlers,
   );
 }

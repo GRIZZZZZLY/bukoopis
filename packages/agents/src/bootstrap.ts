@@ -22,6 +22,7 @@ import { registerAspectPlaybookContract } from "./aspects/playbook.js";
 import { registerAspectVariantsContract } from "./aspects/variants.js";
 import { registerAspectRefineContract } from "./aspects/refine.js";
 import { registerAspectEntityVariantsContract } from "./aspects/entity-variants.js";
+import { registerAspectDocumentContract } from "./aspects/document.js";
 import { registerMaterialClassifierContract } from "./intake/classifier.js";
 
 /**
@@ -61,5 +62,6 @@ export function registerAllAgentContracts(): void {
   registerAspectVariantsContract();
   registerAspectRefineContract();
   registerAspectEntityVariantsContract();
+  registerAspectDocumentContract();
   registerMaterialClassifierContract();
 }
