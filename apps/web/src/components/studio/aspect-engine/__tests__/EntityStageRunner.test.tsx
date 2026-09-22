@@ -46,6 +46,7 @@ describe("EntityStageRunner", () => {
         stageId="characters"
         generator={generator as never}
         onPatch={vi.fn()}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -84,6 +85,7 @@ describe("EntityStageRunner", () => {
         stageId="items"
         generator={generator as never}
         onPatch={onPatch}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -125,6 +127,7 @@ describe("EntityStageRunner", () => {
         stageId="items"
         generator={generator as never}
         onPatch={vi.fn()}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -152,6 +155,7 @@ describe("EntityStageRunner", () => {
         stageId="items"
         generator={generator as never}
         onPatch={onPatch}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -212,6 +216,7 @@ describe("EntityStageRunner", () => {
         stageId="characters"
         generator={generator as never}
         onPatch={onPatch}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -269,6 +274,7 @@ describe("EntityStageRunner", () => {
         stageId="characters"
         generator={generator as never}
         onPatch={onPatch}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -310,6 +316,7 @@ describe("EntityStageRunner", () => {
           stageId="characters"
           generator={generator as never}
           onPatch={vi.fn()}
+          onReloadStage={vi.fn()}
           onMaterialize={materialize}
         />,
       ),
@@ -333,10 +340,68 @@ describe("EntityStageRunner", () => {
           stageId="items"
           generator={generator as never}
           onPatch={vi.fn()}
+          onReloadStage={vi.fn()}
           onMaterialize={materialize}
         />,
       ),
     ).not.toThrow();
     expect(screen.getByText(/не удалось показать/i)).toBeInTheDocument();
+  });
+});
+
+describe("EntityStageRunner — пакет при конфликте записи (F18 ревью 2026-09-22)", () => {
+  const variant = { id: "v1", payload: { candidates: [] }, createdAt: "t", model: "m" };
+  const two = () =>
+    makeStage([makeAspect({ id: "asp1", name: "Герои" }), makeAspect({ id: "asp2", name: "Злодеи", order: 1 })]);
+
+  it("на 409 кладёт пачку на свежий этап и не трогает раздел, изменённый в другом месте", async () => {
+    generator.generate.mockResolvedValue([variant]);
+    const onPatch = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("conflict"), { status: 409 }))
+      .mockResolvedValue({ stage: two(), revision: 6 });
+    const fresh = two();
+    fresh.aspects[1] = { ...fresh.aspects[1]!, name: "Злодеи (правка из другой вкладки)" };
+    const onReloadStage = vi.fn().mockResolvedValue({ stage: fresh, revision: 5 });
+
+    render(
+      <EntityStageRunner
+        stage={two()}
+        revision={1}
+        stageId="characters"
+        generator={generator as never}
+        onPatch={onPatch}
+        onReloadStage={onReloadStage}
+        onMaterialize={materialize}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Сгенерировать все оставшиеся/ }));
+
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(2));
+    const [rev, saved] = onPatch.mock.calls[1]! as [number, StageState];
+    expect(rev).toBe(5);
+    expect(saved.aspects[0]!.status).toBe("reviewing");
+    expect(saved.aspects[0]!.variants).toHaveLength(1);
+    expect(saved.aspects[1]!.name).toBe("Злодеи (правка из другой вкладки)");
+    expect(saved.aspects[1]!.variants).toHaveLength(0);
+    expect(await screen.findByText(/Чужую правку не перезаписали/)).toBeInTheDocument();
+  });
+
+  it("ошибка записи пачки видна, а не пропадает", async () => {
+    generator.generate.mockResolvedValue([variant]);
+    const onPatch = vi.fn().mockRejectedValue(new Error("сервер недоступен"));
+    render(
+      <EntityStageRunner
+        stage={two()}
+        revision={1}
+        stageId="characters"
+        generator={generator as never}
+        onPatch={onPatch}
+        onReloadStage={vi.fn()}
+        onMaterialize={materialize}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Сгенерировать все оставшиеся/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("сервер недоступен");
   });
 });

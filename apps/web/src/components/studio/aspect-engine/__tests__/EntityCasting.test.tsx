@@ -73,6 +73,7 @@ function renderRunner(onPatch = vi.fn().mockResolvedValue({ revision: 2 })) {
       stageId="characters"
       generator={generator as never}
       onPatch={onPatch}
+      onReloadStage={vi.fn()}
       onMaterialize={materialize}
     />,
   );
@@ -147,6 +148,7 @@ describe("mixing candidates across variants", () => {
         stageId="characters"
         generator={generator as never}
         onPatch={vi.fn()}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );
@@ -217,6 +219,7 @@ describe("materializedEntityId in candidate", () => {
         stageId="characters"
         generator={generator as never}
         onPatch={onPatch}
+        onReloadStage={vi.fn()}
         onMaterialize={materialize}
       />,
     );

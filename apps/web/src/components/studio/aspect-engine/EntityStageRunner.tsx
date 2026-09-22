@@ -57,6 +57,10 @@ interface MaterializeResult {
   }>;
 }
 
+const BATCH_CONFLICT_MESSAGE =
+  "Пока шла генерация, этот раздел изменили в другом месте. Чужую правку не" +
+  " перезаписали — сгенерируйте раздел заново, если он всё ещё нужен.";
+
 interface Props {
   stage: StageState;
   revision: number;
@@ -66,6 +70,8 @@ interface Props {
     expectedRevision: number,
     next: StageState,
   ) => Promise<{ stage: StageState; revision: number }>;
+  /** Свежее состояние этапа с сервера — для повтора записи после 409. */
+  onReloadStage: () => Promise<{ stage: StageState; revision: number }>;
   onMaterialize: (
     aspectId: string,
     body: {
@@ -152,6 +158,7 @@ export function EntityStageRunner({
   stageId,
   generator,
   onPatch,
+  onReloadStage,
   onMaterialize,
 }: Props) {
   const adapter = createEntityAdapter(stageId);
@@ -285,27 +292,44 @@ export function EntityStageRunner({
     );
 
     // Один PATCH на всю пачку: по одному они спорили бы за ревизию этапа.
+    // На 409 (этап правили, пока шла генерация) пачка строится заново от
+    // свежего этапа, а не выбрасывается: варианты оплачены (F18 ревью
+    // 2026-09-22). Раздел, который за это время тронули, не перезаписываем —
+    // это чужая правка; ему достаётся сообщение о конфликте.
+    const original = new Map(queue.map((a) => [a.id, JSON.stringify(a)]));
+    const conflicted = new Set<string>();
+    const build = (s: StageState): StageState => ({
+      ...s,
+      status: s.status === "not_started" ? "in_progress" : s.status,
+      aspects: s.aspects.map((a) => {
+        const variants = results.get(a.id);
+        if (!variants) return a;
+        if (JSON.stringify(a) !== original.get(a.id)) {
+          conflicted.add(a.id);
+          return a;
+        }
+        return {
+          ...a,
+          status: "reviewing" as const,
+          payloadKind: "entity_set" as const,
+          variants,
+          ...(a.selectedVariantId !== undefined
+            ? { selectedVariantId: undefined }
+            : {}),
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    });
     if (results.size > 0) {
-      const next: StageState = {
-        ...stage,
-        status: stage.status === "not_started" ? "in_progress" : stage.status,
-        aspects: stage.aspects.map((a) => {
-          const variants = results.get(a.id);
-          if (!variants) return a;
-          return {
-            ...a,
-            status: "reviewing" as const,
-            payloadKind: "entity_set" as const,
-            variants,
-            ...(a.selectedVariantId !== undefined
-              ? { selectedVariantId: undefined }
-              : {}),
-          };
-        }),
-        updatedAt: new Date().toISOString(),
-      };
       try {
-        await onPatch(revision, next);
+        try {
+          await onPatch(revision, build(stage));
+        } catch (e) {
+          if ((e as { status?: number } | null)?.status !== 409) throw e;
+          const fresh = await onReloadStage();
+          await onPatch(fresh.revision, build(fresh.stage));
+        }
+        for (const id of conflicted) failures[id] = BATCH_CONFLICT_MESSAGE;
       } catch (e) {
         failures.__patch = e instanceof Error ? e.message : String(e);
       }
@@ -618,6 +642,11 @@ export function EntityStageRunner({
             Категории пишутся сразу и не видят друг друга — только то, что вы уже
             приняли. По одной выйдет связнее, зато дольше.
           </span>
+        </li>
+      )}
+      {errorByAspect.__patch && (
+        <li role="alert" className="text-sm text-[var(--color-ink-red-fg)]">
+          Сгенерированное не удалось сохранить: {errorByAspect.__patch}
         </li>
       )}
       {stage.aspects.map((aspect) => {

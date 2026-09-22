@@ -116,6 +116,14 @@ export function EntityStagePage() {
     return { stage: savedStage, revision: saved.revision };
   }
 
+  async function handleReloadStage(): Promise<{ stage: StageState; revision: number }> {
+    const fresh = await api.getStudioState(bookId);
+    setStudio(fresh);
+    const freshStage = fresh.stages[stageId as StageId];
+    if (!freshStage) throw new Error("stage missing in saved state");
+    return { stage: freshStage, revision: fresh.revision };
+  }
+
   async function handleMaterialize(
     aspectId: string,
     body: {
@@ -226,6 +234,7 @@ export function EntityStagePage() {
               stageId={stageId}
               generator={entityGenerator}
               onPatch={handlePatch}
+              onReloadStage={handleReloadStage}
               onMaterialize={handleMaterialize}
             />
           )}
