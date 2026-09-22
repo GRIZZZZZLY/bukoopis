@@ -181,6 +181,20 @@ export function normalizeCharacterProfile(raw: unknown): CharacterProfileV2 {
       extra["extra"] = priorExtra;
     }
   }
+  // Интейк кладёт кандидата героя как `{ name, summary }`, а поля `summary` у
+  // V2 нет: описание уезжало в `extra`, которого не печатает ни один промпт, и
+  // Писатель получал героя без единого слова о нём (живой прогон 2026-09-22,
+  // родня F09). Пустое описание берётся из `summary`; непустое не трогаем.
+  const summary = extra["summary"];
+  const description = known["description"];
+  if (
+    typeof summary === "string" &&
+    summary.trim().length > 0 &&
+    (description === undefined || (typeof description === "string" && description.trim() === ""))
+  ) {
+    known["description"] = summary;
+    delete extra["summary"];
+  }
 
   const parsed = characterProfileV2Schema.safeParse({
     ...known,

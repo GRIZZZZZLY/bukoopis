@@ -147,3 +147,22 @@ describe("parseCharacterProfileForWrite", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("normalizeCharacterProfile — описание из интейка (живой прогон 2026-09-22)", () => {
+  it("summary кандидата становится описанием, а не уезжает в extra", () => {
+    const p = normalizeCharacterProfile({ name: "Майя Грен", summary: "Лоцман, упряма." });
+    expect(p.description).toBe("Лоцман, упряма.");
+    expect(p.extra).not.toHaveProperty("summary");
+  });
+
+  it("написанное описание summary не перетирает", () => {
+    const p = normalizeCharacterProfile({ description: "Своё.", summary: "Чужое." });
+    expect(p.description).toBe("Своё.");
+    expect(p.extra).toHaveProperty("summary", "Чужое.");
+  });
+
+  it("уже записанная строка с summary в extra читается с описанием", () => {
+    const p = normalizeCharacterProfile({ description: "", extra: { summary: "Из прошлого разбора." } });
+    expect(p.description).toBe("Из прошлого разбора.");
+  });
+});
