@@ -53,6 +53,10 @@ export function EntityStagePage() {
   const [error, setError] = useState<string | null>(null);
   /** Имена утверждённого состава: в отчёте проверки лежат номера героев. */
   const [castNames, setCastNames] = useState<ReadonlyMap<number, string>>(new Map());
+  /** Растёт после каждой материализации: состав в каноне изменился, и снимок
+   *  имён надо перечитать — иначе проверка различий видела ноль героев до
+   *  перезагрузки страницы (F22 ревью 2026-09-22). */
+  const [castEpoch, setCastEpoch] = useState(0);
 
   useEffect(() => {
     if (stageId !== "characters" || !Number.isFinite(bookId)) return;
@@ -68,7 +72,7 @@ export function EntityStagePage() {
     return () => {
       alive = false;
     };
-  }, [bookId, stageId]);
+  }, [bookId, stageId, castEpoch]);
 
   useEffect(() => {
     if (!Number.isFinite(bookId)) return;
@@ -124,7 +128,9 @@ export function EntityStagePage() {
       }>;
     },
   ) {
-    return api.materializeEntitySet(bookId, aspectId, body);
+    const result = await api.materializeEntitySet(bookId, aspectId, body);
+    setCastEpoch((n) => n + 1);
+    return result;
   }
 
   if (error) {
