@@ -80,6 +80,8 @@ export interface ChapterMemoryInfo {
   events: AppliedEventCounts | null;
   /** Строк ответа модели, которые схема не приняла. */
   malformed: number;
+  /** События героев не извлекались: вызов упал. Нет у старых ответов. */
+  eventsError?: string | null;
   /** Сколько глав книги ещё разобрано прежней версией конвейера. */
   outdatedPipelineChapters: number;
 }

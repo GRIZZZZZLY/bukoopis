@@ -277,6 +277,7 @@ describe("что видно о памяти главы", () => {
       skipped: null,
       events: null,
       malformed: 0,
+      eventsError: null,
     });
     expect(outdatedPipelineChapters(sqlite, b)).toBe(0);
   });

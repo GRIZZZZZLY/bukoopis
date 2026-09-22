@@ -81,6 +81,12 @@ function freshLabel(memory: ChapterMemoryInfo): string {
   if (memory.skipped === "short") {
     return "Глава короче 80 слов — в память не попала";
   }
+  // Факты и заметки на месте, а событий героев нет потому, что вызов упал, —
+  // не потому, что их в главе нет (F07 ревью 2026-09-22). Лечится
+  // «Перестроить память с этой главы».
+  if (memory.eventsError) {
+    return "Память собрана без событий героев: их разбор не удался — перестройте память с этой главы";
+  }
   const dropped =
     (memory.events
       ? memory.events.rejectedEvidence + memory.events.unresolved

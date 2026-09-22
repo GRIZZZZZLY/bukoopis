@@ -427,6 +427,10 @@ export interface FactsPayload {
    *  хуже громкой. */
   malformedFacts: number;
   malformedEvents: number;
+  /** Вызов событий упал: события НЕ извлекались, а не «их нет» (F07 ревью
+   *  2026-09-22). Без этого поля отказ выглядел успешным пустым разбором, и
+   *  экран главы рисовал «память актуальна». */
+  eventsError?: string;
 }
 
 /** Схема отдаёт непринятый элемент как `null` (см. `canonFactExtractionSchema`).
@@ -557,6 +561,7 @@ export async function extractFactsPayload(
   // Падение этого вызова факты не уносит: они уже получены и это всё, что у
   // главы есть.
   let rawEvents: Array<ExtractedCharacterEvent | null> = [];
+  let eventsError: string | undefined;
   try {
     const eventResult = await extractCharacterEvents({
       bookTitle: bk.title,
@@ -582,10 +587,8 @@ export async function extractFactsPayload(
     });
     rawEvents = eventResult.characterEvents ?? [];
   } catch (e) {
-    console.warn(
-      `[canon-facts] v${versionId}: события персонажей не извлеклись —`,
-      e instanceof Error ? e.message : e,
-    );
+    eventsError = e instanceof Error ? e.message : String(e);
+    console.warn(`[canon-facts] v${versionId}: события персонажей не извлеклись —`, eventsError);
   }
 
   const facts = dropMalformed(result.facts);
@@ -601,6 +604,7 @@ export async function extractFactsPayload(
     characterEvents: events.kept,
     malformedFacts: facts.dropped,
     malformedEvents: events.dropped,
+    ...(eventsError !== undefined ? { eventsError } : {}),
   };
 }
 

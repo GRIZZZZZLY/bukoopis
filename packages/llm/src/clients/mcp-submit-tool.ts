@@ -192,11 +192,15 @@ function repairUnescapedQuotes(text: string): string {
  * чинится (`repairUnescapedQuotes`), и только если и это не помогло —
  * становится ПУСТЫМ массивом. Объект не подменяется: у него нет безопасного
  * пустого значения, и молча отдать `{}` значило бы выдумать содержимое.
- * Потеря видна вызывающему по числу записей; это тот же приём, что у
- * негодной строки внутри массива фактов.
+ *
+ * Подмена оправдана только соседними полями — ради них её и завели: факты
+ * и события шли одним ответом. Поля, которые так пропали, возвращаются в
+ * `lost`: вызывающий обязан либо сказать о потере, либо отказать, но не
+ * выдавать пустоту за «ничего не нашлось» (F07 ревью 2026-09-22).
  */
-function parseJsonStringFields(args: unknown): unknown {
-  if (args === null || typeof args !== "object" || Array.isArray(args)) return args;
+function parseJsonStringFields(args: unknown): { args: unknown; lost: string[] } {
+  const lost: string[] = [];
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return { args, lost };
   const out: Record<string, unknown> = { ...(args as Record<string, unknown>) };
   for (const [key, value] of Object.entries(out)) {
     if (typeof value !== "string") continue;
@@ -215,10 +219,13 @@ function parseJsonStringFields(args: unknown): unknown {
       } catch {
         // Ремонт не помог — падаем в ветку ниже.
       }
-      if (trimmed.startsWith("[")) out[key] = [];
+      if (trimmed.startsWith("[")) {
+        out[key] = [];
+        lost.push(key);
+      }
     }
   }
-  return out;
+  return { args: out, lost };
 }
 
 export async function callViaSdkMcpSubmitTool<I, O>(
@@ -248,6 +255,8 @@ export async function callViaSdkMcpSubmitTool<I, O>(
   emit({ kind: "attempt", attempt });
   let capturedPayload: O | undefined;
   let capturedValidationError: ZodError | undefined;
+  /** Все поля ответа пришли неразбираемыми строками (F07). */
+  let capturedLostFields: string[] | undefined;
   let toolCallCount = 0;
 
   // SDK 0.2.x `tool()` accepts the Zod schema directly and validates args
@@ -261,7 +270,31 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     async (args: unknown) => {
       toolCallCount++;
       emit({ kind: "tool_call" });
-      const parsed = outputSchema.safeParse(parseJsonStringFields(args));
+      const unpacked = parseJsonStringFields(args);
+      const fieldCount =
+        args !== null && typeof args === "object" ? Object.keys(args).length : 0;
+      // Пропало всё, что было в ответе: соседей, ради которых подменяют, нет,
+      // и пустой массив выдал бы сбой за «ничего не найдено». Просим модель
+      // прислать поле заново настоящим массивом; не пришлёт — вызов упадёт
+      // честно.
+      if (unpacked.lost.length > 0 && unpacked.lost.length >= fieldCount) {
+        capturedLostFields = unpacked.lost;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Поля ${unpacked.lost.join(", ")} пришли строкой, которую не удалось разобрать как JSON. Пришли их настоящим массивом, не строкой.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      if (unpacked.lost.length > 0) {
+        console.warn(
+          `[mcp-submit-tool] ${contract.agentName}: поля ${unpacked.lost.join(", ")} пришли неразбираемой строкой и заменены пустым массивом`,
+        );
+      }
+      const parsed = outputSchema.safeParse(unpacked.args);
       if (!parsed.success) {
         capturedValidationError = parsed.error;
         return {
@@ -376,6 +409,12 @@ export async function callViaSdkMcpSubmitTool<I, O>(
     if (timer) clearTimeout(timer);
   }
 
+  if (capturedLostFields) {
+    throw new LLMValidationError(
+      `[subscription/${modelId}] поля ${capturedLostFields.join(", ")} пришли строкой, которую не удалось разобрать как JSON — содержимое потеряно, пустым ответом это не считается`,
+      undefined,
+    );
+  }
   if (capturedValidationError) {
     throw new LLMValidationError(
       `[subscription/${modelId}] mcp tool payload failed schema validation: ${capturedValidationError.message}`,

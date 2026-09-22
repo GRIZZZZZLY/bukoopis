@@ -23,6 +23,8 @@ export interface StagedFactsResult {
   /** Строки, которые схема извлекателя не приняла и выбросила поштучно. */
   malformedFacts?: number;
   malformedEvents?: number;
+  /** Вызов событий упал — слой не извлекался (F07). */
+  eventsError?: string;
   skipped?: string;
   staged?: {
     facts: ExtractedFact[];
@@ -292,6 +294,9 @@ export interface ChapterMemoryStatus {
   events: AppliedEventCounts | null;
   /** Строк ответа модели, которые схема не приняла (факты + события). */
   malformed: number;
+  /** События героев не извлекались: вызов упал. `fresh` при этом значит
+   *  «факты и заметки на месте», а не «вся память полна» (F07). */
+  eventsError: string | null;
 }
 
 interface FactsJobLite {
@@ -340,6 +345,7 @@ export function chapterMemoryStatus(
     skipped: null,
     events: null,
     malformed: 0,
+    eventsError: null,
   } satisfies Omit<ChapterMemoryStatus, "state">;
   if (!chapter.current_version_id) return { state: "none", ...base };
 
@@ -364,6 +370,7 @@ export function chapterMemoryStatus(
     skipped: staged?.skipped ?? null,
     events: staged?.applied ?? null,
     malformed: (staged?.malformedFacts ?? 0) + (staged?.malformedEvents ?? 0),
+    eventsError: staged?.eventsError ?? null,
   } satisfies Omit<ChapterMemoryStatus, "state">;
 
   if (memoryVersionId === chapter.current_version_id) {

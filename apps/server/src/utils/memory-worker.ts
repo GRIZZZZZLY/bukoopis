@@ -217,6 +217,7 @@ export function startMemoryWorker(
       eventCount: p.characterEvents.length,
       malformedFacts: p.malformedFacts,
       malformedEvents: p.malformedEvents,
+      ...(p.eventsError !== undefined ? { eventsError: p.eventsError } : {}),
       staged: {
         facts: p.facts,
         characterEvents: p.characterEvents,

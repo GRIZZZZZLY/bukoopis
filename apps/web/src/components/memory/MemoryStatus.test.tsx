@@ -63,6 +63,18 @@ describe("MemoryStatusBadge", () => {
     ).toBeInTheDocument();
   });
 
+  it("не называет память актуальной, если разбор событий упал (F07 ревью 2026-09-22)", () => {
+    render(
+      <MemoryStatusBadge
+        memory={mem("fresh", null, { eventsError: "бэкенд молчит" })}
+        onRetry={() => {}}
+        retrying={false}
+      />,
+    );
+    expect(screen.queryByText("Память актуальна")).not.toBeInTheDocument();
+    expect(screen.getByText(/без событий героев/)).toBeInTheDocument();
+  });
+
   it("называет записи, которые не прижились", () => {
     render(
       <MemoryStatusBadge

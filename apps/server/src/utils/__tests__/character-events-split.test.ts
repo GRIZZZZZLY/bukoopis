@@ -15,6 +15,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { extractCanonFacts, extractCharacterEvents } from "@book-forge/agents";
 import { extractFactsPayload } from "../book-facts.js";
+import { enqueueMemoryJobs } from "../memory-queue.js";
+import { chapterMemoryStatus } from "../memory-activation.js";
 
 /** Живой прогон 2026-09-20: события персонажей терялись все до одного.
  *  Они ехали тем же вызовом, что и факты, и модель на сложной схеме
@@ -125,5 +127,29 @@ describe("события персонажей идут своим вызовом
     // единственное, что у главы вообще есть.
     expect(payload.facts).toHaveLength(1);
     expect(payload.characterEvents).toHaveLength(0);
+    // …но и выдавать отказ за «событий нет» нельзя (F07 ревью 2026-09-22).
+    expect(payload.eventsError).toContain("бэкенд молчит");
+  });
+
+  it("память с упавшими событиями не значится полной (F07)", async () => {
+    const chapter = sqlite
+      .prepare("SELECT id, book_id FROM chapters WHERE current_version_id = ?")
+      .get(versionId) as { id: number; book_id: number };
+    enqueueMemoryJobs(sqlite, {
+      bookId: chapter.book_id,
+      chapterId: chapter.id,
+      chapterVersionId: versionId,
+      kinds: ["facts"],
+    });
+    sqlite
+      .prepare("UPDATE memory_jobs SET status = 'done', result_json = ? WHERE kind = 'facts'")
+      .run(JSON.stringify({ factCount: 1, eventsError: "бэкенд молчит" }));
+
+    const status = chapterMemoryStatus(sqlite, {
+      current_version_id: versionId,
+      memory_version_id: versionId,
+    });
+    expect(status.state).toBe("fresh");
+    expect(status.eventsError).toBe("бэкенд молчит");
   });
 });

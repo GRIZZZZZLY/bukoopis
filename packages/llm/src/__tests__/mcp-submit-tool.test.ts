@@ -362,6 +362,28 @@ describe("вложенный массив, присланный строкой",
     expect(result.raw.events).toEqual([]);
   });
 
+  /** F07 ревью 2026-09-22: подмена пустым массивом оправдана соседними
+   *  полями. Если пропало ВСЁ, что было в ответе, пустота выдала бы сбой за
+   *  «ничего не найдено» — вызов обязан упасть. */
+  it("единственное поле, пришедшее неразбираемой строкой, — ошибка, а не пустой ответ", async () => {
+    const eventsOnly = z.object({ events: z.array(z.object({ kind: z.string() })).max(30) });
+    queryQueue.push(() =>
+      asyncGen([
+        async () => {
+          await lastTools[0]!.handler({ events: '[{"kind": "знание с «кавычкой» и обрывом' });
+        },
+        successResult,
+      ]),
+    );
+    const contract = { ...fixtureContract, getOutputSchema: () => eventsOnly };
+    await expect(
+      callViaSdkMcpSubmitTool(contract as never, eventsOnly, {
+        payload: { q: "тест" },
+        model: "sonnet",
+      }),
+    ).rejects.toThrow(/не удалось разобрать/);
+  });
+
   /** Живой прогон 2026-09-20: строка не разбиралась не потому, что оборвана,
    *  а потому, что внутри дословной цитаты стоят двойные кавычки — «техник
    *  насосной станции "Северная"». Модель копирует цитату посимвольно, как
