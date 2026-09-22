@@ -124,6 +124,25 @@ export async function runQuickStart(
     emit(onStage, started);
 
     const state: StudioState = repo.loadStudioState(bookId);
+    // Явный пропуск автора («Не нужен» у необязательных этапов, «Пропустить
+    // этап» у обязательных — обе кнопки одного StageSkipControl) — это
+    // решение автора, а не примета «нечего собирать». Быстрый сбор обязан
+    // уважать его для ЛЮБОГО этапа, не только документного: иначе кнопка
+    // переставала защищать от платного вызова в ту же секунду, как автор жал
+    // «Собрать всё».
+    if (state.stages[stageId]?.status === "skipped") {
+      const skipped: QuickStartStageEvent = {
+        index,
+        total,
+        stageId,
+        status: "skipped",
+        message: "этап помечен как не нужный",
+      };
+      stages.push(skipped);
+      emit(onStage, skipped);
+      continue;
+    }
+
     // В12 ревью 2026-09-19: «здесь уже есть черновики» считалось по числу
     // разделов, а список разделов пишется ДО генерации вариантов. Если
     // варианты не собрались (упал бэкенд, конфликт ревизии), этап оставался

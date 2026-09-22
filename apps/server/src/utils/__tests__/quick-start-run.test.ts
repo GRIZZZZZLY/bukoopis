@@ -249,6 +249,37 @@ describe("runQuickStart", () => {
     expect(vi.mocked(runAspectPlaybook).mock.calls.length).toBe(callsAfterFirst);
   });
 
+  it("явно пропущенный этап («Не нужен» / «Пропустить этап») быстрый сбор не трогает", async () => {
+    // Кнопка пишет status: "skipped" на СТЕ этапа целиком, а не на его
+    // аспектах — старая проверка «уже есть черновики» этого не видела и
+    // тратила платный вызов в ту же секунду, как автор жал «Собрать всё».
+    const d = deps();
+    const state = d.repo.loadStudioState(bookId);
+    d.repo.patchStudioState(bookId, {
+      expectedRevision: state.revision,
+      next: {
+        ...state,
+        stages: {
+          ...state.stages,
+          world: { status: "skipped", playbookGenerated: false, aspects: [] },
+        },
+      },
+    });
+
+    const result = await runQuickStart(d, {});
+
+    const worldEvents = result.stages.filter((s) => s.stageId === "world");
+    expect(worldEvents.map((e) => e.status)).toEqual(["started", "skipped"]);
+    expect(worldEvents.find((e) => e.status === "skipped")?.message).toBe(
+      "этап помечен как не нужный",
+    );
+    expect(
+      vi.mocked(runAspectDocument).mock.calls.some(
+        (c) => (c[0] as { stageId: string }).stageId === "world",
+      ),
+    ).toBe(false);
+  });
+
   it("список разделов сохраняется, даже если варианты не собрались", async () => {
     // До фазы 3 этот сценарий проверялся на "world" через `runAspectVariants`.
     // Мир теперь документный этап (см. describe ниже) и вариантов не собирает
