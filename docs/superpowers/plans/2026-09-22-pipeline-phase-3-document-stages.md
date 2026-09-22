@@ -306,6 +306,20 @@ describe("промпт документа", () => {
     expect(prompt).toContain("5–9");
   });
 
+  it("на полном этапе просит дополнить, а не пересобрать", () => {
+    // Иначе промпт говорит «не переписывай перечисленное» и «собери 5–9
+    // разделов» одновременно, и модель выбирает сама.
+    const prompt = buildDocumentPrompt({
+      stageId: "world",
+      concept,
+      existingSections: [{ name: "география", text: "Город на сваях." }],
+      emptySectionNames: [],
+      contextRef,
+    });
+    expect(prompt).toContain("Добавь 1–4 раздела");
+    expect(prompt).not.toContain("целиком: 5–9");
+  });
+
   it("системный промпт запрещает служебные слова интерфейса", () => {
     expect(documentSystemPrompt).not.toContain("аспект");
   });
@@ -404,6 +418,7 @@ export const documentSystemPrompt = `Ты — литературный соав�
 
 Если даны РАЗДЕЛЫ С ТЕКСТОМ — это материал автора. НЕ переписывай их и не выдавай своей версии: они уже есть. Учитывай их и не противоречь им.
 Если даны ПУСТЫЕ РАЗДЕЛЫ — напиши каждый из них под тем же именем.
+Если даны только разделы с текстом, а пустых нет — значит документ уже собран и тебя просят его дополнить: добавь разделы, которых этапу не хватает, и ни один из перечисленных не трогай.
 Если ни тех, ни других нет — собери документ целиком: 5–9 разделов, сам выбери темы под жанр и тон.
 Если даны ЗАМЕТКИ АВТОРА — это ограничения, а не пожелания: то, что в них сказано, обязано попасть в документ и не может быть отменено.
 
@@ -447,6 +462,14 @@ export function buildDocumentPrompt(input: AspectDocumentInput): string {
     parts.push(
       "",
       "Верни ровно эти разделы. Добавь новый только если без него документ не читается.",
+    );
+  } else if (input.existingSections.length > 0) {
+    // Пустых разделов нет, но автор нажал «Дополнить»: это просьба о том,
+    // чего не хватает, а не о пересборке. Без этой ветки промпт говорил
+    // «не переписывай перечисленное» и «собери 5–9 разделов» разом.
+    parts.push(
+      "",
+      `Документ этапа «${label}» уже собран, пустых разделов нет. Добавь 1–4 раздела, которых ему не хватает. Ни один из перечисленных выше не переписывай и не возвращай.`,
     );
   } else {
     parts.push(
@@ -1196,7 +1219,14 @@ export function normalizeSectionName(name: string): string {
 export function currentVariant(aspect: StageAspect): AspectVariant | null {
   if (aspect.selectedVariantId) {
     const picked = aspect.variants.find((v) => v.id === aspect.selectedVariantId);
-    if (picked) return picked;
+    // Выбор не переживает вытеснения. Прежний экран при уточнении помечал
+    // вариант `superseded`, НЕ снимая `selectedVariantId`, поэтому у разделов
+    // мира и лора, заведённых до фазы 3, выбор указывает на мёртвый вариант.
+    // Довериться ему значит показать автору старый текст, счесть раздел
+    // заполненным (и не дописать его сборкой) и утвердить вместо нового.
+    if (picked && picked.status !== "superseded" && picked.status !== "rejected") {
+      return picked;
+    }
   }
   for (let i = aspect.variants.length - 1; i >= 0; i -= 1) {
     const v = aspect.variants[i];
@@ -1237,8 +1267,16 @@ export function mergeDocumentSections(
   let maxOrder = stage.aspects.reduce((m, a) => Math.max(m, a.order), -1);
   const updates = new Map<string, StageAspect>();
   const added: StageAspect[] = [];
+  const handled = new Set<string>();
 
   for (const section of sections) {
+    const key = normalizeSectionName(section.name);
+    // Модель возвращает один раздел дважды чаще, чем кажется. Второй экземпляр
+    // завёл бы рядом второй раздел с тем же именем — и тот навсегда остался бы
+    // вне сопоставления по имени, потому что карта имён хранит только
+    // последний. Берём первый, остальные выбрасываем.
+    if (handled.has(key)) continue;
+    handled.add(key);
     const variant: AspectVariant = {
       id: crypto.randomUUID(),
       label: "документ",
@@ -1250,7 +1288,7 @@ export function mergeDocumentSections(
       modelId: meta.modelId,
       contextRef: meta.contextRef,
     };
-    const existing = byName.get(normalizeSectionName(section.name));
+    const existing = byName.get(key);
     if (!existing) {
       maxOrder += 1;
       added.push({
@@ -1560,7 +1598,11 @@ export interface DocumentSectionProps {
   progress?: AspectGenerationProgress;
   generator: VariantGenerator<string>;
   accumulated: AccumulatedContext;
-  /** Записать раздел. `true` — записано; только тогда закрываются окна. */
+  /** Записать раздел. `true` — записано; только тогда закрываются окна.
+   *  Контракт: НИКОГДА не отклоняется — отказ приходит значением `false`, а
+   *  текст ошибки родитель кладёт сам через `onError`. Поэтому здесь вокруг
+   *  вызова нет try/catch: он защищал бы от нарушения контракта, а не от
+   *  достижимого состояния. */
   onPatchAspect: (aspectId: string, next: StageAspect) => Promise<boolean>;
   onBusy: (aspectId: string | null) => void;
   onError: (aspectId: string, message: string) => void;
@@ -1602,6 +1644,11 @@ export function DocumentSection({
       onError(aspect.id, "Пустой раздел сохранить нельзя — используйте «Не нужен».");
       return;
     }
+    // Родителем правки становится тот вариант, который автор ВИДЕЛ, а не тот,
+    // что записан в `selectedVariantId`: у раздела, пришедшего из сборки,
+    // выбора нет вовсе, и по прежнему правилу заменённый вариант оставался
+    // живой альтернативой рядом с правкой, которая его и заменила.
+    const parent = currentVariant(aspect);
     const variant: AspectVariant = {
       id: crypto.randomUUID(),
       label: "моя правка",
@@ -1610,9 +1657,7 @@ export function DocumentSection({
       status: "accepted",
       editSource: "manual",
       generatedAt: new Date().toISOString(),
-      ...(aspect.selectedVariantId !== undefined
-        ? { parentVariantId: aspect.selectedVariantId }
-        : {}),
+      ...(parent ? { parentVariantId: parent.id } : {}),
     };
     const next: StageAspect = {
       ...aspect,
@@ -1621,7 +1666,7 @@ export function DocumentSection({
       finalPayload: payload,
       variants: [
         ...aspect.variants.map((v) =>
-          v.id === aspect.selectedVariantId
+          v.id === parent?.id
             ? { ...v, status: "superseded" as const }
             : v.status === "accepted"
               ? { ...v, status: "rejected" as const }
@@ -1652,9 +1697,15 @@ export function DocumentSection({
         },
         (p) => onProgress(aspect.id, p),
       );
+      // Раздел возвращается в черновик, и принятый текст с него снимается.
+      // Оставить его нельзя: `sectionText` предпочитает `finalPayload`
+      // вариантам, и на утверждённом разделе экран показывал бы старый текст
+      // поверх только что сгенерированного (и оплаченного), а список рядом
+      // называл бы показанным другой вариант.
+      const { finalPayload: _dropped, ...base } = aspect;
       const next: StageAspect = refine
         ? {
-            ...aspect,
+            ...base,
             status: "reviewing",
             variants: [
               ...aspect.variants.map((v) =>
@@ -1669,7 +1720,7 @@ export function DocumentSection({
               : {}),
           }
         : {
-            ...aspect,
+            ...base,
             status: "reviewing",
             variants: [...aspect.variants, ...variants],
             ...(aspect.selectedVariantId !== undefined
@@ -2061,7 +2112,11 @@ describe("DocumentStageRunner", () => {
         ],
       } as Partial<StageState>),
     );
-    await user.click(screen.getByRole("button", { name: "Собрать мир" }));
+    // Подпись кнопки зависит от состояния документа: здесь один раздел пуст,
+    // и кнопка обязана обещать ровно то, что сделает.
+    await user.click(
+      screen.getByRole("button", { name: "Дописать недостающее (1)" }),
+    );
     await waitFor(() => expect(streamDocumentMock).toHaveBeenCalled());
     const body = streamDocumentMock.mock.calls[0]?.[2] as {
       existingSections: Array<{ name: string; text: string }>;
@@ -2247,6 +2302,8 @@ export function DocumentStageRunner({
   const [busyAspectId, setBusyAspectId] = useState<string | null>(null);
   const [errorByAspect, setErrorByAspect] = useState<Record<string, string>>({});
   const [stageError, setStageError] = useState<string | null>(null);
+  /** Нормальный исход, о котором надо сказать: не ошибка и не красный. */
+  const [stageNote, setStageNote] = useState<string | null>(null);
   const [progressByAspect, setProgressByAspect] = useState<
     Record<string, AspectGenerationProgress>
   >({});
@@ -2343,6 +2400,7 @@ export function DocumentStageRunner({
 
   async function handleAssemble(): Promise<void> {
     setStageError(null);
+    setStageNote(null);
     setAssembling(true);
     const trimmedNotes = notes.trim();
     const live = stage.aspects.filter((a) => a.status !== "skipped");
@@ -2378,6 +2436,17 @@ export function DocumentStageRunner({
         contextRef: done.contextRef,
         modelId: done.modelId,
       });
+      if (merged === stage) {
+        // Слияние вернуло тот же объект: всё, что прислала модель, уже есть
+        // или помечено «Не нужен». Записывать нечего, но молчать нельзя —
+        // иначе нажатие выглядит как потерянное. И это не ошибка: красная
+        // строка на нормальном исходе учит автора не читать красные строки.
+        setStageNote(
+          "Новых разделов не добавилось: всё, что предложила модель, уже есть в документе.",
+        );
+        await onPatch(revision, withNotes(stage, trimmedNotes));
+        return;
+      }
       await onPatch(revision, withNotes(merged, trimmedNotes));
     } catch (e) {
       setStageError(e instanceof Error ? e.message : String(e));
@@ -2436,7 +2505,7 @@ export function DocumentStageRunner({
                 ? `Собрать ${accusative}`
                 : emptyCount > 0
                   ? `Дописать недостающее (${emptyCount})`
-                  : `Собрать ${accusative}`}
+                  : "Дополнить документ"}
           </button>
           <span className="text-xs text-[var(--color-muted-foreground)]">
             Разделы, где уже есть текст, остаются как есть.
@@ -2448,6 +2517,11 @@ export function DocumentStageRunner({
         {stageError && (
           <p role="alert" className="text-xs text-[var(--color-ink-red-fg)]">
             {stageError}
+          </p>
+        )}
+        {stageNote && (
+          <p role="status" className="text-xs text-[var(--color-muted-foreground)]">
+            {stageNote}
           </p>
         )}
       </div>
