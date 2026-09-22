@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { StageState } from "@book-forge/shared";
 
@@ -81,6 +81,26 @@ describe("DocumentStageRunner", () => {
   it("сохранённые заметки показываются при открытии этапа", () => {
     renderRunner(emptyStage({ authorNotes: "Зима круглый год." }));
     expect(screen.getByLabelText(/заметки/i)).toHaveValue("Зима круглый год.");
+  });
+
+  it("заметки сохраняются по уходу с поля, а не только вместе со сборкой", async () => {
+    const user = userEvent.setup();
+    const { onPatch } = renderRunner(emptyStage());
+    const box = screen.getByLabelText(/заметки/i);
+    await user.type(box, "Без магии.");
+    fireEvent.blur(box);
+    await waitFor(() => expect(onPatch).toHaveBeenCalled());
+    expect((onPatch.mock.calls[0]?.[1] as StageState).authorNotes).toBe("Без магии.");
+    // Сборка вызовом не тронута: это отдельная запись, не побочный эффект сборки.
+    expect(streamDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it("уход с поля без изменения текста ничего не пишет", () => {
+    const { onPatch } = renderRunner(emptyStage({ authorNotes: "Было." }));
+    const box = screen.getByLabelText(/заметки/i);
+    fireEvent.focus(box);
+    fireEvent.blur(box);
+    expect(onPatch).not.toHaveBeenCalled();
   });
 
   it("разделы с текстом уходят в сборку как неприкосновенные", async () => {
@@ -297,6 +317,31 @@ describe("DocumentStageRunner", () => {
   it("утверждать нечего — кнопка выключена", () => {
     renderRunner(emptyStage());
     expect(screen.getByRole("button", { name: "Утвердить мир" })).toBeDisabled();
+  });
+
+  it("обязательный пустой раздел получает отдельную формулировку", () => {
+    renderRunner(
+      emptyStage({
+        status: "in_progress",
+        aspects: [
+          {
+            id: "a1",
+            name: "география",
+            status: "reviewing",
+            order: 0,
+            required: true,
+            source: "llm",
+            payloadKind: "markdown",
+            variants: [],
+          },
+        ],
+      } as Partial<StageState>),
+    );
+    expect(
+      screen.getByText(
+        "Обязательных пустых разделов: 1 — этап не закроется, пока их не написать или не пометить «Не нужен».",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("отказ сборки виден и не оставляет экран в «идёт сборка»", async () => {

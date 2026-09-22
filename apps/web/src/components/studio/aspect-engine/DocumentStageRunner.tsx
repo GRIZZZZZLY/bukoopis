@@ -173,6 +173,20 @@ export function DocumentStageRunner({
     }
   }
 
+  /** Заметки — не только затравка сборки: набранный текст не должен
+   *  пропадать при перезагрузке страницы или если сборка ни разу не
+   *  запускалась. Пишутся сами по себе по уходу с поля. */
+  async function handleNotesBlur(): Promise<void> {
+    const trimmed = notes.trim();
+    if (trimmed === (stage.authorNotes ?? "")) return;
+    setStageError(null);
+    try {
+      await patchWholeStage((s) => withNotes(s, trimmed));
+    } catch (e) {
+      setStageError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleAssemble(): Promise<void> {
     setStageError(null);
     setStageNote(null);
@@ -212,6 +226,12 @@ export function DocumentStageRunner({
       await patchWholeStage((s) => {
         const merged = mergeDocumentSections(s, done.sections, meta);
         nothingNew = merged === s;
+        const notesUnchanged = trimmedNotes === (merged.authorNotes ?? "");
+        // «Записывать нечего» должно значить именно это: сборка ничего не
+        // добавила, и заметки не изменились с прошлой записи. `withNotes`
+        // всегда возвращает новый объект, и запись поверх нуля изменений
+        // только наращивала ревизию и подставляла соседнюю вкладку под 409.
+        if (nothingNew && notesUnchanged) return null;
         return withNotes(merged, trimmedNotes);
       });
       if (nothingNew) {
@@ -251,9 +271,14 @@ export function DocumentStageRunner({
   const accusative = ACCUSATIVE[stageId];
   const busy = assembling || approving || busyAspectId !== null;
   const hasSomethingToApprove = approveAllSections(stage) !== null;
-  const emptyCount = stage.aspects.filter(
+  const emptyAspects = stage.aspects.filter(
     (a) => a.status !== "skipped" && sectionText(a) === null,
-  ).length;
+  );
+  const emptyCount = emptyAspects.length;
+  // Пустой раздел, помеченный обязательным в плейбуке (наследие прежнего
+  // экрана уточнения), держит этап в `in_progress` — молчать об этом значит
+  // оставить автора гадать, почему «Утвердить» не закрывает этап насовсем.
+  const requiredEmptyCount = emptyAspects.filter((a) => a.required).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -265,6 +290,7 @@ export function DocumentStageRunner({
           id="stage-author-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          onBlur={handleNotesBlur}
           rows={3}
           maxLength={4000}
           aria-label={`Ваши заметки к этапу «${stageLabel}»`}
@@ -342,7 +368,9 @@ export function DocumentStageRunner({
         </button>
         {emptyCount > 0 && (
           <span className="text-xs text-[var(--color-muted-foreground)]">
-            Пустых разделов: {emptyCount}. Их можно оставить или пометить «Не нужен».
+            {requiredEmptyCount > 0
+              ? `Обязательных пустых разделов: ${requiredEmptyCount} — этап не закроется, пока их не написать или не пометить «Не нужен».`
+              : `Пустых разделов: ${emptyCount}. Их можно оставить или пометить «Не нужен».`}
           </span>
         )}
       </div>
