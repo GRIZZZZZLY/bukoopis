@@ -129,7 +129,7 @@ export function CritiquePanel({
     setRunning(true);
     setError(null);
     try {
-      const critics = enabled.size === 4 ? undefined : [...enabled];
+      const critics = enabled.size === ALL_CRITIC_TYPES.length ? undefined : [...enabled];
       const r = await api.runCritique(versionId, critics);
       setReport(r);
     } catch (e) {

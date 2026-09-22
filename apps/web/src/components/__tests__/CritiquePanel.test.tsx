@@ -457,3 +457,24 @@ describe("CritiquePanel — выбор замечаний и защита кус
     ]);
   });
 });
+
+describe("CritiquePanel — выбор критиков", () => {
+  it("sends the explicit list when one of all critics is unchecked, not the server default", async () => {
+    const { ALL_CRITIC_TYPES, CRITIC_LABELS } = await import("@book-forge/shared");
+    vi.mocked(api.runCritique).mockReset().mockResolvedValue(REPORT);
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={7}
+        onRepairDone={vi.fn()}
+      />,
+    );
+    const dropped = ALL_CRITIC_TYPES[ALL_CRITIC_TYPES.length - 1]!;
+    await userEvent.click(await screen.findByRole("checkbox", { name: CRITIC_LABELS[dropped] }));
+    await userEvent.click(screen.getByRole("button", { name: "Запустить критику" }));
+
+    const sent = vi.mocked(api.runCritique).mock.calls[0]![1];
+    expect(sent).toEqual(ALL_CRITIC_TYPES.filter((c) => c !== dropped));
+  });
+});
