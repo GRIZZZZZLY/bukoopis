@@ -518,6 +518,7 @@ export function createPlotRoute(
             .filter((r) => r.kind === "event")
             .map((r) => r.id),
           contextSnapshotId: contextManifest.id,
+          shouldPersist: () => !cancels.shouldStop(proposalId),
           onUsage: (usage) =>
             logUsage(sqlite, {
               route: "plot.scene_intent",

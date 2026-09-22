@@ -44,6 +44,11 @@ export interface PrepareSceneIntentArgs {
   /** `context_manifests.id` той же сборки. */
   contextSnapshotId: number;
   onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
+  /** Можно ли ещё записывать результат. Вызов модели прервать нечем, и
+   *  ответ, пришедший после отмены кандидата, иначе ложился в
+   *  `chapters.scene_intent_json` и подхватывался следующим «Дописать с
+   *  беата» (F05 ревью 2026-09-22). */
+  shouldPersist?: () => boolean;
 }
 
 export interface PrepareSceneIntentResult {
@@ -295,6 +300,10 @@ export async function prepareSceneIntent(
     );
   }
 
+  if (args.shouldPersist && !args.shouldPersist()) {
+    console.warn(`[scene-intent] глава ${args.chapterId}: ответ пришёл после отмены — не записан`);
+    return EMPTY;
+  }
   sqlite
     .prepare("UPDATE chapters SET scene_intent_json = ? WHERE id = ?")
     .run(JSON.stringify(intent), args.chapterId);

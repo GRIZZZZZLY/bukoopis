@@ -136,6 +136,16 @@ describe("prepareSceneIntent", () => {
     expect(JSON.parse(row.scene_intent_json!).sceneId).toBe(`${chapterId}:1`);
   });
 
+  it("ответ после отмены не записывается в главу (F05 ревью 2026-09-22)", async () => {
+    runSceneIntent.mockResolvedValue(modelAnswer([eventId]));
+    const out = await prepare({ shouldPersist: () => false });
+    const row = t.sqlite
+      .prepare("SELECT scene_intent_json FROM chapters WHERE id = ?")
+      .get(chapterId) as { scene_intent_json: string | null };
+    expect(row.scene_intent_json).toBeNull();
+    expect(out.prompt).toBeNull();
+  });
+
   it("меньше двух участников — вызова нет вовсе", async () => {
     const out = await prepare({ participants: [{ characterId: ninaId, name: "Нина" }] });
     expect(runSceneIntent).not.toHaveBeenCalled();
