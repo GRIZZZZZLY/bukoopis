@@ -23,6 +23,16 @@ export function isOptionalStage(id: StageId): boolean {
   return (OPTIONAL_STAGE_IDS as readonly string[]).includes(id);
 }
 
+/** Этапы, которые автор проходит одним документом с разделами (фаза 3
+ *  конвейера). Список живёт здесь, а не тремя копиями в экране, маршруте и
+ *  быстром сборе: копии разошлись бы молча, и этап оказался бы документным
+ *  для одного читателя и аспектным для другого. */
+export const DOCUMENT_STAGE_IDS = ["world", "lore"] as const;
+
+export function isDocumentStage(id: StageId): id is (typeof DOCUMENT_STAGE_IDS)[number] {
+  return (DOCUMENT_STAGE_IDS as readonly string[]).includes(id);
+}
+
 export const ASPECT_STATUSES = [
   "pending",
   "generating",
@@ -182,6 +192,11 @@ export const stageStateSchema = z.object({
   playbookGenerated: z.boolean(),
   aspects: z.array(stageAspectSchema),
   updatedAt: z.string().optional(),
+  /** Заметки автора к этапу: что обязательно учесть при сборке документа.
+   *  Живут в JSON-состоянии, миграции не нужно. Хранятся, а не передаются
+   *  разово, потому что сборка идёт минутами, а «Переписать» отдельного
+   *  раздела обязан учитывать те же заметки, что и первая сборка. */
+  authorNotes: z.string().max(4000).optional(),
 });
 export type StageState = z.infer<typeof stageStateSchema>;
 
@@ -236,7 +251,9 @@ export function emptyStudioState(): StudioState {
 /** Stage status is derived from its aspects rather than set by the caller — the
  *  UI patches aspects one at a time and would otherwise never close a stage.
  *  A stage the author skipped explicitly keeps that status: only they can
- *  reopen it. The "complete" rule mirrors the `stage_complete_with_pending_required`
+ *  reopen it, and it is the ONLY way a derived status becomes "skipped" — the
+ *  "Не нужен" button, never a side effect of how the aspects settled. The
+ *  "complete" rule mirrors the `stage_complete_with_pending_required`
  *  invariant, so a derived status can never violate it. */
 export function deriveStageStatus(stage: StageState): StageStatus {
   if (stage.status === "skipped") return "skipped";
@@ -256,16 +273,12 @@ export function deriveStageStatus(stage: StageState): StageStatus {
   // the author is free to leave pending forever, and holding the stage open for
   // them would mean no stage ever closes.
   if (stage.aspects.some((a) => a.status === "accepted")) return "complete";
-  // Nothing accepted. Two different situations wear that shape, and the old rule
-  // collapsed them into one:
-  //   · every aspect is settled and none was accepted — the author walked past
-  //     the whole stage, so "skipped" is the honest word;
-  //   · aspects are still waiting for a decision — which is where every draft
-  //     from the author's own material lands (optional, `reviewing`, unaccepted).
-  // Calling the second one "skipped" made the stage pages refuse to render it,
-  // so imported material was in the database and unreachable from the interface.
-  if (stage.aspects.some((a) => !settled(a))) return "in_progress";
-  return "skipped";
+  // Раньше здесь стояло «всё улажено, ничего не принято → skipped». Это и был
+  // дефект «ничего не принял = готово» из раздела 1 ТЗ конвейера: этап, мимо
+  // которого автор прошёл поштучно, выглядел законченным, и рекомендатор вёл
+  // дальше. Пропуск ЭТАПА — отдельное решение автора и отдельная кнопка
+  // «Не нужен»; вывести его из состояния разделов нельзя.
+  return "in_progress";
 }
 
 /** Applies {@link deriveStageStatus} to every stage. Called on the write path so
