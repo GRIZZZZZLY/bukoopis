@@ -118,6 +118,7 @@ interface CastProfileLike {
   need?: unknown;
   lie?: unknown;
   voice?: unknown;
+  goals?: unknown;
   principles?: unknown;
   values?: unknown;
   contradictions?: unknown;
@@ -133,15 +134,21 @@ function line(label: string, value: unknown): string | null {
   return typeof value === "string" && value.trim() ? `${label}: ${value.trim()}` : null;
 }
 
-/** Список строк вида `{ text }` — так лежат принципы, ценности; противоречия
- *  хранятся простыми строками. */
+/** Главное поле элемента списка в профиле V2: цель — `goal`, ценность —
+ *  `value`, принцип — `rule` (см. `character-profile.ts`); противоречия —
+ *  простые строки. Прежде здесь ждали `{ text }`, которого в V2 нет вовсе, и
+ *  непустые списки молча пропадали из промпта проверки. */
+const LIST_ITEM_KEYS = ["goal", "value", "rule", "text"] as const;
+
 function listLine(label: string, value: unknown): string | null {
   if (!Array.isArray(value)) return null;
   const items = value
     .map((v) => {
       if (typeof v === "string") return v.trim();
-      if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
-        return (v as { text: string }).text.trim();
+      if (v && typeof v === "object") {
+        const rec = v as Record<string, unknown>;
+        const key = LIST_ITEM_KEYS.find((k) => typeof rec[k] === "string");
+        return key ? (rec[key] as string).trim() : "";
       }
       return "";
     })
@@ -164,6 +171,7 @@ export function renderCastForCheck(cast: ReadonlyArray<CastForCheck>): string {
         line("Нуждается", c.profile.need),
         line("Самообман", c.profile.lie),
         line("Голос", c.profile.voice),
+        listLine("Цели", c.profile.goals),
         listLine("Принципы", c.profile.principles),
         listLine("Ценности", c.profile.values),
         listLine("Противоречия", c.profile.contradictions),

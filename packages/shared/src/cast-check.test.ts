@@ -7,6 +7,7 @@ import {
   isCastCheckStale,
   renderCastForCheck,
 } from "./cast-check.js";
+import { normalizeCharacterProfile } from "./character-profile.js";
 
 /**
  * Проверка различий состава (ТЗ 9.1, этап 5 слайс 4). Отчёт — предложение, а
@@ -146,13 +147,16 @@ describe("renderCastForCheck", () => {
     {
       id: 7,
       name: "Нина Соловьёва",
-      profile: {
+      // Настоящий нормализованный профиль V2, а не удобная форма `{ text }`:
+      // F21 ревью 2026-09-22 — на `{ text }` тест был зелёным, а в V2 ценность
+      // лежит в `value`, принцип в `rule`, цель в `goal`, и они пропадали.
+      profile: normalizeCharacterProfile({
         role: "гидроакустик",
-        want: "доказать, что сигнал настоящий",
         voice: "короткие фразы",
-        principles: [{ text: "не давить на брата прямо" }],
-        values: [{ text: "запись важнее объяснения" }],
-      },
+        goals: [{ goal: "доказать, что сигнал настоящий" }],
+        principles: [{ rule: "не давить на брата прямо", cost: "молчание" }],
+        values: [{ value: "запись важнее объяснения", priority: 1 }],
+      }),
     },
     { id: 9, name: "Ворт Соловьёв", profile: { role: "техник" } },
   ];
@@ -174,6 +178,7 @@ describe("renderCastForCheck", () => {
   it("у героя без полей лишних заголовков нет", () => {
     const out = renderCastForCheck([cast[1]!]);
     expect(out).not.toContain("Хочет:");
+    expect(out).not.toContain("Цели:");
     expect(out).not.toContain("Принципы:");
   });
 });
