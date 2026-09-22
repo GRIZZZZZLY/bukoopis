@@ -13,7 +13,11 @@ import { resolveBackend, resolveModelId } from "@book-forge/llm";
  * быстрый сбор).
  */
 export function aspectModelLabel(
-  agent: "aspect_variants" | "aspect_playbook" | "aspect_entity_variants",
+  agent:
+    | "aspect_variants"
+    | "aspect_playbook"
+    | "aspect_entity_variants"
+    | "aspect_document",
   model: "sonnet" | "opus" = "sonnet",
 ): string {
   const id = resolveModelId(model);

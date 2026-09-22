@@ -43,7 +43,8 @@ import {
   runAspectEntityVariants,
   toStoredEntityVariants,
 } from "@book-forge/agents/aspects/entity-variants";
-import { stageIdSchema } from "@book-forge/shared";
+import { runAspectDocument } from "@book-forge/agents/aspects/document";
+import { stageIdSchema, isDocumentStage } from "@book-forge/shared";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { ESTIMATE_MS } from "../utils/generation-progress.js";
 import { streamAgentProgress } from "../utils/sse-progress.js";
@@ -93,6 +94,18 @@ const lockConceptBodySchema = z.object({
 
 const playbookBodySchema = z.object({
   existingAspectNames: z.array(z.string()).optional(),
+});
+
+/** Тело обоих маршрутов сборки документа: разделы с текстом — материал
+ *  автора (не переписывать), пустые — что нужно дописать, заметки —
+ *  ограничения, обязательные к учёту. */
+const stageDocumentBodySchema = z.object({
+  existingSections: z
+    .array(z.object({ name: z.string().min(1), text: z.string().min(1) }))
+    .max(20)
+    .optional(),
+  emptySectionNames: z.array(z.string().min(1)).max(20).optional(),
+  authorNotes: z.string().max(4000).optional(),
 });
 
 const generateAspectBodySchema = z.object({
@@ -1312,6 +1325,132 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
             }))
           : result.aspects,
         contextRef,
+      }),
+    });
+  });
+
+  /** Общая часть обоих маршрутов сборки документа. Возвращает либо готовый
+   *  ответ с ошибкой, либо всё, что нужно для вызова агента. Две копии этой
+   *  подготовки разошлись бы молча — поток и POST обязаны собирать один и тот
+   *  же промпт. */
+  async function prepareStageDocument(c: Context): Promise<
+    | { error: Response }
+    | {
+        bookId: number;
+        stageId: StageId;
+        input: Parameters<typeof runAspectDocument>[0];
+      }
+  > {
+    const id = Number(c.req.param("id"));
+    const stageParse = stageIdSchema.safeParse(c.req.param("stageId"));
+    if (!stageParse.success) return { error: validationFailed(c, stageParse.error) };
+    const stageId = stageParse.data;
+    if (!isDocumentStage(stageId)) {
+      return {
+        error: c.json({ error: "stage_not_document", details: { stageId } }, 400),
+      };
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = stageDocumentBodySchema.safeParse(body ?? {});
+    if (!parsed.success) return { error: validationFailed(c, parsed.error) };
+
+    let concept;
+    try {
+      concept = repo.loadConcept(id);
+    } catch (e) {
+      if (e instanceof StudioBookNotFoundError) return { error: notFound(c, "book") };
+      throw e;
+    }
+
+    const existingSections = parsed.data.existingSections ?? [];
+    const emptySectionNames = parsed.data.emptySectionNames ?? [];
+    const contextRef = buildContextRef({
+      stageId,
+      concept,
+      accumulated: existingSections.map((s) => ({
+        id: s.name,
+        name: s.name,
+        finalPayload: s.text,
+      })),
+      extra: {
+        kind: "document",
+        emptySectionNames,
+        ...(parsed.data.authorNotes !== undefined
+          ? { authorNotes: parsed.data.authorNotes }
+          : {}),
+      },
+    });
+    return {
+      bookId: id,
+      stageId,
+      input: {
+        stageId,
+        concept,
+        existingSections,
+        emptySectionNames,
+        ...(parsed.data.authorNotes !== undefined
+          ? { authorNotes: parsed.data.authorNotes }
+          : {}),
+        contextRef,
+      },
+    };
+  }
+
+  r.post("/books/:id/stages/:stageId/document", async (c) => {
+    const prepared = await prepareStageDocument(c);
+    if ("error" in prepared) return prepared.error;
+    try {
+      const result = await runAspectDocument(prepared.input, {
+        onUsage: (usage) =>
+          logUsage(sqlite, {
+            route: "studio.aspect_document",
+            model: usage.modelId,
+            usage: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheCreationInputTokens: usage.cacheCreationInputTokens,
+              cacheReadInputTokens: usage.cacheReadInputTokens,
+            },
+            bookId: prepared.bookId,
+          }),
+      });
+      return c.json({
+        sections: result.sections,
+        contextRef: prepared.input.contextRef,
+        modelId: aspectModelLabel("aspect_document"),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return c.json({ error: "aspect_document_failed", details: { message } }, 500);
+    }
+  });
+
+  r.post("/books/:id/stages/:stageId/document-stream", async (c) => {
+    const prepared = await prepareStageDocument(c);
+    if ("error" in prepared) return prepared.error;
+    return streamAgentProgress(c, {
+      errorCode: "aspect_document_failed",
+      estimateMs: ESTIMATE_MS.document,
+      run: (onProgress) =>
+        runAspectDocument(prepared.input, {
+          onProgress,
+          onUsage: (usage) =>
+            logUsage(sqlite, {
+              route: "studio.aspect_document",
+              model: usage.modelId,
+              usage: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                cacheCreationInputTokens: usage.cacheCreationInputTokens,
+                cacheReadInputTokens: usage.cacheReadInputTokens,
+              },
+              bookId: prepared.bookId,
+            }),
+        }),
+      buildDone: (result) => ({
+        sections: result.sections,
+        contextRef: prepared.input.contextRef,
+        modelId: aspectModelLabel("aspect_document"),
       }),
     });
   });
