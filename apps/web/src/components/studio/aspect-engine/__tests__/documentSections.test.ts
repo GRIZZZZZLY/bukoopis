@@ -80,6 +80,33 @@ describe("sectionText", () => {
     expect(sectionText(aspect())).toBeNull();
     expect(sectionText(aspect({ variants: [variant({ payload: "   " })] }))).toBeNull();
   });
+
+  it("выбор, указывающий на вытесненный вариант, не считается текстом раздела", () => {
+    // Прежний экран при уточнении помечал вариант superseded, не снимая
+    // selectedVariantId: у старых разделов мира и лора выбор указывает на
+    // мёртвый вариант.
+    const a = aspect({
+      status: "reviewing",
+      variants: [
+        variant({ id: "v1", payload: "старый", status: "superseded" }),
+        variant({ id: "v2", payload: "новый" }),
+      ],
+      selectedVariantId: "v1",
+    });
+    expect(sectionText(a)).toBe("новый");
+  });
+
+  it("выбор, указывающий на отвергнутый вариант, тоже не в счёт", () => {
+    const a = aspect({
+      status: "reviewing",
+      variants: [
+        variant({ id: "v1", payload: "отвергнут", status: "rejected" }),
+        variant({ id: "v2", payload: "живой" }),
+      ],
+      selectedVariantId: "v1",
+    });
+    expect(sectionText(a)).toBe("живой");
+  });
 });
 
 describe("mergeDocumentSections", () => {
@@ -137,6 +164,19 @@ describe("mergeDocumentSections", () => {
     );
     expect(next.aspects).toHaveLength(1);
     expect(next.aspects[0]?.status).toBe("skipped");
+  });
+
+  it("повторённое моделью имя раздела не заводит второй раздел", () => {
+    const next = mergeDocumentSections(
+      stage([]),
+      [
+        { name: "вера", description: "во что верят", markdown: "Первый текст." },
+        { name: "Вера", description: "дубль", markdown: "Второй текст." },
+      ],
+      meta,
+    );
+    expect(next.aspects).toHaveLength(1);
+    expect(sectionText(next.aspects[0]!)).toBe("Первый текст.");
   });
 });
 

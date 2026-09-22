@@ -18,7 +18,14 @@ export function normalizeSectionName(name: string): string {
 export function currentVariant(aspect: StageAspect): AspectVariant | null {
   if (aspect.selectedVariantId) {
     const picked = aspect.variants.find((v) => v.id === aspect.selectedVariantId);
-    if (picked) return picked;
+    // Выбор не переживает вытеснения. Прежний экран при уточнении помечал
+    // вариант `superseded`, НЕ снимая `selectedVariantId`, поэтому у разделов
+    // мира и лора, заведённых до фазы 3, выбор указывает на мёртвый вариант.
+    // Довериться ему значит показать автору старый текст, счесть раздел
+    // заполненным (и не дописать его сборкой) и утвердить вместо нового.
+    if (picked && picked.status !== "superseded" && picked.status !== "rejected") {
+      return picked;
+    }
   }
   for (let i = aspect.variants.length - 1; i >= 0; i -= 1) {
     const v = aspect.variants[i];
@@ -59,8 +66,16 @@ export function mergeDocumentSections(
   let maxOrder = stage.aspects.reduce((m, a) => Math.max(m, a.order), -1);
   const updates = new Map<string, StageAspect>();
   const added: StageAspect[] = [];
+  const handled = new Set<string>();
 
   for (const section of sections) {
+    const key = normalizeSectionName(section.name);
+    // Модель возвращает один раздел дважды чаще, чем кажется. Второй экземпляр
+    // завёл бы рядом второй раздел с тем же именем — и тот навсегда остался бы
+    // вне сопоставления по имени, потому что карта имён хранит только
+    // последний. Берём первый, остальные выбрасываем.
+    if (handled.has(key)) continue;
+    handled.add(key);
     const variant: AspectVariant = {
       id: crypto.randomUUID(),
       label: "документ",
@@ -72,7 +87,7 @@ export function mergeDocumentSections(
       modelId: meta.modelId,
       contextRef: meta.contextRef,
     };
-    const existing = byName.get(normalizeSectionName(section.name));
+    const existing = byName.get(key);
     if (!existing) {
       maxOrder += 1;
       added.push({
