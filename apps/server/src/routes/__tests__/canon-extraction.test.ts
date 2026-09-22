@@ -388,3 +388,60 @@ describe("canon-extraction routes", () => {
     expect([200, 404]).toContain(res.status);
   });
 });
+
+describe("отмена принятия (F01 ревью 2026-09-22)", () => {
+  const candidate = (i: number, name: string) => ({
+    id: `character:${i}`,
+    name,
+    profile: "",
+    status: "new",
+    existingId: null,
+    quote: name,
+    mentionCount: 1,
+    decision: "pending",
+    decidedExistingId: null,
+  });
+  const names = async () =>
+    (await sendJson<Array<{ canonicalName: string }>>(t.app, `/api/books/${bookId}/characters`, "GET"))
+      .map((c) => c.canonicalName)
+      .sort();
+
+  function seedTwo() {
+    seedExtraction(t, chapterId, {
+      characters: [candidate(0, "Альфа"), candidate(1, "Бета")],
+      locations: [],
+      items: [],
+      hooks: [],
+      relationships: [],
+      notes: null,
+    });
+  }
+  const accept = (i: number) =>
+    send(t.app, `/api/chapters/${chapterId}/canon-extractions/character:${i}/accept`, "POST", { kind: "character" });
+  const undo = (i: number) =>
+    send(t.app, `/api/chapters/${chapterId}/canon-extractions/character:${i}/undo`, "POST", {});
+
+  it("отмена первого удаляет его карточку, а не принятую следом", async () => {
+    seedTwo();
+    await accept(0);
+    await accept(1);
+    // Бета принята позже — прежний поиск «последнего упоминания» выбирал её.
+    t.sqlite
+      .prepare("UPDATE entity_chapter_mentions SET first_seen_at = '2099-01-01T00:00:00.000Z' WHERE entity_id = (SELECT id FROM characters WHERE canonical_name = 'Бета')")
+      .run();
+
+    expect((await undo(0)).status).toBe(200);
+    expect(await names()).toEqual(["Бета"]);
+  });
+
+  it("карточку, которую правили после принятия, отмена не удаляет", async () => {
+    seedTwo();
+    await accept(0);
+    t.sqlite
+      .prepare("UPDATE characters SET updated_at = '2099-01-01T00:00:00.000Z' WHERE canonical_name = 'Альфа'")
+      .run();
+
+    expect((await undo(0)).status).toBe(409);
+    expect(await names()).toEqual(["Альфа"]);
+  });
+});

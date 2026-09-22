@@ -21,26 +21,36 @@ interface StoredCharacterCandidate extends CharacterCandidate {
   id: string;
   decision: Decision;
   decidedExistingId: number | null;
+  /** Сущность, которую создало ЭТО принятие; отмена удаляет ровно её (F01). */
+  createdEntityId?: number | null;
 }
 interface StoredLocationCandidate extends LocationCandidate {
   id: string;
   decision: Decision;
   decidedExistingId: number | null;
+  /** Сущность, которую создало ЭТО принятие; отмена удаляет ровно её (F01). */
+  createdEntityId?: number | null;
 }
 interface StoredItemCandidate extends ItemCandidate {
   id: string;
   decision: Decision;
   decidedExistingId: number | null;
+  /** Сущность, которую создало ЭТО принятие; отмена удаляет ровно её (F01). */
+  createdEntityId?: number | null;
 }
 interface StoredHookCandidate extends HookCandidate {
   id: string;
   decision: Decision;
   decidedExistingId: number | null;
+  /** Сущность, которую создало ЭТО принятие; отмена удаляет ровно её (F01). */
+  createdEntityId?: number | null;
 }
 interface StoredRelationshipCandidate extends RelationshipCandidate {
   id: string;
   decision: Decision;
   decidedExistingId: number | null;
+  /** Сущность, которую создало ЭТО принятие; отмена удаляет ровно её (F01). */
+  createdEntityId?: number | null;
 }
 
 type Decision = "pending" | "accepted" | "rejected" | "merged";
@@ -606,6 +616,7 @@ function applyAcceptDecision(
 
   let entityId: number;
   let decision: Decision;
+  let created = false;
   if (mergeTargetId !== undefined) {
     entityId = mergeTargetId;
     decision = "merged";
@@ -617,6 +628,7 @@ function applyAcceptDecision(
     decision = "accepted";
   } else {
     decision = "accepted";
+    created = true;
     if (kind === "character") {
       entityId = createCharacterFromCandidate(sqlite, bookId, c);
     } else if (kind === "location") {
@@ -641,6 +653,7 @@ function applyAcceptDecision(
 
   c.decision = decision;
   c.decidedExistingId = mergeTargetId ?? null;
+  c.createdEntityId = created ? entityId : null;
 
   return { decision, entityId };
 }
@@ -820,6 +833,7 @@ export function createCanonExtractionRoute(sqlite: DatabaseType): Hono {
       const cand = found.candidate as {
         decision: Decision;
         decidedExistingId: number | null;
+        createdEntityId?: number | null;
         status: "new" | "existing" | "ambiguous";
         existingId: number | null;
       };
@@ -837,21 +851,49 @@ export function createCanonExtractionRoute(sqlite: DatabaseType): Hono {
           : cand.status === "existing"
             ? cand.existingId
             : null;
+      const table =
+        found.kind === "character"
+          ? "characters"
+          : found.kind === "location"
+            ? "locations"
+            : found.kind === "item"
+              ? "items"
+              : found.kind === "hook"
+                ? "hooks"
+                : null;
+      // Созданную сущность отменяем только по её точному id (F01 ревью
+      // 2026-09-22). Прежде её искали «последним упоминанием того же типа в
+      // главе», и отмена Альфы удаляла принятую следом Бету. Принятие,
+      // сделанное до того, как id начали хранить, отменять нечем — удалить
+      // наугад хуже, чем отказать.
+      const createdId = cand.createdEntityId ?? null;
+      if (wasNewCreate && createdId === null) {
+        return c.json(
+          {
+            error: "undo_unsafe",
+            message:
+              "Это принятие сделано до того, как отмена научилась находить свою карточку. Удалите лишнюю карточку вручную.",
+          },
+          409,
+        );
+      }
+      // Карточку правили после принятия — удалять её значит стереть правку.
+      if (wasNewCreate && table !== null) {
+        const ent = sqlite
+          .prepare(`SELECT created_at, updated_at FROM ${table} WHERE id = ?`)
+          .get(createdId) as { created_at: string; updated_at: string } | undefined;
+        if (ent && ent.updated_at !== ent.created_at) {
+          return c.json(
+            {
+              error: "undo_unsafe",
+              message: "Карточку уже правили после принятия. Удалите её вручную, если она не нужна.",
+            },
+            409,
+          );
+        }
+      }
       try {
         sqlite.transaction(() => {
-          // Find the linked entity for this candidate.
-          // For "new" accept: entity was created; we need to find it via the
-          // mention row (entity_id) since we didn't store it on the candidate.
-          const mentionRow = sqlite
-            .prepare(
-              `SELECT entity_id FROM entity_chapter_mentions
-               WHERE entity_type = ? AND chapter_id = ?
-               ORDER BY first_seen_at DESC LIMIT 1`,
-            )
-            .all(found.kind, id) as Array<{ entity_id: number }>;
-          // Remove every mention created by this candidate's accept/merge.
-          // (We can't tell mentions apart per candidate-id; we use linkedId or
-          // the most recent mention for new-creates.)
           let entityIdToConsiderDelete: number | null = null;
           if (linkedExistingId !== null) {
             sqlite
@@ -860,8 +902,8 @@ export function createCanonExtractionRoute(sqlite: DatabaseType): Hono {
                  WHERE entity_type = ? AND entity_id = ? AND chapter_id = ?`,
               )
               .run(found.kind, linkedExistingId, id);
-          } else if (wasNewCreate && mentionRow[0]) {
-            entityIdToConsiderDelete = mentionRow[0].entity_id;
+          } else if (wasNewCreate && createdId !== null) {
+            entityIdToConsiderDelete = createdId;
             sqlite
               .prepare(
                 `DELETE FROM entity_chapter_mentions
@@ -878,16 +920,6 @@ export function createCanonExtractionRoute(sqlite: DatabaseType): Hono {
               )
               .get(found.kind, entityIdToConsiderDelete) as { c: number };
             if (remaining.c === 0) {
-              const table =
-                found.kind === "character"
-                  ? "characters"
-                  : found.kind === "location"
-                    ? "locations"
-                    : found.kind === "item"
-                      ? "items"
-                      : found.kind === "hook"
-                        ? "hooks"
-                        : null;
               if (table) {
                 sqlite
                   .prepare(`DELETE FROM ${table} WHERE id = ?`)
@@ -897,6 +929,7 @@ export function createCanonExtractionRoute(sqlite: DatabaseType): Hono {
           }
           cand.decision = "pending";
           cand.decidedExistingId = null;
+          cand.createdEntityId = null;
         })();
       } catch (e) {
         return badRequest(c, e instanceof Error ? e.message : String(e));
