@@ -377,3 +377,19 @@ describe("авторское оглавление приземляется пл�
     expect(state.stages["plot"]?.aspects).toHaveLength(1);
   });
 });
+
+describe("предупреждения доходят до ответа маршрута (живой прогон 2026-09-22)", () => {
+  it("пересказанная глава называется в warnings синхронного ответа", async () => {
+    vi.mocked(runMaterialClassifier).mockResolvedValue({
+      fragments: [{ target: "chapters", title: "Глава 1", body: "Совсем другой текст." }],
+    });
+    const id = await createBook();
+    const out = await sendJson<IntakeResponse & { warnings?: Array<{ title: string }> }>(
+      t.app,
+      `/api/books/${id}/intake`,
+      "POST",
+      { files: [{ filename: "глава.md", content: "# Глава 1\nСмотритель поднялся на маяк." }] },
+    );
+    expect(out.warnings?.map((w) => w.title)).toEqual(["Глава 1"]);
+  });
+});

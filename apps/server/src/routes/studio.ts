@@ -680,11 +680,11 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     });
 
     try {
-      const { summary, ideaSet, chapters, planVariants, failures, revision } = await runIntake(
+      const { summary, ideaSet, chapters, planVariants, failures, warnings, revision } = await runIntake(
         { sqlite, hasVec, repo, bookId: id },
         { files: parsed.data.files },
       );
-      return c.json({ summary, ideaSet, chapters, planVariants, failures, revision });
+      return c.json({ summary, ideaSet, chapters, planVariants, failures, warnings, revision });
     } catch (e) {
       if (e instanceof IntakeBookNotFoundError) return notFound(c, "book");
       if (e instanceof StudioConflictError) {
@@ -790,7 +790,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           },
         );
         await pending;
-        const { summary, ideaSet, chapters, planVariants, failures, revision, cancelled } = result;
+        const { summary, ideaSet, chapters, planVariants, failures, warnings, revision, cancelled } =
+          result;
         await stream.writeSSE({
           event: "done",
           data: JSON.stringify({
@@ -799,6 +800,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
             chapters,
             planVariants,
             failures,
+            warnings,
             revision,
             cancelled,
           }),
