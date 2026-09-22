@@ -50,6 +50,14 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
       `[proposals] ${staleProposals} кандидат(ов) остались от прошлого запуска — помечены ошибкой`,
     );
   }
+  // Раннер может умереть и не вместе с процессом (необработанный отказ в
+  // обработчике), а стартовая проверка не видит строк, которые были живы на
+  // момент старта. Поэтому та же проверка идёт и дальше, раз в минуту.
+  const proposalSweep = setInterval(() => {
+    const n = recoverStaleProseProposals(sqlite);
+    if (n > 0) console.warn(`[proposals] ${n} кандидат(ов) без пульса — помечены ошибкой`);
+  }, 60_000);
+  proposalSweep.unref();
   const memoryWorker = startMemoryWorker(sqlite, hasVec);
   // Один реестр на процесс: его смотрит генерация и правка, а маршрут отмены
   // в него пишет.
@@ -115,6 +123,7 @@ export function createApp(dbPath: string = resolveDbPath()): AppHandle {
     app,
     memoryWorker,
     close: () => {
+      clearInterval(proposalSweep);
       memoryWorker.stop();
       sqlite.close();
     },

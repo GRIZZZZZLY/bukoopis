@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { makeTestApp, sendJson, type TestApp } from "../../routes/__tests__/_helpers.js";
 import { recoverStaleProseProposals } from "../critique-recovery.js";
-import { finishProposal } from "../prose-proposals.js";
+import { finishProposal, touchProposal } from "../prose-proposals.js";
 import { aspectModelLabel } from "../aspect-model-label.js";
 
 /** Средние замечания ревью 2026-09-19: С7 (подпись модели — константа),
@@ -44,7 +44,7 @@ afterEach(() => t.cleanup());
 
 describe("кандидаты прозы после рестарта (С8)", () => {
   it("застрявший streaming становится ошибкой, остальные не трогаются", () => {
-    // Старше получаса: живую генерацию другого процесса гасить нельзя.
+    // Пульса давно нет: живую генерацию другого процесса гасить нельзя.
     const zombie = seedProposal("streaming", "2020-01-01T00:00:00.000Z");
     const ready = seedProposal("ready");
 
@@ -67,6 +67,21 @@ describe("кандидаты прозы после рестарта (С8)", () =
       .prepare("SELECT status FROM prose_proposals WHERE id = ?")
       .get(fresh) as { status: string };
     expect(row.status).toBe("streaming");
+  });
+
+  it("генерация пятиминутной давности без пульса — мёртвая (F14 ревью 2026-09-22)", () => {
+    // Прежний порог «старше получаса» оставлял её в streaming до следующего
+    // рестарта: процесс, который её писал, уже умер.
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const dead = seedProposal("streaming", fiveMinAgo);
+    const alive = seedProposal("streaming", fiveMinAgo);
+    touchProposal(t.sqlite, alive);
+
+    expect(recoverStaleProseProposals(t.sqlite)).toBe(1);
+    const status = (id: number) =>
+      (t.sqlite.prepare("SELECT status FROM prose_proposals WHERE id = ?").get(id) as { status: string }).status;
+    expect(status(dead)).toBe("failed");
+    expect(status(alive)).toBe("streaming");
   });
 
   it("восстановление после рестарта различает беаты и обычный обрыв (Task 9 CASE)", () => {

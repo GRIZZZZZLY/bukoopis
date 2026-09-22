@@ -58,6 +58,7 @@ import { countWords, prosePlainTextToProseMirror } from "../utils/prosemirror.js
 import {
   appendProposalProgress,
   createProposal,
+  touchProposal,
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
@@ -453,6 +454,9 @@ export function createPlotRoute(
       // последовательна, а не потому, что цепочка общая.
       let pending: Promise<void> = Promise.resolve();
       const keepalive = setInterval(() => {
+        // Пульс кандидата — отдельно от записи в поток: закрытая вкладка
+        // обрывает SSE, но генерация идёт и должна считаться живой (F14).
+        touchProposal(sqlite, proposalId);
         pending = pending
           .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
           .catch(() => {});

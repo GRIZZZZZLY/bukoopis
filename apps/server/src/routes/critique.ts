@@ -29,6 +29,7 @@ import { recordContextManifest, compareWithWriterBase } from "../utils/context-m
 import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   createProposal,
+  touchProposal,
   finishProposal,
   loadProposal,
 } from "../utils/prose-proposals.js";
@@ -421,6 +422,9 @@ export function createCritiqueRoute(
       // В9: то же, что у Писателя — молчащее соединение рвут по дороге.
       let pending: Promise<void> = Promise.resolve();
       const keepalive = setInterval(() => {
+        // Пульс кандидата — отдельно от записи в поток: закрытая вкладка
+        // обрывает SSE, но генерация идёт и должна считаться живой (F14).
+        touchProposal(sqlite, proposalId);
         pending = pending
           .then(() => stream.writeSSE({ event: "ping", data: JSON.stringify({ at: Date.now() }) }))
           .catch(() => {});

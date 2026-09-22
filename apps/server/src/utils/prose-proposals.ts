@@ -488,3 +488,14 @@ export function rejectProposal(sqlite: DatabaseType, proposalId: number): void {
     )
     .run(new Date().toISOString(), proposalId);
 }
+
+/** Пульс живой генерации (F14 ревью 2026-09-22). Раннер зовёт его вместе с
+ *  SSE-`ping` раз в 20 с, поэтому `updated_at` у живого кандидата не стареет
+ *  дольше этого. Восстановление судит о смерти раннера по тишине пульса, а не
+ *  по возрасту строки: пятиминутная генерация, чей процесс умер, иначе висела
+ *  в `streaming` до следующего рестарта, если не дожила до получаса. */
+export function touchProposal(sqlite: DatabaseType, id: number): void {
+  sqlite
+    .prepare("UPDATE prose_proposals SET updated_at = ? WHERE id = ? AND status = 'streaming'")
+    .run(new Date().toISOString(), id);
+}

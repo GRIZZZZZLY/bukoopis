@@ -20,17 +20,21 @@ import type { Database as DatabaseType } from "better-sqlite3";
  * запускает генерацию заново, то есть платит второй раз за тот же текст.
  * После старта ни один `streaming` живым быть не может.
  */
+/** Шесть пропущенных пульсов по 20 с. */
+export const PROPOSAL_LEASE_MS = 2 * 60 * 1000;
+
 export function recoverStaleProseProposals(
   sqlite: DatabaseType,
   nowMs: number = Date.now(),
 ): number {
   const now = new Date(nowMs).toISOString();
-  // Только кандидаты старше получаса. Второй процесс сервера на той же базе
-  // (а запустить его ничто не мешает) иначе гасил бы ЖИВУЮ генерацию первого:
-  // статус уходил бы в `failed`, и `finishProposal`, который пишет только из
-  // `streaming`, выбросил бы уже написанный текст главы. Полчаса — заведомо
-  // больше самой долгой генерации: свой предел ожидания у неё 10 минут.
-  const cutoff = new Date(nowMs - 30 * 60 * 1000).toISOString();
+  // Мёртвым считается кандидат, чей раннер молчит дольше срока аренды: живой
+  // раннер обновляет `updated_at` пульсом (`touchProposal`) раз в 20 с.
+  // Судить по возрасту строки нельзя (F14): свежая генерация умершего процесса
+  // висела бы до следующего рестарта. Совсем без порога тоже нельзя: второй
+  // процесс сервера на той же базе гасил бы ЖИВУЮ генерацию первого, и
+  // `finishProposal`, который пишет только из `streaming`, выбросил бы текст.
+  const cutoff = new Date(nowMs - PROPOSAL_LEASE_MS).toISOString();
   // Глава по беатам дописывает кандидата после каждого беата, и `failed`
   // здесь обесценивал бы всю эту работу: `acceptProposal` такой статус не
   // принимает, и автор видел бы строку с готовым текстом, которую нельзя
@@ -45,7 +49,7 @@ export function recoverStaleProseProposals(
              CASE WHEN COALESCE(beats_done, 0) > 0 THEN ? ELSE ? END
            ),
            updated_at = ?
-       WHERE status = 'streaming' AND created_at < ?`,
+       WHERE status = 'streaming' AND updated_at < ?`,
     )
     .run(
       "Генерация прервалась вместе с работой сервера. Написанные беаты можно принять.",
