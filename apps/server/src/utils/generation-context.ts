@@ -1,7 +1,7 @@
 import { chapterPositionLookup } from "./chapter-position.js";
 import type { VoiceSampleSituation } from "@book-forge/shared";
 import type { Database as DatabaseType } from "better-sqlite3";
-import { boundaryForChapter } from "@book-forge/shared";
+import { boundaryForChapter, CONTEXT_SOURCE_KINDS } from "@book-forge/shared";
 import {
   gatherCharacterContext,
   characterContextToPrompt,
@@ -82,13 +82,9 @@ export interface AssembleContextArgs {
 }
 
 export interface ContextSourceRefLite {
-  kind:
-    | "chapter_version"
-    | "character"
-    | "relationship"
-    | "style_profile"
-    | "outline"
-    | "event";
+  /** Один список видов на сервер и схему манифеста: копия списка здесь уже
+   *  отставала бы от `CONTEXT_SOURCE_KINDS` молча. */
+  kind: (typeof CONTEXT_SOURCE_KINDS)[number];
   id: number;
   versionId: number | null;
   revision: number | null;
@@ -353,8 +349,60 @@ export async function assembleGenerationContext(
   for (const e of loadEventsAtBoundary(sqlite, allCharacters.map((c) => c.id), boundary)) {
     sourceRefs.push({ kind: "event", id: e.id, versionId: null, revision: null });
   }
+  // Стиль — по содержимому, а не по номеру: пересборка отпечатка того же
+  // профиля меняет промпт, а номер остаётся прежним (F12).
   if (book.style_profile_id !== null) {
-    sourceRefs.push({ kind: "style_profile", id: book.style_profile_id, versionId: null, revision: null });
+    const sp = sqlite
+      .prepare("SELECT fingerprint_json, updated_at FROM style_profiles WHERE id = ?")
+      .get(book.style_profile_id) as { fingerprint_json: string | null; updated_at: string } | undefined;
+    sourceRefs.push({
+      kind: "style_profile",
+      id: book.style_profile_id,
+      versionId: null,
+      revision: hash32(`${sp?.fingerprint_json ?? ""}|${sp?.updated_at ?? ""}`),
+    });
+  }
+  // Остальное, что доходит до промпта (F12 ревью 2026-09-22). Отпечаток — по
+  // базе книги на ИСКЛЮЧАЮЩЕЙ границе главы, одной для всех ролей: у Писателя
+  // и критики разные запросы к заметкам и разная граница фактов, и отпечаток
+  // по готовому тексту блока расходился бы между ними при той же базе.
+  const digest = (sql: string, ...params: unknown[]): number =>
+    hash32(JSON.stringify(sqlite.prepare(sql).all(...params)));
+  const bookRefs: Array<[ContextSourceRefLite["kind"], number]> = [
+    ["studio", hash32(studioContext ?? "")],
+    ["scene_state", hash32(sceneState?.prompt ?? "")],
+    [
+      "facts",
+      digest(
+        `SELECT id, valid_to_chapter, superseded_by FROM book_facts
+         WHERE book_id = ? AND valid_from_chapter < ? ORDER BY id`,
+        book.id,
+        ch.order_index,
+      ),
+    ],
+    [
+      "notes",
+      digest(
+        `SELECT id, chapter_order_resolved FROM book_notes
+         WHERE book_id = ? AND chapter_order_introduced < ? ORDER BY id`,
+        book.id,
+        ch.order_index,
+      ),
+    ],
+    ["items", digest("SELECT id, name, profile_json FROM items WHERE book_id = ? ORDER BY id", book.id)],
+    ["locations", digest("SELECT id, name, profile_json FROM locations WHERE book_id = ? ORDER BY id", book.id)],
+    [
+      "voice_samples",
+      digest(
+        `SELECT s.id, s.status FROM character_voice_samples s
+         JOIN characters c ON c.id = s.character_id
+         WHERE c.book_id = ? ORDER BY s.id`,
+        book.id,
+      ),
+    ],
+  ];
+  for (const [kind, revision] of bookRefs) {
+    sourceRefs.push({ kind, id: book.id, versionId: null, revision });
   }
   if (outlineSelected) {
     sourceRefs.push({ kind: "outline", id: book.id, versionId: null, revision: hash32(outlineSelected) });

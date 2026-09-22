@@ -26,6 +26,16 @@ export const CONTEXT_SOURCE_KINDS = [
   "style_profile",
   "outline",
   "event",
+  // F12 ревью 2026-09-22: источники, которые доходят до промпта, но в
+  // манифест не попадали, — правка любого из них давала `baseChanged=false`.
+  // Для них `id` — книга, а `revision` — отпечаток содержимого на границе.
+  "studio",
+  "scene_state",
+  "facts",
+  "notes",
+  "items",
+  "locations",
+  "voice_samples",
 ] as const;
 
 /** Один использованный источник. `versionId` — для того, что версионируется
@@ -42,7 +52,10 @@ export type ContextSourceRef = z.infer<typeof contextSourceRefSchema>;
 /** Версия правил сборки. Меняется, когда меняется СОСТАВ секций или их
  *  рендер, а не когда меняются данные: два манифеста с разной версией
  *  несравнимы по определению. */
-export const CONTEXT_PROMPT_VERSION = "stage4-1";
+// stage4-2: в манифест добавлены источники F12 и отпечаток стиля по
+// содержимому. Прежние манифесты с новыми несравнимы — и должны отвечать
+// «сравнивать нечем», а не «база изменилась».
+export const CONTEXT_PROMPT_VERSION = "stage4-2";
 
 export const contextManifestSchema = z.object({
   purpose: contextPurposeSchema,

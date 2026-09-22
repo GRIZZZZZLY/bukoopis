@@ -244,7 +244,31 @@ describe("assembleGenerationContext", () => {
     const b = await assemble(ch);
     expect(a.styleContext.prompt).not.toBeNull();
     expect(a.styleContext.prompt).toBe(b.styleContext.prompt);
-    expect(a.sourceRefs).toContainEqual({ kind: "style_profile", id: profileId, versionId: null, revision: null });
+    // Стиль — по содержимому, а не по номеру (F12 ревью 2026-09-22).
+    expect(a.sourceRefs).toContainEqual({
+      kind: "style_profile",
+      id: profileId,
+      versionId: null,
+      revision: expect.any(Number),
+    });
+    const before = a.sourceRefs.find((r) => r.kind === "style_profile")!.revision;
+    sqlite
+      .prepare("UPDATE style_profiles SET fingerprint_json = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify({ changed: true }), "2026-09-22T00:00:00.000Z", profileId);
+    const c = await assemble(ch);
+    expect(c.sourceRefs.find((r) => r.kind === "style_profile")!.revision).not.toBe(before);
+  });
+
+  it("правка предмета меняет набор источников, а не проходит мимо манифеста (F12)", async () => {
+    const ch = insertChapter(10, "Глава.");
+    sqlite
+      .prepare("INSERT INTO items (book_id, name, profile_json, created_at, updated_at) VALUES (?, 'Ключ', ?, ?, ?)")
+      .run(bookId, JSON.stringify({ description: "железный" }), NOW, NOW);
+    const a = await assemble(ch);
+    sqlite.prepare("UPDATE items SET profile_json = ? WHERE book_id = ?").run(JSON.stringify({ description: "медный" }), bookId);
+    const b = await assemble(ch);
+    const rev = (x: typeof a) => x.sourceRefs.find((r) => r.kind === "items")!.revision;
+    expect(rev(a)).not.toBe(rev(b));
   });
 
   it("при тесном бюджете обязательный слой остаётся, а переполнение видно", async () => {
