@@ -1,44 +1,48 @@
 import { describe, it, expect } from "vitest";
-import {
-  shelfProgress,
-  spineHeight,
-  spineTone,
-  spineWidth,
-  titleSeed,
-} from "../shelf";
+import { annotationFor, booksPerRow, coverPalette, shelfLayout, titleSeed } from "../shelf";
 
-describe("shelf geometry", () => {
-  it("titleSeed is deterministic and differs across titles", () => {
+describe("витрина — детерминированные обложки и раскладка", () => {
+  it("titleSeed один и тот же для названия и разный для разных", () => {
     expect(titleSeed("Маяк")).toBe(titleSeed("Маяк"));
     expect(titleSeed("Маяк")).not.toBe(titleSeed("Зима"));
   });
 
-  it("spineWidth grows with chapters and clamps", () => {
-    expect(spineWidth(0)).toBe(46);
-    expect(spineWidth(5)).toBe(56);
-    expect(spineWidth(100)).toBe(78);
-    expect(spineWidth(Number.NaN)).toBe(46);
-    expect(spineWidth(-3)).toBe(46);
+  it("палитра обложки выводится из названия", () => {
+    expect(coverPalette(titleSeed("Маяк"))).toEqual(coverPalette(titleSeed("Маяк")));
   });
 
-  it("spineHeight stays within the shelf row", () => {
-    for (const ch of [0, 1, 12, 24, 60]) {
-      for (const seed of [0, 1, 2, 7, 12345]) {
-        const h = spineHeight(ch, seed);
-        expect(h).toBeGreaterThanOrEqual(170);
-        expect(h).toBeLessThanOrEqual(234);
-      }
-    }
+  it("раскладка центрирует неполный последний ряд", () => {
+    const slots = shelfLayout(5, 3, 1.4, 2);
+    expect(slots.map((s) => s.row)).toEqual([0, 0, 0, 1, 1]);
+    expect(slots[3]!.x).toBeCloseTo(-0.7);
+    expect(slots[4]!.x).toBeCloseTo(0.7);
+    expect(slots[0]!.y).toBeGreaterThan(slots[3]!.y);
   });
 
-  it("spineTone maps seed to 0..3", () => {
-    expect([0, 1, 2, 3]).toContain(spineTone(titleSeed("Маяк")));
-    expect(spineTone(7)).toBe(3);
+  it("в ряд не больше шести книг и не больше, чем их есть", () => {
+    expect(booksPerRow(20, 2.2)).toBe(6);
+    expect(booksPerRow(2, 2.2)).toBe(2);
+  });
+});
+
+describe("аннотация книги", () => {
+  it("собирается из утверждённого замысла по порядку", () => {
+    expect(
+      annotationFor({
+        idea: "сырая идея",
+        premise: { logline: "О чём", protagonist: "Кто", conflict: "", stakes: "Ставки" },
+      }),
+    ).toEqual(["О чём", "Кто", "Ставки"]);
   });
 
-  it("shelfProgress clamps and guards zero chapters", () => {
-    expect(shelfProgress(0, 0)).toBe(0);
-    expect(shelfProgress(1, 2)).toBe(0.5);
-    expect(shelfProgress(5, 2)).toBe(1);
+  it("без замысла — исходная идея автора", () => {
+    expect(annotationFor({ idea: "  Смотритель находит рыбу ", premise: {} })).toEqual([
+      "Смотритель находит рыбу",
+    ]);
+  });
+
+  it("пусто — null, текст не выдумывается", () => {
+    expect(annotationFor({ premise: {} })).toBeNull();
+    expect(annotationFor(null)).toBeNull();
   });
 });

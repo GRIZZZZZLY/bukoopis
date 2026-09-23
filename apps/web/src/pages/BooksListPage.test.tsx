@@ -32,6 +32,7 @@ function renderPage() {
 describe("BooksListPage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    m.listRecommended.mockResolvedValue({} as never);
     m.getConcept.mockResolvedValue({ idea: null, premise: { logline: "Смотритель находит рыбу" } } as never);
     m.getBooksStats.mockResolvedValue({
       "7": { chapters: 12, done: 6, words: 34000 },
@@ -65,77 +66,59 @@ describe("BooksListPage", () => {
     await waitFor(() => expect(screen.getByText("STUDIO 42")).toBeInTheDocument());
   });
 
-  it("карточка выбранной книги называет следующий шаг и открывает дом книги", async () => {
-    m.listBooks.mockResolvedValue([
-      {
-        id: 7,
-        title: "Маяк",
-        status: "draft",
-        createdAt: new Date().toISOString(),
-      },
-    ] as never);
+  const MAYAK = [{ id: 7, title: "Маяк", status: "draft", createdAt: new Date().toISOString() }];
+
+  // jsdom не даёт WebGL — страница показывает плоскую витрину с тем же
+  // поведением: книги лицом, раскрытие, аннотация.
+  it("книги стоят лицом; нажатие раскрывает разворот с аннотацией и следующим шагом", async () => {
+    m.listBooks.mockResolvedValue(MAYAK as never);
     m.listRecommended.mockResolvedValue({ 7: "plot" } as never);
-    render(
-      <MemoryRouter initialEntries={["/books"]}>
-        <Routes>
-          <Route path="/books" element={<BooksListPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    const card = await screen.findByRole("complementary", { name: "Выбранная книга" });
-    expect(card).toHaveTextContent("План");
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Маяк — раскрыть" }));
+    const spread = await screen.findByRole("article", { name: "Книга «Маяк»" });
+    expect(spread).toHaveTextContent("Смотритель находит рыбу");
+    expect(spread).toHaveTextContent("Следующий шаг");
+    expect(spread).toHaveTextContent("План");
+    expect(spread).toHaveTextContent("12 · готово 6");
     expect(screen.getByRole("button", { name: "Открыть книгу" })).toBeInTheDocument();
   });
 
-  it("still renders the list if listRecommended fails", async () => {
-    m.listBooks.mockResolvedValue([
-      {
-        id: 7,
-        title: "Маяк",
-        status: "draft",
-        createdAt: new Date().toISOString(),
-      },
-    ] as never);
-    m.listRecommended.mockRejectedValue(new Error("boom") as never);
+  it("«Открыть книгу» ведёт в дом книги", async () => {
+    m.listBooks.mockResolvedValue(MAYAK as never);
+    m.listRecommended.mockResolvedValue({} as never);
     render(
       <MemoryRouter initialEntries={["/books"]}>
         <Routes>
           <Route path="/books" element={<BooksListPage />} />
+          <Route path="/books/:bookId" element={<div>ДОМ КНИГИ</div>} />
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByRole("button", { name: "Маяк" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Маяк — раскрыть" }));
+    await userEvent.click(screen.getByRole("button", { name: "Открыть книгу" }));
+    expect(await screen.findByText("ДОМ КНИГИ")).toBeInTheDocument();
+  });
+
+  it("без замысла аннотация не выдумывается", async () => {
+    m.listBooks.mockResolvedValue(MAYAK as never);
+    m.listRecommended.mockRejectedValue(new Error("boom") as never);
+    m.getConcept.mockResolvedValue({ premise: {} } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Маяк — раскрыть" }));
+    expect(await screen.findByText(/Аннотация появится, когда вы утвердите замысел/)).toBeInTheDocument();
     expect(screen.getByText("книга проработана")).toBeInTheDocument();
   });
 
-  it("renders books as spines on the shelf", async () => {
-    m.listBooks.mockResolvedValue([
-      {
-        id: 7,
-        title: "Маяк",
-        status: "draft",
-        createdAt: new Date().toISOString(),
-      },
-    ] as never);
+  it("клавиатура: стрелка выбирает, Enter раскрывает, Esc закрывает", async () => {
+    m.listBooks.mockResolvedValue(MAYAK as never);
     m.listRecommended.mockResolvedValue({} as never);
     renderPage();
-    const spine = await screen.findByRole("button", { name: "Маяк" });
-    expect(spine.className).toContain("shelf-book");
-  });
-
-  it("shows the ghost slot that opens the create form", async () => {
-    m.listBooks.mockResolvedValue([
-      {
-        id: 7,
-        title: "Маяк",
-        status: "draft",
-        createdAt: new Date().toISOString(),
-      },
-    ] as never);
-    m.listRecommended.mockResolvedValue({} as never);
-    renderPage();
-    const ghost = await screen.findByRole("button", { name: "Добавить книгу" });
-    fireEvent.click(ghost);
-    expect(screen.getByLabelText("О чём книга?")).toBeInTheDocument();
+    const showcase = await screen.findByLabelText(/Витрина книг/);
+    showcase.focus();
+    fireEvent.keyDown(showcase, { key: "ArrowRight" });
+    fireEvent.keyDown(showcase, { key: "Enter" });
+    expect(await screen.findByRole("article", { name: "Книга «Маяк»" })).toBeInTheDocument();
+    fireEvent.keyDown(showcase, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("article")).toBeNull());
   });
 });

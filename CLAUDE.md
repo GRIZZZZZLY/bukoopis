@@ -148,7 +148,7 @@ React 18 + Vite 6 + Tailwind v4, CSS-first. Tokens live only in the `@theme stat
 - `react-router-dom@7`. `useBlocker` needs a data router.
 
 Rooms (structure agreed 2026-09-22, [spec](docs/superpowers/specs/2026-09-22-structure-redesign.md)). One thing, one place:
-- Shelf — `/books`, spines + card of the selected book, [shelf.ts](apps/web/src/lib/shelf.ts).
+- Shelf — `/books`, three.js showcase ([ShowcaseScene](apps/web/src/components/shelf/ShowcaseScene.tsx), lazy chunk): books face-out, click opens the book — title page + annotation from the concept (never invented). No WebGL (jsdom too) → flat [ShelfFlat](apps/web/src/components/shelf/ShelfFlat.tsx) with the same behaviour.
 - Book home — `/books/:id` ([BookLayout](apps/web/src/components/book/BookLayout.tsx)): Overview, Chapters, Canon, Memory notes (read-only over `book_notes`), Settings. «Добавить материалы» is the only text entry: import without model or intake.
 - Workshop — `/books/:id/studio/<stage>`, stepper is its only navigation. Characters/items stages propose and accept; editing lives only in Canon.
 - Chapter — `ChapterPage`: outline, manuscript, tabbed right rail (all panels stay mounted); every panel has its own error boundary.
