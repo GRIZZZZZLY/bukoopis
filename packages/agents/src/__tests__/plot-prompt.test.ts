@@ -207,3 +207,10 @@ describe("SYSTEM_CHAPTER_PLAN — второй разбор прозы 2026-09-2
     expect(SYSTEM_CHAPTER_PLAN).toMatch(/Beats — предлагаемый способ рассказать/);
   });
 });
+
+describe("SYSTEM_CHAPTER_PLAN — помеха как обстоятельство", () => {
+  it("forbids writing prose instructions into the conflict field", () => {
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/Conflict — обстоятельство сцены/);
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/тело реагирует раньше разума/);
+  });
+});

@@ -25,6 +25,21 @@ export const LLM_CLICHE_PATTERNS_RU = [
   "шаблонные телесные метафоры («сердце замерло», «мурашки по коже», «глаза заблестели»)",
 ] as const;
 
+/** Конкретные обороты «тело раньше сознания» (слепое сравнение 2026-09-23:
+ *  «Локти опустились сами», «присел — раньше, чем решил присесть» по три на
+ *  страницу). Запрет на конкретные слова модель соблюдает, на конструкцию —
+ *  нет, поэтому здесь сами обороты, а не описание приёма. Отдельно от
+ *  `LLM_CLICHE_TOKENS_RU`: тот список ещё и частотный baseline усталости. */
+export const LLM_CLICHE_PHRASES_RU = [
+  "раньше, чем понял",
+  "раньше, чем решил",
+  "раньше головы",
+  "руки сами",
+  "ноги сами",
+  "тело само",
+  "сама нашла",
+] as const;
+
 /**
  * Rendered rule block for a system prompt. Kept as a function so the caller
  * chooses the surrounding heading and the list stays in one place.
@@ -32,6 +47,7 @@ export const LLM_CLICHE_PATTERNS_RU = [
 export function renderClicheRule(): string {
   return [
     `— Никаких LLM-клише. Слова-маркеры: ${LLM_CLICHE_TOKENS_RU.join(", ")}.`,
+    `  Обороты-маркеры (тело действует «само» раньше сознания): ${LLM_CLICHE_PHRASES_RU.map((p) => `«${p}»`).join(", ")} и их варианты. Если герой что-то сделал, просто скажи, что он сделал.`,
     `  Конструкции-маркеры: ${LLM_CLICHE_PATTERNS_RU.join("; ")}.`,
   ].join("\n");
 }

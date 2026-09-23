@@ -180,3 +180,17 @@ describe("buildReviserVolatilePrompt — защищённые фрагменты
     expect(buildReviserVolatilePrompt(base)).not.toMatch(/не трогай/i);
   });
 });
+
+describe("Reviser — порядок удаления (слепое сравнение 2026-09-23)", () => {
+  const system = buildReviserStableSystem({
+    bookContext: "", chapterTitle: "", pov: "", emotionalGoal: "", characterContext: null, loreContext: null,
+    styleContext: null, fatigueWords: [], previousChaptersSummary: null, originalText: "", critics: [], iteration: 1,
+  } as never);
+  it("names what to remove first when the author tries too hard", () => {
+    expect(system).toMatch(/убирай в таком порядке/);
+    expect(system).toMatch(/Ладонь осталась на засове/);
+  });
+  it("does not answer 'feeling not conveyed' with a body-before-mind phrase", () => {
+    expect(system).toMatch(/не выполняй телесной реакцией/);
+  });
+});
