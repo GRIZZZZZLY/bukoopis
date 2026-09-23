@@ -8,6 +8,12 @@ export const inlineCommandSchema = z.enum([
   "intensify",
   "lengthen",
   "describe",
+  // Узкие операции (второй разбор прозы 2026-09-23): «Переписать» просило
+  // «улучшить прозу» и возвращало текст образнее исходного. У каждой из этих
+  // трёх одна задача и свой предел изменения.
+  "clarify",
+  "dedupe",
+  "natural_dialogue",
 ]);
 export type InlineCommand = z.infer<typeof inlineCommandSchema>;
 
@@ -18,6 +24,9 @@ export const INLINE_COMMAND_LABELS: Record<InlineCommand, string> = {
   intensify: "Усилить эмоцию",
   lengthen: "Развернуть",
   describe: "Описать",
+  clarify: "Прояснить",
+  dedupe: "Убрать повтор",
+  natural_dialogue: "Естественнее реплика",
 };
 
 export const INLINE_COMMANDS_REQUIRING_SELECTION: InlineCommand[] = [
@@ -26,6 +35,9 @@ export const INLINE_COMMANDS_REQUIRING_SELECTION: InlineCommand[] = [
   "intensify",
   "lengthen",
   "describe",
+  "clarify",
+  "dedupe",
+  "natural_dialogue",
 ];
 
 /** Канал восприятия для «Описать» (заимствование из litrab.ai): модель

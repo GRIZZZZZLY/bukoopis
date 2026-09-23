@@ -22,6 +22,9 @@ const COMMANDS: InlineCommand[] = [
   "shorten",
   "intensify",
   "lengthen",
+  "clarify",
+  "dedupe",
+  "natural_dialogue",
 ];
 
 const CONTEXT_RADIUS = 800; // chars before/after selection used as context

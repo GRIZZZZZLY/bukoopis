@@ -79,8 +79,22 @@ describe("Writer system rules — structural tells", () => {
     expect(system).toMatch(/рефлекси/i);
   });
 
-  it("allows slack: not every sentence has to work", () => {
-    expect(system).toMatch(/слабин/i);
+  // Второй разбор прозы 2026-09-23: стилевой блок заменён целиком, а не
+  // дописан — прежние требования тянули прозу в обратную сторону.
+  it("allows plain sentences and uneven attention across the plan", () => {
+    expect(system).toMatch(/Обычные реплики и простые связующие предложения допустимы/);
+    expect(system).toMatch(/Границы беатов не обязаны совпадать с абзацами/);
+  });
+
+  it("no longer maps beats to paragraphs or prescribes an image ending", () => {
+    expect(system).not.toMatch(/1-4 абзаца/);
+    expect(system).not.toMatch(/последний абзац — действие, реплика или образ/i);
+    expect(system).not.toMatch(/Одна каденция на всю главу/);
+  });
+
+  it("allows naming a feeling directly instead of forcing a bodily gesture", () => {
+    expect(system).toMatch(/«я боялся»/);
+    expect(system).toMatch(/Не добавляй телесный жест только ради демонстрации чувства/);
   });
 
   it("forbids copying beat-sheet wording verbatim", () => {
@@ -158,14 +172,34 @@ describe("buildWriterVolatilePrompt — chapter closing", () => {
         closing: { mode: "cut_mid_action", note: "Обрыв на пороге." },
       },
     });
-    expect(prompt).toContain("Финал главы: обрыв посреди действия — Обрыв на пороге.");
-    expect(prompt.indexOf("Финал главы:")).toBeGreaterThan(prompt.indexOf("Beats:"));
+    expect(prompt).toContain(
+      "Где глава останавливается (событие, а не готовая последняя фраза): обрыв посреди действия — Обрыв на пороге.",
+    );
+    expect(prompt.indexOf("Где глава останавливается")).toBeGreaterThan(prompt.indexOf("План событий"));
   });
 
-  it("omits the closing line for a legacy beat-sheet", () => {
+  it("omits the stop point for a legacy beat-sheet", () => {
     const prompt = buildWriterVolatilePrompt({ ...base, beatSheet });
-    expect(prompt).toContain("Beats:");
-    expect(prompt).not.toContain("Финал главы:");
+    expect(prompt).toContain("План событий");
+    expect(prompt).not.toContain("Где глава останавливается");
+  });
+
+  it("shows the writer what happens, not the planner's working notes", () => {
+    const prompt = buildWriterVolatilePrompt({
+      ...base,
+      beatSheet: {
+        ...beatSheet,
+        beats: [
+          { index: 0, type: "setup", summary: "Рин чинит сеть", goal: "показать быт", conflict: "локального конфликта нет", outcome: "сеть починена" },
+          { index: 1, type: "climax", summary: "Сарек входит", goal: "поворот", conflict: "Рин прячет медальон", outcome: "медальон спрятан" },
+        ],
+      },
+    });
+    expect(prompt).not.toContain("показать быт");
+    expect(prompt).not.toMatch(/\[setup\]|\[climax\]/);
+    expect(prompt).not.toContain("локального конфликта нет");
+    expect(prompt).toContain("Что мешает: Рин прячет медальон");
+    expect(prompt).toContain("К чему приходит: сеть починена");
   });
 
   it("печатает контракт главы после beats", () => {
@@ -222,7 +256,7 @@ describe("buildWriterVolatilePrompt — замысел сцены", () => {
   it("печатает замысел перед беатами: намерение объясняет, из чего герой действует", () => {
     const out = buildWriterVolatilePrompt({ ...base, sceneIntent: intent });
     expect(out).toContain("увести брата со станции");
-    expect(out.indexOf("Замысел сцены")).toBeLessThan(out.indexOf("Beats:"));
+    expect(out.indexOf("Замысел сцены")).toBeLessThan(out.indexOf("План событий"));
   });
 
   it("без замысла блока нет вовсе", () => {

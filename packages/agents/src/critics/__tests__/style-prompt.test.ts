@@ -41,9 +41,21 @@ describe("style critic system prompt", () => {
     expect(STYLE_CRITIC_SYSTEM).toContain(CRITIC_CALIBRATION_RULE);
   });
 
-  it("tells the critic how to read the measured counters", () => {
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/на 1000 слов/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/каденци/i);
+  // Второй разбор прозы 2026-09-23: числа машинного baseline — не норма
+  // хорошей прозы, и «звучит как ChatGPT» — не основание для blocking.
+  it("reads the measured counters as evidence of repetition, not as norms", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Структурные маркеры ИИ-прозы/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Чисел нормы у этих маркеров нет/);
+    expect(STYLE_CRITIC_SYSTEM).not.toMatch(/~4/);
+  });
+
+  it("does not block on a vague 'sounds like ChatGPT' impression", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Впечатление «звучит как ChatGPT» без названного приёма и цитат — не основание/);
+  });
+
+  it("prefers deletion and allows 'no significant problems'", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Предпочитай правку «убрать»/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/существенных проблем нет/);
   });
 });
 

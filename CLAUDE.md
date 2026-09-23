@@ -108,6 +108,14 @@ Adding an agent takes three steps:
 - A late model response after cancel is never written: proposals only from `streaming`, scene intent via `shouldPersist`.
 - Live runs send a heartbeat (`touchProposal`). A proposal with no heartbeat for 2 min is dead (`recoverStaleProseProposals`, at startup and every minute).
 - Critics: set in `ALL_CRITIC_TYPES`. Usage goes through `reportCriticUsage`. A skipped critic is listed in `skippedCritics`.
+- Prose rules must agree along the whole chain: plan → Writer → critics → Reviser. Context: [docs/prompts/agents-2026-09-23.md](docs/prompts/agents-2026-09-23.md).
+  - The Writer's style block is replaced as a whole, never appended to.
+  - Beats are a suggestion; obligations live in the contract.
+  - `closing.note` is a stop event, not a ready-made last line.
+  - A beat without local conflict says so: «локального конфликта нет».
+  - Critics judge a scene by its task. A missing hook or climax is not a defect.
+  - Measured tell counts are evidence of repetition, never norms or severity thresholds.
+  - Do not add quota rules for the Writer (e.g. "≤3 similes per 1000 words"): they become a new template.
 
 **Subscription backend** ([mcp-submit-tool.ts](packages/llm/src/clients/mcp-submit-tool.ts)):
 - Thinking is off, and `settingSources: []`.

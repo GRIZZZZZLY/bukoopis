@@ -35,12 +35,23 @@ describe("Reviser system rules — structural tells", () => {
     expect(system).toMatch(/рефлекси/i);
   });
 
-  it("preserves slack instead of polishing every sentence", () => {
-    expect(system).toMatch(/слабин/i);
+  // Второй разбор прозы 2026-09-23: правка «улучшала» текст, делая его
+  // образнее. Главное правило теперь — минимальное вмешательство.
+  it("makes minimal intervention the main rule", () => {
+    expect(system).toMatch(/минимальное вмешательство/i);
   });
 
-  it("preserves the register contrast between scenes", () => {
-    expect(system).toMatch(/регистр/i);
+  it("allows plain deletion as a fix", () => {
+    expect(system).toMatch(/Удалить — законная правка/);
+  });
+
+  it("forbids making the text more figurative than the original", () => {
+    expect(system).toMatch(/не делает текст образнее оригинала/i);
+    expect(system).not.toMatch(/последний абзац — действие, реплика или образ/i);
+  });
+
+  it("treats plain sentences as legitimate, not defects", () => {
+    expect(system).toMatch(/Обычные фразы/);
   });
 
   it("keeps the chapter's ending shape", () => {

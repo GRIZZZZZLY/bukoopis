@@ -7,16 +7,21 @@ import { CRITIC_CALIBRATION_RULE } from "../base.js";
 // chapter, the narrator explaining the theme.
 
 describe("reader critic system prompt — discourse checks", () => {
-  it("flags the reflection tail", () => {
-    expect(READER_CRITIC_SYSTEM).toMatch(/осмыслени/i);
+  // Второй разбор прозы 2026-09-23: вопрос «можно ли пропустить абзац» делал
+  // быт и паузы «лишними». Критик называет конкретное место, где трудно.
+  it("asks for a concrete place where it is hard to follow, not believable, or repeated", () => {
+    expect(READER_CRITIC_SYSTEM).toMatch(/трудно следить/);
+    expect(READER_CRITIC_SYSTEM).toMatch(/не верится/);
+    expect(READER_CRITIC_SYSTEM).toMatch(/повтор/);
+    expect(READER_CRITIC_SYSTEM).not.toMatch(/можно ли пропустить абзац/);
   });
 
-  it("flags a middle the opening already predicts", () => {
-    expect(READER_CRITIC_SYSTEM).toMatch(/середин/i);
+  it("does not treat calm or everyday detail as a defect", () => {
+    expect(READER_CRITIC_SYSTEM).toMatch(/Не считай дефектами сами по себе: спокойствие/);
   });
 
-  it("flags the narrator explaining the theme", () => {
-    expect(READER_CRITIC_SYSTEM).toMatch(/объясняет тему|тему словами/i);
+  it("flags the narrator explaining meaning in words", () => {
+    expect(READER_CRITIC_SYSTEM).toMatch(/нарратор объясняет смысл словами/i);
   });
 
   it("carries the shared calibration rule", () => {

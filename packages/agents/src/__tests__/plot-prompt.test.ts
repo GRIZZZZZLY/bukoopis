@@ -188,3 +188,22 @@ describe("SYSTEM_BOOK_OUTLINE", () => {
     expect(SYSTEM_BOOK_OUTLINE).toMatch(/поглавн|список глав/i);
   });
 });
+
+describe("SYSTEM_CHAPTER_PLAN — второй разбор прозы 2026-09-23", () => {
+  it("no longer forces a surprise beat in the middle third", () => {
+    expect(SYSTEM_CHAPTER_PLAN).not.toMatch(/средней трети/);
+  });
+
+  it("allows a beat without local conflict, named explicitly", () => {
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/локального конфликта нет/);
+  });
+
+  it("asks for the stop event, not a ready-made last line", () => {
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/событие, на котором глава останавливается/);
+    expect(SYSTEM_CHAPTER_PLAN).not.toMatch(/действие, реплика, образ/);
+  });
+
+  it("separates obligations (contract) from the suggested way to tell them (beats)", () => {
+    expect(SYSTEM_CHAPTER_PLAN).toMatch(/Beats — предлагаемый способ рассказать/);
+  });
+});
