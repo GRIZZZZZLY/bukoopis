@@ -27,6 +27,15 @@ describe("resolveBackend default map", () => {
   it("critic_canon → api", () => {
     expect(resolveBackend("critic_canon")).toBe("api");
   });
+  // Проход по фразам — часть критика стиля: без своей записи идёт его путём.
+  it("critic_style_phrase follows critic_style unless set explicitly", () => {
+    process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ critic_style: "subscription" });
+    expect(resolveBackend("critic_style_phrase")).toBe("subscription");
+    process.env.LLM_AGENT_BACKEND_MAP = JSON.stringify({ critic_style: "subscription", critic_style_phrase: "api" });
+    expect(resolveBackend("critic_style_phrase")).toBe("api");
+    delete process.env.LLM_AGENT_BACKEND_MAP;
+    expect(resolveBackend("critic_style_phrase")).toBe("api");
+  });
   it("canon_guard → api", () => {
     expect(resolveBackend("canon_guard")).toBe("api");
   });

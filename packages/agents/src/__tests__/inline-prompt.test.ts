@@ -109,3 +109,16 @@ describe("describe — одна деталь по каналу", () => {
     ).toThrow(/sense/);
   });
 });
+
+describe("узкие команды inline — второй разбор прозы 2026-09-23", () => {
+  it("«Переписать» больше не требует «улучшить прозу» и запрещает делать образнее", () => {
+    expect(INLINE_COMMAND_INSTRUCTIONS.rewrite).not.toMatch(/улучши прозу/);
+    expect(INLINE_COMMAND_INSTRUCTIONS.rewrite).toMatch(/не образнее оригинала/);
+  });
+
+  it("у каждой узкой операции есть предел изменения", () => {
+    expect(INLINE_COMMAND_INSTRUCTIONS.clarify).toMatch(/120%/);
+    expect(INLINE_COMMAND_INSTRUCTIONS.dedupe).toMatch(/не больше оригинала/);
+    expect(INLINE_COMMAND_INSTRUCTIONS.natural_dialogue).toMatch(/близко к оригиналу/);
+  });
+});

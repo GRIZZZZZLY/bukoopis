@@ -35,12 +35,23 @@ describe("Reviser system rules — structural tells", () => {
     expect(system).toMatch(/рефлекси/i);
   });
 
-  it("preserves slack instead of polishing every sentence", () => {
-    expect(system).toMatch(/слабин/i);
+  // Второй разбор прозы 2026-09-23: правка «улучшала» текст, делая его
+  // образнее. Главное правило теперь — минимальное вмешательство.
+  it("makes minimal intervention the main rule", () => {
+    expect(system).toMatch(/минимальное вмешательство/i);
   });
 
-  it("preserves the register contrast between scenes", () => {
-    expect(system).toMatch(/регистр/i);
+  it("allows plain deletion as a fix", () => {
+    expect(system).toMatch(/Удалить — законная правка/);
+  });
+
+  it("forbids making the text more figurative than the original", () => {
+    expect(system).toMatch(/не делает текст образнее оригинала/i);
+    expect(system).not.toMatch(/последний абзац — действие, реплика или образ/i);
+  });
+
+  it("treats plain sentences as legitimate, not defects", () => {
+    expect(system).toMatch(/Обычные фразы/);
   });
 
   it("keeps the chapter's ending shape", () => {
@@ -167,5 +178,37 @@ describe("buildReviserVolatilePrompt — защищённые фрагменты
 
   it("без защищённых кусков блока нет вовсе", () => {
     expect(buildReviserVolatilePrompt(base)).not.toMatch(/не трогай/i);
+  });
+});
+
+describe("Reviser — порядок удаления (слепое сравнение 2026-09-23)", () => {
+  const system = buildReviserStableSystem({
+    bookContext: "", chapterTitle: "", pov: "", emotionalGoal: "", characterContext: null, loreContext: null,
+    styleContext: null, fatigueWords: [], previousChaptersSummary: null, originalText: "", critics: [], iteration: 1,
+  } as never);
+  it("names what to remove first when the author tries too hard", () => {
+    expect(system).toMatch(/Ладонь осталась на засове/);
+    // Третье слепое сравнение (2026-09-23): рассказчик «в сборнике цитат».
+    // Правила без чисел — редактор решает по тексту, а не выполняет квоту.
+    expect(system).toMatch(/Где текст старается/);
+    expect(system).toMatch(/оставь одну — самую простую/);
+    expect(system).toMatch(/начиная с самых умных/);
+    expect(system).not.toMatch(/\d+\s*%\s*сравнений/);
+  });
+  // Четвёртое сравнение: правка вырезала характер вместе с остротой,
+  // оставила шов «Так что» и сжала афоризм в новую концовку.
+  it("guards character, seams and endings after a deletion", () => {
+    expect(system).toMatch(/узнаём ли мы без этой фразы меньше/);
+    expect(system).toMatch(/Правка не должна оставлять след удаления/);
+    expect(system).toMatch(/простая характерная реплика персонажа/);
+    expect(system).toMatch(/Не сжимай афоризм в короткую ударную фразу/);
+  });
+  // Пятое сравнение: правка выбросила одну из трёх версий героя как «лишнее».
+  it("keeps each of the character's hypotheses", () => {
+    expect(system).toMatch(/нельзя объединять или удалять отдельную гипотезу/);
+    expect(system).toMatch(/Не сохраняй необычную формулировку только потому, что она выразительная/);
+  });
+  it("does not answer 'feeling not conveyed' with a body-before-mind phrase", () => {
+    expect(system).toMatch(/не выполняй телесной реакцией/);
   });
 });

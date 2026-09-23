@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   reviseChapter: vi.fn(),
+  fixPhrases: vi.fn(),
 }));
 
 import {
@@ -211,5 +212,49 @@ describe("repair endpoint", () => {
     expect(after.c).toBe(before.c);
     expect(proposal).toMatchObject({ kind: "repair", status: "ready" });
     expect(jobs.c).toBe(0);
+  });
+  // Хирургическая правка (2026-09-23): замечания прохода по фразам правит
+  // не общая правка — код подставляет замены только в отмеченные места.
+  it("только замечания о фразах: общая правка не вызывается, текст вокруг не меняется", async () => {
+    const { reviseChapter, fixPhrases } = await import("@book-forge/agents");
+    vi.mocked(reviseChapter).mockReset();
+    vi.mocked(fixPhrases).mockResolvedValue({
+      fixes: [{ id: "style:0", before: "для self-repair", after: "для правки" }],
+      usage: [{ modelId: "subscription:test", inputTokens: 1, outputTokens: 1, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 }],
+    } as never);
+    const Database = (await import("better-sqlite3")).default;
+    const path = `${t.dbDir}/test.sqlite`;
+    const db = new Database(path);
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO critique_reports (chapter_version_id, status, report_json, created_at, completed_at)
+       VALUES (?, 'done', ?, ?, ?)`,
+    ).run(
+      versionId,
+      JSON.stringify({
+        critics: [{ critic: "style", overallNotes: "ок", issues: [
+          { severity: "suggestion", summary: "готовая формула: слишком гладко", excerpt: "для self-repair", origin: "style_phrase" },
+        ] }],
+        blockingCount: 0, suggestionCount: 1, nitCount: 0, generatedAt: now,
+      }),
+      now,
+      now,
+    );
+    db.close();
+
+    const res = await send(t.app, `/api/chapter-versions/${versionId}/repair`, "POST", {});
+    const raw = await res.text();
+    expect(raw).toContain("event: done");
+    expect(raw).toContain("\"phraseFixes\":{\"applied\":1");
+    expect(reviseChapter).not.toHaveBeenCalled();
+    expect(vi.mocked(fixPhrases).mock.calls[0]![0].items).toEqual([
+      expect.objectContaining({ id: "style:0", excerpt: "для self-repair", paragraph: "Текст главы для self-repair." }),
+    ]);
+    const db2 = new Database(path);
+    const proposal = db2
+      .prepare("SELECT status, content_text FROM prose_proposals ORDER BY id DESC LIMIT 1")
+      .get() as { status: string; content_text: string };
+    db2.close();
+    expect(proposal).toEqual({ status: "ready", content_text: "Текст главы для правки." });
   });
 });

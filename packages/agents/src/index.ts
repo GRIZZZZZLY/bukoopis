@@ -1,6 +1,7 @@
 export * from "./plot.js";
 export * from "./writer.js";
 export * from "./reviser.js";
+export * from "./phrase-fix.js";
 export * from "./inline.js";
 export * from "./character.js";
 export * from "./lore.js";

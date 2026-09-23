@@ -41,9 +41,49 @@ describe("style critic system prompt", () => {
     expect(STYLE_CRITIC_SYSTEM).toContain(CRITIC_CALIBRATION_RULE);
   });
 
-  it("tells the critic how to read the measured counters", () => {
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/на 1000 слов/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/каденци/i);
+  // Второй разбор прозы 2026-09-23: числа машинного baseline — не норма
+  // хорошей прозы, и «звучит как ChatGPT» — не основание для blocking.
+  it("reads the measured counters as evidence of repetition, not as norms", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Структурные маркеры ИИ-прозы/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Чисел нормы у этих маркеров нет/);
+    expect(STYLE_CRITIC_SYSTEM).not.toMatch(/~4/);
+  });
+
+  it("does not block on a vague 'sounds like ChatGPT' impression", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Впечатление «звучит как ChatGPT» без названного приёма и цитат — не основание/);
+  });
+
+  it("prefers deletion and allows 'no significant problems'", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Предпочитай правку «убрать»/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/существенных проблем нет/);
+  });
+
+  // Правка меняет только отмеченное критиком, поэтому проверка «рассказчик
+  // знает, что его читают» живёт здесь, а не только у редактора.
+  it("checks for a narrator who knows he is being read", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/будто заранее знает, что его будут читать/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/маленькие теории о людях/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/объяснение жеста после самого жеста/);
+  });
+
+  // Четвёртое сравнение: критик сам продиктовал сжатую концовку, захватил
+  // характерную гиперболу цитатой в абзац и просил убрать конкретную деталь.
+  it("spares character and detail, quotes the phrase, dictates no punchline", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/узнаём ли мы без неё меньше/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Конкретная деталь \(предмет, привычка, число\) — не украшение/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/а не весь абзац вокруг неё/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/не предлагай готовую новую концовку/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/добавляет новую гипотезу, факт, мотив, риск/);
+  });
+
+  // Разбор автора: синтетичной бывает и одна фраза — необычность ради
+  // необычности. Примеров из тестовых сцен в промпте нет намеренно.
+  // Отдельные фразы проверяет проход по фразам (style-phrase.ts): внутри
+  // общего критика правило находило 14 из 44 и порождало дубли, которые
+  // уходили в общую правку вместо хирургической.
+  it("leaves single phrases to the phrase pass", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/проверяет отдельный проход по фразам/);
+    expect(STYLE_CRITIC_SYSTEM).not.toMatch(/Проверяй необычные глаголы и сочетания существительных буквально/);
   });
 });
 

@@ -24,6 +24,34 @@ export function detectFormat(filename: string): ReferenceFormat | null {
 // 200 chars to filter out noise like ToC entries.
 const CHAPTER_RE = /^(?:Глава|Часть|Chapter|Part)\s+[0-9IVX]+\b/im;
 
+/** Верхняя граница «сцены» корпуса. Длиннее — режется по абзацам на куски
+ *  примерно одинаковой длины, не больше этой. */
+export const MAX_SCENE_CHARS = 5000;
+
+/** Режет текст на куски не длиннее `max`, только по границам абзацев и на
+ *  примерно равные части. Абзац длиннее `max` остаётся целым: резать
+ *  посреди фразы хуже, чем дать длинный образец. */
+export function capByParagraphs(text: string, max: number): string[] {
+  if (text.length <= max) return [text];
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const pieces = Math.ceil(text.length / max);
+  const target = text.length / pieces;
+  const out: string[] = [];
+  let current: string[] = [];
+  let size = 0;
+  for (const p of paragraphs) {
+    if (size > 0 && (size + p.length > max || size >= target)) {
+      out.push(current.join("\n\n"));
+      current = [];
+      size = 0;
+    }
+    current.push(p);
+    size += p.length + 2;
+  }
+  if (current.length > 0) out.push(current.join("\n\n"));
+  return out.filter((s) => s.length >= 200);
+}
+
 export function splitIntoScenes(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n").replace(/ /g, " ");
   // First pass — split by chapters
@@ -52,14 +80,18 @@ export function splitIntoScenes(text: string): string[] {
     units = [normalized];
   }
 
-  // Second pass — within each chapter, split by blank-line gaps
+  // Second pass — within each chapter, split by blank-line gaps or explicit
+  // scene markers («* * *»), then cap each piece at scene size on paragraph
+  // boundaries. fb2 joins paragraphs with a single blank line, so without the
+  // cap a whole 40 000-char chapter became one «scene» and the Writer saw only
+  // its opening (шаг 2 правки прозы, 2026-09-23).
   const scenes: string[] = [];
   for (const unit of units) {
     const parts = unit
-      .split(/\n\s*\n\s*\n+/) // 2+ blank lines = scene break
+      .split(/\n\s*\n\s*\n+|\n\s*(?:\*\s*){3,}\s*\n/) // 2+ blank lines or «* * *»
       .map((p) => p.trim())
       .filter((p) => p.length >= 200);
-    scenes.push(...parts);
+    for (const part of parts) scenes.push(...capByParagraphs(part, MAX_SCENE_CHARS));
   }
 
   // Fallback: if too few scenes, just chunk by 2000-char windows

@@ -1,4 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
+import { computeDialogueShare } from "@book-forge/style-engine";
 import {
   styleFingerprintSchema,
   fatigueWordsSchema,
@@ -56,6 +57,12 @@ function allocateSamples(
 
 function fingerprintToPrompt(fp: StyleFingerprint): string {
   const lines: string[] = ["## Стиль (опираться, не подражать)"];
+  // Старые профили снимались с частотами («минимум раз в 2–3 страницы»), а
+  // частота, выданная как правило, превращает приём в механическую
+  // периодичность (второй разбор прозы 2026-09-23).
+  lines.push(
+    "Ниже — наблюдения о манере автора и измеренные числа корпуса. Это ориентир, а не квоты: не выдерживай частоту приёма, применяй его там, где он уместен в сцене.",
+  );
   lines.push(`Голос: ${fp.voiceSummary}`);
   lines.push(
     `Длины предложений: средн. ${fp.sentenceLengths.meanWords} слов, ` +
@@ -94,6 +101,66 @@ function fingerprintToPrompt(fp: StyleFingerprint): string {
     for (const x of fp.thingsToAvoid) lines.push(`  · ${x}`);
   }
   return lines.join("\n");
+}
+
+/** Длина образца. Раньше образец обрезался до 600 символов — видна была
+ *  лексика, но не ход разговора и не ритм сцены (второй разбор прозы
+ *  2026-09-23). Теперь — законченный фрагмент до этой длины, по абзацам. */
+export const STYLE_SAMPLE_MAX_CHARS = 2500;
+
+export type SampleKind = "dialogue" | "narrative" | "mixed";
+
+export const SAMPLE_KIND_LABELS: Record<SampleKind, string> = {
+  dialogue: "разговор",
+  narrative: "повествование без диалога",
+  mixed: "действие с репликами",
+};
+
+/** Тип фрагмента по измеренной доле прямой речи — без модели. */
+export function classifySample(text: string): SampleKind {
+  const share = computeDialogueShare([text]);
+  if (share >= 0.4) return "dialogue";
+  if (share < 0.12) return "narrative";
+  return "mixed";
+}
+
+/** Законченный фрагмент: целые абзацы до `max`. Первый абзац длиннее
+ *  предела режется по концу предложения, а не посреди слова. */
+export function wholeParagraphs(text: string, max = STYLE_SAMPLE_MAX_CHARS): string {
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const out: string[] = [];
+  let size = 0;
+  for (const p of paragraphs) {
+    if (size + p.length > max) break;
+    out.push(p);
+    size += p.length + 2;
+  }
+  if (out.length > 0) return out.join("\n\n");
+  const first = paragraphs[0] ?? text;
+  const cut = first.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return (end > max / 3 ? cut.slice(0, end + 1) : cut).trim();
+}
+
+/** Выбор образцов: по одному каждого типа (разговор, повествование,
+ *  смешанный), затем добор из общего порядка. Порядок — хеш id сцены, как
+ *  раньше: выбор обязан быть стабильным, блок лежит в кэшируемом префиксе. */
+function pickDiverse(
+  rows: Array<{ id: number; text: string }>,
+  count: number,
+): Array<{ text: string; kind: SampleKind }> {
+  const classified = rows.map((r) => ({ ...r, kind: classifySample(r.text) }));
+  const picked: typeof classified = [];
+  for (const kind of ["dialogue", "narrative", "mixed"] as const) {
+    if (picked.length >= count) break;
+    const hit = classified.find((r) => r.kind === kind && !picked.includes(r));
+    if (hit) picked.push(hit);
+  }
+  for (const r of classified) {
+    if (picked.length >= count) break;
+    if (!picked.includes(r)) picked.push(r);
+  }
+  return picked.map((r) => ({ text: r.text, kind: r.kind }));
 }
 
 /**
@@ -192,24 +259,24 @@ export function loadStyleContext(
       styleProfileId,
       fewShotCount,
     );
-    const samples: Array<{ text: string; label?: string }> = [];
+    const samples: Array<{ text: string; kind: SampleKind; label?: string }> = [];
+    // Кандидатов берётся с запасом (не больше 60): тип фрагмента считается по
+    // тексту, и среди первых трёх по хешу разговора может не оказаться.
     const pick = sqlite.prepare(
-      `SELECT s.text FROM reference_scenes s
+      `SELECT s.id, s.text FROM reference_scenes s
        JOIN reference_corpora c ON c.id = s.corpus_id
        WHERE c.profile_id = ?
        ORDER BY ((s.id * 2654435761) % 4294967291), s.id
-       LIMIT ?`,
+       LIMIT 60`,
     );
     for (const source of sources) {
       if (source.count <= 0) continue;
-      const rows = pick.all(source.profileId, source.count) as Array<{
-        text: string;
-      }>;
-      for (const row of rows) {
+      const rows = pick.all(source.profileId) as Array<{ id: number; text: string }>;
+      for (const row of pickDiverse(rows, source.count)) {
         samples.push(
           source.label === undefined
-            ? { text: row.text }
-            : { text: row.text, label: source.label },
+            ? { text: row.text, kind: row.kind }
+            : { text: row.text, kind: row.kind, label: source.label },
         );
       }
     }
@@ -225,11 +292,12 @@ export function loadStyleContext(
       ];
       for (let i = 0; i < samples.length; i++) {
         const s = samples[i]!;
+        const kind = SAMPLE_KIND_LABELS[s.kind];
         const heading =
           s.label === undefined
-            ? `### Образец ${i + 1}`
-            : `### Образец ${i + 1} — источник «${s.label}»`;
-        block.push(`${heading}\n${s.text.slice(0, 600).trim()}`);
+            ? `### Образец ${i + 1} — ${kind}`
+            : `### Образец ${i + 1} — ${kind}, источник «${s.label}»`;
+        block.push(`${heading}\n${wholeParagraphs(s.text)}`);
       }
       if (isBlend) {
         block.push(

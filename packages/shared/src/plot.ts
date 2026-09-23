@@ -299,7 +299,9 @@ export const chapterClosingModeSchema = z.enum([
 ]);
 export const chapterClosingSchema = z.object({
   mode: chapterClosingModeSchema,
-  /** One line: the concrete action, line or image the chapter ends on. */
+  /** One fact: the event the chapter stops at — not a ready-made last line or
+   *  image (prose review 2026-09-23: a prescribed image made every chapter end
+   *  on a crafted beat). Older rows may still hold an image; they read fine. */
   note: z.string().min(1),
 });
 export type ChapterClosing = z.infer<typeof chapterClosingSchema>;

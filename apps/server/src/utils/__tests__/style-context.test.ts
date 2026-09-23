@@ -200,3 +200,44 @@ describe("loadStyleContext — blend profiles", () => {
     expect(ctx.prompt).not.toContain("Образец 1");
   });
 });
+
+describe("loadStyleContext — законченные образцы разного типа (шаг 2 правки прозы)", () => {
+  function addScenes(profileId: number, texts: string[]): void {
+    const now = new Date().toISOString();
+    const corpusId = Number(
+      sqlite
+        .prepare(
+          `INSERT INTO reference_corpora (profile_id, filename, format, language, raw_text, char_count, scene_count, created_at)
+           VALUES (?, 'k.txt', 'txt', 'ru', '', 0, ?, ?)`,
+        )
+        .run(profileId, texts.length, now).lastInsertRowid,
+    );
+    const ins = sqlite.prepare(
+      "INSERT INTO reference_scenes (corpus_id, order_index, text, char_count, created_at) VALUES (?, ?, ?, ?, ?)",
+    );
+    texts.forEach((t, i) => ins.run(corpusId, i, t, t.length, now));
+  }
+  const narrative = (i: number) =>
+    Array.from({ length: 6 }, (_, k) => `Повествование ${i}, абзац ${k}: город спал, и я шёл по крышам, считая черепицу.`).join("\n\n");
+  const dialogue = (i: number) =>
+    Array.from({ length: 6 }, (_, k) => `— Реплика ${i}-${k}, — сказал он.\n\n— Ответ ${i}-${k}.`).join("\n\n");
+
+  it("берёт по образцу каждого типа и подписывает тип", () => {
+    const id = makeProfile("Типы");
+    addScenes(id, [narrative(1), narrative(2), narrative(3), dialogue(1), narrative(4)]);
+    const prompt = loadStyleContext(sqlite, id, 3).prompt ?? "";
+    expect(prompt).toMatch(/Образец \d — разговор/);
+    expect(prompt).toMatch(/Образец \d — повествование без диалога/);
+  });
+
+  it("отдаёт целые абзацы, а не первые 600 символов", () => {
+    const id = makeProfile("Длинный");
+    const long = Array.from({ length: 40 }, (_, k) => `Абзац ${k}: ` + "слово ".repeat(30).trim() + ".").join("\n\n");
+    addScenes(id, [long]);
+    const prompt = loadStyleContext(sqlite, id, 1).prompt ?? "";
+    const sample = prompt.split("### Образец 1")[1]!.split("\n\n").slice(1);
+    const body = sample.join("\n\n");
+    expect(body.length).toBeGreaterThan(600);
+    expect(body).toMatch(/Абзац \d+: [^]*\.$/m);
+  });
+});
