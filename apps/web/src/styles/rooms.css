@@ -610,3 +610,4 @@
 .doc-toc a:hover { background: var(--color-surface-2); color: var(--color-text-strong); }
 .doc-toc-skipped a { color: var(--color-text-muted); }
 .doc-toc .faint { margin: 4px 0 0; font-size: 12px; }
+.canon-card-body-one { grid-template-columns: minmax(0, 760px); }

@@ -1,5 +1,5 @@
-/** Вкладки Канона, кроме персонажей (у тех своя карточка правки —
- *  components/book/CharacterCanon). */
+/** Вкладки Канона «Крючки» и «Связи». Персонажи, предметы и места — в
+ *  CharacterCanon и ThingCanon. */
 import { useEffect, useState, type FormEvent } from "react";
 import { Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,6 @@ import { api } from "@/api/client";
 import type {
   Character,
   Hook,
-  Item,
-  Location,
-  LocationProfile,
-  ItemProfile,
   Relationship,
 } from "@book-forge/shared";
 
@@ -36,120 +32,6 @@ function DeleteButton({
     >
       <Trash2 className="size-4" aria-hidden="true" />
     </Button>
-  );
-}
-
-// ─────────── Locations ───────────
-
-export function LocationsTab({ bookId }: { bookId: number }) {
-  const [list, setList] = useState<Location[] | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    try { setList(await api.listLocations(bookId)); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-  useEffect(() => { load(); }, [bookId]);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !description.trim()) return;
-    try {
-      const profile: LocationProfile = { description: description.trim() };
-      await api.createLocation(bookId, { name: name.trim(), profile });
-      setName(""); setDescription("");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-
-  if (error) return <p className="text-sm text-red-600">Ошибка: {error}</p>;
-  if (list === null) return <p className="text-sm">Загрузка…</p>;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <form onSubmit={onCreate} className="flex gap-2">
-        <input className="input input-sm flex-1" placeholder="Название места" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="input input-sm flex-1" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <Button type="submit" disabled={!name.trim() || !description.trim()}>+</Button>
-      </form>
-      {list.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">Мест пока нет.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {list.map((l) => (
-            <li key={l.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
-              <div className="flex justify-between">
-                <strong>{l.name}</strong>
-                <DeleteButton
-                  label={`Удалить место «${l.name}»`}
-                  onClick={async () => { await api.deleteLocation(l.id); await load(); }}
-                />
-              </div>
-              <div className="text-[var(--color-muted-foreground)]">{l.profile.description}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// ─────────── Items ───────────
-
-export function ItemsTab({ bookId }: { bookId: number }) {
-  const [list, setList] = useState<Item[] | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    try { setList(await api.listItems(bookId)); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-  useEffect(() => { load(); }, [bookId]);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !description.trim()) return;
-    try {
-      const profile: ItemProfile = { description: description.trim() };
-      await api.createItem(bookId, { name: name.trim(), profile });
-      setName(""); setDescription("");
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-
-  if (error) return <p className="text-sm text-red-600">Ошибка: {error}</p>;
-  if (list === null) return <p className="text-sm">Загрузка…</p>;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <form onSubmit={onCreate} className="flex gap-2">
-        <input className="input input-sm flex-1" placeholder="Название предмета" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="input input-sm flex-1" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <Button type="submit" disabled={!name.trim() || !description.trim()}>+</Button>
-      </form>
-      {list.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">Нет предметов.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {list.map((i) => (
-            <li key={i.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
-              <div className="flex justify-between">
-                <strong>{i.name}</strong>
-                <DeleteButton
-                  label={`Удалить предмет «${i.name}»`}
-                  onClick={async () => { await api.deleteItem(i.id); await load(); }}
-                />
-              </div>
-              <div className="text-[var(--color-muted-foreground)]">{i.profile.description}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 

@@ -94,6 +94,12 @@ function revisionConflictResponse(
   );
 }
 
+/** Сохранённый профиль как объект; битый или не-объект — пустой. */
+function profileObject(json: string | null): Record<string, unknown> {
+  const v = parseJsonOrNull(json);
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
 export function createEntitiesRoute(sqlite: DatabaseType): Hono {
   const r = new Hono();
 
@@ -364,8 +370,11 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     if (!existing) return notFound(c, "location");
     const next = {
       name: parsed.data.name ?? existing.name,
+      // Правка сливается с прежним профилем, а не заменяет его: схема
+      // записи режет незнакомые ключи (type, properties от материализации),
+      // и замена молча теряла их (правка в Каноне, 2026-09-23).
       profileJson: parsed.data.profile
-        ? JSON.stringify(parsed.data.profile)
+        ? JSON.stringify({ ...profileObject(existing.profile_json), ...parsed.data.profile })
         : existing.profile_json,
     };
     const now = new Date().toISOString();
@@ -434,8 +443,11 @@ export function createEntitiesRoute(sqlite: DatabaseType): Hono {
     if (!existing) return notFound(c, "item");
     const next = {
       name: parsed.data.name ?? existing.name,
+      // Правка сливается с прежним профилем, а не заменяет его: схема
+      // записи режет незнакомые ключи (type, properties от материализации),
+      // и замена молча теряла их (правка в Каноне, 2026-09-23).
       profileJson: parsed.data.profile
-        ? JSON.stringify(parsed.data.profile)
+        ? JSON.stringify({ ...profileObject(existing.profile_json), ...parsed.data.profile })
         : existing.profile_json,
     };
     const now = new Date().toISOString();

@@ -1,12 +1,8 @@
 import { useSearchParams } from "react-router-dom";
 import { useBookRoom } from "@/components/book/BookLayout";
 import { CharacterCanon } from "@/components/book/CharacterCanon";
-import {
-  HooksTab,
-  ItemsTab,
-  LocationsTab,
-  RelationshipsTab,
-} from "@/components/book/CanonTabs";
+import { ThingCanon } from "@/components/book/ThingCanon";
+import { HooksTab, RelationshipsTab } from "@/components/book/CanonTabs";
 
 const TABS = [
   { id: "characters", label: "Персонажи" },
@@ -50,8 +46,8 @@ export function BookCanonPage() {
       </div>
       <div id="canon-panel" role="tabpanel" aria-labelledby={`canon-tab-${tab}`} className="canon-panel">
         {tab === "characters" && <CharacterCanon bookId={bookId} />}
-        {tab === "items" && <ItemsTab bookId={bookId} />}
-        {tab === "places" && <LocationsTab bookId={bookId} />}
+        {tab === "items" && <ThingCanon bookId={bookId} kind="item" />}
+        {tab === "places" && <ThingCanon bookId={bookId} kind="place" />}
         {tab === "hooks" && <HooksTab bookId={bookId} />}
         {tab === "relations" && <RelationshipsTab bookId={bookId} />}
       </div>

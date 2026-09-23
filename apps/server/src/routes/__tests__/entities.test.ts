@@ -172,6 +172,51 @@ describe("items CRUD", () => {
   });
 });
 
+describe("правка предмета и места не теряет то, чего правка не касается", () => {
+  it("PATCH предмета сохраняет ключи, которых нет в схеме записи", async () => {
+    const i = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/items`, "POST", {
+      name: "Посох",
+      profile: { description: "старый" },
+    });
+    // Материализация кладёт в профиль type/properties — их схема записи не знает.
+    t.sqlite
+      .prepare("UPDATE items SET profile_json = ? WHERE id = ?")
+      .run(JSON.stringify({ description: "старый", type: "артефакт", properties: ["руны"] }), i.id);
+    const next = await sendJson<{ profile: Record<string, unknown> }>(t.app, `/api/items/${i.id}`, "PATCH", {
+      profile: { description: "древний посох с рунами" },
+    });
+    expect(next.profile).toMatchObject({
+      description: "древний посох с рунами",
+      type: "артефакт",
+      properties: ["руны"],
+    });
+  });
+
+  it("PATCH места сохраняет прежние поля профиля", async () => {
+    const l = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/locations`, "POST", {
+      name: "Капище",
+      profile: { description: "поляна", history: "древнее" },
+    });
+    const row = t.sqlite.prepare("SELECT profile_json FROM locations WHERE id = ?").get(l.id) as {
+      profile_json: string;
+    };
+    t.sqlite
+      .prepare("UPDATE locations SET profile_json = ? WHERE id = ?")
+      .run(JSON.stringify({ ...JSON.parse(row.profile_json), climate: "сырой" }), l.id);
+    await sendJson(t.app, `/api/locations/${l.id}`, "PATCH", {
+      profile: { description: "лесная поляна" },
+    });
+    const after = t.sqlite.prepare("SELECT profile_json FROM locations WHERE id = ?").get(l.id) as {
+      profile_json: string;
+    };
+    expect(JSON.parse(after.profile_json)).toMatchObject({
+      description: "лесная поляна",
+      history: "древнее",
+      climate: "сырой",
+    });
+  });
+});
+
 describe("hooks CRUD", () => {
   it("creates hook with default status=open", async () => {
     const h = await sendJson<HookJson>(
