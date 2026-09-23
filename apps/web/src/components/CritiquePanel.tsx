@@ -260,7 +260,7 @@ export function CritiquePanel({
   return (
     <section className="cri-card-stack">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-semibold">Отзыв критиков</h2>
+        <h2 className="panel-title">Отзыв критиков</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {ALL_CRITIC_TYPES.map((c) => (
             <label key={c} className="text-xs flex items-center gap-1">

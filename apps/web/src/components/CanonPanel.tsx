@@ -331,11 +331,11 @@ export function CanonPanel({
   ];
 
   return (
-    <section className="border border-[var(--color-border)] rounded-md p-3 flex flex-col gap-3 bg-[var(--color-card,transparent)]">
+    <section className="canon-panel-sec flex flex-col gap-3">
       <header className="flex items-start justify-between gap-2">
         <div className="flex flex-col">
-          <h2 className="text-sm font-semibold flex items-center gap-1.5">
-            Канон
+          <h2 className="panel-title flex items-center gap-1.5">
+            Канон главы
             {totalPending > 0 && (
               <span
                 className="inline-flex items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-primary-foreground)] text-[10px] font-semibold px-1.5 py-0.5"
@@ -953,13 +953,13 @@ function kindRuLabel(kind: CanonEntityKind): string {
     case "character":
       return "Персонажи";
     case "location":
-      return "Локации";
+      return "Места";
     case "item":
-      return "Артефакты";
+      return "Предметы";
     case "hook":
       return "Крючки";
     case "relationship":
-      return "Отношения";
+      return "Связи";
   }
 }
 

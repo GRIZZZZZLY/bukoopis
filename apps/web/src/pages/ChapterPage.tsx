@@ -1292,6 +1292,12 @@ export function ChapterPage() {
               <PanelBoundary title="Стиль">
                 <StyleFreshnessNote bookId={Number(bookId)} />
               </PanelBoundary>
+              <p className="rail-note">
+                Профиль стиля книги выбирается в{" "}
+                <Link to={`/books/${bookId}/settings`} className="link-quiet">
+                  Настройках →
+                </Link>
+              </p>
             </RailPanel>
           </div>
         </aside>

@@ -612,3 +612,30 @@
 .doc-toc .faint { margin: 4px 0 0; font-size: 12px; }
 .canon-card-body-one { grid-template-columns: minmax(0, 760px); }
 .chapter-cost { font-size: 12px; white-space: nowrap; }
+
+/* ─── Панели главы: один язык заголовков и карточек ──────── */
+/* library-warm не слоится и перебивает Tailwind-утилиты, поэтому общий вид
+   панелей задаётся здесь, классами. */
+.panel-title,
+.rail-panel h2 {
+  margin: 0;
+  font: 500 15px/1.35 var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text-strong);
+}
+.rail-panel h3:not(.panel-title) {
+  margin: 0;
+  font: 500 11px/1.3 var(--font-sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.rail-panel .canon-panel-sec { border: 0; padding: 0; background: transparent; }
+.rail-panel .cri-card-sugg { flex-direction: column; align-items: flex-start; gap: 6px; }
+.rail-panel .cri-card-sugg-text { font-size: 13px; line-height: 1.55; }
+.rail-panel .cri-card-title { font-size: 13.5px; line-height: 1.45; }
+.rail-panel details > summary,
+.rail-panel .cri-card-excerpt { font-size: 13px; }
+.rail-panel p { line-height: 1.55; }
+.rail-panel .muted, .rail-panel .text-sm { font-size: 13px; }

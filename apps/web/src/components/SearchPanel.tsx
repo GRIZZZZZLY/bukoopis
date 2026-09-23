@@ -65,7 +65,7 @@ export function SearchPanel({ bookId }: Props) {
   return (
     <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="text-xl font-semibold">Поиск по тексту книги</h2>
+        <h2 className="panel-title">Поиск по тексту книги</h2>
         {vecAvailable === false && (
           <span
             className="text-xs px-2 py-1 rounded bg-red-100 text-red-900 border border-red-200"
