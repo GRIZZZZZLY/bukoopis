@@ -68,7 +68,7 @@ export function ManualAspectForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+        className="btn btn-secondary btn-xs self-start"
       >
         + Свой раздел
       </button>
@@ -84,7 +84,7 @@ export function ManualAspectForm({
           onChange={(e) => setName(e.target.value)}
           aria-label="Название своего раздела"
           placeholder="Например: устав гильдии картографов"
-          className="border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+          className="input input-sm"
         />
       </label>
       <label className="text-xs flex flex-col gap-1">
@@ -93,7 +93,7 @@ export function ManualAspectForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           aria-label="Описание своего раздела"
-          className="border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+          className="input input-sm"
         />
       </label>
       {duplicate && trimmed.length > 0 && (
@@ -111,7 +111,7 @@ export function ManualAspectForm({
           type="button"
           onClick={handleAdd}
           disabled={busy || trimmed.length === 0 || duplicate}
-          className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn btn-accent btn-xs"
         >
           {busy ? "Добавляем…" : "Добавить"}
         </button>
@@ -119,7 +119,7 @@ export function ManualAspectForm({
           type="button"
           onClick={() => setOpen(false)}
           disabled={busy}
-          className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+          className="btn btn-secondary btn-xs"
         >
           Отмена
         </button>

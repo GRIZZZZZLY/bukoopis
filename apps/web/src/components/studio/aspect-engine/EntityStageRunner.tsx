@@ -109,7 +109,7 @@ function OtherVariantPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+        className="btn btn-secondary btn-xs self-start"
       >
         + Взять из другого варианта
       </button>
@@ -132,7 +132,7 @@ function OtherVariantPicker({
                   key={`${v.id}-${c.tempId}`}
                   type="button"
                   onClick={() => onAdd(c)}
-                  className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                  className="btn btn-secondary btn-xs self-start"
                 >
                   + {candidateLabel(profile).text}
                 </button>
@@ -144,7 +144,7 @@ function OtherVariantPicker({
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="text-xs self-start border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+        className="btn btn-secondary btn-xs self-start"
       >
         Свернуть
       </button>
@@ -632,7 +632,7 @@ export function EntityStageRunner({
             type="button"
             onClick={() => void handleGenerateAll()}
             disabled={batchRunning || busyAspectId !== null}
-            className="text-sm self-start border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+            className="btn btn-accent btn-sm self-start"
           >
             {batchRunning
               ? `Генерируем… осталось ${batchIds.size}`
@@ -702,7 +702,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleGenerate(aspect)}
                   disabled={busy}
-                  className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+                  className="btn btn-accent btn-sm"
                 >
                   {busy ? "Генерируем…" : "Сгенерировать варианты"}
                 </button>
@@ -710,7 +710,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleSkip(aspect)}
                   disabled={busy}
-                  className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+                  className="btn btn-secondary btn-sm"
                 >
                   Пропустить
                 </button>
@@ -729,7 +729,7 @@ export function EntityStageRunner({
                         type="button"
                         onClick={() => handlePickVariant(aspect, v.id)}
                         disabled={busy}
-                        className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]"
+                        className="btn btn-accent btn-xs"
                       >
                         Принять
                       </button>
@@ -741,7 +741,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleGenerate(aspect)}
                   disabled={busy}
-                  className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)] self-start"
+                  className="btn btn-secondary btn-xs self-start"
                 >
                   Перегенерировать
                 </button>
@@ -789,7 +789,7 @@ export function EntityStageRunner({
                               }
                               aria-label={`Имя ${candidateLabel(profile).text}`}
                               placeholder="Имя"
-                              className="font-medium border border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-border)] rounded px-1 py-0.5 bg-transparent"
+                              className="input input-sm"
                             />
                             <textarea
                               value={profile.description ?? ""}
@@ -804,7 +804,7 @@ export function EntityStageRunner({
                               rows={2}
                               aria-label={`Описание ${candidateLabel(profile).text}`}
                               placeholder="Описание"
-                              className="text-xs text-[var(--color-muted-foreground)] border border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-border)] rounded px-1 py-0.5 bg-transparent"
+                              className="textarea"
                             />
                           </div>
                         </li>
@@ -822,7 +822,7 @@ export function EntityStageRunner({
                       type="button"
                       onClick={() => handleMaterialize(aspect)}
                       disabled={busy}
-                      className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:bg-[var(--color-surface-2)] disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed"
+                      className="btn btn-primary btn-sm"
                     >
                       {busy ? "Добавляем…" : "Добавить в канон книги"}
                     </button>
@@ -830,7 +830,7 @@ export function EntityStageRunner({
                       type="button"
                       onClick={() => handleUnpickVariant(aspect)}
                       disabled={busy}
-                      className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+                      className="btn btn-secondary btn-sm"
                     >
                       Назад к вариантам
                     </button>
@@ -838,7 +838,7 @@ export function EntityStageRunner({
                       type="button"
                       onClick={() => handleSkip(aspect)}
                       disabled={busy}
-                      className="text-sm border border-[var(--color-border)] rounded-md px-3 py-1 hover:bg-[var(--color-muted)]"
+                      className="btn btn-secondary btn-sm"
                     >
                       Пропустить
                     </button>
@@ -860,7 +860,7 @@ export function EntityStageRunner({
                   type="button"
                   onClick={() => handleRestore(aspect)}
                   disabled={busy}
-                  className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                  className="btn btn-secondary btn-xs"
                 >
                   Вернуть раздел
                 </button>

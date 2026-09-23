@@ -1145,7 +1145,7 @@ export function ChapterPage() {
                       type="button"
                       onClick={() => void onSave()}
                       disabled={saving}
-                      className="text-xs border rounded px-2 py-0.5"
+                      className="btn btn-secondary btn-xs"
                       style={{ borderColor: "var(--color-ink-red-fg)" }}
                     >
                       Повторить
@@ -1153,7 +1153,7 @@ export function ChapterPage() {
                     <button
                       type="button"
                       onClick={() => setActionError(null)}
-                      className="text-xs border rounded px-2 py-0.5"
+                      className="btn btn-secondary btn-xs"
                       style={{ borderColor: "var(--color-border)" }}
                     >
                       Скрыть
@@ -1316,7 +1316,7 @@ function DiscardOption({ onDiscard }: { onDiscard: () => void }) {
       <button
         type="button"
         onClick={onDiscard}
-        className="pointer-events-auto translate-y-[-92px] rounded-md bg-[var(--color-background)] border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-ink-red-fg)] shadow-sm"
+        className="btn btn-destructive btn-xs"
       >
         Отбросить изменения и уйти
       </button>

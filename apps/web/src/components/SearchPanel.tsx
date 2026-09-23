@@ -79,7 +79,7 @@ export function SearchPanel({ bookId }: Props) {
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
         <div className="flex gap-2">
           <input
-            className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-2 text-sm"
+            className="input flex-1"
             placeholder="Запрос (имя, фраза, ключевое слово)"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -96,7 +96,7 @@ export function SearchPanel({ bookId }: Props) {
             value={beforeChapter}
             onChange={(e) => setBeforeChapter(e.target.value)}
             placeholder="—"
-            className="w-16 border border-[var(--color-input)] rounded-md px-2 py-1 ml-1 text-xs"
+            className="input input-sm w-16 ml-1"
           />
           &nbsp;(spoiler-фильтр; пусто = без фильтра)
         </label>

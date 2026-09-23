@@ -295,14 +295,14 @@ export function DocumentStageRunner({
           maxLength={4000}
           aria-label={`Ваши заметки к этапу «${stageLabel}»`}
           placeholder="Что здесь обязательно должно быть. Модель это не отменит."
-          className="w-full border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+          className="textarea w-full"
         />
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleAssemble}
             disabled={busy}
-            className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-accent btn-sm"
           >
             {assembling
               ? "Собираем…"
@@ -362,7 +362,7 @@ export function DocumentStageRunner({
           type="button"
           onClick={handleApprove}
           disabled={busy || !hasSomethingToApprove}
-          className="text-sm border border-[var(--color-brass)] bg-[var(--color-brass)] text-[var(--color-bg)] rounded-md px-3 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="btn btn-primary btn-sm"
         >
           Утвердить {accusative}
         </button>

@@ -165,8 +165,10 @@ export function MarkdownStagePage() {
           </div>
         </div>
 
-        {/* Workspace */}
-        <div className="card">
+        {/* Документ по центру читаемой ширины, справа — оглавление разделов:
+            широкий экран больше не пустует. */}
+        <div className="doc-layout">
+        <div className="card doc-card">
           {stage.status === "skipped" ? (
             <p className="muted" style={{ fontSize: 13 }}>
               Этап отмечен как «не нужен». Генерация главы обойдётся без него
@@ -183,6 +185,26 @@ export function MarkdownStagePage() {
               onReloadStage={handleReloadStage}
             />
           )}
+        </div>
+        {stage.status !== "skipped" && stage.aspects.length > 0 && (
+          <nav className="doc-toc" aria-label="Разделы документа">
+            <span className="doc-toc-title">Разделы</span>
+            <ol>
+              {stage.aspects.map((a) => (
+                <li key={a.id} className={`doc-toc-item doc-toc-${a.status}`}>
+                  <a href={`#aspect-${a.id}`}>
+                    <span className={`sdot ${a.status === "accepted" ? "sdot-complete" : a.status === "skipped" ? "sdot-skipped" : a.status === "pending" ? "sdot-not_started" : "sdot-in_progress"}`} aria-hidden="true" />
+                    {a.name}
+                  </a>
+                </li>
+              ))}
+            </ol>
+            <p className="faint">
+              {stage.aspects.filter((a) => a.status === "accepted").length} из{" "}
+              {stage.aspects.filter((a) => a.status !== "skipped").length} утверждено
+            </p>
+          </nav>
+        )}
         </div>
         </div>
       </div>

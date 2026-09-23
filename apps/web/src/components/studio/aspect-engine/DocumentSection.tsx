@@ -207,8 +207,8 @@ export function DocumentSection({
 
   if (aspect.status === "skipped") {
     return (
-      <section data-aspect-id={aspect.id} className="flex items-baseline gap-3 py-2 opacity-60">
-        <h3 className="text-[15px]" style={{ fontFamily: "var(--font-display)" }}>
+      <section data-aspect-id={aspect.id} id={`aspect-${aspect.id}`} className="doc-section doc-section-skipped">
+        <h3 className="doc-section-title">
           {aspect.name}
         </h3>
         <span className="text-xs text-[var(--color-muted-foreground)]">не нужен</span>
@@ -216,7 +216,7 @@ export function DocumentSection({
           type="button"
           onClick={handleRestore}
           disabled={busy}
-          className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+          className="btn btn-secondary btn-xs"
         >
           Вернуть раздел
         </button>
@@ -225,12 +225,9 @@ export function DocumentSection({
   }
 
   return (
-    <section data-aspect-id={aspect.id} className="flex flex-col gap-2 py-3">
+    <section data-aspect-id={aspect.id} id={`aspect-${aspect.id}`} className="doc-section">
       <div className="flex items-baseline justify-between gap-2">
-        <h3
-          className="text-[17px] text-[var(--color-text-strong)]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
-        >
+        <h3 className="doc-section-title">
           {aspect.name}
         </h3>
         <div className="flex items-center gap-2">
@@ -249,7 +246,7 @@ export function DocumentSection({
       </div>
 
       {aspect.description && (
-        <p className="text-xs text-[var(--color-muted-foreground)]">{aspect.description}</p>
+        <p className="doc-section-desc">{aspect.description}</p>
       )}
 
       {progress && <GenerationProgress progress={progress} label={`progress-${aspect.id}`} />}
@@ -261,14 +258,14 @@ export function DocumentSection({
             onChange={(e) => setEditText(e.target.value)}
             rows={12}
             aria-label={`Текст раздела «${aspect.name}»`}
-            className="w-full border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+            className="textarea w-full"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleSaveEdit}
               disabled={busy}
-              className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)]"
+              className="btn btn-accent btn-xs"
             >
               Сохранить
             </button>
@@ -276,7 +273,7 @@ export function DocumentSection({
               type="button"
               onClick={() => setPanel("none")}
               disabled={busy}
-              className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+              className="btn btn-secondary btn-xs"
             >
               Отмена
             </button>
@@ -287,11 +284,11 @@ export function DocumentSection({
           Раздел пуст — соберите документ или напишите его сами.
         </p>
       ) : (
-        <Markdown className="text-sm" text={text} />
+        <Markdown className="doc-prose" text={text} />
       )}
 
       {alternatives.length > 1 && panel !== "edit" && (
-        <ul className="flex flex-col gap-2 border-l-2 border-[var(--color-border)] pl-3">
+        <ul className="doc-alts">
           {alternatives.map((v) => (
             <li key={v.id} className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
@@ -305,14 +302,14 @@ export function DocumentSection({
                     type="button"
                     onClick={() => handlePick(v)}
                     disabled={busy}
-                    className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+                    className="btn btn-secondary btn-xs"
                   >
                     Показать этот
                   </button>
                 )}
               </div>
               {v.id !== shown?.id && typeof v.payload === "string" && (
-                <Markdown className="text-xs opacity-80" text={v.payload} />
+                <Markdown className="doc-prose doc-prose-alt" text={v.payload} />
               )}
             </li>
           ))}
@@ -327,14 +324,14 @@ export function DocumentSection({
             rows={2}
             aria-label={`Что поменять в разделе «${aspect.name}»`}
             placeholder="Мрачнее. Убрать магию. Добавить порт."
-            className="border border-[var(--color-border)] rounded px-2 py-1 text-sm bg-transparent"
+            className="textarea"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleRewrite}
               disabled={busy || instructions.trim().length === 0}
-              className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 disabled:opacity-50"
+              className="btn btn-accent btn-xs"
             >
               Применить
             </button>
@@ -344,7 +341,7 @@ export function DocumentSection({
                 setPanel("none");
                 setInstructions("");
               }}
-              className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+              className="btn btn-secondary btn-xs"
             >
               Отмена
             </button>
@@ -358,7 +355,7 @@ export function DocumentSection({
             type="button"
             onClick={() => setPanel("rewrite")}
             disabled={busy || text === null}
-            className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)] disabled:opacity-50"
+            className="btn btn-secondary btn-xs"
           >
             Переписать
           </button>
@@ -366,7 +363,7 @@ export function DocumentSection({
             type="button"
             onClick={() => runGenerator(null)}
             disabled={busy}
-            className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+            className="btn btn-secondary btn-xs"
           >
             Другие варианты
           </button>
@@ -374,7 +371,7 @@ export function DocumentSection({
             type="button"
             onClick={openEdit}
             disabled={busy}
-            className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+            className="btn btn-secondary btn-xs"
           >
             Править
           </button>
@@ -383,7 +380,7 @@ export function DocumentSection({
             onClick={handleSkip}
             disabled={busy}
             title="Раздел останется в списке — его можно вернуть"
-            className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5 hover:bg-[var(--color-muted)]"
+            className="btn btn-secondary btn-xs"
           >
             Не нужен
           </button>

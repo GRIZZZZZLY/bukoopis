@@ -133,9 +133,7 @@ export function PlaybookRunner({
             type="button"
             onClick={handleGenerate}
             disabled={busy}
-            className="lw-btn"
-            data-variant="primary"
-            data-size="sm"
+            className="btn btn-primary btn-sm"
           >
             {busy ? "Составляем…" : "Составить план разделов"}
           </button>
@@ -206,9 +204,7 @@ export function PlaybookRunner({
           type="button"
           onClick={handleAcceptAll}
           disabled={busy || proposed.every((p) => !p.include)}
-          className="lw-btn"
-          data-variant="primary"
-          data-size="sm"
+          className="btn btn-primary btn-sm"
         >
           {busy ? "Сохраняем…" : "Принять список"}
         </button>
@@ -216,9 +212,7 @@ export function PlaybookRunner({
           type="button"
           onClick={() => setProposed(null)}
           disabled={busy}
-          className="lw-btn"
-          data-variant="ghost"
-          data-size="sm"
+          className="btn btn-ghost btn-sm"
         >
           Отменить
         </button>
@@ -226,9 +220,7 @@ export function PlaybookRunner({
           type="button"
           onClick={handleGenerate}
           disabled={busy}
-          className="lw-btn"
-          data-variant="ghost"
-          data-size="sm"
+          className="btn btn-ghost btn-sm"
         >
           Предложить заново
         </button>

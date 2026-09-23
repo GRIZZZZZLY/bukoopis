@@ -70,8 +70,8 @@ export function LocationsTab({ bookId }: { bookId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={onCreate} className="flex gap-2">
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Название места" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input input-sm flex-1" placeholder="Название места" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input input-sm flex-1" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
         <Button type="submit" disabled={!name.trim() || !description.trim()}>+</Button>
       </form>
       {list.length === 0 ? (
@@ -127,8 +127,8 @@ export function ItemsTab({ bookId }: { bookId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={onCreate} className="flex gap-2">
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Название предмета" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input input-sm flex-1" placeholder="Название предмета" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input input-sm flex-1" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
         <Button type="submit" disabled={!name.trim() || !description.trim()}>+</Button>
       </form>
       {list.length === 0 ? (
@@ -187,7 +187,7 @@ export function HooksTab({ bookId }: { bookId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={onCreate} className="flex gap-2">
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание сюжетного крючка" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input input-sm flex-1" placeholder="Описание сюжетного крючка" value={description} onChange={(e) => setDescription(e.target.value)} />
         <Button type="submit" disabled={!description.trim()}>+</Button>
       </form>
       {list.length === 0 ? (
@@ -203,7 +203,7 @@ export function HooksTab({ bookId }: { bookId: number }) {
                 <select
                   value={h.status}
                   onChange={(e) => onStatus(h.id, e.target.value as Hook["status"])}
-                  className="border border-[var(--color-input)] rounded-md px-2 py-1 text-xs"
+                  className="select input-sm"
                   aria-label="Состояние крючка"
                 >
                   <option value="open">открыт</option>
@@ -275,16 +275,16 @@ export function RelationshipsTab({ bookId }: { bookId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={onCreate} className="flex gap-2 flex-wrap items-center">
-        <select value={from ?? ""} onChange={(e) => setFrom(Number(e.target.value))} className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm">
+        <select value={from ?? ""} onChange={(e) => setFrom(Number(e.target.value))} className="select input-sm">
           <option value="">от кого</option>
           {chars.map((c) => <option key={c.id} value={c.id}>{c.canonicalName}</option>)}
         </select>
-        <select value={to ?? ""} onChange={(e) => setTo(Number(e.target.value))} className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm">
+        <select value={to ?? ""} onChange={(e) => setTo(Number(e.target.value))} className="select input-sm">
           <option value="">к кому</option>
           {chars.map((c) => <option key={c.id} value={c.id}>{c.canonicalName}</option>)}
         </select>
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm min-w-[150px]" placeholder="Тип (наставник, враг…)" value={type} onChange={(e) => setType(e.target.value)} />
-        <input type="number" step="0.1" min="-1" max="1" className="w-20 border border-[var(--color-input)] rounded-md px-2 py-1 text-sm" value={tension} onChange={(e) => setTension(e.target.value)} title="напряжение -1..1" />
+        <input className="input input-sm flex-1 min-w-[150px]" placeholder="Тип (наставник, враг…)" value={type} onChange={(e) => setType(e.target.value)} />
+        <input type="number" step="0.1" min="-1" max="1" className="input input-sm w-20" value={tension} onChange={(e) => setTension(e.target.value)} title="напряжение -1..1" />
         <Button type="submit" disabled={from === null || to === null || !type.trim()}>+</Button>
       </form>
       {list.length === 0 ? (

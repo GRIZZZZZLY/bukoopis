@@ -68,7 +68,7 @@ export function PremiseFieldPuzzle({
             onChange={(e) => onChange(e.target.value)}
             rows={2}
             disabled={disabled}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
+            className="textarea"
           />
         ) : (
           <input
@@ -76,7 +76,7 @@ export function PremiseFieldPuzzle({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
-            className="border border-[var(--color-border)] rounded px-2 py-1"
+            className="input input-sm"
           />
         )}
       </label>
@@ -117,7 +117,7 @@ export function PremiseFieldPuzzle({
                 <button
                   type="button"
                   onClick={() => pick(v)}
-                  className="text-xs border border-[var(--color-brass)] text-[var(--color-brass)] rounded px-2 py-0.5 hover:bg-[var(--color-brass)] hover:text-[var(--color-bg)] transition-colors"
+                  className="btn btn-accent btn-xs"
                 >
                   Принять
                 </button>

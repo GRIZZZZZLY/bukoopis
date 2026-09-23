@@ -103,14 +103,14 @@ export function VoiceSamples({ characterId, characters }: Props) {
           value={text}
           rows={2}
           onChange={(e) => setText(e.target.value)}
-          className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+          className="textarea"
         />
         <div className="flex gap-2 flex-wrap items-center">
           <select
             aria-label="Ситуация"
             value={situation}
             onChange={(e) => setSituation(e.target.value as VoiceSampleSituation)}
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+            className="select input-sm"
           >
             {VOICE_SAMPLE_SITUATIONS.map((s) => (
               <option key={s} value={s}>
@@ -124,7 +124,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
             onChange={(e) =>
               setAddressee(e.target.value ? Number(e.target.value) : null)
             }
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+            className="select input-sm"
           >
             <option value="">любой собеседник</option>
             {others.map((c) => (
@@ -136,7 +136,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
           <button
             type="submit"
             disabled={busy || !text.trim()}
-            className="text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)]"
+            className="btn btn-accent btn-sm"
           >
             Добавить образец
           </button>
@@ -169,7 +169,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => setStatus(s.id, "accepted")}
-                    className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5"
+                    className="btn btn-secondary btn-xs"
                   >
                     Принять
                   </button>
@@ -177,7 +177,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
                     type="button"
                     disabled={busy}
                     onClick={() => setStatus(s.id, "rejected")}
-                    className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5"
+                    className="btn btn-secondary btn-xs"
                   >
                     Отклонить
                   </button>
@@ -188,7 +188,7 @@ export function VoiceSamples({ characterId, characters }: Props) {
                 aria-label={`Удалить образец ${s.id}`}
                 disabled={busy}
                 onClick={() => onDelete(s.id)}
-                className="text-xs border border-[var(--color-border)] rounded px-2 py-0.5"
+                className="btn btn-secondary btn-xs"
               >
                 ×
               </button>

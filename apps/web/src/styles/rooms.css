@@ -337,10 +337,10 @@
 /* ─── Мастерская ──────────────────────────────────────────── */
 
 .studio-room { display: flex; flex-direction: column; min-height: calc(100vh - var(--topbar-h)); }
-.studio-body { flex: 1; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 20px; max-width: 1280px; width: 100%; }
+.studio-body { flex: 1; padding: 28px 40px 48px; display: flex; flex-direction: column; gap: 22px; max-width: 1280px; width: 100%; margin: 0 auto; box-sizing: border-box; font-size: 15px; }
 .stage-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
-.stage-head h1 { margin: 0 0 6px; font-family: var(--font-display); font-size: 24px; font-weight: 400; color: var(--color-text-strong); }
-.stage-head .page-sub { margin: 0; font-size: 14px; }
+.stage-head h1 { margin: 0 0 8px; font-family: var(--font-display); font-size: 30px; font-weight: 400; color: var(--color-text-strong); }
+.stage-head .page-sub { margin: 0 0 4px; font-size: 15px; line-height: 1.55; max-width: 760px; }
 
 /* Полоса этапов */
 .stepper {
@@ -546,3 +546,67 @@
 .shelf-card-rows dd { margin: 0; font-size: 12px; text-align: right; }
 .shelf-card-stage { color: var(--color-ink-amber-fg); font-size: 13px !important; }
 .shelf-card-open { width: 100%; justify-content: center; }
+
+/* ─── Единая система кнопок и полей ──────────────────────── */
+/* <Button> и старые самодельные кнопки теперь сводятся к .btn. */
+.btn-xs { height: 24px; padding: 0 9px; font-size: 12px; gap: 6px; }
+.btn-icon { width: 32px; padding: 0; justify-content: center; }
+.btn-icon.btn-sm { width: 28px; }
+.btn-accent {
+  background: transparent;
+  color: var(--color-brass-hi);
+  border-color: var(--color-brass-soft);
+}
+.btn-accent:hover { background: var(--color-brass-tint); border-color: var(--color-brass); }
+/* Недоступная главная кнопка — своя пара токенов, а не полупрозрачность:
+   полупрозрачная латунь давала тёмный текст по тёмному фону. */
+.btn-primary:disabled, .btn-primary[aria-disabled="true"] {
+  opacity: 1;
+  background: var(--color-surface-2);
+  border-color: var(--color-border-soft);
+  color: var(--color-text-muted);
+}
+.btn:focus-visible { outline: 2px solid var(--color-brass); outline-offset: 2px; }
+.input-sm, .select.input-sm { height: 30px; padding: 0 10px; font-size: 13px; }
+.select { height: 34px; padding: 0 10px; }
+
+/* ─── Документ этапа (Мир, Лор) ───────────────────────────── */
+.doc-layout {
+  display: grid; grid-template-columns: minmax(0, 900px) 260px;
+  gap: 40px; justify-content: center; align-items: start;
+}
+.doc-card { padding: 32px 44px 40px; }
+.doc-section { display: flex; flex-direction: column; gap: 10px; padding: 22px 0; border-top: 1px solid var(--color-border-soft); scroll-margin-top: 80px; }
+.doc-section:first-of-type { border-top: 0; }
+.doc-section-skipped { flex-direction: row; align-items: baseline; gap: 12px; opacity: .65; padding: 14px 0; }
+.doc-section-title { margin: 0; font-family: var(--font-display); font-size: 24px; font-weight: 500; color: var(--color-text-strong); }
+.doc-section-skipped .doc-section-title { font-size: 18px; }
+.doc-section-desc { margin: 0; font-size: 14px; line-height: 1.5; color: var(--color-text-muted); }
+.doc-prose { font-family: var(--font-prose); font-size: 17.5px; line-height: 1.75; color: var(--color-text); max-width: 72ch; }
+.doc-prose p { margin: 0 0 14px; }
+.doc-prose h1, .doc-prose h2, .doc-prose h3, .doc-prose h4 { font-family: var(--font-display); color: var(--color-text-strong); font-weight: 500; margin: 18px 0 8px; }
+.doc-prose ul, .doc-prose ol { padding-left: 1.3em; margin: 0 0 14px; }
+.doc-prose strong { color: var(--color-text-strong); }
+.doc-prose-alt { font-size: 15.5px; line-height: 1.7; color: var(--color-text-muted); }
+.doc-alts { list-style: none; margin: 4px 0 0; padding: 4px 0 0 18px; border-left: 2px solid var(--color-border); display: flex; flex-direction: column; gap: 12px; }
+.doc-alts .uppercase { font-size: 12px; }
+.doc-card textarea.textarea { font-size: 16px; line-height: 1.7; }
+.doc-card .lw-pill, .doc-card .pill { font-size: 12px; }
+
+.doc-toc {
+  position: sticky; top: calc(var(--topbar-h) + 24px);
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-border-soft); border-radius: var(--radius-card);
+  background: var(--color-surface-1);
+}
+.doc-toc-title { font: 500 11px var(--font-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-muted); }
+.doc-toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.doc-toc a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 8px; margin: 0 -8px; border-radius: var(--radius-control);
+  font-size: 14px; color: var(--color-text);
+}
+.doc-toc a:hover { background: var(--color-surface-2); color: var(--color-text-strong); }
+.doc-toc-skipped a { color: var(--color-text-muted); }
+.doc-toc .faint { margin: 4px 0 0; font-size: 12px; }

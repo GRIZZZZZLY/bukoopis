@@ -1,23 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-/** Атмосфера «кабинета»: full — всё, calm — свет/текстуры без анимаций, off — чистый UI. */
+/** Атмосфера «кабинета»: full — свечение, пыль, зерно; calm — то же без
+ *  анимаций; off — чистый UI. Переключателя больше нет (решение автора
+ *  2026-09-23): атмосфера всегда полная, и только системное «уменьшить
+ *  движение» гасит анимации до calm. */
 export type AtmosphereMode = "full" | "calm" | "off";
 
-const STORAGE_KEY = "bf-atmosphere";
-const CYCLE: AtmosphereMode[] = ["full", "calm", "off"];
-
-function readInitial(): AtmosphereMode {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === "full" || raw === "calm" || raw === "off") return raw;
-  } catch {
-    /* приватный режим/недоступный storage — дефолт */
-  }
-  return "full";
-}
-
-let mode: AtmosphereMode = readInitial();
-const listeners = new Set<() => void>();
+const mode: AtmosphereMode = "full";
 
 function reducedMotion(): boolean {
   return (
@@ -42,27 +31,10 @@ export function getAtmosphere(): AtmosphereMode {
   return mode;
 }
 
-export function setAtmosphere(next: AtmosphereMode): void {
-  mode = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, next);
-  } catch {
-    /* ignore */
-  }
-  applyAtmosphereClass();
-  listeners.forEach((l) => l());
-}
-
-export function cycleAtmosphere(): void {
-  const i = CYCLE.indexOf(mode);
-  setAtmosphere(CYCLE[(i + 1) % CYCLE.length] ?? "full");
-}
-
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => listeners.delete(l);
-}
-
 export function useAtmosphere(): AtmosphereMode {
-  return useSyncExternalStore(subscribe, getAtmosphere, () => "off" as const);
+  return useSyncExternalStore(
+    () => () => {},
+    getAtmosphere,
+    () => "off" as const,
+  );
 }

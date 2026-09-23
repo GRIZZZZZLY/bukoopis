@@ -93,7 +93,7 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
               value={draft[key] ?? ""}
               onChange={(e) => setField(key, e.target.value)}
               placeholder="неизвестно"
-              className="flex-1 border border-[var(--color-input)] rounded-md px-2 py-0.5 text-sm"
+              className="input input-sm flex-1"
             />
           </label>
         ))}
@@ -107,7 +107,7 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
             onChange={(e) => setDisputesText(e.target.value)}
             onBlur={commitDisputesAndSilences}
             placeholder="через запятую"
-            className="flex-1 border border-[var(--color-input)] rounded-md px-2 py-0.5 text-sm"
+            className="input input-sm flex-1"
           />
         </label>
         <label className="flex items-center gap-2 text-xs">
@@ -120,7 +120,7 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
             onChange={(e) => setSilencesText(e.target.value)}
             onBlur={commitDisputesAndSilences}
             placeholder="через запятую"
-            className="flex-1 border border-[var(--color-input)] rounded-md px-2 py-0.5 text-sm"
+            className="input input-sm flex-1"
           />
         </label>
       </div>
@@ -128,7 +128,7 @@ export function RelationshipQualities({ relationship, onSaved }: Props) {
         type="button"
         onClick={handleSave}
         disabled={busy}
-        className="self-start text-sm border border-[var(--color-brass)] text-[var(--color-brass)] rounded-md px-3 py-1 disabled:border-[var(--color-border-soft)] disabled:text-[var(--color-text-muted)]"
+        className="btn btn-accent btn-sm self-start"
       >
         Сохранить
       </button>

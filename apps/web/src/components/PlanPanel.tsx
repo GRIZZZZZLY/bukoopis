@@ -107,7 +107,7 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             onChange={(e) =>
               setVariants(Math.max(1, Math.min(5, Number(e.target.value))))
             }
-            className="w-14 border border-[var(--color-input)] rounded-md px-2 py-1 text-sm"
+            className="input input-sm w-14"
           />
         </label>
         <Button onClick={onGenerate} disabled={generating || intent.length === 0}>

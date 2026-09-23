@@ -91,7 +91,7 @@ export function AliasEditor({ bookId, characterId }: Props) {
           </span>
         ))}
         <input
-          className="border border-[var(--color-input)] rounded-md px-2 py-0.5 text-xs min-w-[12rem]"
+          className="input input-sm min-w-[12rem]"
           placeholder="Прозвище, титул, вариант имени — Enter"
           value={value}
           onChange={(e) => setValue(e.target.value)}

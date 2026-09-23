@@ -222,7 +222,7 @@ export function InlineCommandPanel({ editor, chapterId }: Props) {
       </div>
       <input
         type="text"
-        className="border border-[var(--color-input)] rounded-md px-3 py-1 text-sm"
+        className="input input-sm"
         placeholder="Опц. указание агенту (например: «жёстче, без диалога»)"
         value={guidance}
         onChange={(e) => setGuidance(e.target.value)}

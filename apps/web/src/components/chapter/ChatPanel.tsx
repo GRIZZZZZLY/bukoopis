@@ -163,7 +163,7 @@ export function ChatPanel({ chapterId }: Props) {
           </span>
         ) : (
           <select
-            className="border border-[var(--color-input)] rounded-md px-2 py-1 text-sm flex-1 min-w-0"
+            className="select input-sm flex-1"
             value={activeId ?? ""}
             onChange={(e) => setActiveId(Number(e.target.value))}
             aria-label="Разговор"
@@ -214,7 +214,7 @@ export function ChatPanel({ chapterId }: Props) {
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       <textarea
-        className="border border-[var(--color-input)] rounded-md px-3 py-2 text-sm min-h-[4rem] font-sans"
+        className="textarea"
         placeholder="Спросить про сцену, героя, развилку… Ctrl+Enter — отправить"
         value={input}
         onChange={(e) => setInput(e.target.value)}

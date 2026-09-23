@@ -1,60 +1,39 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
-import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-const buttonVariants = cva(
-  // disabled — своя пара токенов, а не opacity: полупрозрачный brass давал
-  // тёмный текст по тёмному фону (2.3:1).
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:pointer-events-none disabled:bg-[var(--color-surface-2)] disabled:text-[var(--color-text-muted)] disabled:border-[var(--color-border-soft)]",
-  {
-    variants: {
-      variant: {
-        // hover сменой фона, а не opacity: полупрозрачность гасила и текст
-        // вместе с фоном, роняя контраст на самом заметном действии.
-        default:
-          "bg-[var(--color-primary)] text-[var(--color-primary-foreground)] hover:bg-[var(--color-brass-hi)]",
-        secondary:
-          "bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] hover:bg-[var(--color-surface-3)]",
-        outline:
-          "border border-[var(--color-input)] bg-[var(--color-background)] hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
-        ghost:
-          "hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)]",
-        destructive:
-          "bg-[var(--color-destructive)] text-[var(--color-destructive-foreground)] hover:bg-[var(--color-ink-red-fg)] hover:text-[var(--color-bg)]",
-      },
-      size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-6",
-        icon: "h-9 w-9",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  },
-);
+/** Одна система кнопок на всё приложение — классы `.btn` из library-warm.
+ *  Раньше `<Button>` рисовал себя своими Tailwind-классами, рядом жили
+ *  `.btn` и `.lw-btn`, и три кнопки «Сохранить» выглядели по-разному. */
+const VARIANT = {
+  default: "btn-primary",
+  secondary: "btn-secondary",
+  outline: "btn-secondary",
+  ghost: "btn-ghost",
+  destructive: "btn-destructive",
+} as const;
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+const SIZE = {
+  default: "",
+  sm: "btn-sm",
+  lg: "btn-lg",
+  icon: "btn-icon",
+} as const;
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: keyof typeof VARIANT | null;
+  size?: keyof typeof SIZE | null;
   asChild?: boolean;
+}
+
+export function buttonClass(variant: ButtonProps["variant"] = "default", size: ButtonProps["size"] = "default") {
+  return cn("btn", VARIANT[variant ?? "default"], SIZE[size ?? "default"]);
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
+    return <Comp className={cn(buttonClass(variant, size), className)} ref={ref} {...props} />;
   },
 );
 Button.displayName = "Button";
-
-export { buttonVariants };

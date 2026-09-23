@@ -288,7 +288,7 @@ export function SceneStatePanel({ chapterId }: Props) {
             <label key={k} className="flex flex-col gap-1">
               <span className="opacity-60">{TEXT_LABELS[k]}</span>
               <input
-                className="rounded border border-[var(--line,#ddd)] bg-transparent px-2 py-1"
+                className="input input-sm"
                 value={shown[k]}
                 onChange={(e) => setDraft({ ...shown, [k]: e.target.value })}
               />
@@ -299,7 +299,7 @@ export function SceneStatePanel({ chapterId }: Props) {
               <span className="opacity-60">{PERSON_LABELS[k]} — строка «Имя: что»</span>
               <textarea
                 rows={2}
-                className="rounded border border-[var(--line,#ddd)] bg-transparent px-2 py-1"
+                className="textarea"
                 value={shown[k]}
                 onChange={(e) => setDraft({ ...shown, [k]: e.target.value })}
               />
@@ -310,7 +310,7 @@ export function SceneStatePanel({ chapterId }: Props) {
               <span className="opacity-60">{LIST_LABELS[k]} — по строке на пункт</span>
               <textarea
                 rows={2}
-                className="rounded border border-[var(--line,#ddd)] bg-transparent px-2 py-1"
+                className="textarea"
                 value={shown[k]}
                 onChange={(e) => setDraft({ ...shown, [k]: e.target.value })}
               />

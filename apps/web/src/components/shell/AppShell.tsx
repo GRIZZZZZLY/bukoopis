@@ -1,19 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Lamp } from "lucide-react";
 import type { Book, Chapter } from "@book-forge/shared";
-import {
-  applyAtmosphereClass,
-  cycleAtmosphere,
-  effectiveMode,
-  useAtmosphere,
-  type AtmosphereMode,
-} from "../../lib/useAtmosphere";
+import { applyAtmosphereClass, effectiveMode, useAtmosphere } from "../../lib/useAtmosphere";
 import { setFocus, useFocusMode } from "../../lib/focusMode";
 import { useSaveStatus } from "../../lib/saveStatus";
 import { BOOK_SECTIONS, ROOM_LABELS, STAGE_LABELS } from "../../lib/labels";
-import { CandleGauge } from "../atmosphere/CandleGauge";
 import { DustLayer, shouldShowDust } from "../atmosphere/DustLayer";
 import { CatCompanion } from "../atmosphere/CatCompanion";
 import { JobIndicator } from "./JobIndicator";
@@ -247,8 +239,6 @@ function TopBar({ crumbs }: { crumbs: Crumb[] }) {
       <div className="topbar-right">
         <JobIndicator />
         <SaveStatus />
-        <CandleGauge />
-        <AtmosphereLamp />
       </div>
     </header>
   );
@@ -348,28 +338,5 @@ function LeftRail({ route }: { route: RouteInfo }) {
       </nav>
       <CatCompanion />
     </aside>
-  );
-}
-
-/* ─── AtmosphereLamp ────────────────────────────────────── */
-
-const ATM_TITLE: Record<AtmosphereMode, string> = {
-  full: "Атмосфера: полная",
-  calm: "Атмосфера: спокойная",
-  off: "Атмосфера: выкл",
-};
-
-function AtmosphereLamp() {
-  const mode = useAtmosphere();
-  return (
-    <button
-      type="button"
-      className={`topbar-lamp ${mode !== "off" ? "topbar-lamp-on" : ""}`}
-      onClick={cycleAtmosphere}
-      aria-label={ATM_TITLE[mode]}
-      title={`${ATM_TITLE[mode]} · клик переключает`}
-    >
-      <Lamp size={15} aria-hidden="true" />
-    </button>
   );
 }
