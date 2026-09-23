@@ -19,12 +19,14 @@ export const MODEL_API_ID: Record<ModelChoice, string> = MODEL_IDS;
 // сцены, правку, генерацию по беатам и чат. Подписочные вызовы оцениваются
 // нулём — это условность приложения, а не доказательство бесплатности.
 const PER_CRITIC_TOKENS = { input: 3000, output: 750 };
+// Критик стиля делает два вызова: общий разбор и проверку отдельных фраз.
+const CRITIC_CALLS = ALL_CRITIC_TYPES.length + 1;
 export const PER_CHAPTER_TOKENS = {
   writer: { input: 4500, output: 11000 },
   plot: { input: 2500, output: 1500 },
   critic: {
-    input: PER_CRITIC_TOKENS.input * ALL_CRITIC_TYPES.length,
-    output: PER_CRITIC_TOKENS.output * ALL_CRITIC_TYPES.length,
+    input: PER_CRITIC_TOKENS.input * CRITIC_CALLS,
+    output: PER_CRITIC_TOKENS.output * CRITIC_CALLS,
   },
 };
 

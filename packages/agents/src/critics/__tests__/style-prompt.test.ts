@@ -73,6 +73,19 @@ describe("style critic system prompt", () => {
     expect(STYLE_CRITIC_SYSTEM).toMatch(/Конкретная деталь \(предмет, привычка, число\) — не украшение/);
     expect(STYLE_CRITIC_SYSTEM).toMatch(/а не весь абзац вокруг неё/);
     expect(STYLE_CRITIC_SYSTEM).toMatch(/не предлагай готовую новую концовку/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/добавляет новую гипотезу, факт, мотив, риск/);
+  });
+
+  // Разбор автора: синтетичной бывает и одна фраза — необычность ради
+  // необычности. Примеров из тестовых сцен в промпте нет намеренно.
+  it("checks a single phrase for invented originality", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Придуманная необычность/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/была ли у рассказчика причина сформулировать мысль именно так/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Перескажи фразу простыми словами/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Проверяй необычные глаголы и сочетания существительных буквально/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Необычность должна давать дополнительную точность, а не заменять её/);
+    // Тест «узнаём ли меньше» защищал придуманную форму нужной мысли.
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/здесь формулировку не защищает/);
   });
 });
 

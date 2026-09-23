@@ -61,6 +61,10 @@ export const critiqueIssueSchema = z.object({
   alternativeReading: z.string().nullable().optional(),
   /** Что в этом месте стоит сохранить при правке. */
   keep: z.string().nullable().optional(),
+  /** Какой проход критика стиля нашёл замечание. В панели они слиты в один
+   *  раздел; поле нужно, чтобы мерить пользу каждого прохода. Ставит сервер,
+   *  не модель. */
+  origin: z.enum(["style_general", "style_phrase"]).optional(),
 });
 export type CritiqueIssue = z.infer<typeof critiqueIssueSchema>;
 

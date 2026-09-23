@@ -108,6 +108,7 @@ Adding an agent takes three steps:
 - A late model response after cancel is never written: proposals only from `streaming`, scene intent via `shouldPersist`.
 - Live runs send a heartbeat (`touchProposal`). A proposal with no heartbeat for 2 min is dead (`recoverStaleProseProposals`, at startup and every minute).
 - Critics: set in `ALL_CRITIC_TYPES`. Usage goes through `reportCriticUsage`. A skipped critic is listed in `skippedCritics`.
+- The style critic makes two calls: the general pass and `critic_style_phrase` ([style-phrase.ts](packages/agents/src/critics/style-phrase.ts)), one report `style`. Each issue carries `origin`. The phrase pass quotes and names a reason, never rewrites; it inherits `critic_style`'s backend. A failed phrase pass does not fail the critic. Rules for single phrases go to the phrase pass, not into the general prompt: the general critic stops at 3–5 issues per scene.
 - Prose rules must agree along the whole chain: plan → Writer → critics → Reviser. Context: [docs/prompts/agents-2026-09-23.md](docs/prompts/agents-2026-09-23.md).
   - The Writer's style block is replaced as a whole, never appended to.
   - Beats are a suggestion; obligations live in the contract.

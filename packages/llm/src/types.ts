@@ -35,6 +35,7 @@ export const AGENT_NAMES = [
   "canon_guard",
   "critic_canon",
   "critic_style",
+  "critic_style_phrase",
   "critic_editor",
   "critic_reader",
   "critic_character",
@@ -78,6 +79,7 @@ export function effectiveBackend(
 export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>([
   "critic_canon",
   "critic_style",
+  "critic_style_phrase",
   "critic_editor",
   "critic_reader",
   "critic_character",

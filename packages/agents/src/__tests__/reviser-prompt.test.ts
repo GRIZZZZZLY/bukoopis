@@ -203,6 +203,11 @@ describe("Reviser — порядок удаления (слепое сравне
     expect(system).toMatch(/простая характерная реплика персонажа/);
     expect(system).toMatch(/Не сжимай афоризм в короткую ударную фразу/);
   });
+  // Пятое сравнение: правка выбросила одну из трёх версий героя как «лишнее».
+  it("keeps each of the character's hypotheses", () => {
+    expect(system).toMatch(/нельзя объединять или удалять отдельную гипотезу/);
+    expect(system).toMatch(/Не сохраняй необычную формулировку только потому, что она выразительная/);
+  });
   it("does not answer 'feeling not conveyed' with a body-before-mind phrase", () => {
     expect(system).toMatch(/не выполняй телесной реакцией/);
   });
