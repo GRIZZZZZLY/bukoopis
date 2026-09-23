@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import {
-  BarChart3,
-  BookOpen,
-  Compass,
-  Feather,
-  Lamp,
-  Pin,
-  Search,
-  Settings,
-} from "lucide-react";
+import { Lamp } from "lucide-react";
+import type { Book, Chapter } from "@book-forge/shared";
 import {
   applyAtmosphereClass,
   cycleAtmosphere,
@@ -20,100 +12,177 @@ import {
 } from "../../lib/useAtmosphere";
 import { setFocus, useFocusMode } from "../../lib/focusMode";
 import { useSaveStatus } from "../../lib/saveStatus";
+import { BOOK_SECTIONS, ROOM_LABELS, STAGE_LABELS } from "../../lib/labels";
 import { CandleGauge } from "../atmosphere/CandleGauge";
 import { DustLayer, shouldShowDust } from "../atmosphere/DustLayer";
 import { CatCompanion } from "../atmosphere/CatCompanion";
+import { JobIndicator } from "./JobIndicator";
 
-const STAGE_LABEL: Record<string, string> = {
-  world: "Мир",
-  lore: "Лор",
-  characters: "Персонажи",
-  items: "Предметы",
-  plot: "План",
-  chapters: "Главы",
-  settings: "Настройки",
-};
-
-interface RouteInfo {
-  name:
-    | "books"
-    | "studio"
-    | "board"
-    | "chapter"
-    | "style-profiles"
-    | "style-profile"
-    | "usage"
-    | "other";
-  bookId?: string;
+export interface RouteInfo {
+  name: "shelf" | "book" | "studio" | "chapter" | "styles" | "costs" | "other";
+  bookId?: number;
+  /** Раздел дома книги: overview | chapters | canon | memory | settings. */
+  section?: string;
   stage?: string;
-  chapterId?: string;
+  chapterId?: number;
+  profileId?: number;
 }
 
-function parseRoute(pathname: string): RouteInfo {
+export function parseRoute(pathname: string): RouteInfo {
   const parts = pathname.split("/").filter(Boolean);
-  if (parts[0] === "usage") return { name: "usage" };
+  if (parts[0] === "usage") return { name: "costs" };
   if (parts[0] === "style-profiles") {
-    return parts[1]
-      ? { name: "style-profile" }
-      : { name: "style-profiles" };
+    const pid = Number(parts[1]);
+    return parts[1] && Number.isFinite(pid)
+      ? { name: "styles", profileId: pid }
+      : { name: "styles" };
   }
-  if (parts[0] === "books") {
-    if (!parts[1]) return { name: "books" };
-    const bookId = parts[1];
-    if (parts[2] === "studio") {
-      return { name: "studio", bookId, stage: parts[3] };
-    }
-    if (parts[2] === "board") {
-      return { name: "board", bookId };
-    }
-    if (parts[2] === "chapters" && parts[3]) {
-      return { name: "chapter", bookId, chapterId: parts[3] };
-    }
-    return { name: "books", bookId };
+  if (parts[0] !== "books") return { name: "other" };
+  if (!parts[1]) return { name: "shelf" };
+  const bookId = Number(parts[1]);
+  if (!Number.isFinite(bookId)) return { name: "other" };
+  if (parts[2] === "studio") {
+    return { name: "studio", bookId, stage: parts[3] ?? "concept" };
   }
-  return { name: "other" };
+  if (parts[2] === "chapters" && parts[3]) {
+    return { name: "chapter", bookId, chapterId: Number(parts[3]) };
+  }
+  return { name: "book", bookId, section: parts[2] ?? "overview" };
 }
 
-function breadcrumb(route: RouteInfo): string[] {
+interface Crumb {
+  label: string;
+  to?: string;
+}
+
+/** Порядковый номер главы — позиция в книге, а не разрежённый order_index. */
+export function chapterCrumb(chapters: Chapter[] | null, chapterId: number): string {
+  const i = chapters?.findIndex((c) => c.id === chapterId) ?? -1;
+  const ch = i >= 0 ? chapters?.[i] : undefined;
+  return ch ? `Глава ${i + 1} · ${ch.title}` : "Глава";
+}
+
+export function breadcrumbs(
+  route: RouteInfo,
+  book: Book | null,
+  chapters: Chapter[] | null,
+  profileName: string | null,
+): Crumb[] {
+  const shelf: Crumb = { label: ROOM_LABELS.shelf, to: "/books" };
+  const bookCrumb: Crumb | null =
+    route.bookId !== undefined
+      ? { label: book?.title ?? "…", to: `/books/${route.bookId}` }
+      : null;
   switch (route.name) {
-    case "books":
-      return ["Книги"];
-    case "studio":
+    case "shelf":
+      return [{ label: ROOM_LABELS.shelf }];
+    case "book": {
+      const s = BOOK_SECTIONS.find((x) => x.id === route.section);
+      return [shelf, bookCrumb!, { label: s?.label ?? "" }];
+    }
+    case "studio": {
+      const stage = STAGE_LABELS[route.stage as keyof typeof STAGE_LABELS];
       return [
-        "Книги",
-        `#${route.bookId}`,
-        "Studio",
-        route.stage ? (STAGE_LABEL[route.stage] ?? route.stage) : "Замысел",
+        shelf,
+        bookCrumb!,
+        { label: stage ? `${ROOM_LABELS.studio} · ${stage}` : ROOM_LABELS.studio },
       ];
-    case "board":
-      return ["Книги", `#${route.bookId}`, "Доска"];
+    }
     case "chapter":
-      return ["Книги", `#${route.bookId}`, `Глава ${route.chapterId}`];
-    case "style-profiles":
-      return ["Профили стиля"];
-    case "style-profile":
-      return ["Профили стиля", "Профиль"];
-    case "usage":
-      return ["Использование"];
+      return [shelf, bookCrumb!, { label: chapterCrumb(chapters, route.chapterId!) }];
+    case "styles":
+      return route.profileId !== undefined
+        ? [
+            { label: ROOM_LABELS.styles, to: "/style-profiles" },
+            { label: profileName ?? "…" },
+          ]
+        : [{ label: ROOM_LABELS.styles }];
+    case "costs":
+      return [{ label: ROOM_LABELS.costs }];
     default:
       return [];
   }
 }
 
-/** Library-Warm global shell. Reference: extracted app/shell.jsx + app.jsx. */
+const LAST_BOOK_KEY = "bf:last-book";
+
+function readLastBook(): number | null {
+  try {
+    const n = Number(localStorage.getItem(LAST_BOOK_KEY));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberBook(id: number): void {
+  try {
+    localStorage.setItem(LAST_BOOK_KEY, String(id));
+  } catch {
+    /* приватное окно — пункт «Книга» просто появится только внутри книги */
+  }
+}
+
+/** Книга и её главы для крошек: одна загрузка на книгу, повтор — если
+ *  открытой главы нет в списке (глава создана после загрузки). */
+function useBookContext(route: RouteInfo) {
+  const [book, setBook] = useState<Book | null>(null);
+  const [chapters, setChapters] = useState<Chapter[] | null>(null);
+  const bookId = route.bookId;
+  const missingChapter =
+    route.chapterId !== undefined &&
+    chapters !== null &&
+    !chapters.some((c) => c.id === route.chapterId);
+
+  useEffect(() => {
+    if (bookId === undefined) {
+      setBook(null);
+      setChapters(null);
+      return;
+    }
+    rememberBook(bookId);
+    let alive = true;
+    api
+      .getBook(bookId)
+      .then((b) => alive && setBook(b))
+      .catch(() => alive && setBook(null));
+    api
+      .listChapters(bookId)
+      .then((c) => alive && setChapters(c))
+      .catch(() => alive && setChapters(null));
+    return () => {
+      alive = false;
+    };
+    // Переименование книги видно после перехода между разделами.
+  }, [bookId, route.section, route.stage, missingChapter]);
+
+  return { book, chapters };
+}
+
+function useProfileName(profileId: number | undefined): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    if (profileId === undefined) return setName(null);
+    let alive = true;
+    api
+      .getStyleProfile(profileId)
+      .then((p) => alive && setName(p.name))
+      .catch(() => alive && setName(null));
+    return () => {
+      alive = false;
+    };
+  }, [profileId]);
+  return name;
+}
+
+/** Оболочка: слева рейл на всю высоту, справа верхняя панель и комната. */
 export function AppShell() {
   const { pathname } = useLocation();
   const route = parseRoute(pathname);
-  const [expanded, setExpanded] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const focused = useFocusMode();
   const atmosphere = useAtmosphere();
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 4);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const { book, chapters } = useBookContext(route);
+  const profileName = useProfileName(route.profileId);
 
   useEffect(() => {
     applyAtmosphereClass();
@@ -129,21 +198,16 @@ export function AppShell() {
 
   return (
     <div className="app" data-focus={focused ? "true" : "false"}>
-      {/* Первая цель Tab: топбар и рейл — это 10+ остановок перед содержимым
-          на каждой странице. */}
+      {/* Первая цель Tab: рейл и топбар — это несколько остановок перед
+          содержимым на каждой странице. */}
       <a className="skip-link" href="#main">
         Перейти к содержимому
       </a>
-      <TopBar route={route} scrolled={scrolled} />
-      <LeftRail
-        route={route}
-        expanded={expanded}
-        onToggle={() => setExpanded((v) => !v)}
-      />
+      <LeftRail route={route} />
+      <TopBar crumbs={breadcrumbs(route, book, chapters, profileName)} />
       <main className="main" id="main" tabIndex={-1}>
         <Outlet />
       </main>
-      <StatusBar />
       {shouldShowDust(effectiveMode(atmosphere), route.name) && <DustLayer />}
     </div>
   );
@@ -151,162 +215,138 @@ export function AppShell() {
 
 /* ─── TopBar ────────────────────────────────────────────── */
 
-function TopBar({ route, scrolled }: { route: RouteInfo; scrolled: boolean }) {
-  const crumbs = breadcrumb(route);
+function TopBar({ crumbs }: { crumbs: Crumb[] }) {
   return (
-    <header className={`topbar ${scrolled ? "topbar-scrolled" : ""}`}>
-      <div className="topbar-left">
-        <Link to="/books" className="brand" viewTransition>
-          <span className="brand-mark" aria-hidden="true">
-            B
-          </span>
-          <span className="brand-name">Bookopis</span>
-        </Link>
-        <nav aria-label="Хлебные крошки" className="crumbs">
-          {crumbs.map((c, i) => (
+    <header className="topbar">
+      <nav aria-label="Хлебные крошки" className="crumbs">
+        {crumbs.map((c, i) => {
+          const last = i === crumbs.length - 1;
+          return (
             <span key={i} className="crumb">
-              {i > 0 && <span className="crumb-sep faint">/</span>}
-              <span
-                className={`crumb-label ${i === crumbs.length - 1 ? "strong" : ""}`}
-              >
-                {c}
-              </span>
+              {i > 0 && (
+                <span className="crumb-sep" aria-hidden="true">
+                  /
+                </span>
+              )}
+              {c.to && !last ? (
+                <Link to={c.to} className="crumb-link" viewTransition>
+                  {c.label}
+                </Link>
+              ) : (
+                <span
+                  className={`crumb-label ${last ? "strong" : ""}`}
+                  {...(last ? { "aria-current": "page" as const } : {})}
+                >
+                  {c.label}
+                </span>
+              )}
             </span>
-          ))}
-        </nav>
-      </div>
-
+          );
+        })}
+      </nav>
       <div className="topbar-right">
-        <button
-          type="button"
-          className="topbar-kbd"
-          aria-label="Открыть палитру команд"
-          title="Команды · Cmd+K"
-        >
-          <Search size={14} aria-hidden="true" />
-          <span className="kbd">⌘K</span>
-        </button>
-        <Link to="/style-profiles" title="Профили стиля" viewTransition>
-          <span className="pill pill-brass">
-            <Feather size={11} aria-hidden="true" />
-            Стиль
-          </span>
-        </Link>
-        <Link to="/usage" className="topbar-link" viewTransition>
-          Использование
-        </Link>
+        <JobIndicator />
+        <SaveStatus />
         <CandleGauge />
         <AtmosphereLamp />
-        <button type="button" className="avatar" aria-label="Профиль">
-          М
-        </button>
       </div>
     </header>
   );
 }
 
+function SaveStatus() {
+  const save = useSaveStatus();
+  if (save.kind === "idle") return null;
+  const label =
+    save.kind === "saving"
+      ? "сохраняю…"
+      : save.kind === "error"
+        ? "не сохранено"
+        : save.at
+          ? `сохранено · ${new Date(save.at).toLocaleTimeString("ru-RU", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`
+          : "сохранено";
+  return (
+    <span
+      className={`topbar-save mono ${save.kind === "error" ? "topbar-save-err" : ""}`}
+      role="status"
+    >
+      {label}
+    </span>
+  );
+}
+
 /* ─── LeftRail ──────────────────────────────────────────── */
 
-function LeftRail({
-  route,
-  expanded,
-  onToggle,
-}: {
-  route: RouteInfo;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const bookId = route.bookId;
-  const items = [
-    {
-      id: "books",
-      label: "Книги",
-      to: "/books",
-      icon: <BookOpen size={18} aria-hidden="true" />,
-      active: route.name === "books",
-      show: true,
-    },
-    {
-      id: "studio",
-      label: "Studio",
-      to: bookId ? `/books/${bookId}/studio` : "/books",
-      icon: <Compass size={18} aria-hidden="true" />,
-      active: route.name === "studio" || route.name === "chapter",
-      show: Boolean(bookId),
-    },
-    {
-      id: "board",
-      label: "Доска",
-      to: bookId ? `/books/${bookId}/board` : "/books",
-      icon: <Pin size={18} aria-hidden="true" />,
-      active: route.name === "board",
-      show: Boolean(bookId),
-    },
-    {
-      id: "style-profiles",
-      label: "Профили стиля",
-      to: "/style-profiles",
-      icon: <Feather size={18} aria-hidden="true" />,
-      active: route.name === "style-profiles" || route.name === "style-profile",
-      show: true,
-    },
-    {
-      id: "usage",
-      label: "Использование",
-      to: "/usage",
-      icon: <BarChart3 size={18} aria-hidden="true" />,
-      active: route.name === "usage",
-      show: true,
-    },
+const RailIcon = {
+  shelf: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <rect x="3" y="5" width="3" height="11" />
+      <rect x="8.5" y="2.5" width="3" height="13.5" />
+      <rect x="14" y="6.5" width="3" height="9.5" />
+      <line x1="1" y1="17.5" x2="19" y2="17.5" />
+    </svg>
+  ),
+  book: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <rect x="4" y="2.5" width="12" height="15" rx="1" />
+      <line x1="7" y1="2.5" x2="7" y2="17.5" />
+    </svg>
+  ),
+  styles: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <line x1="3" y1="5" x2="17" y2="5" />
+      <line x1="3" y1="10" x2="14" y2="10" />
+      <line x1="3" y1="15" x2="10" y2="15" />
+    </svg>
+  ),
+  costs: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <circle cx="10" cy="10" r="7" />
+      <circle cx="10" cy="10" r="3.5" />
+    </svg>
+  ),
+};
+
+function LeftRail({ route }: { route: RouteInfo }) {
+  const bookId = route.bookId ?? readLastBook();
+  const inBook =
+    route.name === "book" || route.name === "studio" || route.name === "chapter";
+  type Item = { id: keyof typeof RailIcon; label: string; to: string; active: boolean };
+  const items: Item[] = [
+    { id: "shelf", label: ROOM_LABELS.shelf, to: "/books", active: route.name === "shelf" },
   ];
+  // «Книга» — текущая или последняя открытая; до первой книги пункта нет.
+  if (bookId !== null) {
+    items.push({ id: "book", label: ROOM_LABELS.book, to: `/books/${bookId}`, active: inBook });
+  }
+  items.push(
+    { id: "styles", label: ROOM_LABELS.styles, to: "/style-profiles", active: route.name === "styles" },
+    { id: "costs", label: ROOM_LABELS.costs, to: "/usage", active: route.name === "costs" },
+  );
   return (
-    <aside
-      className={`leftrail ${expanded ? "leftrail-exp" : ""}`}
-      aria-label="Главная навигация"
-    >
-      <button
-        type="button"
-        className="leftrail-toggle"
-        onClick={onToggle}
-        aria-label={expanded ? "Свернуть" : "Развернуть"}
-      >
-        <span aria-hidden="true">{expanded ? "‹" : "›"}</span>
-      </button>
+    <aside className="leftrail" aria-label="Главная навигация">
+      <Link to="/books" className="leftrail-brand" aria-label="book-forge — на полку" viewTransition>
+        b
+      </Link>
       <nav className="leftrail-nav">
-        {items
-          .filter((it) => it.show)
-          .map((it) => (
-            <Link
-              key={it.id}
-              to={it.to}
-              className={`leftrail-item ${it.active ? "leftrail-item-active" : ""}`}
-              aria-current={it.active ? "page" : undefined}
-              title={it.label}
-              viewTransition
-            >
-              <span className="leftrail-bar" aria-hidden="true" />
-              <span className="leftrail-icon">{it.icon}</span>
-              {expanded && <span className="leftrail-label">{it.label}</span>}
-            </Link>
-          ))}
-      </nav>
-      <CatCompanion />
-      {bookId && (
-        <div className="leftrail-foot">
+        {items.map((it) => (
           <Link
-            to={`/books/${bookId}/studio/settings`}
-            className={`leftrail-item ${route.stage === "settings" ? "leftrail-item-active" : ""}`}
-            title="Настройки"
+            key={it.id}
+            to={it.to}
+            className={`leftrail-item ${it.active ? "leftrail-item-active" : ""}`}
+            aria-current={it.active ? "page" : undefined}
             viewTransition
           >
             <span className="leftrail-bar" aria-hidden="true" />
-            <span className="leftrail-icon">
-              <Settings size={18} aria-hidden="true" />
-            </span>
-            {expanded && <span className="leftrail-label">Настройки</span>}
+            {RailIcon[it.id]}
+            <span className="leftrail-label">{it.label}</span>
           </Link>
-        </div>
-      )}
+        ))}
+      </nav>
+      <CatCompanion />
     </aside>
   );
 }
@@ -331,80 +371,5 @@ function AtmosphereLamp() {
     >
       <Lamp size={15} aria-hidden="true" />
     </button>
-  );
-}
-
-/* ─── StatusBar ─────────────────────────────────────────── */
-
-function relativeTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const BACKEND_LABELS: Record<string, string> = {
-  subscription: "подписка",
-  api: "платный ключ",
-};
-
-function StatusBar() {
-  const save = useSaveStatus();
-  // Одно слово на всё приложение было неправдой: бэкенд у каждого агента свой,
-  // и подвал писал «subscription» даже когда критики шли через платный ключ
-  // (находка живого прогона 2026-09-20).
-  const [backends, setBackends] = useState<{ writer: string; critics: string } | null>(null);
-  useEffect(() => {
-    let alive = true;
-    api
-      .getHealth()
-      .then((h) => {
-        if (alive && h.backends) setBackends(h.backends);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  const label =
-    save.kind === "saving"
-      ? "автосохранение…"
-      : save.kind === "error"
-        ? "ошибка сохранения"
-        : save.kind === "saved" && save.at
-          ? `сохранено · ${relativeTime(save.at)}`
-          : "готов к работе";
-  const dot =
-    save.kind === "error"
-      ? "dot-err"
-      : save.kind === "saving"
-        ? "dot-warn"
-        : "dot-ok";
-  return (
-    <footer className="statusbar mono" aria-label="Состояние сессии">
-      <span className="status-group">
-        <span className={`dot ${dot}`} />
-        <span>{label}</span>
-      </span>
-      <span className="sep faint">·</span>
-      {backends && (
-        <span className="status-group">
-          Писатель:{" "}
-          <span className="strong">
-            {BACKEND_LABELS[backends.writer] ?? backends.writer}
-          </span>
-          {backends.critics !== backends.writer && (
-            <>
-              {" · критики: "}
-              <span className="strong">
-                {BACKEND_LABELS[backends.critics] ?? backends.critics}
-              </span>
-            </>
-          )}
-        </span>
-      )}
-      <span className="status-spacer" />
-      <span className="status-group faint">v0.4.0 · Library Warm</span>
-    </footer>
   );
 }

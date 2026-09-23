@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ConfirmDialog } from "@/components/ui/AlertDialog";
 import { PageSkeleton } from "@/components/ui/Skeleton";
-import { StageStepper } from "@/components/studio/StageStepper";
+import type { BookRoomContext } from "@/components/book/BookLayout";
 import { api } from "@/api/client";
 import { toast } from "@/lib/toast";
 import { formatUsdApprox } from "@/lib/money";
 import { estimatePerChapterUsd } from "@/lib/chapter-cost";
 import type {
   Book,
-  BookConcept,
   BookStatus,
   ModelChoice,
-  StudioState,
   StyleProfile,
   WriterProvider,
 } from "@book-forge/shared";
@@ -30,11 +28,11 @@ export function SettingsStagePage() {
   const { bookId } = useParams<{ bookId: string }>();
   const id = Number(bookId);
   const navigate = useNavigate();
+  // Вне дома книги (в тестах) контекста нет — шапку перечитывать некому.
+  const room = useOutletContext<BookRoomContext | undefined>();
 
   const [book, setBook] = useState<Book | null>(null);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
-  const [concept, setConcept] = useState<BookConcept | null>(null);
-  const [studio, setStudio] = useState<StudioState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
@@ -53,16 +51,9 @@ export function SettingsStagePage() {
   async function load() {
     setError(null);
     try {
-      const [b, sp, c, s] = await Promise.all([
-        api.getBook(id),
-        api.listStyleProfiles(),
-        api.getConcept(id),
-        api.getStudioState(id),
-      ]);
+      const [b, sp] = await Promise.all([api.getBook(id), api.listStyleProfiles()]);
       setBook(b);
       setStyleProfiles(sp);
-      setConcept(c);
-      setStudio(s);
       setTitle(b.title);
       setStatus(b.status);
       setStyleProfileId(b.styleProfileId);
@@ -100,6 +91,7 @@ export function SettingsStagePage() {
             : null,
       });
       await load();
+      room?.reloadBook();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -157,7 +149,7 @@ export function SettingsStagePage() {
       </div>
     );
   }
-  if (!book || !concept || !studio) {
+  if (!book) {
     return <PageSkeleton label="Настройки книги загружаются" />;
   }
 
@@ -168,15 +160,10 @@ export function SettingsStagePage() {
 
   return (
     <div className="route" data-screen-label="Book settings">
-      <div className="page page-stage">
-        <StageStepper bookId={id} concept={concept} studioState={studio} />
-
-        <div className="page-head">
-          <div>
-            <Link to={`/books/${id}/studio`} className="back-link mono">
-              ← к Studio
-            </Link>
-            <h1 style={{ marginTop: 4 }}>Настройки</h1>
+      <div className="settings-sec">
+        <div className="section-bar">
+          <div className="section-bar-title">
+            <h2>Настройки</h2>
           </div>
           <button
             type="button"
@@ -261,7 +248,7 @@ export function SettingsStagePage() {
             {(
               [
                 ["Писатель", writerModel, setWriterModel] as const,
-                ["Сюжет", plotModel, setPlotModel] as const,
+                ["План", plotModel, setPlotModel] as const,
                 ["Критик", criticModel, setCriticModel] as const,
               ]
             ).map(([label, value, setter]) => (
@@ -311,7 +298,7 @@ export function SettingsStagePage() {
               <div>
                 <div className="strong">Anthropic</div>
                 <div className="muted cap">
-                  Облачный writer/plot/critic. Подписка.
+                  Облако: письмо, план и критика.
                 </div>
               </div>
             </label>
@@ -329,7 +316,7 @@ export function SettingsStagePage() {
               <div>
                 <div className="strong">Ollama (локально)</div>
                 <div className="muted cap">
-                  Локальный writer. Plot и Critic остаются на облаке.
+                  Письмо — локально, план и критика — в облаке.
                 </div>
               </div>
             </label>
@@ -348,7 +335,7 @@ export function SettingsStagePage() {
               />
               <p className="field-hint">
                 Сервер должен достигать Ollama по OLLAMA_BASE_URL (по умолчанию
-                http://127.0.0.1:11434). Plot и Critic остаются на
+                http://127.0.0.1:11434). План и критика остаются на
                 cloud-моделях.
               </p>
             </div>

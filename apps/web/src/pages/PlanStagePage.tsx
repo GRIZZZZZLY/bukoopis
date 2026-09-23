@@ -149,7 +149,7 @@ export function PlanStagePage() {
 
   return (
     <div className="route" data-screen-label="stage-plot">
-      <div className="page page-stage">
+      <div className="studio-room">
         <StageStepper
           bookId={bookId}
           concept={concept}
@@ -158,16 +158,14 @@ export function PlanStagePage() {
           planApproved={isPlanApproved(book.outlineJson)}
         />
 
-        <div className="page-head">
+        <div className="studio-body">
+        <div className="stage-head">
           <div>
             <h1>План</h1>
             <p className="muted page-sub">
               Поглавный костяк книги. «Утвердить план» создаёт главы с намерениями.
             </p>
           </div>
-          <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
-            ← К Studio
-          </Link>
         </div>
 
         {error && <p className="text-sm" style={{ color: "var(--color-ink-red)" }}>Ошибка: {error}</p>}
@@ -257,6 +255,7 @@ export function PlanStagePage() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

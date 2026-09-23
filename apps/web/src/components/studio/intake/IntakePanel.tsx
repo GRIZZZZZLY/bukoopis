@@ -4,6 +4,7 @@ import { api, type IntakeFile, type IntakeResponse } from "@/api/client";
 import { DropZone } from "./DropZone";
 import { IntakeProgress, type IntakeProgressRow } from "./IntakeProgress";
 import { IntakeSummary } from "./IntakeSummary";
+import { finishJob, startJob, updateJob } from "@/lib/jobs";
 
 interface Props {
   bookId: number;
@@ -125,6 +126,31 @@ export function IntakePanel({ bookId, onIntake }: Props) {
     // зависимости значило бы перезапускать опрос без причины.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
+
+  // Идущий разбор виден в верхней панели на любой странице дома книги.
+  const jobRef = useRef<number | null>(null);
+  const doneCount = rows.filter((r) => r.status === "done" || r.status === "failed").length;
+  const jobLabel = `Разбор материалов · ${doneCount} из ${total}`;
+  const live = streaming && !result;
+  useEffect(() => {
+    if (!live) return;
+    jobRef.current = startJob({ label: jobLabel });
+    return () => {
+      if (jobRef.current !== null) finishJob(jobRef.current);
+      jobRef.current = null;
+    };
+    // Подпись обновляет второй эффект: этот только открывает и закрывает.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live]);
+  const stopRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (jobRef.current === null) return;
+    updateJob(jobRef.current, {
+      label: stopping ? "Разбор материалов · останавливаю…" : jobLabel,
+      // Стоп доступен, когда сервер назвал прогон, и пока остановка не ушла.
+      onStop: requestKey !== undefined && !stopping ? () => stopRef.current() : undefined,
+    });
+  }, [jobLabel, requestKey, stopping]);
 
   async function handleFiles(files: File[]) {
     setBusy(true);
@@ -255,6 +281,8 @@ export function IntakePanel({ bookId, onIntake }: Props) {
       setStopError("Не удалось остановить разбор — попробуйте ещё раз.");
     }
   }
+
+  stopRef.current = () => void handleStop();
 
   function dismissResult() {
     // Флаги прогона сбрасываются здесь, а не сразу по приходу ответа: пока

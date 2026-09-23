@@ -1,3 +1,4 @@
+import { emptyBookConcept } from "@book-forge/shared";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -41,7 +42,7 @@ describe("EntityStagePage — состав после материализаци
         characters: { status: "in_progress", aspects: [{ id: "a1", name: "Герои" }] },
       },
     } as never);
-    vi.mocked(api.getConcept).mockResolvedValue({} as never);
+    vi.mocked(api.getConcept).mockResolvedValue(emptyBookConcept());
     vi.mocked(api.materializeEntitySet).mockResolvedValue({} as never);
 
     render(

@@ -1,61 +1,32 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Check, Circle, Play } from "lucide-react";
 import {
   STAGE_IDS,
-  computeStudioProgress,
+  effectiveStageStatus,
   type BookConcept,
   type ChapterProgress,
   type StageId,
   type StudioState,
 } from "@book-forge/shared";
 import { stageRoute } from "@/lib/studio-routes";
-
-const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Замысел",
-  world: "Мир",
-  lore: "Лор",
-  characters: "Персонажи",
-  items: "Предметы",
-  plot: "План",
-  chapters: "Главы",
-};
-
-type StepStatus = "complete" | "in_progress" | "todo" | "skipped";
-
-const PROGRESS_TO_STEP: Record<"done" | "current" | "todo", StepStatus> = {
-  done: "complete",
-  current: "in_progress",
-  todo: "todo",
-};
-
-function glyph(status: StepStatus) {
-  switch (status) {
-    case "complete":
-      return <Check aria-hidden="true" />;
-    case "in_progress":
-      return <Play aria-hidden="true" />;
-    case "skipped":
-      return <span aria-hidden="true">↷</span>;
-    default:
-      return <Circle aria-hidden="true" />;
-  }
-}
+import { STAGE_LABELS } from "@/lib/labels";
+import { stageStatusLabel } from "@/components/book/StageStatus";
 
 interface StageStepperProps {
   bookId: number;
   concept: BookConcept;
   studioState: StudioState;
-  /** Highlight "you are here"; undefined for non-stage pages (e.g. settings). */
+  /** Подсветка «вы здесь». */
   activeStageId?: StageId;
-  /** Omit on pages that have not loaded the chapter list; the chapters step
-   *  then simply never reads as done. */
+  /** Без списка глав этап «Главы» просто никогда не читается готовым. */
   chapters?: ChapterProgress;
-  /** План утверждён — этап «Сюжет» пройден. Страницы, у которых книги нет в
-   *  руках, признак не передают и получают прежнее поведение. */
+  /** План утверждён — этап «План» пройден. Без признака — прежнее поведение. */
   planApproved?: boolean;
+  /** Правый край полосы: «Пропустить этап» или пояснение. */
+  aside?: ReactNode;
 }
 
-/** Reference: extracted app/stepper.jsx (.stepper / .step idiom). */
+/** Полоса этапов Мастерской — единственная навигация внутри неё. */
 export function StageStepper({
   bookId,
   concept,
@@ -63,55 +34,39 @@ export function StageStepper({
   activeStageId,
   chapters,
   planApproved,
+  aside,
 }: StageStepperProps) {
-  const progress = computeStudioProgress(
-    concept,
-    studioState,
-    chapters,
-    planApproved !== undefined ? { approved: planApproved } : undefined,
-  );
-  const byId = new Map(progress.stages.map((s) => [s.id, s]));
-
+  const plan = planApproved !== undefined ? { approved: planApproved } : undefined;
   return (
     <nav className="stepper" aria-label="Этапы книги">
       <ol className="stepper-list">
         {STAGE_IDS.map((id, i) => {
-          const skipped = studioState.stages[id]?.status === "skipped";
-          const status: StepStatus = skipped
-            ? "skipped"
-            : PROGRESS_TO_STEP[byId.get(id)?.status ?? "todo"];
+          const status = effectiveStageStatus(concept, studioState, id, chapters, plan);
           const active = activeStageId === id;
           return (
-            <li
-              key={id}
-              className={`step step-${status}${active ? " step-active" : ""}`}
-            >
+            <li key={id} className={`step step-${status}${active ? " step-active" : ""}`}>
               <Link
                 to={stageRoute(bookId, id)}
                 className="step-inner"
                 data-stage-id={id}
                 {...(active ? { "aria-current": "step" as const } : {})}
               >
-                <span className="step-num mono">
-                  {String(i + 1).padStart(2, "0")}
+                <span className="step-num mono">{i + 1}</span>
+                <span className="step-text">
+                  <span className="step-label">{STAGE_LABELS[id]}</span>
+                  <span className="step-status">{stageStatusLabel(status)}</span>
                 </span>
-                <span className="step-glyph">{glyph(status)}</span>
-                <span className="step-label">{STAGE_LABELS[id]}</span>
               </Link>
               {i < STAGE_IDS.length - 1 && (
-                <span className="step-rail" aria-hidden="true" />
+                <span className="step-arrow" aria-hidden="true">
+                  →
+                </span>
               )}
             </li>
           );
         })}
       </ol>
-      <div
-        className="stepper-counter mono"
-        aria-label={`Готово ${progress.doneCount} из 7`}
-      >
-        <span className="strong">{progress.doneCount}</span>
-        <span className="faint">/7</span>
-      </div>
+      {aside && <div className="stepper-aside">{aside}</div>}
     </nav>
   );
 }

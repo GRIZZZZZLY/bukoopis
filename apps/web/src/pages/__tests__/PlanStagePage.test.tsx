@@ -1,3 +1,4 @@
+import { emptyBookConcept } from "@book-forge/shared";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -94,7 +95,7 @@ function renderPage() {
 
 beforeEach(() => {
   vi.mocked(api.getBook).mockResolvedValue(BOOK as never);
-  vi.mocked(api.getConcept).mockResolvedValue({ schemaVersion: 1, pitches: [] } as never);
+  vi.mocked(api.getConcept).mockResolvedValue(emptyBookConcept());
   vi.mocked(api.getStudioState).mockResolvedValue(STUDIO_WITH_NOTE as never);
   vi.mocked(api.approvePlan).mockResolvedValue({ created: 2, updated: 0, chapters: [] } as never);
 });

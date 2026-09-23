@@ -15,16 +15,8 @@ import {
   StageOptionalBadge,
 } from "@/components/studio/StageSkipControl";
 import { DocumentStageRunner } from "@/components/studio/aspect-engine/DocumentStageRunner";
+import { STAGE_LABELS } from "@/lib/labels";
 
-const STAGE_LABELS: Record<StageId, string> = {
-  concept: "Замысел",
-  world: "Мир",
-  lore: "Лор",
-  characters: "Персонажи",
-  items: "Предметы",
-  plot: "План",
-  chapters: "Главы",
-};
 
 const STAGE_HINTS: Record<"world" | "lore", string> = {
   world: "География, фракции, технологии, климат. Внешний слой реальности книги.",
@@ -146,7 +138,7 @@ export function MarkdownStagePage() {
 
   return (
     <div className="route" data-screen-label={`stage-${stageId}`}>
-      <div className="page page-stage">
+      <div className="studio-room">
         <StageStepper
           bookId={bookId}
           concept={concept}
@@ -154,7 +146,8 @@ export function MarkdownStagePage() {
           activeStageId={stageId}
         />
 
-        <div className="page-head">
+        <div className="studio-body">
+        <div className="stage-head">
           <div>
             <h1>
               {STAGE_LABELS[stageId]}
@@ -169,9 +162,6 @@ export function MarkdownStagePage() {
               revision={studio.revision}
               onPatch={handlePatch}
             />
-            <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
-              ← К Studio
-            </Link>
           </div>
         </div>
 
@@ -193,6 +183,7 @@ export function MarkdownStagePage() {
               onReloadStage={handleReloadStage}
             />
           )}
+        </div>
         </div>
       </div>
     </div>

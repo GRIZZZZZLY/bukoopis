@@ -466,79 +466,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .field-label { font-size: 12px; letter-spacing: 0.02em; color: var(--color-text-muted); font-weight: 500; }
 .field-hint  { font-size: 11px; color: var(--color-text-muted); font-family: var(--font-mono); }
 
-/* ─── Stepper ─────────────────────────────────────────────── */
-
-.stepper {
-  display: flex; align-items: center; gap: 16px;
-  padding: 16px 20px;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border-soft);
-  border-radius: var(--radius-panel);
-}
-.stepper-list {
-  list-style: none; padding: 0; margin: 0;
-  display: flex; align-items: center; flex: 1;
-}
-.step {
-  position: relative;
-  display: flex; align-items: center;
-  flex: 1; min-width: 0;
-}
-.step-rail {
-  flex: 1; height: 1px;
-  background: var(--color-border-soft);
-  margin: 0 8px;
-}
-.step-inner {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  color: var(--color-text-muted);
-  font-size: 12px; font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--motion-1) var(--ease-hover), color var(--motion-1) var(--ease-hover);
-}
-.step-inner:hover { background: var(--color-surface-2); color: var(--color-text); }
-.step-num {
-  font-size: 10px;
-  color: var(--color-text-faint);
-  letter-spacing: 0.04em;
-}
-.step-glyph {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px;
-  border-radius: 999px;
-  background: var(--color-surface-2);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-}
-.step-glyph svg { width: 11px; height: 11px; }
-
-.step-complete .step-glyph    { background: var(--color-ink-green-tint); color: var(--color-ink-green-fg); border-color: var(--color-ink-green); }
-.step-in_progress .step-glyph { background: var(--color-brass-tint); color: var(--color-brass); border-color: var(--color-brass-soft); }
-.step-skipped .step-glyph     { color: var(--color-text-faint); }
-.step-todo .step-glyph        { color: var(--color-text-faint); }
-.step-todo .step-glyph svg    { width: 6px; height: 6px; }
-
-.step-active .step-inner {
-  background: var(--color-brass-tint);
-  color: var(--color-text-strong);
-  box-shadow: var(--shadow-glow);
-}
-.step-active .step-label { font-weight: 600; }
-.step-active .step-glyph { border-color: var(--color-brass); }
-
-.stepper-counter {
-  font-size: 12px;
-  white-space: nowrap;
-  padding-left: 12px;
-  border-left: 1px solid var(--color-border-soft);
-  height: 28px;
-  display: inline-flex; align-items: center; gap: 1px;
-}
-.stepper-counter .strong { color: var(--color-brass); font-size: 14px; }
-.stepper-counter .faint { color: var(--color-text-faint); }
+/* Stepper — в rooms.css. */
 
 /* ─── StageCard ──────────────────────────────────────────── */
 
@@ -592,100 +520,53 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 
 /* ─── App shell ──────────────────────────────────────────── */
 
+/* Рейл на всю высоту слева; справа верхняя панель и комната. */
 .app {
   display: grid;
-  grid-template-rows: var(--topbar-h) 1fr var(--statusbar-h);
-  grid-template-columns: auto 1fr;
+  grid-template-rows: var(--topbar-h) 1fr;
+  grid-template-columns: var(--rail-l-collapsed) 1fr;
   grid-template-areas:
-    "top top"
-    "left main"
-    "status status";
+    "left top"
+    "left main";
   min-height: 100vh;
   background: var(--color-bg);
 }
 /* Фокус: комната гаснет. Схлопывания грида мало — ячейки нулевого размера
    не обрезают содержимое, поэтому хром убираем явно. */
 .app[data-focus="true"] {
-  grid-template-rows: 0 1fr 0;
+  grid-template-rows: 0 1fr;
   grid-template-columns: 0 1fr;
 }
 .app[data-focus="true"] > .topbar,
-.app[data-focus="true"] > .leftrail,
-.app[data-focus="true"] > .statusbar {
+.app[data-focus="true"] > .leftrail {
   display: none;
 }
 
 /* TopBar */
 .topbar {
   grid-area: top;
-  display: flex; align-items: center; gap: 24px;
-  height: var(--topbar-h); padding: 0 20px;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  height: var(--topbar-h); padding: 0 20px 0 24px;
   background: var(--color-bg);
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px solid var(--color-border-soft);
   position: sticky; top: 0;
   z-index: 30;
-  transition: border-color var(--motion-2) var(--ease-in-out);
 }
-.topbar-scrolled, .topbar.scrolled { border-bottom-color: var(--color-border-soft); }
-.topbar-focus    { opacity: 0; pointer-events: none; height: 0; padding: 0; }
+.topbar-right { display: flex; align-items: center; gap: 12px; flex: none; }
 
-.topbar-left  { display: flex; align-items: center; gap: 20px; min-width: 0; flex: 1; }
-.topbar-center{ display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.topbar-right { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; }
-
-.brand {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-family: var(--font-display); font-size: 18px;
-  color: var(--color-brass); font-weight: 500;
-  letter-spacing: -0.01em;
-}
-.brand-mark {
-  width: 24px; height: 24px;
-  background: var(--color-brass);
-  color: var(--color-bg);
-  border-radius: 4px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 13px;
-  font-family: var(--font-display);
-  font-style: italic;
-}
-.brand-name { color: var(--color-brass); }
-
-/* overflow:hidden обязателен: .topbar-left — flex:1 c min-width:0, а внутри
-   nowrap-содержимое, поэтому без обрезки крошки и бренд выезжали за свою
-   ячейку и накладывались на поиск (было видно на 780px). */
-.topbar-left, .crumbs { overflow: hidden; }
-.crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.crumb  { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); min-width: 0; }
-.crumb-sep { font-family: var(--font-mono); }
+/* overflow:hidden обязателен: крошки — nowrap внутри flex, без обрезки
+   длинное название книги наезжает на правую группу. */
+.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+.crumb  { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-muted); min-width: 0; }
+.crumb-sep { color: var(--color-border-strong); }
+.crumb-link { color: var(--color-text-muted); white-space: nowrap; }
+.crumb-link:hover { color: var(--color-text-strong); }
 .crumb-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crumb-label.strong { color: var(--color-text); }
-.brand { flex: none; }
+.crumb-label.strong { color: var(--color-text-strong); font-weight: 500; }
 
-.topbar-chapter {
-  font-family: var(--font-display);
-  font-size: 15px; color: var(--color-text-strong);
-  display: inline-flex; gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: 999px;
-  background: var(--color-surface-1);
-}
-.topbar-chapter-num { color: var(--color-text-muted); font-style: italic; }
-.topbar-chapter-title { font-weight: 500; }
+.topbar-save { font-size: 11px; color: var(--color-text-muted); }
+.topbar-save-err { color: var(--color-ink-red-fg); }
 
-.topbar-kbd {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 28px; padding: 0 10px;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border-soft);
-  color: var(--color-text-muted);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.topbar-kbd:hover { background: var(--color-surface-2); color: var(--color-text); }
-.topbar-link { font-size: 13px; color: var(--color-text-muted); }
-.topbar-link:hover { color: var(--color-text); }
 .topbar-lamp {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px;
@@ -696,13 +577,30 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
 .topbar-lamp:hover { color: var(--color-text-muted); }
 .topbar-lamp-on { color: var(--color-brass); }
 .topbar-lamp-on:hover { color: var(--color-brass-hi); }
-.avatar {
-  width: 28px; height: 28px; border-radius: 999px;
-  background: var(--color-surface-3); color: var(--color-text-strong);
+
+/* Идущая работа модели */
+.job {
+  display: flex; align-items: center; gap: 12px;
+  height: 32px; padding: 0 4px 0 12px;
   border: 1px solid var(--color-border);
-  font-family: var(--font-display); font-size: 13px; font-weight: 500;
-  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-1);
+  font-size: 13px; color: var(--color-text);
 }
+.job-flame {
+  width: 6px; height: 12px; border-radius: 3px 3px 2px 2px;
+  background: var(--color-brass-hi);
+  box-shadow: 0 0 8px 1px rgba(232, 182, 92, .45);
+}
+.atm-off .job-flame { box-shadow: none; }
+.job-time { font-size: 12px; color: var(--color-text-muted); }
+.job-cost { font-size: 12px; color: var(--color-ink-amber-fg); }
+.job-stop {
+  height: 24px; padding: 0 10px; border-radius: 5px;
+  border: 1px solid var(--color-ink-red); background: transparent;
+  color: var(--color-ink-red-fg); font: 500 12px var(--font-sans); cursor: pointer;
+}
+.job-stop:hover { background: var(--color-ink-red-tint); }
 
 /* LeftRail */
 .leftrail {
@@ -710,60 +608,38 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   width: var(--rail-l-collapsed);
   background: var(--color-bg);
   border-right: 1px solid var(--color-border-soft);
-  display: flex; flex-direction: column;
-  padding: 12px 0;
-  position: sticky; top: var(--topbar-h);
-  height: calc(100vh - var(--topbar-h) - var(--statusbar-h));
-  transition: width var(--motion-3) var(--ease-in-out);
-  overflow: hidden;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 0; gap: 6px;
+  position: sticky; top: 0;
+  height: 100vh;
   z-index: 20;
 }
-.leftrail-exp { width: var(--rail-l-expanded); }
-.leftrail-hidden { width: 0; border-right-color: transparent; }
-
-.leftrail-toggle {
-  position: absolute; top: 8px; right: 10px;
-  width: 20px; height: 20px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-soft);
-  border-radius: 999px;
-  color: var(--color-text-muted);
-  font-size: 12px; line-height: 1;
-  z-index: 2;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--motion-1);
+.leftrail-brand {
+  width: 34px; height: 34px; margin-bottom: 14px;
+  border-radius: 8px; border: 1px solid var(--color-border-strong);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 19px; font-weight: 500;
+  color: var(--color-brass);
 }
-.leftrail:hover .leftrail-toggle { opacity: 1; }
-.leftrail-toggle:hover { color: var(--color-brass); border-color: var(--color-brass-soft); }
-
-.leftrail-nav, .leftrail-foot {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 4px 8px;
-}
-.leftrail-foot { margin-top: auto; }
-
+.leftrail-brand:hover { border-color: var(--color-brass-soft); }
+.leftrail-nav { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .leftrail-item {
   position: relative;
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  width: 54px; padding: 9px 0 7px;
+  border-radius: var(--radius-control);
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
   color: var(--color-text-muted);
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
   transition: background var(--motion-1), color var(--motion-1);
 }
-.leftrail-item:hover { background: var(--color-surface-2); color: var(--color-text); }
+.leftrail-item:hover { color: var(--color-text); background: var(--color-surface-1); }
+.leftrail-item-active,
+.leftrail-item-active:hover { color: var(--color-brass-hi); background: var(--color-surface-1); }
 .leftrail-bar {
-  position: absolute; left: -8px; top: 6px; bottom: 6px;
-  width: 3px; background: transparent; border-radius: 2px;
-  transition: background var(--motion-2);
+  position: absolute; left: -5px; top: 10px; bottom: 10px;
+  width: 2px; border-radius: 2px; background: transparent;
 }
 .leftrail-item-active .leftrail-bar { background: var(--color-brass); }
-.leftrail-item-active { color: var(--color-text-strong); }
-.leftrail-item-active .leftrail-icon { color: var(--color-brass); }
-.leftrail-icon { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; flex: none; }
+.leftrail-label { font: 500 10px/1.15 var(--font-sans); text-align: center; }
 
 /* Skip-link: не видно мышью, появляется первой остановкой Tab */
 .skip-link {
@@ -799,25 +675,7 @@ code, .mono { font-family: var(--font-mono); font-size: 12px; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* StatusBar */
-.statusbar {
-  grid-area: status;
-  display: flex; align-items: center; gap: 10px;
-  height: var(--statusbar-h);
-  padding: 0 16px;
-  background: var(--color-bg);
-  border-top: 1px solid var(--color-border-soft);
-  font-size: 11px; letter-spacing: 0.02em;
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-  z-index: 20;
-}
-.statusbar .strong { color: var(--color-text); }
-.status-group { display: inline-flex; align-items: center; gap: 6px; }
-.status-spacer { flex: 1; }
 .sep { display: inline-block; }
-.statusbar-dim { opacity: 0.4; }
-.statusbar .dot { width: 6px; height: 6px; }
 .dot-ok, .dot-green { background: var(--color-ink-green); }
 .dot-busy, .dot-brass { background: var(--color-brass); }
 .dot-warn { background: var(--color-ink-amber); }

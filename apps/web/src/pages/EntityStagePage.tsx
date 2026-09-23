@@ -19,11 +19,8 @@ import {
   createLLMEntityVariantGenerator,
   createLLMPlaybookGenerator,
 } from "@/components/studio/aspect-engine/llmGenerators";
+import { STAGE_LABELS } from "@/lib/labels";
 
-const STAGE_LABELS: Record<"characters" | "items", string> = {
-  characters: "Персонажи",
-  items: "Предметы",
-};
 
 const STAGE_HINTS: Record<"characters" | "items", string> = {
   characters:
@@ -183,7 +180,7 @@ export function EntityStagePage() {
 
   return (
     <div className="route" data-screen-label={`stage-${stageId}`}>
-      <div className="page page-stage">
+      <div className="studio-room">
         <StageStepper
           bookId={bookId}
           concept={concept}
@@ -191,13 +188,23 @@ export function EntityStagePage() {
           activeStageId={stageId as StageId}
         />
 
-        <div className="page-head">
+        <div className="studio-body">
+        <div className="stage-head">
           <div>
             <h1>
               {STAGE_LABELS[stageId]}
               <StageOptionalBadge stageId={stageId as StageId} />
             </h1>
             <p className="muted page-sub">{STAGE_HINTS[stageId]}</p>
+            <p className="muted page-sub">
+              Принятые уходят в Канон — править их можно только там.{" "}
+              <Link
+                to={`/books/${bookId}/canon${stageId === "items" ? "?tab=items" : ""}`}
+                className="link-quiet"
+              >
+                Открыть Канон →
+              </Link>
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <StageSkipControl
@@ -206,9 +213,6 @@ export function EntityStagePage() {
               revision={studio.revision}
               onPatch={handlePatch}
             />
-            <Link to={`/books/${bookId}/studio`} className="btn btn-ghost btn-sm">
-              ← К Studio
-            </Link>
           </div>
         </div>
 
@@ -247,6 +251,7 @@ export function EntityStagePage() {
               characterCount={castNames.size}
             />
           )}
+        </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { plural } from "@/lib/format";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { api } from "@/api/client";
 import {
@@ -120,7 +121,7 @@ export function PlotBoardPage() {
     );
   }
   if (!book || notes === null) {
-    return <PageSkeleton label="Доска загружается" />;
+    return <PageSkeleton label="Заметки загружаются" />;
   }
 
   const columns = boardColumns(notes);
@@ -128,26 +129,29 @@ export function PlotBoardPage() {
 
   return (
     <div className="route" data-screen-label="Plot board">
-      <div className="page page-board">
-        <div className="page-head">
-          <h1>Доска сюжета</h1>
-          <p className="muted page-sub">
-            {book?.title} · {notes.length} заметок
-          </p>
-          <Link
-            to={`/books/${id}/studio`}
-            className="btn btn-ghost btn-sm"
-            viewTransition
-          >
-            ← В Studio
-          </Link>
+      <div className="memory-sec">
+        <div className="section-bar">
+          <div className="memory-intro">
+            <div className="section-bar-title">
+              <h2>Заметки памяти</h2>
+              <span className="tag tag-blue">только для чтения</span>
+            </div>
+            <p className="muted">
+              Это память модели: что система запомнила, читая главы. Это не план
+              и не канон. Чтобы что-то изменить, правьте текст главы или Канон —
+              память обновится сама.
+            </p>
+          </div>
+          <span className="mono faint">
+            {notes.length} {plural(notes.length, "заметка", "заметки", "заметок")}
+          </span>
         </div>
 
         {notes.length === 0 ? (
           <div className="card board-empty">
             <p>
-              Доска пуста. Заметки появляются сами, когда агенты памяти
-              разбирают написанные главы.
+              Заметок пока нет. Они появляются сами, когда модель
+              разбирает сохранённые главы.
             </p>
           </div>
         ) : (
@@ -164,7 +168,7 @@ export function PlotBoardPage() {
               // попадает и стрелками её не сдвинуть
               tabIndex={0}
               role="region"
-              aria-label="Доска сюжета, прокручивается по горизонтали"
+              aria-label="Заметки памяти, прокручиваются по горизонтали"
             >
             <div
               className="board-canvas"

@@ -7,7 +7,6 @@ import {
 } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { BooksListPage } from "@/pages/BooksListPage";
-import { BookRedirect } from "@/pages/BookRedirect";
 import { ChapterPage } from "@/pages/ChapterPage";
 import {
   StyleProfilesListPage,
@@ -21,6 +20,10 @@ import { EntityStagePage } from "@/pages/EntityStagePage";
 import { ChaptersStagePage } from "@/pages/ChaptersStagePage";
 import { SettingsStagePage } from "@/pages/SettingsStagePage";
 import { PlotBoardPage } from "@/pages/PlotBoardPage";
+import { BookLayout } from "@/components/book/BookLayout";
+import { BookOverviewPage } from "@/pages/book/BookOverviewPage";
+import { BookChaptersPage } from "@/pages/book/BookChaptersPage";
+import { BookCanonPage } from "@/pages/book/BookCanonPage";
 
 function NotFound() {
   return (
@@ -36,10 +39,9 @@ function NotFound() {
       </p>
       <Link
         to="/books"
-        className="lw-btn"
-        data-variant="primary"
+        className="btn btn-primary"
       >
-        На главную
+        На полку
       </Link>
     </main>
   );
@@ -58,6 +60,12 @@ function StagePageDispatch() {
   return <MarkdownStagePage />;
 }
 
+/** Старые адреса: настройки жили в Мастерской, заметки памяти — на «доске». */
+function MovedTo({ section }: { section: string }) {
+  const { bookId } = useParams<{ bookId: string }>();
+  return <Navigate to={`/books/${bookId}/${section}`} replace />;
+}
+
 // OutlineRail lets the user jump chapter -> chapter without leaving this
 // route (same path pattern, only :chapterId changes), so React Router does
 // not unmount/remount ChapterPage on its own. That leaves the old chapter's
@@ -74,14 +82,25 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <Navigate to="/books" replace /> },
       { path: "/books", element: <BooksListPage /> },
-      { path: "/books/:bookId", element: <BookRedirect /> },
+      {
+        // Дом книги: шапка, меню разделов, раздел.
+        path: "/books/:bookId",
+        element: <BookLayout />,
+        children: [
+          { index: true, element: <BookOverviewPage /> },
+          { path: "chapters", element: <BookChaptersPage /> },
+          { path: "canon", element: <BookCanonPage /> },
+          { path: "memory", element: <PlotBoardPage /> },
+          { path: "settings", element: <SettingsStagePage /> },
+        ],
+      },
       { path: "/books/:bookId/studio", element: <StudioPage /> },
       // Mounted before /studio/:stageId: static segments must not be shadowed
       // by the parametric dispatch.
       { path: "/books/:bookId/studio/chapters", element: <ChaptersStagePage /> },
-      { path: "/books/:bookId/studio/settings", element: <SettingsStagePage /> },
+      { path: "/books/:bookId/studio/settings", element: <MovedTo section="settings" /> },
       { path: "/books/:bookId/studio/:stageId", element: <StagePageDispatch /> },
-      { path: "/books/:bookId/board", element: <PlotBoardPage /> },
+      { path: "/books/:bookId/board", element: <MovedTo section="memory" /> },
       {
         path: "/books/:bookId/chapters/:chapterId",
         element: <ChapterPageRoute />,

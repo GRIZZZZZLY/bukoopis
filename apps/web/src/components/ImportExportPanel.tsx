@@ -1,86 +1,87 @@
 import { useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { api, exportBookUrl } from "@/api/client";
 
-interface Props {
+interface ImportProps {
   bookId: number;
   onImported: () => void | Promise<void>;
 }
 
-export function ImportExportPanel({ bookId, onImported }: Props) {
+/** Готовые главы без модели: каждый файл режется на главы по `#`, затем по
+ *  «Глава N», затем по `##`; без разметки файл становится одной главой.
+ *  Бесплатно — модель не зовётся. */
+export function ImportChaptersPanel({ bookId, onImported }: ImportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
 
-  async function onPickFile() {
-    fileRef.current?.click();
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setImporting(true);
     setError(null);
     setReport(null);
+    let chapters = 0;
+    let words = 0;
     try {
-      const content = await file.text();
-      const res = await api.importBook(bookId, file.name, content);
-      setReport(
-        `Импортировано глав: ${res.created.length} (всего слов: ${res.created.reduce(
-          (s, c) => s + c.words,
-          0,
-        )})`,
-      );
-      await onImported();
+      // По одному: сервер принимает файл за запрос, а ошибка в третьем
+      // файле не должна отменять первые два.
+      for (const file of files) {
+        const res = await api.importBook(bookId, file.name, await file.text());
+        chapters += res.created.length;
+        words += res.created.reduce((s, c) => s + c.words, 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      if (chapters > 0) {
+        setReport(`Добавлено глав: ${chapters} · слов: ${words.toLocaleString("ru-RU")}`);
+        await onImported();
+      }
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
   return (
-    <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
-      <h2 className="text-xl font-semibold">Импорт / Экспорт</h2>
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".md,.txt,.markdown"
-          className="hidden"
-          onChange={onFile}
-        />
-        <Button onClick={onPickFile} disabled={importing}>
-          {importing ? "Импорт…" : "Импортировать .md/.txt"}
-        </Button>
-        <a
-          href={exportBookUrl(bookId, "md")}
-          className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-[var(--color-input)] text-sm hover:bg-[var(--color-accent)]"
-          download
-        >
-          Скачать .md
-        </a>
-        <a
-          href={exportBookUrl(bookId, "epub")}
-          className="inline-flex items-center justify-center h-9 px-4 rounded-md border border-[var(--color-input)] text-sm hover:bg-[var(--color-accent)]"
-          download
-        >
-          Скачать .epub
-        </a>
-      </div>
-      {report && (
-        <p className="text-sm text-[var(--color-muted-foreground)]">
-          {report}
-        </p>
-      )}
-      {error && <p className="text-sm text-red-600">Ошибка: {error}</p>}
-      <p className="text-xs text-[var(--color-muted-foreground)]">
-        Импорт ищет главы по: <code>#</code> (markdown H1), затем «Глава N», затем{" "}
-        <code>##</code>. Если ничего не найдено — весь файл становится одной
-        главой с именем файла.
+    <div className="import-panel">
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".md,.txt,.markdown"
+        multiple
+        hidden
+        onChange={(e) => void onFiles(e)}
+      />
+      <button
+        type="button"
+        className="dropzone-lite"
+        onClick={() => fileRef.current?.click()}
+        disabled={importing}
+      >
+        <span>{importing ? "Добавляю главы…" : "Выбрать файлы на диске"}</span>
+        <span className="mono faint">.md · .txt</span>
+      </button>
+      {report && <p className="muted" role="status">{report}</p>}
+      {error && <p role="alert" className="text-err">Ошибка: {error}</p>}
+      <p className="faint import-hint">
+        Главы ищутся по заголовкам <code>#</code>, затем по «Глава N», затем по{" "}
+        <code>##</code>. Без разметки весь файл станет одной главой с именем файла.
       </p>
-    </section>
+    </div>
+  );
+}
+
+/** Экспорт всей книги: .md и .epub. */
+export function ExportLinks({ bookId }: { bookId: number }) {
+  return (
+    <div className="export-links">
+      <a href={exportBookUrl(bookId, "md")} className="btn btn-secondary" download>
+        Экспорт .md
+      </a>
+      <a href={exportBookUrl(bookId, "epub")} className="btn btn-secondary" download>
+        Экспорт .epub
+      </a>
+    </div>
   );
 }

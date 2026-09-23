@@ -1,13 +1,12 @@
+/** Вкладки Канона, кроме персонажей (у тех своя карточка правки —
+ *  components/book/CharacterCanon). */
 import { useEffect, useState, type FormEvent } from "react";
-import { Trash2, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { VoiceSamples } from "@/components/VoiceSamples";
-import { AliasEditor } from "@/components/AliasEditor";
 import { RelationshipQualities } from "@/components/RelationshipQualities";
 import { api } from "@/api/client";
 import type {
   Character,
-  CharacterProfile,
   Hook,
   Item,
   Location,
@@ -15,12 +14,6 @@ import type {
   ItemProfile,
   Relationship,
 } from "@book-forge/shared";
-
-interface Props {
-  bookId: number;
-}
-
-type Tab = "characters" | "locations" | "items" | "hooks" | "relationships";
 
 /** Удаление в каноне было залитой красной кнопкой «×» на каждой карточке —
  *  самый заметный элемент страницы и без доступного имени («×» скринридеру
@@ -46,229 +39,9 @@ function DeleteButton({
   );
 }
 
-export function KnowledgePanel({ bookId }: Props) {
-  const [tab, setTab] = useState<Tab>("characters");
-  return (
-    <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
-      <h2 className="text-xl font-semibold">Канон</h2>
-      <div className="flex gap-1 flex-wrap">
-        {(["characters", "locations", "items", "hooks", "relationships"] as Tab[]).map(
-          (t) => (
-            <Button
-              key={t}
-              variant={tab === t ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTab(t)}
-            >
-              {labelFor(t)}
-            </Button>
-          ),
-        )}
-      </div>
-      {tab === "characters" && <CharactersTab bookId={bookId} />}
-      {tab === "locations" && <LocationsTab bookId={bookId} />}
-      {tab === "items" && <ItemsTab bookId={bookId} />}
-      {tab === "hooks" && <HooksTab bookId={bookId} />}
-      {tab === "relationships" && <RelationshipsTab bookId={bookId} />}
-    </section>
-  );
-}
-
-function labelFor(t: Tab): string {
-  switch (t) {
-    case "characters": return "Персонажи";
-    case "locations": return "Локации";
-    case "items": return "Артефакты";
-    case "hooks": return "Крючки";
-    case "relationships": return "Отношения";
-  }
-}
-
-// ─────────── Characters ───────────
-
-function CharactersTab({ bookId }: { bookId: number }) {
-  const [list, setList] = useState<Character[] | null>(null);
-  const [lastDeletion, setLastDeletion] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [want, setWant] = useState("");
-  const [need, setNeed] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [expandedVoiceId, setExpandedVoiceId] = useState<number | null>(null);
-
-  async function load() {
-    try {
-      setList(await api.listCharacters(bookId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-  useEffect(() => { load(); }, [bookId]);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !description.trim()) return;
-    setCreating(true);
-    try {
-      const profile: CharacterProfile = {
-        description: description.trim(),
-        want: want.trim() || null,
-        need: need.trim() || null,
-      };
-      try {
-        await api.createCharacter(bookId, {
-          canonicalName: name.trim(),
-          profile,
-        });
-      } catch (err) {
-        // 409: в книге уже есть герой с таким именем (или его падежной
-        // формой). Тёзки ломают привязку фактов к обоим, поэтому сервер
-        // спрашивает, а не решает сам (С2).
-        const status = (err as { status?: number } | null)?.status;
-        const details = (err as { details?: { existing?: string[] } } | null)?.details;
-        if (status !== 409) throw err;
-        const existing = details?.existing?.join(", ") ?? "герой с таким именем";
-        const ok = confirm(
-          `В книге уже есть ${existing}. Два героя с одним именем — и факты` +
-            ` перестанут приставать к обоим. Всё равно завести?`,
-        );
-        if (!ok) return;
-        await api.createCharacter(bookId, {
-          canonicalName: name.trim(),
-          profile,
-          allowDuplicateName: true,
-        });
-      }
-      setName(""); setDescription(""); setWant(""); setNeed("");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function onToggleHidden(c: Character) {
-    try {
-      const next = await api.setCharacterPromptVisibility(c.id, !c.hiddenFromPrompts);
-      setList((prev) => (prev ?? []).map((x) => (x.id === next.id ? next : x)));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function onDelete(id: number) {
-    if (!confirm("Удалить персонажа? (вместе со связями и знаниями)")) return;
-    try {
-      const lost = await api.deleteCharacter(id);
-      const parts = [
-        lost.deletedEvents > 0 ? `записей о знаниях: ${lost.deletedEvents}` : null,
-        lost.deletedVoiceSamples > 0 ? `образцов речи: ${lost.deletedVoiceSamples}` : null,
-        lost.deletedRelationships > 0 ? `связей: ${lost.deletedRelationships}` : null,
-      ].filter(Boolean);
-      // Что именно ушло — вслух: удаление героя уносит по цепочке больше,
-      // чем видно на карточке (С10).
-      setLastDeletion(
-        parts.length > 0 ? `Удалено вместе с героем — ${parts.join(", ")}.` : null,
-      );
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  if (error) return <p className="text-sm text-red-600">Ошибка: {error}</p>;
-  const deletionNote =
-    lastDeletion === null ? null : (
-      <p className="text-xs text-[var(--color-muted-foreground)]">{lastDeletion}</p>
-    );
-  if (list === null) return <p className="text-sm">Загрузка…</p>;
-
-  return (
-    <div className="flex flex-col gap-3">
-      {deletionNote}
-      <form onSubmit={onCreate} className="flex flex-col gap-2 border border-[var(--color-border)] rounded-md p-3">
-        <input className="border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <div className="flex gap-2">
-          <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Хочет (want)" value={want} onChange={(e) => setWant(e.target.value)} />
-          <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Нуждается (need)" value={need} onChange={(e) => setNeed(e.target.value)} />
-        </div>
-        <Button type="submit" disabled={creating || !name.trim() || !description.trim()} className="self-start">+ Добавить персонажа</Button>
-      </form>
-      {list.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">Персонажей нет.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {list.map((c) => (
-            <li key={c.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
-              <div className="flex justify-between items-center gap-2">
-                <strong className={c.hiddenFromPrompts ? "opacity-60" : ""}>{c.canonicalName}</strong>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className="p-1 rounded hover:bg-[var(--color-muted)]"
-                    aria-label={
-                      c.hiddenFromPrompts
-                        ? `Вернуть «${c.canonicalName}» в запросы к модели`
-                        : `Скрыть «${c.canonicalName}» из запросов к модели`
-                    }
-                    title={c.hiddenFromPrompts ? "Скрыт из запросов к модели" : "Уходит в запросы к модели"}
-                    onClick={() => void onToggleHidden(c)}
-                  >
-                    {c.hiddenFromPrompts ? (
-                      <EyeOff className="size-4" aria-hidden="true" />
-                    ) : (
-                      <Eye className="size-4" aria-hidden="true" />
-                    )}
-                  </button>
-                  <DeleteButton
-                    label={`Удалить персонажа «${c.canonicalName}»`}
-                    onClick={() => onDelete(c.id)}
-                  />
-                </div>
-              </div>
-              {c.hiddenFromPrompts && (
-                <div className="text-xs text-[var(--color-muted-foreground)]">
-                  Скрыт из запросов к модели — карточка не уходит Писателю и критикам.
-                </div>
-              )}
-              <div className="text-[var(--color-muted-foreground)]">{c.profile.description}</div>
-              {c.profile.want && <div>Хочет: {c.profile.want}</div>}
-              {c.profile.need && <div>Нуждается: {c.profile.need}</div>}
-              {c.profile.lie && <div>Самообман: {c.profile.lie}</div>}
-              <AliasEditor bookId={bookId} characterId={c.id} />
-              <button
-                type="button"
-                onClick={() => setExpandedVoiceId(expandedVoiceId === c.id ? null : c.id)}
-                className="text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-text)] mt-2 flex items-center gap-1"
-              >
-                <ChevronDown
-                  className="size-3"
-                  style={{
-                    transform: expandedVoiceId === c.id ? "rotate(0deg)" : "rotate(-90deg)",
-                    transition: "transform 0.2s",
-                  }}
-                />
-                Образцы речи
-              </button>
-              {expandedVoiceId === c.id && (
-                <div className="mt-2 pt-2 border-t border-[var(--color-border)]">
-                  <VoiceSamples characterId={c.id} characters={list} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 // ─────────── Locations ───────────
 
-function LocationsTab({ bookId }: { bookId: number }) {
+export function LocationsTab({ bookId }: { bookId: number }) {
   const [list, setList] = useState<Location[] | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -297,12 +70,12 @@ function LocationsTab({ bookId }: { bookId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={onCreate} className="flex gap-2">
-        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Название локации" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Название места" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="flex-1 border border-[var(--color-input)] rounded-md px-3 py-1 text-sm" placeholder="Описание" value={description} onChange={(e) => setDescription(e.target.value)} />
         <Button type="submit" disabled={!name.trim() || !description.trim()}>+</Button>
       </form>
       {list.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">Нет локаций.</p>
+        <p className="text-sm text-[var(--color-muted-foreground)]">Мест пока нет.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {list.map((l) => (
@@ -310,7 +83,7 @@ function LocationsTab({ bookId }: { bookId: number }) {
               <div className="flex justify-between">
                 <strong>{l.name}</strong>
                 <DeleteButton
-                  label={`Удалить локацию «${l.name}»`}
+                  label={`Удалить место «${l.name}»`}
                   onClick={async () => { await api.deleteLocation(l.id); await load(); }}
                 />
               </div>
@@ -325,7 +98,7 @@ function LocationsTab({ bookId }: { bookId: number }) {
 
 // ─────────── Items ───────────
 
-function ItemsTab({ bookId }: { bookId: number }) {
+export function ItemsTab({ bookId }: { bookId: number }) {
   const [list, setList] = useState<Item[] | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -382,7 +155,7 @@ function ItemsTab({ bookId }: { bookId: number }) {
 
 // ─────────── Hooks ───────────
 
-function HooksTab({ bookId }: { bookId: number }) {
+export function HooksTab({ bookId }: { bookId: number }) {
   const [list, setList] = useState<Hook[] | null>(null);
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -425,18 +198,18 @@ function HooksTab({ bookId }: { bookId: number }) {
             <li key={h.id} className="border border-[var(--color-border)] rounded-md p-3 text-sm">
               <div className="flex justify-between items-start gap-2">
                 <div className="flex-1">
-                  <div className="text-xs text-[var(--color-muted-foreground)] mb-1">[{h.status}]</div>
                   <div>{h.description}</div>
                 </div>
                 <select
                   value={h.status}
                   onChange={(e) => onStatus(h.id, e.target.value as Hook["status"])}
                   className="border border-[var(--color-input)] rounded-md px-2 py-1 text-xs"
+                  aria-label="Состояние крючка"
                 >
-                  <option value="open">open</option>
-                  <option value="mentioned">mentioned</option>
-                  <option value="resolved">resolved</option>
-                  <option value="deferred">deferred</option>
+                  <option value="open">открыт</option>
+                  <option value="mentioned">упомянут</option>
+                  <option value="resolved">закрыт</option>
+                  <option value="deferred">отложен</option>
                 </select>
                 <DeleteButton
                   label="Удалить крючок"
@@ -453,7 +226,7 @@ function HooksTab({ bookId }: { bookId: number }) {
 
 // ─────────── Relationships ───────────
 
-function RelationshipsTab({ bookId }: { bookId: number }) {
+export function RelationshipsTab({ bookId }: { bookId: number }) {
   const [chars, setChars] = useState<Character[]>([]);
   const [list, setList] = useState<Relationship[] | null>(null);
   const [from, setFrom] = useState<number | null>(null);
@@ -525,7 +298,7 @@ function RelationshipsTab({ bookId }: { bookId: number }) {
                   <strong>{nameById.get(r.fromCharacterId) ?? `#${r.fromCharacterId}`}</strong>
                   {" → "}
                   <strong>{nameById.get(r.toCharacterId) ?? `#${r.toCharacterId}`}</strong>
-                  : {r.type} (tension: {r.tension.toFixed(2)})
+                  : {r.type} (напряжение {r.tension.toFixed(2)})
                 </div>
                 <DeleteButton
                   label="Удалить связь"

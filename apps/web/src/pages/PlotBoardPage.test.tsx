@@ -78,6 +78,6 @@ describe("PlotBoardPage", () => {
     m.getBook.mockResolvedValue({ id: 7, title: "Маяк" } as never);
     m.listBookNotes.mockResolvedValue([] as never);
     renderAt();
-    expect(await screen.findByText(/Доска пуста/)).toBeInTheDocument();
+    expect(await screen.findByText(/Заметок пока нет/)).toBeInTheDocument();
   });
 });

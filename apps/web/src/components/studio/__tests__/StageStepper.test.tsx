@@ -47,11 +47,12 @@ describe("StageStepper", () => {
     );
   });
 
-  it("shows the done count out of 7", () => {
+  it("подписывает статус каждого этапа словами", () => {
     renderStepper({ studioState: stateWith({ concept: "complete", world: "skipped" }) });
-    // Counter renders as split spans ("2" + "/7") per reference markup —
-    // assert via its accessible label instead of a single text node.
-    expect(screen.getByLabelText("Готово 2 из 7")).toBeInTheDocument();
+    // Счётчик «2/7» ушёл: у каждого этапа теперь свой статус под названием.
+    expect(screen.getByRole("link", { name: /Замысел.*готов/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Мир.*пропущен/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Лор.*не начат/ })).toBeInTheDocument();
   });
 
   it("marks the active stage with aria-current=step", () => {

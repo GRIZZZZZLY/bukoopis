@@ -5,17 +5,9 @@ import {
   type QuickStartStageEvent,
 } from "@/api/client";
 import { Button } from "@/components/ui/button";
+import { STAGE_LABELS } from "@/lib/labels";
+import { finishJob, startJob, updateJob } from "@/lib/jobs";
 
-/** Подписи этапов те же, что в степпере: внутренние id автору не показываются. */
-const STAGE_LABELS: Record<string, string> = {
-  concept: "Замысел",
-  world: "Мир",
-  lore: "Лор",
-  characters: "Персонажи",
-  items: "Предметы",
-  plot: "План",
-  chapters: "Главы",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   started: "собирается…",
@@ -126,6 +118,28 @@ export function QuickStartPanel({ bookId, onFinished }: Props) {
     return () => clearInterval(t);
   }, [adopted, running, bookId]);
 
+  // Идущий сбор виден в верхней панели.
+  const jobRef = useRef<number | null>(null);
+  const doneStages = rows.filter((r) => r && r.status !== "started").length;
+  useEffect(() => {
+    if (!running) return;
+    jobRef.current = startJob({ label: "Быстрый сбор" });
+    return () => {
+      if (jobRef.current !== null) finishJob(jobRef.current);
+      jobRef.current = null;
+    };
+  }, [running]);
+  const stopRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (jobRef.current === null) return;
+    updateJob(jobRef.current, {
+      label: stopping
+        ? "Быстрый сбор · останавливаю…"
+        : `Быстрый сбор · ${doneStages} из ${total || "?"}`,
+      onStop: stopping ? undefined : () => stopRef.current(),
+    });
+  }, [doneStages, total, stopping, running]);
+
   async function onStart() {
     setError(null);
     setFinishedNote(null);
@@ -171,20 +185,22 @@ export function QuickStartPanel({ bookId, onFinished }: Props) {
     }
   }
 
+  stopRef.current = () => void onStop();
+
   return (
-    <div className="card" style={{ display: "grid", gap: 8 }} aria-label="Быстрый сбор">
-      <div className="panel-head">
-        <h3>Быстрый сбор</h3>
-        {running ? (
-          <Button onClick={() => void onStop()} disabled={stopping} variant="secondary">
-            Остановить
-          </Button>
-        ) : (
-          <Button onClick={() => void onStart()}>Собрать всё до первой главы</Button>
-        )}
-      </div>
-      <p className="muted" style={{ fontSize: 13 }}>
-        Готовит черновики. Ничего не утверждает и глав не создаёт — это ваш выбор.
+    <div className="quick" aria-label="Быстрый сбор">
+      {running ? (
+        <Button onClick={() => void onStop()} disabled={stopping} variant="secondary">
+          Остановить
+        </Button>
+      ) : (
+        <Button onClick={() => void onStart()} variant="secondary">
+          Собрать всё до первой главы
+        </Button>
+      )}
+      <p className="quick-note">
+        Модель пройдёт этапы сама и подготовит черновики. Ничего не утверждает
+        и глав не создаёт — это ваш выбор.
       </p>
 
       {running && (
@@ -209,7 +225,7 @@ export function QuickStartPanel({ bookId, onFinished }: Props) {
           {rows.map((row, i) =>
             row ? (
               <li key={i} style={{ fontSize: 13 }}>
-                <strong>{STAGE_LABELS[row.stageId] ?? row.stageId}</strong>
+                <strong>{STAGE_LABELS[row.stageId as keyof typeof STAGE_LABELS] ?? row.stageId}</strong>
                 <span className="muted">
                   {" — "}
                   {STATUS_LABELS[row.status] ?? row.status}

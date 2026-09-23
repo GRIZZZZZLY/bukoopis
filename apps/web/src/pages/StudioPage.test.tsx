@@ -12,6 +12,7 @@ vi.mock("@/api/client", () => ({
     getBook: vi.fn(),
     getStudioState: vi.fn(),
     getStudioWarnings: vi.fn(),
+    listChapters: vi.fn(),
     patchConcept: vi.fn(),
     refineConceptField: vi.fn(),
     generatePitches: vi.fn(),
@@ -66,48 +67,38 @@ function makeBook(id: number): Book {
   };
 }
 
-function file(name: string, text: string): File {
-  return new File([text], name, { type: "text/markdown" });
+function stateWithWorld(status: "complete" | "not_started") {
+  const s = emptyStudioState();
+  s.stages.world = { status, playbookGenerated: false, aspects: [] };
+  return s;
 }
 
-function dropIntakeFile(name: string) {
-  fireEvent.drop(screen.getByLabelText("Перетащите файлы с материалами"), {
-    dataTransfer: { files: [file(name, "текст")], types: ["Files"] },
+describe("StudioPage — этап «Замысел»", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    m.listChapters.mockResolvedValue([] as never);
   });
-}
 
-const OK_INTAKE = {
-  summary: [],
-  ideaSet: false,
-  chapters: [],
-  failures: [],
-  revision: 2,
-};
-
-describe("StudioPage progress", () => {
-  beforeEach(() => vi.resetAllMocks());
-
-  it("shows done count and a Продолжить link to the recommended stage", async () => {
+  it("показывает полосу этапов с активным замыслом и без дашборда", async () => {
+    m.getBook.mockResolvedValue(makeBook(3));
     m.getConcept.mockResolvedValue(emptyBookConcept() as never);
     m.getStudioState.mockResolvedValue(emptyStudioState() as never);
-    m.getStudioWarnings.mockResolvedValue([] as never);
     renderAt();
-    await waitFor(() => screen.getByText(/Готово 0\/7/));
-    const cont = screen.getByRole("link", { name: /Продолжить/ });
-    expect(cont).toHaveAttribute("href", "/books/3/studio");
-    expect(
-      screen.getByRole("navigation", { name: "Этапы книги" }),
-    ).toBeInTheDocument();
+    const nav = await screen.findByRole("navigation", { name: "Этапы книги" });
+    expect(nav).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Замысел/ })).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText("Замысел пропустить нельзя")).toBeInTheDocument();
+    // Приём материалов и быстрый сбор переехали в дом книги.
+    expect(screen.queryByLabelText("Приём материалов")).toBeNull();
+    expect(screen.queryByLabelText("Быстрый сбор")).toBeNull();
   });
 
-  it("does not let a stale reload from a previous book overwrite a newer book's state", async () => {
-    const book3 = deferred<Book>();
-    m.getBook.mockImplementation((id: number) =>
-      id === 3 ? book3.promise : Promise.resolve(makeBook(id)),
-    );
+  it("не даёт позднему ответу прежней книги перетереть состояние новой", async () => {
+    const state3 = deferred<ReturnType<typeof emptyStudioState>>();
+    m.getBook.mockImplementation((id: number) => Promise.resolve(makeBook(id)));
     m.getConcept.mockResolvedValue(emptyBookConcept() as never);
-    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
-    m.getStudioWarnings.mockResolvedValue([] as never);
+    m.getStudioState.mockImplementation(((id: number) =>
+      id === 3 ? state3.promise : Promise.resolve(stateWithWorld("not_started"))) as never);
 
     render(
       <MemoryRouter initialEntries={["/books/3/studio"]}>
@@ -125,57 +116,16 @@ describe("StudioPage progress", () => {
       </MemoryRouter>,
     );
 
-    // Book 3's getBook call is still pending — the page is on its loading
-    // screen. Navigate to book 4 before it lands; StudioPage stays mounted
-    // (same route, same component), only the :bookId param changes.
+    // Книга 3 ещё грузится; переходим на книгу 4 — StudioPage остаётся
+    // смонтированной, меняется только :bookId.
     fireEvent.click(screen.getByRole("link", { name: "К книге 4" }));
-    await waitFor(() => expect(screen.getByText(/Книга 4/)).toBeInTheDocument());
+    expect(await screen.findByRole("link", { name: /Мир.*не начат/ })).toBeInTheDocument();
 
-    // Let book 3's stale response land after book 4 has already rendered.
-    book3.resolve(makeBook(3));
+    // Поздний ответ книги 3 (мир готов) приходит после книги 4.
+    state3.resolve(stateWithWorld("complete"));
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(screen.getByText(/Книга 4/)).toBeInTheDocument();
-    expect(screen.queryByText(/Книга 3/)).toBeNull();
-  });
-
-  it("does not let an older overlapping reload overwrite a fresher one", async () => {
-    m.getBook.mockResolvedValue(makeBook(3));
-    m.getConcept.mockResolvedValue(emptyBookConcept() as never);
-    m.getStudioState.mockResolvedValue(emptyStudioState() as never);
-
-    const staleWarnings = deferred<never[]>();
-    let warningsCall = 0;
-    m.getStudioWarnings.mockImplementation(() => {
-      warningsCall += 1;
-      if (warningsCall === 1) return Promise.resolve([]); // initial page load
-      if (warningsCall === 2) return staleWarnings.promise; // first intake — slow
-      return Promise.resolve([
-        { id: "fresh", severity: "info", message: "Свежее предупреждение" },
-      ]); // second intake — fast
-    });
-    m.intakeStream.mockResolvedValue({ ...OK_INTAKE, cancelled: false } as never);
-
-    renderAt();
-    await waitFor(() => screen.getByText(/Готово 0\/7/));
-
-    // First drop — its reload (call A) hangs on a slow warnings fetch.
-    dropIntakeFile("Один.md");
-    await waitFor(() => screen.getByText("Материалы разобраны"));
-
-    // Dismiss the summary and drop again — its reload (call B) resolves fast,
-    // while call A is still in flight (IntakePanel does not await onIntake).
-    fireEvent.click(screen.getByRole("button", { name: /Понятно/ }));
-    dropIntakeFile("Два.md");
-    await waitFor(() => screen.getByText("Свежее предупреждение"));
-
-    // Now let call A's stale response land after call B already rendered.
-    staleWarnings.resolve([
-      { id: "stale", severity: "info", message: "Старое предупреждение" },
-    ] as never);
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(screen.getByText("Свежее предупреждение")).toBeInTheDocument();
-    expect(screen.queryByText("Старое предупреждение")).toBeNull();
+    expect(screen.getByRole("link", { name: /Мир.*не начат/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Мир.*готов/ })).toBeNull());
   });
 });
