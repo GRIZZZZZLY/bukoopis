@@ -39,6 +39,7 @@ function seedUsage(
     output: number;
     cost: number;
     bookId?: number | null;
+    chapterId?: number | null;
     createdAt?: string;
   }>,
 ) {
@@ -56,7 +57,7 @@ function seedUsage(
      (route, model, input_tokens, output_tokens,
       cache_creation_input_tokens, cache_read_input_tokens,
       cost_usd, book_id, chapter_id, version_id, created_at)
-     VALUES (?, ?, ?, ?, 0, 0, ?, ?, NULL, NULL, ?)`,
+     VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, NULL, ?)`,
   );
   const now = new Date().toISOString();
   for (const r of rows) {
@@ -67,6 +68,7 @@ function seedUsage(
       r.output,
       r.cost,
       r.bookId ?? null,
+      r.chapterId ?? null,
       r.createdAt ?? now,
     );
   }
@@ -74,6 +76,20 @@ function seedUsage(
 }
 
 describe("/api/usage", () => {
+  it("chapterId оставляет расход одной главы", async () => {
+    const b = await sendJson<{ id: number }>(t.app, "/api/books", "POST", { title: "Глава с ценой" });
+    const ch1 = await sendJson<{ id: number }>(t.app, `/api/books/${b.id}/chapters`, "POST", { title: "Раз" });
+    const ch2 = await sendJson<{ id: number }>(t.app, `/api/books/${b.id}/chapters`, "POST", { title: "Два" });
+    seedUsage(t, [
+      { route: "writer.chapter", model: "claude-opus-4-7", input: 1, output: 1, cost: 0.4, bookId: b.id, chapterId: ch1.id },
+      { route: "critic.canon", model: "claude-sonnet-4-6", input: 1, output: 1, cost: 0.1, bookId: b.id, chapterId: ch1.id },
+      { route: "writer.chapter", model: "claude-opus-4-7", input: 1, output: 1, cost: 0.7, bookId: b.id, chapterId: ch2.id },
+    ]);
+    const summary = await sendJson<UsageSummaryJson>(t.app, `/api/usage?chapterId=${ch1.id}`, "GET");
+    expect(summary.totalCalls).toBe(2);
+    expect(summary.totalUsd).toBeCloseTo(0.5, 5);
+  });
+
   it("empty DB returns zeros", async () => {
     const summary = await sendJson<UsageSummaryJson>(
       t.app,

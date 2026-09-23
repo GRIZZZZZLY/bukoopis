@@ -656,10 +656,12 @@ export const api = {
     ),
 
   // ── Usage / Health ──
-  getUsage: (params?: { bookId?: number; from?: string; to?: string }) => {
+  getUsage: (params?: { bookId?: number; chapterId?: number; from?: string; to?: string }) => {
     const qs = new URLSearchParams();
     if (params?.bookId !== undefined)
       qs.set("bookId", String(params.bookId));
+    if (params?.chapterId !== undefined)
+      qs.set("chapterId", String(params.chapterId));
     if (params?.from) qs.set("from", params.from);
     if (params?.to) qs.set("to", params.to);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";

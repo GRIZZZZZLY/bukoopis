@@ -43,7 +43,7 @@ import {
 } from "@/components/chapter/ProposalPanel";
 import { api, streamWriteChapter } from "@/api/client";
 import { toast } from "@/lib/toast";
-import { formatUsdApprox } from "@/lib/money";
+import { formatUsd, formatUsdApprox } from "@/lib/money";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
 import { PanelBoundary } from "@/components/PanelBoundary";
 import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
@@ -136,6 +136,9 @@ export function ChapterPage() {
    *  переключения вкладки. */
   const [railTab, setRailTab] = useState<RailTab>("critique");
   const [writeMenuOpen, setWriteMenuOpen] = useState(false);
+  /** Потрачено на эту главу: письмо, критика, память — всё, что сервер
+   *  записал с её chapter_id. Перечитывается, когда письмо кончилось. */
+  const [chapterCost, setChapterCost] = useState<number | null>(null);
   /** null — автор ещё не трогал: план открыт, пока не выбран. */
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
   const planShown = planOpen ?? selectedPlan === null;
@@ -770,6 +773,18 @@ export function ChapterPage() {
     });
   }, [beatProgress, holding, outlinePosition, writing]);
 
+  useEffect(() => {
+    if (writing) return;
+    let alive = true;
+    api
+      .getUsage({ chapterId: id })
+      .then((u) => alive && setChapterCost(u.totalUsd))
+      .catch(() => alive && setChapterCost(null));
+    return () => {
+      alive = false;
+    };
+  }, [id, writing, proposal]);
+
   // Меню «Написать» закрывается по Esc и по клику мимо.
   useEffect(() => {
     if (!writeMenuOpen) return;
@@ -837,6 +852,11 @@ export function ChapterPage() {
         </div>
 
         <div className="chapter-bar-actions">
+          {chapterCost !== null && (
+            <span className="mono faint chapter-cost" title="Потрачено на эту главу: письмо, критика, память">
+              глава: {formatUsd(chapterCost)}
+            </span>
+          )}
           <FocusToggle />
           <span className="chapter-bar-sep" aria-hidden="true" />
           <button

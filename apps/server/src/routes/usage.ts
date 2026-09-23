@@ -52,6 +52,7 @@ export function createUsageRoute(sqlite: DatabaseType): Hono {
 
   r.get("/usage", (c) => {
     const bookIdRaw = c.req.query("bookId");
+    const chapterIdRaw = c.req.query("chapterId");
     const fromRaw = c.req.query("from");
     const toRaw = c.req.query("to");
 
@@ -60,6 +61,11 @@ export function createUsageRoute(sqlite: DatabaseType): Hono {
     if (bookIdRaw) {
       conds.push("book_id = ?");
       params.push(Number(bookIdRaw));
+    }
+    // Расход одной главы — для строки «глава: $…» на её экране.
+    if (chapterIdRaw) {
+      conds.push("chapter_id = ?");
+      params.push(Number(chapterIdRaw));
     }
     if (fromRaw) {
       conds.push("created_at >= ?");

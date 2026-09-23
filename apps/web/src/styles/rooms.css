@@ -611,3 +611,4 @@
 .doc-toc-skipped a { color: var(--color-text-muted); }
 .doc-toc .faint { margin: 4px 0 0; font-size: 12px; }
 .canon-card-body-one { grid-template-columns: minmax(0, 760px); }
+.chapter-cost { font-size: 12px; white-space: nowrap; }
