@@ -10,6 +10,7 @@ vi.mock("@/api/client", () => ({
     listBooks: vi.fn(),
     createBook: vi.fn(),
     listRecommended: vi.fn(),
+    getConcept: vi.fn(() => Promise.resolve({ idea: null, premise: { logline: "Смотритель находит рыбу" } })),
     getBooksStats: vi.fn().mockResolvedValue({
       "7": { chapters: 12, done: 6, words: 34000 },
     }),
@@ -31,6 +32,7 @@ function renderPage() {
 describe("BooksListPage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    m.getConcept.mockResolvedValue({ idea: null, premise: { logline: "Смотритель находит рыбу" } } as never);
     m.getBooksStats.mockResolvedValue({
       "7": { chapters: 12, done: 6, words: 34000 },
     } as never);
@@ -63,7 +65,7 @@ describe("BooksListPage", () => {
     await waitFor(() => expect(screen.getByText("STUDIO 42")).toBeInTheDocument());
   });
 
-  it("shows a Продолжить link to the recommended stage per book", async () => {
+  it("карточка выбранной книги называет следующий шаг и открывает дом книги", async () => {
     m.listBooks.mockResolvedValue([
       {
         id: 7,
@@ -80,8 +82,9 @@ describe("BooksListPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    const cont = await screen.findByRole("link", { name: /Продолжить/ });
-    expect(cont).toHaveAttribute("href", "/books/7/studio/plot");
+    const card = await screen.findByRole("complementary", { name: "Выбранная книга" });
+    expect(card).toHaveTextContent("План");
+    expect(screen.getByRole("button", { name: "Открыть книгу" })).toBeInTheDocument();
   });
 
   it("still renders the list if listRecommended fails", async () => {
@@ -101,13 +104,8 @@ describe("BooksListPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    // The book title is the h2 .shelf-title on the spine — query the heading.
-    expect(
-      await screen.findByRole("heading", { name: "Маяк" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: /Продолжить/ }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Маяк" })).toBeInTheDocument();
+    expect(screen.getByText("книга проработана")).toBeInTheDocument();
   });
 
   it("renders books as spines on the shelf", async () => {
@@ -121,7 +119,7 @@ describe("BooksListPage", () => {
     ] as never);
     m.listRecommended.mockResolvedValue({} as never);
     renderPage();
-    const spine = await screen.findByRole("link", { name: "Маяк" });
+    const spine = await screen.findByRole("button", { name: "Маяк" });
     expect(spine.className).toContain("shelf-book");
   });
 

@@ -37,7 +37,7 @@ describe("UsagePage", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText("Расходы LLM")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Расходы" })).toBeInTheDocument();
     });
     expect(screen.getByText("$0")).toBeInTheDocument();
     expect(screen.getByText("Нет данных в выбранном диапазоне.")).toBeInTheDocument();

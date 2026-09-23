@@ -68,9 +68,9 @@ export function UsagePage() {
       <div className="page page-usage">
         <div className="page-head">
           <div>
-            <h1>Расходы LLM</h1>
+            <h1>Расходы</h1>
             <p className="muted page-sub">
-              per-route · per-day · последние 50 вызовов
+              Траты на модель: по маршрутам, по дням, последние 50 вызовов
             </p>
           </div>
         </div>
@@ -86,7 +86,7 @@ export function UsagePage() {
           }}
         >
           <label className="field">
-            <span className="field-label">Book ID</span>
+            <span className="field-label">Номер книги</span>
             <input
               type="number"
               min={1}
@@ -148,13 +148,13 @@ export function UsagePage() {
             <div className="stat-val mono">{summary.totalCalls}</div>
           </div>
           <div className="card stat-card">
-            <div className="cap-upper">Tokens in / out</div>
+            <div className="cap-upper">Токены: вход / выход</div>
             <div className="stat-val mono" style={{ fontSize: 24 }}>
               {fmt(summary.totalInputTokens)} / {fmt(summary.totalOutputTokens)}
             </div>
           </div>
           <div className="card stat-card">
-            <div className="cap-upper">Cache read / create</div>
+            <div className="cap-upper">Кэш: чтение / запись</div>
             <div className="stat-val mono" style={{ fontSize: 24 }}>
               {fmt(summary.totalCacheReadTokens)} /{" "}
               {fmt(summary.totalCacheCreationTokens)}
@@ -182,8 +182,8 @@ export function UsagePage() {
                     <th>Маршрут</th>
                     <th className="num">Вызовов</th>
                     <th className="num">Стоимость</th>
-                    <th className="num">Tokens in</th>
-                    <th className="num">Tokens out</th>
+                    <th className="num">Вход, токены</th>
+                    <th className="num">Выход, токены</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,7 +237,7 @@ export function UsagePage() {
                     <th>Модель</th>
                     <th className="num">In</th>
                     <th className="num">Out</th>
-                    <th className="num">Cache R/W</th>
+                    <th className="num">Кэш чт./зап.</th>
                     <th className="num">$</th>
                     <th className="num">book/ch/v</th>
                   </tr>

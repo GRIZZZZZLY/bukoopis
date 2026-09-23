@@ -218,8 +218,8 @@ export function StyleProfilesListPage() {
                   <span className={`pill pill-${p.fingerprint ? "green" : "amber"}`}>
                     <span className="dot" />
                     {p.fingerprint
-                      ? "fingerprint готов"
-                      : "fingerprint не извлечён"}
+                      ? "стиль снят"
+                      : "стиль ещё не снят"}
                   </span>
                   {p.kind === "blend" && (
                     <span className="pill">
@@ -368,7 +368,7 @@ export function StyleProfilePage() {
               onClick={onExtract}
               disabled={extracting || corpora.length === 0}
             >
-              {extracting ? "Анализ…" : "Извлечь fingerprint"}
+              {extracting ? "Анализ…" : "Снять стиль"}
             </button>
           </div>
         </div>
@@ -491,7 +491,7 @@ export function StyleProfilePage() {
                     style={{ fontSize: 13, fontStyle: "italic" }}
                   >
                     Fingerprint ещё не извлечён. Загрузи корпус и нажми
-                    «Извлечь fingerprint».
+                    «Снять стиль».
                   </p>
                 )}
               </div>

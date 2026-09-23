@@ -515,3 +515,34 @@
 .plan-fold-head .faint { font-size: 12px; flex: none; }
 .plan-fold-open .plan-fold-head { border-bottom: 1px solid var(--color-border-soft); }
 .plan-fold > div > * { border: 0; }
+
+/* ─── Полка ───────────────────────────────────────────────── */
+
+.shelf-room { display: flex; gap: 40px; align-items: flex-start; }
+.shelf-room .bookshelf { flex: 1; min-width: 0; }
+.shelf-book:not(.shelf-book-ghost) { border: 0; padding: 0; font: inherit; color: inherit; }
+.shelf-book-on {
+  transform: translateY(-22px);
+  outline: 1px solid var(--color-brass-soft);
+  box-shadow:
+    inset -7px 0 12px rgba(0, 0, 0, 0.38),
+    0 14px 22px rgba(0, 0, 0, 0.5);
+}
+.shelf-card {
+  width: 380px; flex: none;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-panel);
+  padding: 28px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+.shelf-card-head { display: flex; flex-direction: column; gap: 8px; }
+.shelf-card-head .cap { font: 500 11px var(--font-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--color-text-muted); }
+.shelf-card-head h2 { margin: 0; font-family: var(--font-display); font-size: 30px; font-weight: 500; color: var(--color-text-strong); }
+.shelf-card-logline { margin: 0; font-family: var(--font-prose); font-style: italic; font-size: 15px; line-height: 1.55; color: var(--color-text); }
+.shelf-card-rows { margin: 0; border-top: 1px solid var(--color-border-soft); }
+.shelf-card-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--color-border-soft); font-size: 13px; }
+.shelf-card-rows dt { color: var(--color-text-muted); }
+.shelf-card-rows dd { margin: 0; font-size: 12px; text-align: right; }
+.shelf-card-stage { color: var(--color-ink-amber-fg); font-size: 13px !important; }
+.shelf-card-open { width: 100%; justify-content: center; }

@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { PageSkeleton } from "@/components/ui/Skeleton";
 import { api } from "@/api/client";
-import { stageRoute } from "@/lib/studio-routes";
+import { STAGE_LABELS } from "@/lib/labels";
+import { formatWhen } from "@/lib/format";
 import {
   shelfProgress,
   spineHeight,
@@ -48,6 +49,10 @@ export function BooksListPage() {
   const [creating, setCreating] = useState(false);
   const [idea, setIdea] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Выбранная на полке книга: её карточка справа. По умолчанию — та,
+   *  которую правили последней. */
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [logline, setLogline] = useState<{ id: number; text: string | null } | null>(null);
   const navigate = useNavigate();
 
   async function load() {
@@ -69,6 +74,26 @@ export function BooksListPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  const selected =
+    books?.find((b) => b.id === selectedId) ??
+    [...(books ?? [])].sort((a, b) =>
+      (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt),
+    )[0] ??
+    null;
+
+  // Логлайн — из замысла выбранной книги; украшение, сбой не мешает.
+  useEffect(() => {
+    if (!selected) return;
+    let alive = true;
+    api
+      .getConcept(selected.id)
+      .then((c) => alive && setLogline({ id: selected.id, text: c.premise?.logline?.trim() || c.idea?.trim() || null }))
+      .catch(() => alive && setLogline({ id: selected.id, text: null }));
+    return () => {
+      alive = false;
+    };
+  }, [selected?.id]);
 
   const IDEA_MIN = 10;
 
@@ -118,7 +143,7 @@ export function BooksListPage() {
       <div className="page page-books">
         <div className="page-head">
           <div>
-            <h1>Ваши книги</h1>
+            <h1>Полка</h1>
             <p className="muted page-sub">
               {count === 0 ? (
                 "Здесь будет ваша первая книга."
@@ -210,19 +235,20 @@ export function BooksListPage() {
             </p>
           </div>
         ) : (
+          <div className="shelf-room">
           <div className="bookshelf" aria-label="Список книг">
             {books.map((b) => {
               const s = stats[String(b.id)];
               const seed = titleSeed(b.title);
               const progress = shelfProgress(s?.done ?? 0, s?.chapters ?? 0);
-              const rec = recommended[b.id];
+              const on = selected?.id === b.id;
               return (
                 <div className="shelf-slot" key={b.id}>
-                  <div
-                    className={`shelf-book spine-tone-${spineTone(seed)}`}
-                    role="link"
-                    tabIndex={0}
+                  <button
+                    type="button"
+                    className={`shelf-book spine-tone-${spineTone(seed)} ${on ? "shelf-book-on" : ""}`}
                     aria-label={b.title}
+                    aria-pressed={on}
                     title={
                       s
                         ? `${b.title} · ${s.chapters} гл. · ${s.words.toLocaleString("ru-RU")} слов`
@@ -232,10 +258,8 @@ export function BooksListPage() {
                       width: spineWidth(s?.chapters ?? 0),
                       height: spineHeight(s?.chapters ?? 0, seed),
                     }}
-                    onClick={() => navigate(`/books/${b.id}/studio`)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") navigate(`/books/${b.id}/studio`);
-                    }}
+                    onClick={() => setSelectedId(b.id)}
+                    onDoubleClick={() => navigate(`/books/${b.id}`)}
                   >
                     {progress > 0 && (
                       <span
@@ -244,19 +268,8 @@ export function BooksListPage() {
                         aria-hidden="true"
                       />
                     )}
-                    <h2 className="shelf-title">{b.title}</h2>
-                    {rec && (
-                      <Link
-                        to={stageRoute(b.id, rec)}
-                        className="shelf-continue"
-                        aria-label="Продолжить"
-                        title="Продолжить работу"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        →
-                      </Link>
-                    )}
-                  </div>
+                    <span className="shelf-title">{b.title}</span>
+                  </button>
                 </div>
               );
             })}
@@ -272,8 +285,70 @@ export function BooksListPage() {
               </button>
             </div>
           </div>
+          {selected && (
+            <SelectedBook
+              book={selected}
+              stats={stats[String(selected.id)]}
+              stage={recommended[selected.id]}
+              logline={logline?.id === selected.id ? logline.text : null}
+              onOpen={() => navigate(`/books/${selected.id}`)}
+            />
+          )}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+function SelectedBook({
+  book,
+  stats,
+  stage,
+  logline,
+  onOpen,
+}: {
+  book: Book;
+  stats: BookStats | undefined;
+  stage: StageId | undefined;
+  logline: string | null;
+  onOpen: () => void;
+}) {
+  const chapters = stats?.chapters ?? 0;
+  return (
+    <aside className="shelf-card" aria-label="Выбранная книга">
+      <div className="shelf-card-head">
+        <span className="cap">Выбрана</span>
+        <h2>{book.title}</h2>
+        {logline && <p className="shelf-card-logline">{logline}</p>}
+      </div>
+      <dl className="shelf-card-rows">
+        <div>
+          <dt>Глав</dt>
+          <dd className="mono">
+            {chapters === 0
+              ? "пока нет"
+              : `${chapters} · готово ${stats?.done ?? 0}`}
+          </dd>
+        </div>
+        {stats && stats.words > 0 && (
+          <div>
+            <dt>Объём</dt>
+            <dd className="mono">{stats.words.toLocaleString("ru-RU")} слов</dd>
+          </div>
+        )}
+        <div>
+          <dt>Последняя правка</dt>
+          <dd className="mono">{formatWhen(book.updatedAt ?? book.createdAt)}</dd>
+        </div>
+        <div>
+          <dt>Следующий шаг</dt>
+          <dd className="shelf-card-stage">{stage ? STAGE_LABELS[stage] : "книга проработана"}</dd>
+        </div>
+      </dl>
+      <button type="button" className="btn btn-secondary shelf-card-open" onClick={onOpen}>
+        Открыть книгу
+      </button>
+    </aside>
   );
 }
