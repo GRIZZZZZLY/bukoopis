@@ -65,6 +65,15 @@ describe("style critic system prompt", () => {
     expect(STYLE_CRITIC_SYSTEM).toMatch(/маленькие теории о людях/);
     expect(STYLE_CRITIC_SYSTEM).toMatch(/объяснение жеста после самого жеста/);
   });
+
+  // Четвёртое сравнение: критик сам продиктовал сжатую концовку, захватил
+  // характерную гиперболу цитатой в абзац и просил убрать конкретную деталь.
+  it("spares character and detail, quotes the phrase, dictates no punchline", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/узнаём ли мы без неё меньше/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/Конкретная деталь \(предмет, привычка, число\) — не украшение/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/а не весь абзац вокруг неё/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/не предлагай готовую новую концовку/);
+  });
 });
 
 describe("CRITIC_CALIBRATION_RULE", () => {

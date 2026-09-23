@@ -195,6 +195,14 @@ describe("Reviser — порядок удаления (слепое сравне
     expect(system).toMatch(/начиная с самых умных/);
     expect(system).not.toMatch(/\d+\s*%\s*сравнений/);
   });
+  // Четвёртое сравнение: правка вырезала характер вместе с остротой,
+  // оставила шов «Так что» и сжала афоризм в новую концовку.
+  it("guards character, seams and endings after a deletion", () => {
+    expect(system).toMatch(/узнаём ли мы без этой фразы меньше/);
+    expect(system).toMatch(/Правка не должна оставлять след удаления/);
+    expect(system).toMatch(/простая характерная реплика персонажа/);
+    expect(system).toMatch(/Не сжимай афоризм в короткую ударную фразу/);
+  });
   it("does not answer 'feeling not conveyed' with a body-before-mind phrase", () => {
     expect(system).toMatch(/не выполняй телесной реакцией/);
   });
