@@ -21,12 +21,10 @@ import {
   Undo2,
   Redo2,
   Square,
-  PanelRightOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/AlertDialog";
 import { PageSkeleton } from "@/components/ui/Skeleton";
-import { Sheet } from "@/components/ui/Sheet";
 import { PlanPanel } from "@/components/PlanPanel";
 import { CritiquePanel } from "@/components/CritiquePanel";
 import { InlineCommandPanel } from "@/components/InlineCommandPanel";
@@ -49,6 +47,9 @@ import { formatUsdApprox } from "@/lib/money";
 import { useDebouncedSave } from "@/lib/useDebouncedSave";
 import { PanelBoundary } from "@/components/PanelBoundary";
 import { reportSave, resetSaveStatus } from "@/lib/saveStatus";
+import { finishJob, startJob, updateJob } from "@/lib/jobs";
+import { plural } from "@/lib/format";
+import { ChapterStateDot, chapterState, chapterStateLabel } from "@/components/book/StageStatus";
 import {
   MemoryStatusBadge,
   MemoryStaleBanner,
@@ -129,9 +130,15 @@ export function ChapterPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editorTick, setEditorTick] = useState(0);
-  const [mobilePanelsOpen, setMobilePanelsOpen] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  /** Правая колонка — вкладки, видна одна за раз. Все панели остаются
+   *  смонтированными: идущий разбор критиков не должен обрываться от
+   *  переключения вкладки. */
+  const [railTab, setRailTab] = useState<RailTab>("critique");
+  const [writeMenuOpen, setWriteMenuOpen] = useState(false);
+  /** null — автор ещё не трогал: план открыт, пока не выбран. */
+  const [planOpen, setPlanOpen] = useState<boolean | null>(null);
+  const planShown = planOpen ?? selectedPlan === null;
   const [outlinePosition, setOutlinePosition] = useState<number | null>(null);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
@@ -735,6 +742,50 @@ export function ChapterPage() {
     [previewVersionId, writing, selectedPlan, title, chapter],
   );
 
+  // Идущее письмо видно в верхней панели на любой странице: что, сколько
+  // идёт, «Стоп». Снимается вместе с потоком.
+  const cancelRef = useRef<() => void>(() => {});
+  cancelRef.current = onCancelWriter;
+  const writerJobRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!writing) return;
+    writerJobRef.current = startJob({
+      label: "Пишет главу",
+      onStop: () => cancelRef.current(),
+    });
+    return () => {
+      if (writerJobRef.current !== null) finishJob(writerJobRef.current);
+      writerJobRef.current = null;
+    };
+  }, [writing]);
+  useEffect(() => {
+    if (writerJobRef.current === null) return;
+    const where = outlinePosition != null ? ` ${outlinePosition}` : "";
+    updateJob(writerJobRef.current, {
+      label: holding
+        ? `Дописывает беат и остановится · глава${where}`
+        : beatProgress
+          ? `Пишет главу${where} · беат ${beatProgress.index + 1} из ${beatProgress.total}`
+          : `Пишет главу${where}`,
+    });
+  }, [beatProgress, holding, outlinePosition, writing]);
+
+  // Меню «Написать» закрывается по Esc и по клику мимо.
+  useEffect(() => {
+    if (!writeMenuOpen) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
+      if (e instanceof MouseEvent && (e.target as HTMLElement).closest(".write-split")) return;
+      setWriteMenuOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [writeMenuOpen]);
+
   if (error) {
     return (
       <div className="route">
@@ -763,140 +814,142 @@ export function ChapterPage() {
   // (тот идёт с шагом 10 и в номер главы не превращается).
   const orderLabel = outlinePosition != null ? String(outlinePosition) : null;
 
-  const sidebar = (
-    <SidebarPanels
-      bookId={Number(bookId)}
-      chapterId={id}
-      versions={versions}
-      currentVersionId={chapter.currentVersionId}
-      previewVersionId={previewVersionId}
-      onSelectVersion={onSelectVersion}
-      onCompareVersion={(v) => setCompareVersionId(v.id)}
-      canonRunningSignal={canonRunningSignal}
-    />
-  );
-
   return (
     <div className="route page-chapter" data-screen-label="Chapter">
-      <div className="chapter-toolbar">
-        <Link
-          to={`/books/${bookId}/studio/chapters`}
-          className="btn btn-ghost btn-sm"
-          style={{ textDecoration: "none" }}
-        >
-          ← К главам
-        </Link>
-        <Button
-          variant="outline"
-          size="sm"
-          className="lg:hidden"
-          onClick={() => setMobilePanelsOpen(true)}
-          aria-label="Открыть панели и версии"
-        >
-          <PanelRightOpen className="size-4" aria-hidden="true" />
-          Панели
-        </Button>
-
-        <span className="ch-toolbar-spacer" />
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            onClick={() => void onRunWriter()}
-            disabled={writing || !selectedPlan}
-            variant="default"
-            aria-busy={writing || undefined}
+      <div className="chapter-bar">
+        <div className="chapter-bar-title">
+          <button
+            type="button"
+            className="chapter-bar-toc"
+            onClick={() => setLeftCollapsed((v) => !v)}
+            aria-pressed={!leftCollapsed}
+            aria-label={leftCollapsed ? "Показать оглавление" : "Скрыть оглавление"}
+            title="Оглавление"
           >
-            {writing ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Глава пишется…
-              </>
-            ) : (
-              "Написать главу"
-            )}
-          </Button>
-          {writing && (
-            <Button
-              onClick={onCancelWriter}
-              variant="destructive"
-              aria-label="Остановить (Esc)"
-              title="Остановить (Esc)"
-            >
-              <Square className="size-4" aria-hidden="true" />
-              Стоп
-            </Button>
-          )}
-          <label className="text-xs flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={writeMode === "beats"}
-              onChange={(e) => {
-                const next = e.target.checked ? "beats" : "whole";
-                setWriteMode(next);
-                try {
-                  localStorage.setItem("bf-write-mode", next);
-                } catch {
-                  /* приватное окно */
-                }
-              }}
-              disabled={writing}
-            />
-            По беатам
-          </label>
-          {writing && beatProgress && (
-            <span className="text-xs">
-              Беат {beatProgress.index + 1} из {beatProgress.total}
-            </span>
-          )}
-          {/* По беатам ли идёт ЭТОТ запуск, говорит пришедший беат, а не
-              галочка: «Дописать с беата» работает и при снятой. */}
-          {writing && beatProgress !== null && (
-            <Button size="sm" variant="outline" onClick={() => void onHoldWriter()} disabled={holding}>
-              {holding ? "Дописываю беат…" : "Остановить после беата"}
-            </Button>
-          )}
-          {!writing && resumeFromBeat !== null && (
-            <Button size="sm" variant="outline" onClick={() => void onRunWriter(resumeFromBeat)}>
-              Дописать с беата {resumeFromBeat + 1}
-            </Button>
-          )}
-          {!selectedPlan && !writing && (
-            <span className="text-xs text-[var(--color-muted-foreground)]">
-              Выбери вариант плана выше, чтобы написать главу.
-            </span>
-          )}
-          {selectedPlan && !writing && (
-            <WriterCostBadge book={book} estimatedWords={selectedPlan.estimatedWords} />
-          )}
+            {leftCollapsed ? "›" : "‹"}
+          </button>
+          {orderLabel && <span className="mono faint">Глава {orderLabel}</span>}
+          <span className="chapter-bar-name">{title || chapter.title}</span>
+          <span className={`ctable-state ctable-state-${chapterState(chapter)}`}>
+            <ChapterStateDot state={chapterState(chapter)} />
+            {chapterStateLabel(chapterState(chapter))}
+          </span>
         </div>
 
-        <FocusToggle />
+        <div className="chapter-bar-actions">
+          <FocusToggle />
+          <span className="chapter-bar-sep" aria-hidden="true" />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void onSave()}
+            disabled={saving}
+            aria-busy={saving || undefined}
+            title="Сохранить версию (Ctrl+S)"
+          >
+            {saving ? "Сохраняю…" : "Сохранить"}
+          </button>
 
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setLeftCollapsed((v) => !v)}
-          aria-pressed={leftCollapsed}
-          title="Оглавление"
-        >
-          ⌸
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setRightCollapsed((v) => !v)}
-          aria-pressed={rightCollapsed}
-          title="Панели разбора"
-        >
-          ⌹
-        </button>
+          {writing ? (
+            <div className="write-live" role="status">
+              <span className="job-flame" aria-hidden="true" />
+              <span>
+                {holding
+                  ? "Дописывает беат…"
+                  : beatProgress
+                    ? `Пишет беат ${beatProgress.index + 1} из ${beatProgress.total}`
+                    : "Пишет главу…"}
+              </span>
+              {/* По беатам ли идёт ЭТОТ запуск, говорит пришедший беат, а не
+                  галочка: «Дописать с беата» работает и при снятой. */}
+              {beatProgress !== null && !holding && (
+                <button type="button" className="write-live-btn" onClick={() => void onHoldWriter()}>
+                  Остановить после беата
+                </button>
+              )}
+              <button
+                type="button"
+                className="job-stop"
+                onClick={onCancelWriter}
+                aria-label="Остановить (Esc)"
+                title="Остановить (Esc)"
+              >
+                <Square className="size-3" aria-hidden="true" /> Стоп
+              </button>
+            </div>
+          ) : (
+            <div className="write-split">
+              <button
+                type="button"
+                className="btn btn-primary write-main"
+                onClick={() => void onRunWriter()}
+                disabled={!selectedPlan}
+                title={selectedPlan ? "Написать главу (Ctrl+Enter)" : "Сначала выберите план главы"}
+              >
+                Написать главу
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary write-more"
+                aria-haspopup="menu"
+                aria-expanded={writeMenuOpen}
+                aria-label="Как писать"
+                onClick={() => setWriteMenuOpen((v) => !v)}
+              >
+                ▾
+              </button>
+              {writeMenuOpen && (
+                <div className="write-menu" role="menu">
+                  <label className="write-menu-row">
+                    <input
+                      type="checkbox"
+                      checked={writeMode === "beats"}
+                      onChange={(e) => {
+                        const next = e.target.checked ? "beats" : "whole";
+                        setWriteMode(next);
+                        try {
+                          localStorage.setItem("bf-write-mode", next);
+                        } catch {
+                          /* приватное окно */
+                        }
+                      }}
+                    />
+                    <span>
+                      <span className="write-menu-title">По беатам</span>
+                      <span className="write-menu-sub">
+                        беат за беатом; можно остановиться после любого
+                      </span>
+                    </span>
+                  </label>
+                  {resumeFromBeat !== null && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="write-menu-row write-menu-item"
+                      disabled={!selectedPlan}
+                      onClick={() => {
+                        setWriteMenuOpen(false);
+                        void onRunWriter(resumeFromBeat);
+                      }}
+                    >
+                      <span className="write-menu-title">Дописать с беата {resumeFromBeat + 1}</span>
+                    </button>
+                  )}
+                  <div className="write-menu-foot">
+                    {selectedPlan ? (
+                      <WriterCostBadge book={book} estimatedWords={selectedPlan.estimatedWords} />
+                    ) : (
+                      <span>Сначала выберите план главы.</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div
-        className={`chapter-grid ${leftCollapsed ? "chapter-grid-noleft" : ""} ${
-          rightCollapsed ? "chapter-grid-noright" : ""
-        }`}
-      >
+      <div className={`chapter-grid ${leftCollapsed ? "chapter-grid-noleft" : ""}`}>
         <OutlineRail
           bookId={Number(bookId)}
           activeChapterId={id}
@@ -914,37 +967,88 @@ export function ChapterPage() {
                   borderLeft: "3px solid var(--color-ink-amber)",
                   fontSize: 13,
                   padding: "10px 14px",
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                Просмотр старой версии (#{previewVersion?.id}). Сохранение
-                создаст новую версию-ветку.
+                <span>
+                  Просмотр старой версии от{" "}
+                  {previewVersion ? new Date(previewVersion.createdAt).toLocaleString("ru-RU") : "—"}.
+                  Сохранение создаст новую версию.
+                </span>
+                <span className="preview-acts">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={onRestore}
+                    disabled={restoring}
+                    aria-busy={restoring || undefined}
+                  >
+                    {restoring ? "Восстанавливаю…" : "Вернуть эту версию"}
+                  </button>
+                  {currentVersion && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => onSelectVersion(currentVersion)}
+                    >
+                      К текущей
+                    </button>
+                  )}
+                </span>
               </div>
             )}
 
-            <MemoryLagWarning
-              chapters={memory?.pendingEarlierChapters ?? []}
-            />
+            {/* Над рукописью — не больше одного баннера памяти: самый
+                весомый из трёх. Следующий покажется, когда уйдёт этот. */}
+            {(memory?.outdatedPipelineChapters ?? 0) > 0 ? (
+              <MemoryPipelineBanner
+                outdatedChapters={memory?.outdatedPipelineChapters ?? 0}
+                // С первой главы, а не с отметки устаревания: прежним разбором
+                // собрана вся книга, и частичное перестроение оставило бы её
+                // наполовину без событий героев.
+                onRebuild={() => void onRebuildMemory(1)}
+                rebuilding={memoryRebuilding}
+              />
+            ) : (memory?.bookStaleFromPosition ?? null) !== null ? (
+              <MemoryStaleBanner
+                staleFromPosition={memory?.bookStaleFromPosition ?? null}
+                onRebuild={() => void onRebuildMemory()}
+                rebuilding={memoryRebuilding}
+              />
+            ) : (
+              <MemoryLagWarning chapters={memory?.pendingEarlierChapters ?? []} />
+            )}
 
-            <MemoryStaleBanner
-              staleFromPosition={memory?.bookStaleFromPosition ?? null}
-              onRebuild={() => void onRebuildMemory()}
-              rebuilding={memoryRebuilding}
-            />
-
-            <MemoryPipelineBanner
-              outdatedChapters={memory?.outdatedPipelineChapters ?? 0}
-              // С первой главы, а не с отметки устаревания: прежним разбором
-              // собрана вся книга, и частичное перестроение оставило бы её
-              // наполовину без событий героев.
-              onRebuild={() => void onRebuildMemory(1)}
-              rebuilding={memoryRebuilding}
-            />
-
-            <PlanPanel
-              chapter={chapter}
-              onUpdated={load}
-              onPlanReady={setSelectedPlan}
-            />
+            {/* План главы свёрнут, когда выбран: рукопись главнее. Панель
+                смонтирована всегда — выбранный план она сообщает при загрузке. */}
+            <section className={`plan-fold ${planShown ? "plan-fold-open" : ""}`}>
+              <button
+                type="button"
+                className="plan-fold-head"
+                aria-expanded={planShown}
+                onClick={() => setPlanOpen(!planShown)}
+              >
+                <span>
+                  <span aria-hidden="true">{planShown ? "▾" : "▸"}</span>{" "}
+                  <span className="strong">План главы</span>
+                  {selectedPlan ? (
+                    <span className="muted">
+                      {" "}· {selectedPlan.label} · {selectedPlan.beats.length}{" "}
+                      {plural(selectedPlan.beats.length, "беат", "беата", "беатов")}
+                    </span>
+                  ) : (
+                    <span className="muted"> · не выбран — выберите, чтобы написать главу</span>
+                  )}
+                </span>
+                <span className="faint">{planShown ? "свернуть" : "развернуть"}</span>
+              </button>
+              <div hidden={!planShown}>
+                <PlanPanel chapter={chapter} onUpdated={load} onPlanReady={setSelectedPlan} />
+              </div>
+            </section>
 
             {writing && writerBuffer && (
               <div
@@ -957,7 +1061,7 @@ export function ChapterPage() {
                 aria-live="polite"
               >
                 <div className="caption" style={{ marginBottom: 8 }}>
-                  Live stream · агент пишет · Esc — отмена
+                  Пишет модель · Esc — остановить
                 </div>
                 <pre
                   className="whitespace-pre-wrap"
@@ -1056,12 +1160,7 @@ export function ChapterPage() {
                     </button>
                   </div>
                 )}
-                <EditorToolbar
-                  editor={editor}
-                  editorTick={editorTick}
-                  onSave={onSave}
-                  saving={saving}
-                />
+                <EditorToolbar editor={editor} editorTick={editorTick} />
                 <div
                   style={{ position: "relative", cursor: "text" }}
                   onClick={() => editor.chain().focus().run()}
@@ -1101,92 +1200,82 @@ export function ChapterPage() {
             </PanelBoundary>
           )}
 
-          <div className="flex gap-2 px-6 pb-6">
-            <Button onClick={onSave} disabled={saving} aria-busy={saving || undefined}>
-              {saving ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Сохранение…
-                </>
-              ) : (
-                "Сохранить"
-              )}
-            </Button>
-            {isPreview && (
-              <Button
-                variant="secondary"
-                onClick={onRestore}
-                disabled={restoring}
-                aria-busy={restoring || undefined}
-              >
-                {restoring ? "Восстановление…" : "Восстановить"}
-              </Button>
-            )}
-          </div>
         </main>
 
-        <aside
-          className={`cri-rail ${rightCollapsed ? "cri-rail-collapsed" : ""}`}
-          aria-label="Разбор и материалы"
-        >
-          <div className="flex flex-col gap-3 p-3 overflow-auto h-full">
-            <PanelBoundary title="Чат по книге">
-              <ChatPanel chapterId={id} />
-            </PanelBoundary>
-            <PanelBoundary title="Разбор критиков">
-              <CritiquePanel
-                versionId={chapter.currentVersionId}
-                expectedVersionId={chapter.currentVersionId}
-                expectedDraftRevision={chapter.draft?.revision ?? null}
-                baseWordCount={chapter.currentVersion?.wordCount ?? null}
-                characterNames={characterNames}
-                onRereadProposal={rereadForProposal}
-                onRepairDone={load}
+        <aside className="chapter-rail" aria-label="Панели главы">
+          <div role="tablist" aria-label="Панели главы" className="rail-tabs">
+            {RAIL_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`rail-tab-${t.id}`}
+                aria-selected={railTab === t.id}
+                aria-controls={`rail-panel-${t.id}`}
+                className={`rail-tab ${railTab === t.id ? "rail-tab-on" : ""}`}
+                onClick={() => setRailTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="rail-body">
+            <RailPanel id="critique" active={railTab}>
+              <PanelBoundary title="Отзыв критиков">
+                <CritiquePanel
+                  versionId={chapter.currentVersionId}
+                  expectedVersionId={chapter.currentVersionId}
+                  expectedDraftRevision={chapter.draft?.revision ?? null}
+                  baseWordCount={chapter.currentVersion?.wordCount ?? null}
+                  characterNames={characterNames}
+                  onRereadProposal={rereadForProposal}
+                  onRepairDone={load}
+                />
+              </PanelBoundary>
+            </RailPanel>
+            <RailPanel id="scene" active={railTab}>
+              <PanelBoundary title="Состояние сцены">
+                <SceneStatePanel chapterId={id} />
+              </PanelBoundary>
+            </RailPanel>
+            <RailPanel id="canon" active={railTab}>
+              <PanelBoundary title="Канон главы">
+                <CanonPanel bookId={Number(bookId)} chapterId={id} runningSignal={canonRunningSignal} />
+              </PanelBoundary>
+              <p className="rail-note">
+                Персонажей и предметы правят в{" "}
+                <Link to={`/books/${bookId}/canon`} className="link-quiet">
+                  Каноне →
+                </Link>
+              </p>
+            </RailPanel>
+            <RailPanel id="versions" active={railTab}>
+              <VersionsList
+                versions={versions}
+                currentVersionId={chapter.currentVersionId}
+                previewVersionId={previewVersionId}
+                onSelectVersion={onSelectVersion}
+                onCompareVersion={(v) => setCompareVersionId(v.id)}
               />
-            </PanelBoundary>
-            <PanelBoundary title="Состояние сцены">
-              <SceneStatePanel chapterId={id} />
-            </PanelBoundary>
-            <PanelBoundary title="Заметки автора">
-              <AuthorNotesPanel
-                bookId={Number(bookId)}
-                initialNotes={book?.authorNotes ?? null}
-              />
-            </PanelBoundary>
-            <PanelBoundary title="Стиль">
-              <StyleFreshnessNote bookId={Number(bookId)} />
-            </PanelBoundary>
-            <PanelBoundary title="Материалы">{sidebar}</PanelBoundary>
+            </RailPanel>
+            <RailPanel id="chat" active={railTab}>
+              <PanelBoundary title="Чат по книге">
+                <ChatPanel chapterId={id} />
+              </PanelBoundary>
+            </RailPanel>
+            <RailPanel id="notes" active={railTab}>
+              <PanelBoundary title="Заметки автора">
+                <AuthorNotesPanel bookId={Number(bookId)} initialNotes={book?.authorNotes ?? null} />
+              </PanelBoundary>
+            </RailPanel>
+            <RailPanel id="style" active={railTab}>
+              <PanelBoundary title="Стиль">
+                <StyleFreshnessNote bookId={Number(bookId)} />
+              </PanelBoundary>
+            </RailPanel>
           </div>
         </aside>
       </div>
-
-      {/* Mobile drawer — CritiquePanel lives only in .cri-rail on desktop
-          (display:none below 1024px), so mirror it here for mobile access.
-          Sheet renders its children into the DOM at all times (visibility is
-          CSS transform/opacity only, not conditional mount), so this instance
-          is gated on mobilePanelsOpen to avoid fetching critique data before
-          the drawer is ever opened. */}
-      <Sheet
-        open={mobilePanelsOpen}
-        onClose={() => setMobilePanelsOpen(false)}
-        title="Панели и версии"
-      >
-        <div className="flex flex-col gap-3">
-          {mobilePanelsOpen && (
-            <CritiquePanel
-              versionId={chapter.currentVersionId}
-              expectedVersionId={chapter.currentVersionId}
-              expectedDraftRevision={chapter.draft?.revision ?? null}
-              baseWordCount={chapter.currentVersion?.wordCount ?? null}
-              characterNames={characterNames}
-              onRereadProposal={rereadForProposal}
-              onRepairDone={load}
-            />
-          )}
-          {sidebar}
-        </div>
-      </Sheet>
 
       {/* Version diff modal */}
       <VersionDiff
@@ -1235,89 +1324,90 @@ function DiscardOption({ onDiscard }: { onDiscard: () => void }) {
   );
 }
 
-interface SidebarPanelsProps {
-  bookId: number;
-  chapterId: number;
+const RAIL_TABS = [
+  { id: "critique", label: "Критики" },
+  { id: "scene", label: "Сцена" },
+  { id: "canon", label: "Канон" },
+  { id: "versions", label: "Версии" },
+  { id: "chat", label: "Чат" },
+  { id: "notes", label: "Заметки" },
+  { id: "style", label: "Стиль" },
+] as const;
+
+type RailTab = (typeof RAIL_TABS)[number]["id"];
+
+function RailPanel({ id, active, children }: { id: RailTab; active: RailTab; children: ReactNode }) {
+  return (
+    <div
+      role="tabpanel"
+      id={`rail-panel-${id}`}
+      aria-labelledby={`rail-tab-${id}`}
+      hidden={id !== active}
+      className="rail-panel"
+    >
+      {children}
+    </div>
+  );
+}
+
+interface VersionsListProps {
   versions: ChapterVersion[];
   currentVersionId: number | null;
   previewVersionId: number | null;
   onSelectVersion: (v: ChapterVersion) => void;
   onCompareVersion: (v: ChapterVersion) => void;
-  canonRunningSignal: number;
 }
 
-function SidebarPanels({
-  bookId,
-  chapterId,
+/** Версии главы: хранятся все. Клик открывает версию для просмотра, у
+ *  нетекущей есть «Сравнить» с текущей. */
+function VersionsList({
   versions,
   currentVersionId,
   previewVersionId,
   onSelectVersion,
   onCompareVersion,
-  canonRunningSignal,
-}: SidebarPanelsProps) {
+}: VersionsListProps) {
   return (
-    <>
-      <CanonPanel
-        bookId={bookId}
-        chapterId={chapterId}
-        runningSignal={canonRunningSignal}
-      />
-
-      <h2
-        className="font-display"
-        style={{
-          fontSize: 20,
-          fontWeight: 500,
-          margin: 0,
-          color: "var(--color-text-strong)",
-        }}
-      >
-        Версии
-      </h2>
+    <div className="versions">
+      <div className="rail-head">
+        <h3>Версии</h3>
+        <span className="faint">хранятся все</span>
+      </div>
       {versions.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">
-          Версий пока нет. Сохраните, чтобы создать первую.
-        </p>
+        <p className="muted">Версий пока нет. Сохраните главу, чтобы создать первую.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="versions-list">
           {versions.map((v) => {
             const isCurrent = v.id === currentVersionId;
             const isSelected = v.id === previewVersionId;
+            const when = new Date(v.createdAt).toLocaleString("ru-RU", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
             return (
-              <li key={v.id} className="flex flex-col gap-1">
+              <li key={v.id} className={`version ${isSelected ? "version-on" : ""}`}>
                 <button
                   type="button"
+                  className="version-main"
                   onClick={() => onSelectVersion(v)}
                   aria-current={isSelected ? "true" : undefined}
-                  className={
-                    "w-full text-left rounded-md border min-h-[44px] py-3 px-3 text-sm transition-shadow " +
-                    (isSelected
-                      ? "border-[var(--color-ring)] bg-[var(--color-accent)] shadow-sm"
-                      : "border-[var(--color-border)] hover:bg-[var(--color-accent)] hover:shadow-sm")
-                  }
                 >
-                  <div className="flex justify-between">
-                    <span className="font-medium">#{v.id}</span>
-                    {isCurrent && (
-                      <span className="text-xs text-[var(--color-muted-foreground)]">
-                        (current)
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-[var(--color-muted-foreground)]">
-                    {new Date(v.createdAt).toLocaleString("ru-RU")} ·{" "}
-                    {v.wordCount} слов
-                  </div>
+                  <span className="version-title">
+                    {when}
+                    {isCurrent && <span className="version-tag">текущая</span>}
+                  </span>
+                  <span className="mono faint">{v.wordCount.toLocaleString("ru-RU")} слов</span>
                 </button>
                 {!isCurrent && (
                   <button
                     type="button"
+                    className="version-compare"
                     onClick={() => onCompareVersion(v)}
-                    className="self-start text-[10px] uppercase tracking-wider text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
-                    aria-label={`Сравнить версию #${v.id} с текущей`}
+                    aria-label={`Сравнить версию от ${when} с текущей`}
                   >
-                    сравнить с текущей →
+                    Сравнить
                   </button>
                 )}
               </li>
@@ -1325,23 +1415,16 @@ function SidebarPanels({
           })}
         </ul>
       )}
-    </>
+    </div>
   );
 }
 
 interface EditorToolbarProps {
   editor: NonNullable<ReturnType<typeof useEditor>>;
   editorTick: number;
-  onSave: () => void;
-  saving: boolean;
 }
 
-function EditorToolbar({
-  editor,
-  editorTick,
-  onSave,
-  saving,
-}: EditorToolbarProps) {
+function EditorToolbar({ editor, editorTick }: EditorToolbarProps) {
   // Reading editorTick triggers re-evaluation of canUndo/canRedo on every change.
   void editorTick;
   const canUndo = editor.can().undo();
@@ -1378,23 +1461,12 @@ function EditorToolbar({
         <kbd className="px-1 py-0.5 rounded border border-[var(--color-border)] text-[10px]">
           Ctrl+S
         </kbd>{" "}
-        сохранить ·{" "}
+        сохранить версию ·{" "}
         <kbd className="px-1 py-0.5 rounded border border-[var(--color-border)] text-[10px]">
           Ctrl+Enter
         </kbd>{" "}
-        Writer
+        написать
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onSave}
-        disabled={saving}
-        aria-label="Сохранить (Ctrl+S)"
-        title="Сохранить (Ctrl+S)"
-      >
-        Сохранить
-      </Button>
     </div>
   );
 }
@@ -1479,7 +1551,7 @@ function AutosaveStatus({
         {icon}
         {label}
       </span>
-      {isPreview && <span>· Предпросмотр (автосохранение off)</span>}
+      {isPreview && <span>· Просмотр версии: автосохранение выключено</span>}
     </div>
   );
 }
@@ -1517,14 +1589,14 @@ function WriterCostBadge({
           <span className="font-medium text-[var(--color-foreground)]">
             ~$0.00
           </span>{" "}
-          · local · {book.writerLocalModel ?? "ollama"}
+          · локально · {book.writerLocalModel ?? "ollama"}
         </>
       ) : (
         <>
           <span className="font-medium text-[var(--color-foreground)]">
             {formatUsdApprox(cost)}
           </span>{" "}
-          · {book.writerModel} · ~{targetWords} сл.
+          · {book.writerModel === "opus" ? "Opus" : "Sonnet"} · ~{targetWords} слов
         </>
       )}
     </span>
@@ -1545,8 +1617,8 @@ function EmptyEditorHint({
     >
       <div className="pointer-events-auto max-w-md text-center text-sm text-[var(--color-muted-foreground)] flex flex-col gap-3 items-center">
         <p>
-          Пустой холст. Выберите{" "}
-          <span className="font-medium">план в правой панели</span> →{" "}
+          Пустой лист. Выберите{" "}
+          <span className="font-medium">план главы над рукописью</span> →{" "}
           {hasPlan
             ? "напишите главу одной кнопкой."
             : "затем нажмите «Написать главу»."}

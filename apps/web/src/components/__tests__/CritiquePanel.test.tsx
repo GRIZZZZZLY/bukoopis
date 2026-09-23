@@ -198,7 +198,7 @@ describe("CritiquePanel — честный статус разбора", () => {
       await screen.findByText(/ни один критик не ответил/i),
     ).toBeInTheDocument();
     // Кого просили — названо поимённо.
-    expect(screen.getByText(/Canon Guard, Style, Editor, Reader/)).toBeInTheDocument();
+    expect(screen.getByText(/Хранитель канона, Стиль, Редактор, Читатель/)).toBeInTheDocument();
     expect(screen.getByText(/\[canon\] таймаут/)).toBeInTheDocument();
     // Ни счётчиков «blocking: 0», ни блока правка над пустым отчётом.
     expect(screen.queryByText(/blocking:/)).not.toBeInTheDocument();
@@ -212,15 +212,15 @@ describe("CritiquePanel — честный статус разбора", () => {
     renderPanel();
 
     expect(await screen.findByText(/Разбор неполный/i)).toBeInTheDocument();
-    expect(screen.getByText(/не ответили Style/)).toBeInTheDocument();
+    expect(screen.getByText(/не ответили Стиль/)).toBeInTheDocument();
     expect(screen.getByText(/Ответили 1 из 2/)).toBeInTheDocument();
     // То, что успело ответить, всё-таки показано.
-    expect(screen.getByText(/Canon Guard · 0 замечаний/)).toBeInTheDocument();
+    expect(screen.getByText(/Хранитель канона · 0 замечаний/)).toBeInTheDocument();
   });
 
   it("полный разбор не поминает ни отказов, ни неполноты", async () => {
     renderPanel();
-    expect(await screen.findByText(/blocking: 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/серьёзно: 1/)).toBeInTheDocument();
     expect(screen.queryByText(/Разбор неполный/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ни один критик не ответил/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Ответили 1 из 4/)).toBeInTheDocument();

@@ -207,15 +207,15 @@ export const REPAIR_BRANCH_PREFIX = "repair-";
 export const REPAIR_MAX_ITERATIONS = 3;
 
 export const CRITIC_LABELS: Record<CriticType, string> = {
-  canon: "Canon Guard",
-  style: "Style",
-  editor: "Editor",
-  reader: "Reader-Experience",
+  canon: "Хранитель канона",
+  style: "Стиль",
+  editor: "Редактор",
+  reader: "Читатель",
   character: "Персонажи",
 };
 
 export const SEVERITY_LABELS: Record<IssueSeverity, string> = {
-  blocking: "блокирует",
-  suggestion: "предложение",
+  blocking: "серьёзно",
+  suggestion: "заметно",
   nit: "мелочь",
 };

@@ -260,7 +260,7 @@ export function CritiquePanel({
   return (
     <section className="cri-card-stack">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-semibold">Разбор версии</h2>
+        <h2 className="text-xl font-semibold">Отзыв критиков</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {ALL_CRITIC_TYPES.map((c) => (
             <label key={c} className="text-xs flex items-center gap-1">
@@ -480,13 +480,13 @@ function CritiqueResults({
     <div className="flex flex-col gap-3">
       <div className="flex gap-3 text-sm flex-wrap">
         <span className="pill pill-red">
-          blocking: {r.blockingCount}
+          {SEVERITY_LABELS.blocking}: {r.blockingCount}
         </span>
         <span className="pill pill-amber">
-          suggestion: {r.suggestionCount}
+          {SEVERITY_LABELS.suggestion}: {r.suggestionCount}
         </span>
         <span className="pill">
-          nit: {r.nitCount}
+          {SEVERITY_LABELS.nit}: {r.nitCount}
         </span>
         <span className="text-[var(--color-muted-foreground)] self-center">
           сгенерировано: {new Date(r.generatedAt).toLocaleString("ru-RU")}

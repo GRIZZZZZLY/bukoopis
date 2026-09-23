@@ -9,6 +9,7 @@ import {
   type ChapterContract,
   type ChapterPlan,
 } from "@book-forge/shared";
+import { plural } from "@/lib/format";
 
 interface Props {
   chapter: Chapter;
@@ -211,14 +212,14 @@ function BeatSheetCard({
       )}
       <ChapterContractView contract={variant.contract} />
       <p className="text-sm text-[var(--color-muted-foreground)]">
-        ~{variant.estimatedWords} слов · {variant.beats.length} beats
+        ~{variant.estimatedWords} слов · {variant.beats.length} {plural(variant.beats.length, "беат", "беата", "беатов")}
       </p>
       <button
         type="button"
         onClick={() => setExpanded((x) => !x)}
         className="text-xs underline w-fit"
       >
-        {expanded ? "Свернуть beats" : "Показать beats"}
+        {expanded ? "Свернуть беаты" : "Показать беаты"}
       </button>
       {expanded && (
         <ol className="list-decimal pl-5 text-sm flex flex-col gap-1">
