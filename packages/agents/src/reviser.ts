@@ -95,26 +95,50 @@ export interface ReviseChapterInput {
   signal?: AbortSignal;
 }
 
+export interface SelectedIssue {
+  critic: CriticReport["critic"];
+  index: number;
+  issue: CriticReport["issues"][number];
+}
+
+/** Замечания, которые правка должна выполнить, в порядке серьёзности. Одно
+ *  правило отбора для правки и для хирургической правки фраз. Выбор автора
+ *  сильнее фильтра по серьёзности: он показал пальцем именно на эти
+ *  замечания, и отсекать их порогом значит спорить с ним. */
+export function selectIssues(
+  critics: CriticReport[],
+  severityFilter: IssueSeverity[] = ["blocking", "suggestion", "nit"],
+  selectedIssueIds?: readonly string[],
+): SelectedIssue[] {
+  const order: IssueSeverity[] = ["blocking", "suggestion", "nit"];
+  const selected = selectedIssueIds ? new Set(selectedIssueIds) : null;
+  const out: SelectedIssue[] = [];
+  for (const sev of order) {
+    if (!selected && !severityFilter.includes(sev)) continue;
+    for (const c of critics) {
+      c.issues.forEach((issue, index) => {
+        if (issue.severity !== sev) return;
+        if (selected && !selected.has(issueIdFor(c.critic, index))) return;
+        out.push({ critic: c.critic, index, issue });
+      });
+    }
+  }
+  return out;
+}
+
+/** Замечания прохода по фразам правит не правка, а хирургическая правка
+ *  (phrase-fix): получив их списком, правка переписала бы главу целиком. */
+export const isPhraseIssue = (s: SelectedIssue): boolean => s.issue.origin === "style_phrase";
+
 function formatCriticIssues(
   critics: CriticReport[],
   severityFilter: IssueSeverity[],
   selectedIssueIds?: readonly string[],
 ): string {
-  const order: IssueSeverity[] = ["blocking", "suggestion", "nit"];
-  // Выбор автора сильнее фильтра по серьёзности: он показал пальцем именно на
-  // эти замечания, и отсекать их порогом значит спорить с ним.
-  const selected = selectedIssueIds ? new Set(selectedIssueIds) : null;
+  const picked = selectIssues(critics, severityFilter, selectedIssueIds).filter((s) => !isPhraseIssue(s));
   const lines: string[] = [];
-  for (const sev of order) {
-    if (!selected && !severityFilter.includes(sev)) continue;
-    const all: { critic: string; issue: CriticReport["issues"][number] }[] = [];
-    for (const c of critics) {
-      c.issues.forEach((issue, index) => {
-        if (issue.severity !== sev) return;
-        if (selected && !selected.has(issueIdFor(c.critic, index))) return;
-        all.push({ critic: c.critic, issue });
-      });
-    }
+  for (const sev of ["blocking", "suggestion", "nit"] as IssueSeverity[]) {
+    const all = picked.filter((s) => s.issue.severity === sev);
     if (all.length === 0) continue;
     lines.push(`## ${sev.toUpperCase()} (${all.length}):`);
     for (const { critic, issue } of all) {

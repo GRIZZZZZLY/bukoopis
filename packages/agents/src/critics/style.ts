@@ -14,9 +14,9 @@ import {
 import { CRITIC_CALIBRATION_RULE, renderHistoryBlocks, reportCriticUsage, type CriticInput } from "./base.js";
 import {
   mergeStyleIssues,
-  phraseIssues,
+  phraseFailureNote,
   registerStylePhraseContract,
-  type StylePhraseOutput,
+  runStylePhrasePass,
 } from "./style-phrase.js";
 
 export const STYLE_CRITIC_SYSTEM = `Ты — Style критик художественной прозы на русском языке.
@@ -25,7 +25,7 @@ export const STYLE_CRITIC_SYSTEM = `Ты — Style критик художест
 
 Что искать (примеры, не исчерпывающий список):
 - Обязательная проверка: найди места, где рассказчик звучит так, будто заранее знает, что его будут читать: формулирует мысль слишком законченно, остроумно или эффектно для непосредственного переживания сцены. Особенно отмечай афоризмы, маленькие теории о людях, эффектные концовки абзацев, скопления острот и сравнений, а также пояснения после уже понятного действия. Прежде чем отметить фразу, спроси: узнаём ли мы без неё меньше о персонаже или ситуации? Если да — не отмечай: характерная гипербола героя и простая реплика, в которой видны отношения, — не оглядка на читателя. Конкретная деталь (предмет, привычка, число) — не украшение. Не отмечай как лишнее пояснение мысль, которая добавляет новую гипотезу, факт, мотив, риск или вариант действия персонажа. «Убрать объяснение» относится только к повторному толкованию уже понятного.
-- Придуманная необычность — даже если такая фраза одна на страницу. Это исключение из калибровки ниже: каждую такую фразу отмечай отдельным замечанием (nit), даже единичную, и перечисли все, а не только самые заметные. Реплики персонажей в диалоге сюда не относятся. Главный вопрос: была ли у рассказчика причина сформулировать мысль именно так, кроме желания автора написать необычно? Перескажи фразу простыми словами: можно ли сказать эту мысль обычными словами и почти ничего не потерять? Если да, а необычная версия существует главным образом ради остроумия или свежести, отметь её. Проверяй необычные глаголы и сочетания существительных буквально. Если предмет физически не может делать то, что ему приписано, или выражение понятно только потому, что читатель восстанавливает обычную мысль за странной формулировкой, считай это кандидатом на упрощение. Необычность должна давать дополнительную точность, а не заменять её. Отмечай метафоры, сравнения и переносные выражения, которые существуют прежде всего ради неожиданной формулировки и не делают наблюдение точнее: слова, плохо совместимые по смыслу; сравнение, буквальный смысл которого разваливается; одушевление предмета, которое ничего не уточняет; необычную конструкцию на месте простого точного слова без выигрыша в смысле. Вопрос «узнаём ли мы без неё меньше» здесь формулировку не защищает: он решает, нужна ли мысль. Если мысль нужна, а форма придуманная, отметь фразу и предложи сказать то же проще.
+- Отдельные неестественные формулировки (придуманная необычность, натянутый образ, готовая формула) проверяет отдельный проход по фразам. Здесь отмечай их, только если приём повторяется.
 - Навязчивый повтор одного литературного механизма: одно и то же уподобление в вариациях, «тело сделало раньше, чем герой решил», «рука сама», «как будто/словно» ради красивости, объяснение жеста после самого жеста, короткая ударная фраза после каждого описания, каждая сцена кончается эффектной нотой, каждая реплика звучит как цитата. Отмечай повтор, а не единичное появление приёма.
 - Украшение ради украшения: образ, который ничего не добавляет к пониманию, рядом с другим таким же
 - fatigue-слова, когда они повторяются: ${LLM_CLICHE_TOKENS_RU.join(", ")}
@@ -104,32 +104,30 @@ export function registerStyleCriticContract(): void {
   registerStylePhraseContract();
 }
 
-/** Два прохода параллельно: общий разбор стиля и проверка отдельных фраз.
- *  Отказ прохода по фразам не роняет критика — автор получает общий разбор. */
+/** Два прохода параллельно: общий разбор стиля и проверка отдельных фраз по
+ *  кускам главы. Сбой прохода по фразам не роняет критика, но виден в
+ *  overallNotes: «ничего не нашёл» и «не отработал» — разные вещи. */
 export async function runStyleAgent(input: CriticInput): Promise<CriticReport> {
-  const common = {
-    payload: input,
-    model: input.config?.model ?? "sonnet",
-    ...(input.config?.temperature !== undefined
-      ? { temperature: input.config.temperature }
-      : {}),
-    maxTokens: 4096,
-  } as const;
-  const [general, phrase] = await Promise.allSettled([
-    dispatchStructured<CriticInput, StyleCriticOutput>({ agentName: "critic_style", ...common }),
-    dispatchStructured<CriticInput, StylePhraseOutput>({ agentName: "critic_style_phrase", ...common }),
+  const model = input.config?.model ?? "sonnet";
+  const temperature = input.config?.temperature;
+  const [general, phrase] = await Promise.all([
+    dispatchStructured<CriticInput, StyleCriticOutput>({
+      agentName: "critic_style",
+      payload: input,
+      model,
+      ...(temperature !== undefined ? { temperature } : {}),
+      maxTokens: 4096,
+    }),
+    runStylePhrasePass(input, { model, ...(temperature !== undefined ? { temperature } : {}) }),
   ]);
-  if (general.status === "rejected") throw general.reason;
-  reportCriticUsage(input, "style", general.value.diagnostics);
-  const raw = general.value.raw as CriticReport;
-  if (phrase.status === "rejected") {
-    console.warn("[critic_style] проход по фразам не удался, только общий разбор:", phrase.reason);
-    return { ...raw, critic: "style", issues: mergeStyleIssues(raw.issues, []) };
-  }
-  reportCriticUsage(input, "style", phrase.value.diagnostics);
+  reportCriticUsage(input, "style", general.diagnostics);
+  for (const u of phrase.usage) reportCriticUsage(input, "style", u);
+  const raw = general.raw as CriticReport;
+  const note = phraseFailureNote(phrase);
   return {
     ...raw,
     critic: "style",
-    issues: mergeStyleIssues(raw.issues, phraseIssues(phrase.value.raw)),
+    ...(note ? { overallNotes: `${raw.overallNotes}\n\n${note}` } : {}),
+    issues: mergeStyleIssues(raw.issues, phrase.issues),
   };
 }

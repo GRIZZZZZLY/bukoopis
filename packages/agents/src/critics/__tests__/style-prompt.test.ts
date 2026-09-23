@@ -78,14 +78,12 @@ describe("style critic system prompt", () => {
 
   // Разбор автора: синтетичной бывает и одна фраза — необычность ради
   // необычности. Примеров из тестовых сцен в промпте нет намеренно.
-  it("checks a single phrase for invented originality", () => {
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/Придуманная необычность/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/была ли у рассказчика причина сформулировать мысль именно так/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/Перескажи фразу простыми словами/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/Проверяй необычные глаголы и сочетания существительных буквально/);
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/Необычность должна давать дополнительную точность, а не заменять её/);
-    // Тест «узнаём ли меньше» защищал придуманную форму нужной мысли.
-    expect(STYLE_CRITIC_SYSTEM).toMatch(/здесь формулировку не защищает/);
+  // Отдельные фразы проверяет проход по фразам (style-phrase.ts): внутри
+  // общего критика правило находило 14 из 44 и порождало дубли, которые
+  // уходили в общую правку вместо хирургической.
+  it("leaves single phrases to the phrase pass", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/проверяет отдельный проход по фразам/);
+    expect(STYLE_CRITIC_SYSTEM).not.toMatch(/Проверяй необычные глаголы и сочетания существительных буквально/);
   });
 });
 

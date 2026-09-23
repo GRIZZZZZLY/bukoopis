@@ -16,7 +16,13 @@ import {
 import {
   runCritique,
   reviseChapter,
+  selectIssues,
+  isPhraseIssue,
+  fixPhrases,
+  applyPhraseFixes,
+  locatePhrase,
   type CriticInput,
+  type PhraseFixItem,
 } from "@book-forge/agents";
 import { countWords, prosePlainTextToProseMirror } from "../utils/prosemirror.js";
 import { loadChapterProseContext } from "../utils/chapter-prose-context.js";
@@ -459,49 +465,116 @@ export function createCritiqueRoute(
           }),
         });
 
-        const styleCtx = loadStyleContext(sqlite, book.style_profile_id);
-        const gen = reviseChapter({
-          bookContext,
-          chapterTitle: ch.title,
-          pov,
-          emotionalGoal,
-          beatSheet,
-          architectureContext,
-          chapterContract,
-          characterContext,
-          loreContext,
-          styleContext: styleCtx.prompt,
-          fatigueWords: styleCtx.fatigueBlacklist,
-          previousChaptersSummary: prevSummary,
-          previousChapterTail,
-          sceneState,
-          retrievedContext,
-          originalText: v.content_text,
-          critics: report.critics,
-          severityFilter: parsed.data.severities,
-          ...(selectedIssueIds ? { selectedIssueIds } : {}),
-          ...(protectedFragments.length > 0 ? { protectedFragments } : {}),
-          iteration: nextIteration,
-          config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
-          ...(signal !== undefined ? { signal } : {}),
-        });
-
-        while (true) {
-          const next = await gen.next();
-          if (next.done) {
-            fullText = next.value.text;
-            modelId = next.value.modelId;
-            stopReason = next.value.stopReason;
-            inputTokens = next.value.tokens.input;
-            outputTokens = next.value.tokens.output;
-            cacheCreationTokens = next.value.tokens.cacheCreation;
-            cacheReadTokens = next.value.tokens.cacheRead;
-            break;
+        // Замечания о фразах правит хирургическая правка: модель называет кусок
+        // и замену, код подставляет их только в отмеченные места. Общая правка
+        // таких замечаний не получает — списком из трёх десятков она
+        // переписала бы главу целиком.
+        const picked = selectIssues(report.critics, parsed.data.severities, selectedIssueIds);
+        const phrasePicked = picked.filter(isPhraseIssue);
+        const restCount = picked.length - phrasePicked.length;
+        let baseText = v.content_text;
+        let phraseFixes: { applied: number; skipped: { id: string; reason: string }[] } | null = null;
+        if (phrasePicked.length > 0) {
+          const items: PhraseFixItem[] = [];
+          const skipped: { id: string; reason: string }[] = [];
+          for (const s of phrasePicked) {
+            const id = issueIdFor(s.critic, s.index);
+            const excerpt = s.issue.excerpt ?? "";
+            const loc = locatePhrase(baseText, excerpt);
+            if ("reason" in loc) skipped.push({ id, reason: loc.reason });
+            else items.push({ id, excerpt: loc.excerpt, reason: s.issue.summary, paragraph: loc.paragraph });
           }
-          await stream.writeSSE({
-            event: "chunk",
-            data: JSON.stringify({ text: next.value }),
+          let applied = 0;
+          if (items.length > 0) {
+            const res = await fixPhrases({
+              bookContext,
+              pov,
+              characterContext,
+              items,
+              config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
+            });
+            for (const u of res.usage) {
+              logUsage(sqlite, {
+                route: "reviser.phrase_fix",
+                model: u.modelId,
+                usage: {
+                  inputTokens: u.inputTokens,
+                  outputTokens: u.outputTokens,
+                  cacheCreationInputTokens: u.cacheCreationInputTokens,
+                  cacheReadInputTokens: u.cacheReadInputTokens,
+                },
+                bookId: ch.book_id,
+                chapterId: ch.id,
+              });
+            }
+            const out = applyPhraseFixes(baseText, items, res.fixes, protectedFragments);
+            baseText = out.text;
+            applied = out.applied.length;
+            skipped.push(...out.skipped);
+            modelId = res.usage[0]?.modelId ?? modelId;
+          }
+          phraseFixes = { applied, skipped };
+          if (skipped.length > 0) {
+            console.warn(`[repair] v${v.id}: фразы без правки (${skipped.length}): ${skipped.map((s) => `${s.id}=${s.reason}`).join(", ")}`);
+          }
+          if (cancels.shouldStop(proposalId)) {
+            await stream.writeSSE({
+              event: "done",
+              data: JSON.stringify({ proposal: loadProposal(sqlite, proposalId), cancelled: true }),
+            });
+            return;
+          }
+        }
+
+        const styleCtx = loadStyleContext(sqlite, book.style_profile_id);
+        if (phraseFixes && restCount === 0) {
+          // Кроме фраз править нечего — общая правка не вызывается вовсе.
+          fullText = baseText;
+          await stream.writeSSE({ event: "chunk", data: JSON.stringify({ text: fullText }) });
+        } else {
+          const gen = reviseChapter({
+            bookContext,
+            chapterTitle: ch.title,
+            pov,
+            emotionalGoal,
+            beatSheet,
+            architectureContext,
+            chapterContract,
+            characterContext,
+            loreContext,
+            styleContext: styleCtx.prompt,
+            fatigueWords: styleCtx.fatigueBlacklist,
+            previousChaptersSummary: prevSummary,
+            previousChapterTail,
+            sceneState,
+            retrievedContext,
+            originalText: baseText,
+            critics: report.critics,
+            severityFilter: parsed.data.severities,
+            ...(selectedIssueIds ? { selectedIssueIds } : {}),
+            ...(protectedFragments.length > 0 ? { protectedFragments } : {}),
+            iteration: nextIteration,
+            config: { variants: 1, model: book.writer_model as "sonnet" | "opus" },
+            ...(signal !== undefined ? { signal } : {}),
           });
+
+          while (true) {
+            const next = await gen.next();
+            if (next.done) {
+              fullText = next.value.text;
+              modelId = next.value.modelId;
+              stopReason = next.value.stopReason;
+              inputTokens = next.value.tokens.input;
+              outputTokens = next.value.tokens.output;
+              cacheCreationTokens = next.value.tokens.cacheCreation;
+              cacheReadTokens = next.value.tokens.cacheRead;
+              break;
+            }
+            await stream.writeSSE({
+              event: "chunk",
+              data: JSON.stringify({ text: next.value }),
+            });
+          }
         }
 
         // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
@@ -540,18 +613,21 @@ export function createCritiqueRoute(
         });
         finalized = true;
 
-        logUsage(sqlite, {
-          route: "reviser.repair",
-          model: modelId,
-          usage: {
-            inputTokens,
-            outputTokens,
-            cacheCreationInputTokens: cacheCreationTokens,
-            cacheReadInputTokens: cacheReadTokens,
-          },
-          bookId: ch.book_id,
-          chapterId: ch.id,
-        });
+        // Одна хирургическая правка: общая правка не вызывалась, её расхода нет.
+        if (!(phraseFixes && restCount === 0)) {
+          logUsage(sqlite, {
+            route: "reviser.repair",
+            model: modelId,
+            usage: {
+              inputTokens,
+              outputTokens,
+              cacheCreationInputTokens: cacheCreationTokens,
+              cacheReadInputTokens: cacheReadTokens,
+            },
+            bookId: ch.book_id,
+            chapterId: ch.id,
+          });
+        }
 
         // Что из защищённого дожило. Потеря не отвергает кандидата — решать
         // автору, он видит текст целиком, — но молчать о ней нельзя: он
@@ -571,6 +647,7 @@ export function createCritiqueRoute(
           data: JSON.stringify({
             proposal: loadProposal(sqlite, proposalId),
             iteration: nextIteration,
+            ...(phraseFixes ? { phraseFixes } : {}),
             ...(survived ? { protectedLost: survived.lost } : {}),
             tokens: {
               input: inputTokens,

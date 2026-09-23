@@ -19,6 +19,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   critic_canon: "api",
   critic_style: "api",
   critic_style_phrase: "api",
+  editor_phrase: "subscription",
   critic_editor: "api",
   critic_reader: "api",
   // Исключение из прежнего правила «все критики на API» — решение ТЗ
@@ -107,11 +108,13 @@ function parseEnvOverrides(): Partial<Record<AgentName, LLMBackend>> {
   return out;
 }
 
-/** Проход по фразам — часть критика стиля: без своей записи в карте он идёт
- *  тем же путём, что и критик стиля. Иначе автор, переведший критиков на
- *  подписку, молча платил бы за второй вызов через API. */
+/** Проход по фразам — часть критика стиля, хирургическая правка — часть
+ *  правки: без своей записи в карте они идут тем же путём, что и родитель.
+ *  Иначе автор, переведший критиков на подписку, молча платил бы за второй
+ *  вызов через API. */
 const INHERITS_BACKEND: Partial<Record<AgentName, AgentName>> = {
   critic_style_phrase: "critic_style",
+  editor_phrase: "editor",
 };
 
 export function resolveBackend(agentName: AgentName): LLMBackend {

@@ -1,5 +1,6 @@
 import { registerCanonCriticContract } from "./critics/canon.js";
 import { registerStyleCriticContract } from "./critics/style.js";
+import { registerPhraseFixContract } from "./phrase-fix.js";
 import { registerEditorCriticContract } from "./critics/editor.js";
 import { registerReaderCriticContract } from "./critics/reader.js";
 import { registerCanonGuardContract } from "./canon-extractor.js";
@@ -42,6 +43,7 @@ import { registerMaterialClassifierContract } from "./intake/classifier.js";
 export function registerAllAgentContracts(): void {
   registerCanonCriticContract();
   registerStyleCriticContract();
+  registerPhraseFixContract();
   registerEditorCriticContract();
   registerReaderCriticContract();
   registerCanonGuardContract();
