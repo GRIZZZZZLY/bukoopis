@@ -33,11 +33,18 @@ const D = 0.16;
 const STEP = 1.45;
 const ROW = 2.1;
 const BOARD = 0.022;
+/** Страница (торец блока и лист на изнанке обложки): чуть меньше обложки. */
+const PAGE_W3 = W - 0.04;
+const PAGE_H3 = H - 0.05;
+/** Отступ страницы от корешка. */
+const PAGE_X0 = 0.01;
 
 interface BookRig {
   book: ShelfBook;
   group: THREE.Group;
   pivot: THREE.Object3D;
+  block: THREE.Mesh;
+  back: THREE.Mesh;
   inside: THREE.MeshStandardMaterial;
   front: THREE.MeshStandardMaterial;
   hover: number;
@@ -174,7 +181,11 @@ export default function ShowcaseScene(props: Props) {
 
     const coverGeo = keep(new THREE.BoxGeometry(W, H, BOARD));
     const spineGeo = keep(new THREE.BoxGeometry(BOARD * 1.4, H, D));
-    const blockGeo = keep(new THREE.BoxGeometry(W - 0.04, H - 0.05, D - BOARD * 2));
+    const blockGeo = keep(new THREE.BoxGeometry(PAGE_W3, PAGE_H3, D - BOARD * 2));
+    // Левая страница разворота — отдельный лист того же размера, что и
+    // правая (торец блока). Прежде ею служила изнанка обложки, а обложка
+    // больше блока страниц — разворот выходил кривым.
+    const leafGeo = keep(new THREE.PlaneGeometry(PAGE_W3, PAGE_H3));
 
     const rigs: BookRig[] = [];
     const planks: THREE.Mesh[] = [];
@@ -193,16 +204,22 @@ export default function ShowcaseScene(props: Props) {
       // раскрывается вокруг корешка.
       const pivot = new THREE.Object3D();
       pivot.position.set(0, 0, D / 2 - BOARD / 2);
-      const cover = new THREE.Mesh(coverGeo, [cloth, cloth, cloth, cloth, front, inside]);
+      const cover = new THREE.Mesh(coverGeo, [cloth, cloth, cloth, cloth, front, cloth]);
       cover.position.set(W / 2, H / 2, 0);
-      pivot.add(cover);
+      // Лист лежит на изнанке обложки. После поворота обложки на π он
+      // зеркально встаёт рядом с правой страницей: та же ширина, высота,
+      // тот же отступ от корешка.
+      const leaf = new THREE.Mesh(leafGeo, inside);
+      leaf.rotation.y = Math.PI;
+      leaf.position.set(PAGE_X0 + PAGE_W3 / 2, H / 2, -(BOARD / 2 + 0.001));
+      pivot.add(cover, leaf);
       const back = new THREE.Mesh(coverGeo, cloth);
       back.position.set(W / 2, H / 2, -D / 2 + BOARD / 2);
       const spine = new THREE.Mesh(spineGeo, cloth);
       spine.position.set(0, H / 2, 0);
       const block = new THREE.Mesh(blockGeo, [edgeMat, cloth, edgeMat, edgeMat, blockFront, paperMat]);
-      block.position.set((W - 0.04) / 2 + 0.01, H / 2, 0);
-      for (const m of [cover, back, spine, block]) {
+      block.position.set(PAGE_X0 + PAGE_W3 / 2, H / 2, 0);
+      for (const m of [cover, leaf, back, spine, block]) {
         m.castShadow = true;
         m.receiveShadow = true;
         m.userData.bookId = book.id;
@@ -214,6 +231,8 @@ export default function ShowcaseScene(props: Props) {
         book,
         group,
         pivot,
+        block,
+        back,
         inside,
         front: blockFront,
         hover: 0,
@@ -394,7 +413,14 @@ export default function ShowcaseScene(props: Props) {
         rig.group.position.lerpVectors(tmpClosed, tmpOpen, fly);
         rig.group.rotation.x = LEAN * (1 - fly) + 0.04 * rig.hover * (1 - fly);
         rig.group.rotation.y = -0.05 * rig.hover * (1 - fly);
-        rig.pivot.rotation.y = -Math.PI * 0.995 * unfold;
+        // Ровно π: разворот плоский, обе страницы в одной плоскости.
+        rig.pivot.rotation.y = -Math.PI * unfold;
+        // Блок подаётся вперёд на толщину обложки: правая страница встаёт
+        // в плоскость левой, и перспектива не делает одну из них крупнее.
+        rig.block.position.z = (BOARD + 0.001) * unfold;
+        // Задняя крышка встаёт прямо за правую страницу — её кант виден так
+        // же, как кант обложки вокруг левой: разворот симметричен.
+        rig.back.position.z = THREE.MathUtils.lerp(-D / 2 + BOARD / 2, D / 2 - BOARD / 2 - 0.003, unfold);
         // Подсвеченная книга чуть теплеет — видно, на какой вы стоите.
         const coverMat = (rig.pivot.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial[];
         coverMat[4]!.emissive.setRGB(0.09 * rig.hover, 0.06 * rig.hover, 0.02 * rig.hover);
