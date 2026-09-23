@@ -187,8 +187,13 @@ describe("Reviser — порядок удаления (слепое сравне
     styleContext: null, fatigueWords: [], previousChaptersSummary: null, originalText: "", critics: [], iteration: 1,
   } as never);
   it("names what to remove first when the author tries too hard", () => {
-    expect(system).toMatch(/убирай в таком порядке/);
     expect(system).toMatch(/Ладонь осталась на засове/);
+    // Третье слепое сравнение (2026-09-23): рассказчик «в сборнике цитат».
+    // Правила без чисел — редактор решает по тексту, а не выполняет квоту.
+    expect(system).toMatch(/Где текст старается/);
+    expect(system).toMatch(/оставь одну — самую простую/);
+    expect(system).toMatch(/начиная с самых умных/);
+    expect(system).not.toMatch(/\d+\s*%\s*сравнений/);
   });
   it("does not answer 'feeling not conveyed' with a body-before-mind phrase", () => {
     expect(system).toMatch(/не выполняй телесной реакцией/);

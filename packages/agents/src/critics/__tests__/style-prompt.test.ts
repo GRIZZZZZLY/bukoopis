@@ -57,6 +57,14 @@ describe("style critic system prompt", () => {
     expect(STYLE_CRITIC_SYSTEM).toMatch(/Предпочитай правку «убрать»/);
     expect(STYLE_CRITIC_SYSTEM).toMatch(/существенных проблем нет/);
   });
+
+  // Правка меняет только отмеченное критиком, поэтому проверка «рассказчик
+  // знает, что его читают» живёт здесь, а не только у редактора.
+  it("checks for a narrator who knows he is being read", () => {
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/будто заранее знает, что его будут читать/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/маленькие теории о людях/);
+    expect(STYLE_CRITIC_SYSTEM).toMatch(/объяснение жеста после самого жеста/);
+  });
 });
 
 describe("CRITIC_CALIBRATION_RULE", () => {
