@@ -147,11 +147,12 @@ React 18 + Vite 6 + Tailwind v4, CSS-first. Tokens live in the `@theme` block of
 - TipTap editor;
 - `react-router-dom@7`. `useBlocker` needs a data router.
 
-Rooms:
-- Library — the bookshelf, [shelf.ts](apps/web/src/lib/shelf.ts).
-- Cabinet — `ChapterPage`, three columns; every side panel has its own error boundary.
-- Workshop — Studio.
-- Plot board — `/books/:id/board`, read-only over `book_notes`.
+Rooms (structure agreed 2026-09-22, [spec](docs/superpowers/specs/2026-09-22-structure-redesign.md)). One thing, one place:
+- Shelf — `/books`, spines + card of the selected book, [shelf.ts](apps/web/src/lib/shelf.ts).
+- Book home — `/books/:id` ([BookLayout](apps/web/src/components/book/BookLayout.tsx)): Overview, Chapters, Canon, Memory notes (read-only over `book_notes`), Settings. «Добавить материалы» is the only text entry: import without model or intake.
+- Workshop — `/books/:id/studio/<stage>`, stepper is its only navigation. Characters/items stages propose and accept; editing lives only in Canon.
+- Chapter — `ChapterPage`: outline, manuscript, tabbed right rail (all panels stay mounted); every panel has its own error boundary.
+- UI words live in [labels.ts](apps/web/src/lib/labels.ts); a running model job is published through [jobs.ts](apps/web/src/lib/jobs.ts) to the top bar.
 
 Atmosphere classes `atm-full|atm-calm|atm-off` come from [useAtmosphere](apps/web/src/lib/useAtmosphere.ts).
 
