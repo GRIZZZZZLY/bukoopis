@@ -142,7 +142,7 @@ Stored in `~/.claude/projects/d--PROJECTS-BOOKOPIS/memory/`.
 
 ## Frontend
 
-React 18 + Vite 6 + Tailwind v4, CSS-first. Tokens live in the `@theme` block of `apps/web/src/index.css` and in `library-warm.css :root`; the palette is «Чернильная ночь». Components:
+React 18 + Vite 6 + Tailwind v4, CSS-first. Tokens live only in the `@theme static` block of `apps/web/src/index.css`; the palette is «Чернильная ночь». One button system: `.btn` classes (`<Button>` renders them too). Components:
 - shadcn/ui as source-in-repo;
 - TipTap editor;
 - `react-router-dom@7`. `useBlocker` needs a data router.
