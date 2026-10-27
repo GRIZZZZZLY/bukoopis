@@ -82,6 +82,44 @@ describe("renderNarrativeArchitecture", () => {
     expect(text).toContain("развязку решает третья сила");
     expect(text).not.toContain("back_loaded");
   });
+
+  it("renders the structure card fields when present", () => {
+    const text = renderNarrativeArchitecture({ ...architecture, ...card });
+    expect(text).toContain("Рассказ начинается: через три недели после похорон");
+    expect(text).toContain("Останется открытым: последний том журнала");
+    expect(text).toContain("Позиция героя: девять лет не приезжала");
+    expect(text).toContain("Рассказчик: дочь, пишет брату");
+    expect(text).toContain("Якоря (называть по месту, не в каждой главе): справочник огней; рация «Ольха»");
+    expect(text).toContain("Места (по ходу книги, не в каждой главе): контора; кухня соседа; маяк");
+    expect(text).toContain("Не произносится в тексте: горе — это служба");
+  });
+
+  it("a sheet written before the card renders without card lines", () => {
+    expect(renderNarrativeArchitecture(architecture)).not.toContain("Рассказ начинается");
+  });
+});
+
+// Карточка структуры из storyscope-writing-skill (2026-10-27). В хранилище её
+// поля необязательны: листы, сохранённые до неё, обязаны читаться.
+const card = {
+  openingPoint: "через три недели после похорон, посреди спора в конторе",
+  leftOpen: "последний том журнала никто не читает",
+  stance: "девять лет не приезжала к отцу, история это не оправдывает",
+  teller: "дочь, пишет брату",
+  anchors: ["справочник огней", "рация «Ольха»"],
+  places: ["контора", "кухня соседа", "маяк"],
+  unsaid: "горе — это служба",
+};
+
+describe("narrativeArchitectureSchema — structure card", () => {
+  it("a sheet saved before the card still parses", () => {
+    const json = JSON.stringify({ ...legacyVariant, architecture });
+    expect(extractNarrativeArchitecture(json)).not.toBeNull();
+  });
+
+  it("accepts the full card", () => {
+    expect(narrativeArchitectureSchema.safeParse({ ...architecture, ...card }).success).toBe(true);
+  });
 });
 
 // The selected outline reaches Writer and Reviser as the variant's JSON string;

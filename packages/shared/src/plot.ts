@@ -21,6 +21,12 @@ export type ArcOutline = z.infer<typeof arcOutlineSchema>;
 // choice+acceptance+growth ending). Making the decisions explicit fields gives
 // the Plot agent something to commit to and the author something to see.
 // Optional in storage so outline_json rows written before the sheet still parse.
+//
+// The free-text fields after humanMoves are the structure card of
+// storyscope-writing-skill (2026-10-27): where the telling starts, what stays
+// open, the protagonist's unexcused act, the teller, named anchors, places and
+// the sentence about meaning that never appears. Optional here for sheets saved
+// before the card; the Plot tool schema requires them.
 
 export const themeHandlingSchema = z.enum(["stated", "implied", "withheld"]);
 export const subplotModeSchema = z.enum(["none", "parallel", "contrasting", "independent"]);
@@ -48,6 +54,13 @@ export const narrativeArchitectureSchema = z.object({
   rarityMove: z.string().min(1),
   /** 3–5 human-leaning moves chosen for this premise. Select, don't accumulate. */
   humanMoves: z.array(z.string().min(1)).min(3).max(5),
+  openingPoint: z.string().min(1).optional(),
+  leftOpen: z.string().min(1).optional(),
+  stance: z.string().min(1).optional(),
+  teller: z.string().min(1).optional(),
+  anchors: z.array(z.string().min(1)).min(1).max(6).optional(),
+  places: z.array(z.string().min(1)).min(1).max(8).optional(),
+  unsaid: z.string().min(1).optional(),
 });
 export type NarrativeArchitecture = z.infer<typeof narrativeArchitectureSchema>;
 
@@ -93,7 +106,7 @@ const RU = {
 export function narrativeArchitectureLines(
   a: NarrativeArchitecture,
 ): Array<{ label: string; value: string }> {
-  return [
+  const lines = [
     { label: "Тема", value: RU.themeHandling[a.themeHandling] },
     { label: "Подсюжет", value: RU.subplot[a.subplot] },
     { label: "Развязку решает", value: RU.resolutionDriver[a.resolutionDriver] },
@@ -103,7 +116,17 @@ export function narrativeArchitectureLines(
     { label: "Эмоции", value: RU.emotionMode[a.emotionMode] },
     { label: "Редкий ход", value: a.rarityMove },
     { label: "Человеческие ходы", value: a.humanMoves.join("; ") },
+    { label: "Рассказ начинается", value: a.openingPoint },
+    { label: "Останется открытым", value: a.leftOpen },
+    { label: "Позиция героя", value: a.stance },
+    { label: "Рассказчик", value: a.teller },
+    // The sheet reaches the Writer as "keep these in every chapter"; anchors
+    // and places are the book's stock, not a per-chapter checklist.
+    { label: "Якоря (называть по месту, не в каждой главе)", value: a.anchors?.join("; ") },
+    { label: "Места (по ходу книги, не в каждой главе)", value: a.places?.join("; ") },
+    { label: "Не произносится в тексте", value: a.unsaid },
   ];
+  return lines.filter((l): l is { label: string; value: string } => !!l.value);
 }
 
 export function renderNarrativeArchitecture(a: NarrativeArchitecture): string {
