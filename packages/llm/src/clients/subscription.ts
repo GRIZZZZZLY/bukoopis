@@ -66,6 +66,13 @@ function buildOptions(
     // assistant turn back.
     maxTurns: 1,
     env: subscriptionEnv,
+    // tools=[] turns off only the built-in tools. Without an empty
+    // settingSources the session also loads the user's settings, and with
+    // them every MCP server and plugin: a live probe on 2026-11-12 counted
+    // 300 tools from 30 servers in a Writer call. A model that calls one of
+    // them needs a second turn, and maxTurns: 1 ends the call with
+    // "Reached maximum number of turns (1)".
+    settingSources: [],
   };
   if (signal) opts.abortController = abortControllerFromSignal(signal);
   return { options: opts, modelId };

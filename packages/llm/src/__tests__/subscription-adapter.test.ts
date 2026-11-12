@@ -84,6 +84,15 @@ describe("SubscriptionBackendClient.streamMessages", () => {
     expect(final.cacheReadInputTokens).toBe(1);
   });
 
+  it("does not load the user's settings, MCP servers or plugins", async () => {
+    queryQueue.push(() => asyncGen([{ type: "result", subtype: "success", result: "ok" }]));
+    const { query } = await import("@anthropic-ai/claude-agent-sdk");
+    const gen = new SubscriptionBackendClient().streamMessages({ model: "sonnet", system: "S", prompt: "P" });
+    while (!(await gen.next()).done);
+    const options = vi.mocked(query).mock.lastCall![0].options as Record<string, unknown>;
+    expect(options.settingSources).toEqual([]);
+  });
+
   it("throws LLMAuthError on assistant error=authentication_failed", async () => {
     queryQueue.push(() =>
       asyncGen([
