@@ -12,7 +12,8 @@ ALTER TABLE `chapters` ADD COLUMN `active_plan_kind` text
   CHECK (active_plan_kind IN ('theses','beats'));
 --> statement-breakpoint
 
+-- CASE, а не AND: SQLite не обещает вычислять AND слева направо, и на битом
+-- plan_json json_extract уронил бы всю миграцию.
 UPDATE `chapters` SET `active_plan_kind` = 'beats'
-  WHERE `plan_json` IS NOT NULL
-    AND json_valid(`plan_json`)
-    AND json_extract(`plan_json`, '$.selectedIndex') IS NOT NULL;
+  WHERE CASE WHEN json_valid(`plan_json`)
+          THEN json_extract(`plan_json`, '$.selectedIndex') END IS NOT NULL;
