@@ -139,7 +139,7 @@ function pitchContrasts(out: PitchGeneratorOutput): string[] {
 
 function contrastRetryDirection(direction: string | undefined, fragments: string[]): string {
   const line =
-    "Перепиши питчи без противопоставлений вида «не X, а Y» и «X, а не Y». " +
+    "Пиши питчи без противопоставлений вида «не X, а Y» и «X, а не Y». " +
     `В прошлой партии они были: ${fragments.map((f) => `«${f}»`).join("; ")}. ` +
     "Каждую такую мысль скажи прямо, одним утверждением.";
   return direction?.trim() ? `${direction.trim()}\n${line}` : line;

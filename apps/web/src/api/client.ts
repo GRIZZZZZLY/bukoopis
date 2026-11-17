@@ -1446,8 +1446,9 @@ export interface WriterStreamHandlers {
 /** Отказ до потока идёт в тост: текст сервера, иначе подпись по коду. */
 function writeRefusalMessage(status: number, body: string): string {
   try {
-    const p = JSON.parse(body) as { error?: string; details?: { message?: string } };
-    const msg = p.details?.message ?? (p.error ? WRITE_ERROR_LABELS[p.error] : undefined);
+    const p = JSON.parse(body) as { error?: unknown; details?: { message?: unknown } };
+    const detail = typeof p.details?.message === "string" ? p.details.message : undefined;
+    const msg = detail ?? (typeof p.error === "string" ? WRITE_ERROR_LABELS[p.error] : undefined);
     if (msg) return msg;
   } catch {
     // не JSON — ниже
