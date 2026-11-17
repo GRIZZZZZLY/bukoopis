@@ -86,5 +86,31 @@ export const SCENE_PLAN_LABELS = {
     "План сцен изменился, пока составлялся новый: ваш план сохранён, составьте ещё раз при необходимости",
   errNothingToPlan:
     "Нечего разворачивать: заполните содержание главы или выберите план",
+  errInvalidPlan:
+    "В каждой сцене нужно от 3 до 10 событий, до 300 знаков каждое; сцен — от 1 до 12",
   sceneLabel: (n: number) => `Сцена ${n}`,
+} as const;
+
+/** Письмо по частям: Claude идёт по беатам плана, наша модель — по сценам. */
+export const WRITE_UNIT_LABELS = {
+  beats: {
+    resume: (n: number) => `Дописать с беата ${n}`,
+    progress: (n: number, total: number) => `Пишет беат ${n} из ${total}`,
+    jobProgress: (where: string, n: number, total: number) =>
+      `Пишет главу${where} · беат ${n} из ${total}`,
+    holding: "Дописывает беат…",
+    jobHolding: (where: string) => `Дописывает беат и остановится · глава${where}`,
+    hold: "Остановить после беата",
+    held: "Остановлено после беата",
+  },
+  scenes: {
+    resume: (n: number) => `Дописать со сцены ${n}`,
+    progress: (n: number, total: number) => `Пишет сцену ${n} из ${total}`,
+    jobProgress: (where: string, n: number, total: number) =>
+      `Пишет главу${where} · сцена ${n} из ${total}`,
+    holding: "Дописывает сцену…",
+    jobHolding: (where: string) => `Дописывает сцену и остановится · глава${where}`,
+    hold: "Остановить после сцены",
+    held: "Остановлено после сцены",
+  },
 } as const;

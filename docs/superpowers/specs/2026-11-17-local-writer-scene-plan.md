@@ -25,6 +25,7 @@ Claude writes the scene plan. A density floor always applies.
   - Events are short concrete sentences in the present tense, one action or observation each, characters named by their card names. No dialogue lines and no prose.
   - Nothing beyond the chapter content that changes the plot: fill with the concrete steps, transitions and observations that get from one content point to the next.
   - The last event of the last scene is the chapter's stop point.
+  - Trade-off, intended: with thin content Claude fills the scenes with transitional events. The author reviews and edits the plan before writing.
 - **API.**
   - `POST /api/chapters/:id/scene-plan` generates the plan, saves it, logs usage as `plot.scene_plan` and returns the chapter.
   - `PATCH /api/chapters/:id` accepts `scenePlan` (scene-plan write schema, or null to clear). An author-saved plan gets the current `basedOn`.

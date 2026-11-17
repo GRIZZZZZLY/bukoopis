@@ -41,8 +41,8 @@ function ch(over: Partial<Chapter> = {}): Chapter {
 }
 const withPlan = (over: Partial<Chapter> = {}) =>
   ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 }, ...over });
-const apiError = (status: number, message: string) =>
-  Object.assign(new Error(message), { status });
+const apiError = (status: number, message: string, reason?: string) =>
+  Object.assign(new Error(message), { status, reason });
 
 /** Родитель: после onUpdated отдаёт панели главу, которую вернул сервер. */
 let serverChapter: Chapter;
@@ -110,12 +110,28 @@ describe("План сцен", () => {
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
   });
 
-  it("ошибку сохранения показывает как есть", async () => {
-    vi.mocked(api.saveScenePlan).mockRejectedValue(apiError(400, "HTTP 400: в сцене 2 события"));
+  it("400 при сохранении называет правило, а не validation_failed", async () => {
+    vi.mocked(api.saveScenePlan).mockRejectedValue(apiError(400, "HTTP 400: validation_failed"));
     show(withPlan());
     await userEvent.type(screen.getAllByRole("textbox")[0]!, "z");
     await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("в сцене 2 события");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("В каждой сцене нужно от 3 до 10 событий, до 300 знаков каждое");
+    expect(alert).not.toHaveTextContent("validation_failed");
+  });
+
+  it("пока план составляется, поля и кнопки закрыты", async () => {
+    let resolve!: (c: Chapter) => void;
+    vi.mocked(api.generateScenePlan).mockReturnValue(
+      new Promise<Chapter>((r) => (resolve = r)),
+    );
+    show(withPlan());
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    expect(screen.getByRole("textbox")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Очистить" })).toBeDisabled();
+    await act(async () => resolve(withPlan()));
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
   });
 
   it("«Очистить» шлёт null", async () => {
@@ -169,10 +185,23 @@ describe("План сцен", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("ваш план сохранён");
   });
 
-  it("400 при генерации: нечего разворачивать", async () => {
-    vi.mocked(api.generateScenePlan).mockRejectedValue(apiError(400, "HTTP 400: x"));
+  it("400 nothing_to_plan при генерации: нечего разворачивать", async () => {
+    vi.mocked(api.generateScenePlan).mockRejectedValue(
+      apiError(400, "HTTP 400: x", "nothing_to_plan"),
+    );
     show(ch());
     await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Нечего разворачивать");
+  });
+
+  it("прочий 400 при генерации показывает сообщение сервера", async () => {
+    vi.mocked(api.generateScenePlan).mockRejectedValue(
+      apiError(400, "HTTP 400: bad_request — контекст не помещается"),
+    );
+    show(ch());
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("контекст не помещается");
+    expect(alert).not.toHaveTextContent("Нечего разворачивать");
   });
 });

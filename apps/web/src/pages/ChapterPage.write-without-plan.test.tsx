@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 
 // Экраны настоящие, вызовы сервера — моки: любой неизвестный метод отвечает {}.
-const { book, chapter } = vi.hoisted(() => ({
+const { book, chapter, proposals, streamWriteChapter } = vi.hoisted(() => ({
+  proposals: [] as unknown[],
+  streamWriteChapter: vi.fn(() => Promise.resolve()),
   book: {
     id: 1,
     title: "Книга",
@@ -28,7 +30,7 @@ const { book, chapter } = vi.hoisted(() => ({
     orderIndex: 10,
     title: "Проверка",
     status: "draft",
-    currentVersionId: null,
+    currentVersionId: null as number | null,
     planJson: null,
     activePlanKind: null,
     intent: "Лис идёт к шлюзам",
@@ -53,6 +55,7 @@ vi.mock("@/api/client", () => {
     getSceneState: () =>
       Promise.resolve({ chapterId: 10, versionId: null, state: null, origin: null, updatedAt: null, carry: null }),
     getCritique: () => Promise.resolve({ report: null }),
+    listProposals: () => Promise.resolve(proposals),
   };
   const api = new Proxy(
     {},
@@ -66,7 +69,7 @@ vi.mock("@/api/client", () => {
   const noop = () => Promise.resolve();
   return {
     api,
-    streamWriteChapter: noop,
+    streamWriteChapter,
     streamQuickStart: noop,
     streamCritique: noop,
     streamRepair: noop,
@@ -110,5 +113,45 @@ describe("ChapterPage без плана", () => {
     } finally {
       chapter.intent = saved;
     }
+  });
+
+  describe("частично принятая глава", () => {
+    beforeEach(() => {
+      chapter.currentVersionId = 5;
+      proposals.splice(0, proposals.length, {
+        id: 7,
+        acceptedVersionId: 5,
+        beatsDone: 1,
+        beatsTotal: 3,
+      });
+      streamWriteChapter.mockClear();
+    });
+    afterEach(() => {
+      chapter.currentVersionId = null;
+      proposals.length = 0;
+      book.writerProvider = "anthropic";
+    });
+
+    it("наша модель: «Дописать со сцены» доступна без беат-плана", async () => {
+      book.writerProvider = "ollama";
+      renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Как писать" }));
+      const resume = await screen.findByRole("menuitem", { name: "Дописать со сцены 2" });
+      expect(resume).not.toBeDisabled();
+      await userEvent.click(resume);
+      expect(streamWriteChapter).toHaveBeenCalledWith(
+        10,
+        undefined,
+        expect.anything(),
+        expect.anything(),
+        { mode: "beats", fromBeat: 1 },
+      );
+    });
+
+    it("Claude без беат-плана: «Дописать с беата» выключена", async () => {
+      renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Как писать" }));
+      expect(await screen.findByRole("menuitem", { name: "Дописать с беата 2" })).toBeDisabled();
+    });
   });
 });

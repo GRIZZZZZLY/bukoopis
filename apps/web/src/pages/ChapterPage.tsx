@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { DOSSIER_LABELS } from "@/lib/labels";
+import { DOSSIER_LABELS, WRITE_UNIT_LABELS } from "@/lib/labels";
 import { Link, useBlocker, useParams } from "react-router-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -149,6 +149,10 @@ export function ChapterPage() {
       ? DOSSIER_LABELS.writeFromContent
       : DOSSIER_LABELS.writeFromPrevious;
   const planShown = planOpen ?? selectedPlan === null;
+  // Наша модель пишет главу по сценам при любом плане: дописывать можно и без
+  // беат-плана, и единица письма — сцена, а не беат.
+  const isLocalWriter = book?.writerProvider === "ollama";
+  const unit = isLocalWriter ? WRITE_UNIT_LABELS.scenes : WRITE_UNIT_LABELS.beats;
   const [outlinePosition, setOutlinePosition] = useState<number | null>(null);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
@@ -653,7 +657,7 @@ export function ChapterPage() {
               return;
             }
             if (payload.held) {
-              toast.info("Остановлено после беата", {
+              toast.info(unit.held, {
                 description: "Написанное лежит в кандидате — примите его или отклоните.",
               });
             }
@@ -772,12 +776,12 @@ export function ChapterPage() {
     const where = outlinePosition != null ? ` ${outlinePosition}` : "";
     updateJob(writerJobRef.current, {
       label: holding
-        ? `Дописывает беат и остановится · глава${where}`
+        ? unit.jobHolding(where)
         : beatProgress
-          ? `Пишет главу${where} · беат ${beatProgress.index + 1} из ${beatProgress.total}`
+          ? unit.jobProgress(where, beatProgress.index + 1, beatProgress.total)
           : `Пишет главу${where}`,
     });
-  }, [beatProgress, holding, outlinePosition, writing]);
+  }, [beatProgress, holding, outlinePosition, writing, unit]);
 
   useEffect(() => {
     if (writing) return;
@@ -886,16 +890,16 @@ export function ChapterPage() {
               <span className="job-flame" aria-hidden="true" />
               <span>
                 {holding
-                  ? "Дописывает беат…"
+                  ? unit.holding
                   : beatProgress
-                    ? `Пишет беат ${beatProgress.index + 1} из ${beatProgress.total}`
+                    ? unit.progress(beatProgress.index + 1, beatProgress.total)
                     : "Пишет главу…"}
               </span>
               {/* По беатам ли идёт ЭТОТ запуск, говорит пришедший беат, а не
                   галочка: «Дописать с беата» работает и при снятой. */}
               {beatProgress !== null && !holding && (
                 <button type="button" className="write-live-btn" onClick={() => void onHoldWriter()}>
-                  Остановить после беата
+                  {unit.hold}
                 </button>
               )}
               <button
@@ -957,13 +961,13 @@ export function ChapterPage() {
                       type="button"
                       role="menuitem"
                       className="write-menu-row write-menu-item"
-                      disabled={!selectedPlan}
+                      disabled={!selectedPlan && !isLocalWriter}
                       onClick={() => {
                         setWriteMenuOpen(false);
                         void onRunWriter(resumeFromBeat);
                       }}
                     >
-                      <span className="write-menu-title">Дописать с беата {resumeFromBeat + 1}</span>
+                      <span className="write-menu-title">{unit.resume(resumeFromBeat + 1)}</span>
                     </button>
                   )}
                   <div className="write-menu-foot">

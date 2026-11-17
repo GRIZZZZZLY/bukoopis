@@ -48,15 +48,20 @@ export function ScenePlanSection({ chapter, onUpdated }: Props) {
       setEdited(null);
       await onUpdated();
     } catch (e) {
-      const status = (e as { status?: number }).status;
+      const { status, reason } = e as { status?: number; reason?: string };
+      // Сохранение шлёт только план сцен, и его 400 — всегда нарушенное
+      // правило схемы; у генерации 400 бывает разный (переполнение
+      // контекста), и «нечего разворачивать» сервер называет своей причиной.
       setError(
         status === 409
           ? L.errChanged
-          : status === 400 && job
+          : reason === "nothing_to_plan"
             ? L.errNothingToPlan
-            : e instanceof Error
-              ? e.message
-              : String(e),
+            : status === 400 && !job
+              ? L.errInvalidPlan
+              : e instanceof Error
+                ? e.message
+                : String(e),
       );
     } finally {
       if (jobId !== null) finishJob(jobId);
@@ -86,6 +91,8 @@ export function ScenePlanSection({ chapter, onUpdated }: Props) {
             className="input"
             rows={Math.max(4, t.split("\n").length)}
             value={t}
+            // Ответ модели заменит поля целиком: набранное в это время пропало бы.
+            disabled={busy}
             onChange={(e) =>
               setEdited(texts.map((x, j) => (j === i ? e.target.value : x)))
             }
