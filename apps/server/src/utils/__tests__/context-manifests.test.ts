@@ -37,6 +37,7 @@ function fakeAssembled(refs: AssembledContext["sourceRefs"]): AssembledContext {
     povCharacterId: null,
     ambiguousNames: [],
     bookContextBase: "Книга",
+    worldContext: null,
     characterContext: "## Персонажи",
     participants: [],
     loreContext: null,
@@ -118,7 +119,7 @@ describe("манифест контекста", () => {
     const manifest = JSON.parse(row.manifest_json) as { includedSections: string[]; droppedSections: unknown[]; promptVersion: string };
     expect(manifest.includedSections).toEqual(["characters"]);
     expect(manifest.droppedSections).toEqual([{ id: "style", tokens: 12 }]);
-    expect(manifest.promptVersion).toMatch(/^stage4/);
+    expect(manifest.promptVersion).toBe("stage5-dossier");
   });
 
   it("сравнить нечем — null, а не «не изменилась»", () => {

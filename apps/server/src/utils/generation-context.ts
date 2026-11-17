@@ -97,8 +97,12 @@ export interface AssembledContext {
   /** Имена, которые резолвер не смог привязать однозначно: два героя с
    *  одним именем. Не угадываются — отдаются наверх (раздел 8.2). */
   ambiguousNames: string[];
-  /** Название, премиса (выведенная, как у Writer), выбранный outline. */
+  /** Название, премиса (выведенная, как у Writer), выбранный outline и мир
+   *  книги, если секция вошла в бюджет. */
   bookContextBase: string;
+  /** «Мир» досье — записи автора о мире книги. `null` — поле пустое или
+   *  секция выпала из бюджета. */
+  worldContext: string | null;
   /** Карточки участников + действующие факты. Обязательная секция. */
   characterContext: string | null;
   /** Кто в сцене: тот же состав, из которого собраны карточки. Наружу он
@@ -287,6 +291,8 @@ export async function assembleGenerationContext(
 
   const bookContextLines = [`Название: "${title}"`, `Премиса: ${premise}`];
   if (outlineSelected) bookContextLines.push(`Outline:\n${outlineSelected}`);
+  const worldNotes = book.world_notes?.trim() ? book.world_notes.trim() : null;
+  const worldText = worldNotes ? `## Мир книги (записи автора)\n${worldNotes}` : null;
 
   // Один бюджет и одни приоритеты для всех ролей (раздел 8.4). Обязательный
   // слой — участники с их знаниями, обещаниями и фактами; при переполнении
@@ -301,6 +307,9 @@ export async function assembleGenerationContext(
       { id: "prevTail", text: tailRow?.text ?? null, priority: 2 },
       { id: "rolling", text: rolling, priority: 2 },
       { id: "lore", text: loreContext, priority: 3 },
+      // «Мир» досье — рядом с лором и так же необязательный: длинные записи
+      // автора выпадают из бюджета, а не вытесняют карточки участников.
+      { id: "world", text: worldText, priority: 3 },
       // Поиск по прошлым главам и стиль — выше принятых разделов Мастерской
       // (С6). Мир и лор автор задал один раз и читает сам; поиск отвечает за
       // непротиворечивость деталей, а стилевые образцы — за голос, и
@@ -314,6 +323,8 @@ export async function assembleGenerationContext(
   );
   console.warn(describeCompiledContext(compiled, args.label));
   const inc = new Set(compiled.includedIds);
+  const worldContext = inc.has("world") ? worldText : null;
+  if (worldContext) bookContextLines.push(`\n${worldContext}`);
 
   // Ссылки на источники — сырьё для отпечатка. Считаются по БАЗЕ КНИГИ на
   // этой границе, а не по тому, что попало в карточки: Writer сканирует
@@ -369,6 +380,8 @@ export async function assembleGenerationContext(
   const digest = (sql: string, ...params: unknown[]): number =>
     hash32(JSON.stringify(sqlite.prepare(sql).all(...params)));
   const bookRefs: Array<[ContextSourceRefLite["kind"], number]> = [
+    // Сырые колонки, а не выведенная премиса: отпечаток — по данным книги.
+    ["dossier", hash32(JSON.stringify([book.premise, book.world_notes]))],
     ["studio", hash32(studioContext ?? "")],
     ["scene_state", hash32(sceneState?.prompt ?? "")],
     [
@@ -417,6 +430,7 @@ export async function assembleGenerationContext(
     })),
     ambiguousNames,
     bookContextBase: bookContextLines.join("\n"),
+    worldContext,
     characterContext: inc.has("characters") ? characterContext : null,
     loreContext: inc.has("lore") ? loreContext : null,
     studioContext: inc.has("studio") ? studioContext : null,

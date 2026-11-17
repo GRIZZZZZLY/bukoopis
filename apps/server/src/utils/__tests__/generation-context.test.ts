@@ -18,7 +18,9 @@ vi.mock("@book-forge/retrieval", async (orig) => ({
   hybridSearch: vi.fn(async () => []),
 }));
 
+import { snapshotFingerprint } from "@book-forge/shared";
 import { assembleGenerationContext } from "../generation-context.js";
+import { manifestOf } from "../context-manifests.js";
 import type { BookRow, ChapterRow } from "../../db/rows.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -425,5 +427,71 @@ describe("assembleGenerationContext — участники сцены наруж
     const chapterId = insertChapter(10, null);
     const assembled = await assemble(chapterId, { scanTexts: ["пустая сцена"] });
     expect(assembled.participants).toEqual([]);
+  });
+});
+
+// Досье книги: синопсис (`premise`) и «Мир» (`world_notes`). Мир — обычная
+// необязательная секция бюджета, а оба поля — источник манифеста: прежде
+// правка синопсиса отпечатка не меняла вовсе.
+describe("досье: мир в сборке и источник dossier", () => {
+  function setWorld(text: string | null): void {
+    sqlite.prepare("UPDATE books SET world_notes = ? WHERE id = ?").run(text, bookId);
+  }
+
+  it("worldContext несёт записи автора", async () => {
+    setWorld("Воздух продают по счётчику");
+    const ch = insertChapter(10, "Глава.");
+    const ctx = await assemble(ch);
+    expect(ctx.worldContext).toContain("Воздух продают по счётчику");
+    expect(ctx.compiled.includedIds).toContain("world");
+    // Критики видят мир через основу контекста книги.
+    expect(ctx.bookContextBase).toContain("Воздух продают по счётчику");
+  });
+
+  it("пустой мир — null, а не пустой заголовок", async () => {
+    const ch = insertChapter(10, "Глава.");
+    const ctx = await assemble(ch);
+    expect(ctx.worldContext).toBeNull();
+    expect(ctx.bookContextBase).not.toContain("Мир книги");
+  });
+
+  it("смена синопсиса меняет отпечаток", async () => {
+    const ch = insertChapter(10, "Глава.");
+    const a = await assemble(ch);
+    sqlite.prepare("UPDATE books SET premise = ? WHERE id = ?").run("Другая премиса", bookId);
+    const b = await assemble(ch);
+    expect(snapshotFingerprint(a.sourceRefs)).not.toBe(snapshotFingerprint(b.sourceRefs));
+  });
+
+  it("смена мира меняет отпечаток", async () => {
+    const ch = insertChapter(10, "Глава.");
+    const a = await assemble(ch);
+    setWorld("Станция на орбите");
+    const b = await assemble(ch);
+    expect(snapshotFingerprint(a.sourceRefs)).not.toBe(snapshotFingerprint(b.sourceRefs));
+    expect(b.sourceRefs).toContainEqual({
+      kind: "dossier",
+      id: bookId,
+      versionId: null,
+      revision: expect.any(Number),
+    });
+  });
+
+  it("длинный мир выпадает первым, карточки остаются", async () => {
+    insertCharacter("Рин");
+    setWorld("М".repeat(25_000));
+    const ch = insertChapter(10, "Глава.");
+    const ctx = await assemble(ch, { budgetTokens: 2000 });
+    expect(ctx.compiled.requiredOverflow).toBe(false);
+    expect(ctx.compiled.dropped.map((d) => d.id)).toContain("world");
+    expect(ctx.characterContext).toContain("Рин");
+    expect(ctx.worldContext).toBeNull();
+    expect(ctx.bookContextBase).not.toContain("Мир книги");
+  });
+
+  it("манифест несёт версию stage5-dossier", async () => {
+    const ch = insertChapter(10, "Глава.");
+    const ctx = await assemble(ch);
+    expect(manifestOf("writer", ctx).promptVersion).toBe("stage5-dossier");
   });
 });

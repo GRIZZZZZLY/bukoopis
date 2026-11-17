@@ -36,6 +36,9 @@ export const CONTEXT_SOURCE_KINDS = [
   "items",
   "locations",
   "voice_samples",
+  // Досье книги: синопсис (`premise`) и «Мир» (`world_notes`). Прежде
+  // синопсис в манифест не входил вовсе — его правка отпечатка не меняла.
+  "dossier",
 ] as const;
 
 /** Один использованный источник. `versionId` — для того, что версионируется
@@ -55,7 +58,8 @@ export type ContextSourceRef = z.infer<typeof contextSourceRefSchema>;
 // stage4-2: в манифест добавлены источники F12 и отпечаток стиля по
 // содержимому. Прежние манифесты с новыми несравнимы — и должны отвечать
 // «сравнивать нечем», а не «база изменилась».
-export const CONTEXT_PROMPT_VERSION = "stage4-2";
+// stage5-dossier: секция «Мир» в сборке и источник `dossier` (синопсис и мир).
+export const CONTEXT_PROMPT_VERSION = "stage5-dossier";
 
 export const contextManifestSchema = z.object({
   purpose: contextPurposeSchema,
