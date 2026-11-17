@@ -108,6 +108,8 @@ export const chapters = sqliteTable(
     sceneIntentJson: text("scene_intent_json"),
     /** Действующий план главы (миграция 0034): тезисы, беаты или NULL. */
     activePlanKind: text("active_plan_kind"),
+    /** План сцен для локальной модели (миграция 0035): JSON или NULL. */
+    scenePlan: text("scene_plan"),
     status: text("status").notNull().default("draft"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

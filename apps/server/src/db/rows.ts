@@ -21,6 +21,7 @@ import type {
   StudioEventPayload,
 } from "@book-forge/shared";
 import {
+  parseStoredScenePlan,
   characterVoiceSampleSchema,
   locationProfileSchema,
   normalizeCharacterProfile,
@@ -33,6 +34,7 @@ import {
   studioEventTypeSchema,
   studioEventPayloadSchema,
 } from "@book-forge/shared";
+import { hash32, chapterPlanForGeneration } from "../utils/chapter-plan.js";
 
 export interface BookRow {
   id: number;
@@ -63,6 +65,7 @@ export interface ChapterRow {
   intent: string | null;
   plan_json: string | null;
   active_plan_kind: "theses" | "beats" | null;
+  scene_plan: string | null;
   current_version_id: number | null;
   status: string;
   created_at: string;
@@ -104,6 +107,7 @@ export function toBook(r: BookRow): Book {
 }
 
 export function toChapter(r: ChapterRow): Chapter {
+  const scenePlan = parseStoredScenePlan(r.scene_plan);
   return {
     id: r.id,
     bookId: r.book_id,
@@ -112,6 +116,10 @@ export function toChapter(r: ChapterRow): Chapter {
     intent: r.intent,
     planJson: r.plan_json,
     activePlanKind: r.active_plan_kind,
+    scenePlan,
+    scenePlanStale:
+      scenePlan !== null &&
+      scenePlan.basedOn !== hash32(JSON.stringify(chapterPlanForGeneration(r))),
     currentVersionId: r.current_version_id,
     status: r.status as ChapterStatus,
     createdAt: r.created_at,

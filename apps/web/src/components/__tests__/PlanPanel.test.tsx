@@ -23,6 +23,8 @@ function makeChapter(over: Partial<Chapter> = {}): Chapter {
     intent: "intent",
     planJson: null,
     activePlanKind: null,
+    scenePlan: null,
+    scenePlanStale: false,
     currentVersionId: null,
     status: "draft",
     createdAt: "2026-09-04T00:00:00.000Z",

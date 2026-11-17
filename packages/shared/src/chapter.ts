@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chapterVersionSchema } from "./chapter-version.js";
+import { scenePlanWriteSchema, storedScenePlanSchema } from "./scene-plan.js";
 
 export const chapterStatusSchema = z.enum(["draft", "in_review", "final"]);
 export type ChapterStatus = z.infer<typeof chapterStatusSchema>;
@@ -13,6 +14,9 @@ export const chapterSchema = z.object({
   planJson: z.string().nullable(),
   /** Действующий план: тезисы, беаты или никакого. */
   activePlanKind: z.enum(["theses", "beats"]).nullable(),
+  /** План сцен для локальной модели; устарел, если план главы изменился. */
+  scenePlan: storedScenePlanSchema.nullable(),
+  scenePlanStale: z.boolean(),
   currentVersionId: z.number().int().positive().nullable(),
   status: chapterStatusSchema,
   createdAt: z.string(),
@@ -42,6 +46,7 @@ export const updateChapterInputSchema = z
     title: z.string().min(1).max(500).optional(),
     status: chapterStatusSchema.optional(),
     intent: z.string().max(20_000).nullable().optional(),
+    scenePlan: scenePlanWriteSchema.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "at least one field required",

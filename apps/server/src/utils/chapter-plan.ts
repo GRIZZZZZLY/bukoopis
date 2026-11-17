@@ -36,3 +36,14 @@ export function chapterPlanForGeneration(
   const intent = ch.intent?.trim();
   return intent ? { kind: "intent", intent } : { kind: "none" };
 }
+
+/** FNV-1a: детерминированный 32-битный отпечаток строки, чтобы outline без
+ *  собственной ревизии всё же попадал в ссылки на источники. */
+export function hash32(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}

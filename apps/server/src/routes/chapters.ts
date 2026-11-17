@@ -13,6 +13,7 @@ import {
   type ChapterRow,
   type ChapterVersionRow,
 } from "../db/rows.js";
+import { chapterPlanForGeneration, hash32 } from "../utils/chapter-plan.js";
 import { chapterPositionLookup } from "../utils/chapter-position.js";
 import { notFound, validationFailed } from "../utils/errors.js";
 import { extractText, countWords } from "../utils/prosemirror.js";
@@ -338,9 +339,27 @@ export function createChaptersRoute(
           ? existing.intent
           : parsed.data.intent?.trim() || null,
     };
+    // План сцен привязан к плану главы ПОСЛЕ этого PATCH: `basedOn` — отпечаток
+    // действующего плана на момент сохранения. undefined — столбец не трогаем.
+    let scenePlan = existing.scene_plan;
+    if (parsed.data.scenePlan !== undefined) {
+      scenePlan =
+        parsed.data.scenePlan === null
+          ? null
+          : JSON.stringify({
+              ...parsed.data.scenePlan,
+              basedOn: hash32(
+                JSON.stringify(
+                  chapterPlanForGeneration({ ...existing, intent: next.intent }),
+                ),
+              ),
+            });
+    }
     sqlite
-      .prepare("UPDATE chapters SET title=?, status=?, intent=?, updated_at=? WHERE id=?")
-      .run(next.title, next.status, next.intent, now, id);
+      .prepare(
+        "UPDATE chapters SET title=?, status=?, intent=?, scene_plan=?, updated_at=? WHERE id=?",
+      )
+      .run(next.title, next.status, next.intent, scenePlan, now, id);
     sqlite
       .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
       .run(now, existing.book_id);

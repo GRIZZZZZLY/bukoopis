@@ -27,7 +27,7 @@ import {
 import { resolveEntityDetailed } from "./entity-resolve.js";
 import { loadBookContext } from "./book-context.js";
 import { loadBoundarySceneState } from "./scene-state.js";
-import { chapterPlanForGeneration } from "./chapter-plan.js";
+import { chapterPlanForGeneration, hash32 } from "./chapter-plan.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
 /**
@@ -124,17 +124,6 @@ export interface AssembledContext {
   styleContext: StyleContext;
   compiled: CompiledContext;
   sourceRefs: ContextSourceRefLite[];
-}
-
-/** FNV-1a: детерминированный 32-битный отпечаток строки, чтобы outline без
- *  собственной ревизии всё же попадал в ссылки на источники. */
-function hash32(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h;
 }
 
 export async function assembleGenerationContext(
