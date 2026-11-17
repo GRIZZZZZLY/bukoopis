@@ -58,7 +58,10 @@ export const DOSSIER_LABELS = {
   world: "Мир",
   chapterContent: "Содержание главы",
   save: "Сохранить",
+  cancel: "Отмена",
   edit: "Изменить",
+  /** Счётчик символов под полем: «1234 / 20000». */
+  charCount: (n: number, max: number) => `${n} / ${max}`,
   writeFromContent: "Будет написано по содержанию главы",
   writeFromPrevious: "Содержания нет — модель продолжит от прошлой главы",
 } as const;

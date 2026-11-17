@@ -17,6 +17,9 @@ interface Props {
   onPlanReady: (plan: ChapterBeatSheetVariant | null) => void;
 }
 
+/** Предел `intent` в схеме главы (`chapter.ts`): длиннее сервер не примет. */
+const INTENT_MAX = 20_000;
+
 function parsePlan(json: string | null): ChapterPlan | null {
   if (!json) return null;
   try {
@@ -120,16 +123,33 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             id={`chapter-intent-${chapter.id}`}
             className="input"
             rows={4}
+            maxLength={INTENT_MAX}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <Button
-            onClick={() => void onSaveIntent()}
-            disabled={savingIntent}
-            className="self-start"
-          >
-            {DOSSIER_LABELS.save}
-          </Button>
+          <span className="text-xs text-[var(--color-muted-foreground)]">
+            {DOSSIER_LABELS.charCount(draft.length, INTENT_MAX)}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => void onSaveIntent()}
+              disabled={savingIntent || draft.trim() === intent}
+            >
+              {DOSSIER_LABELS.save}
+            </Button>
+            {editing && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditing(false);
+                  setDraft("");
+                }}
+                disabled={savingIntent}
+              >
+                {DOSSIER_LABELS.cancel}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

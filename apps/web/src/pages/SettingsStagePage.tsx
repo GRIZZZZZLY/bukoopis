@@ -19,6 +19,9 @@ import type {
 const STATUSES: BookStatus[] = ["draft", "active", "archived"];
 const MODELS: ModelChoice[] = ["sonnet", "opus"];
 
+/** Предел `worldNotes` в схеме книги (`book.ts`): длиннее сервер не примет. */
+const WORLD_NOTES_MAX = 25_000;
+
 const STATUS_RU: Record<BookStatus, string> = {
   draft: "черновик",
   active: "активна",
@@ -268,9 +271,13 @@ export function SettingsStagePage() {
               id="book-world"
               className="input"
               rows={8}
+              maxLength={WORLD_NOTES_MAX}
               value={worldNotes}
               onChange={(e) => setWorldNotes(e.target.value)}
             />
+            <p className="field-hint">
+              {DOSSIER_LABELS.charCount(worldNotes.length, WORLD_NOTES_MAX)}
+            </p>
           </div>
         </div>
 

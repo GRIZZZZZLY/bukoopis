@@ -106,4 +106,13 @@ describe("SettingsStagePage", () => {
       worldNotes: "Город на воде",
     });
   });
+
+  it("поле «Мир» ограничено 25000 символов и считает их", async () => {
+    m.getBook.mockResolvedValue({ ...book, worldNotes: "Шлюзы" } as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    expect(screen.getByLabelText("Мир")).toHaveAttribute("maxLength", "25000");
+    expect(screen.getByText("5 / 25000")).toBeInTheDocument();
+  });
 });

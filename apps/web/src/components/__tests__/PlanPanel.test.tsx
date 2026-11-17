@@ -210,4 +210,46 @@ describe("PlanPanel — содержание главы", () => {
     await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
     expect(api.updateChapter).toHaveBeenCalledWith(1, { intent: "Лис идёт к шлюзам" });
   });
+
+  function renderWith(intent: string | null): void {
+    render(
+      <MemoryRouter>
+        <PlanPanel chapter={makeChapter({ intent })} onUpdated={vi.fn()} onPlanReady={vi.fn()} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("поле ограничено 20000 символов и считает их", async () => {
+    renderWith(null);
+    const field = screen.getByLabelText("Содержание главы");
+    expect(field).toHaveAttribute("maxLength", "20000");
+    expect(screen.getByText("0 / 20000")).toBeInTheDocument();
+    await userEvent.type(field, "Лис");
+    expect(screen.getByText("3 / 20000")).toBeInTheDocument();
+  });
+
+  it("«Сохранить» неактивна, пока текст не изменён", async () => {
+    renderWith("Лис идёт");
+    await userEvent.click(screen.getByRole("button", { name: "Изменить" }));
+    const save = screen.getByRole("button", { name: "Сохранить" });
+    expect(save).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Содержание главы"), " к шлюзам");
+    expect(save).toBeEnabled();
+  });
+
+  it("«Отмена» возвращает прежнее содержание без сохранения", async () => {
+    vi.mocked(api.updateChapter).mockClear();
+    renderWith("Лис идёт");
+    await userEvent.click(screen.getByRole("button", { name: "Изменить" }));
+    await userEvent.type(screen.getByLabelText("Содержание главы"), " к шлюзам");
+    await userEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByText("Лис идёт")).toBeInTheDocument();
+    expect(api.updateChapter).not.toHaveBeenCalled();
+  });
+
+  it("у пустого содержания «Отмены» нет — отменять нечего", () => {
+    renderWith(null);
+    expect(screen.queryByRole("button", { name: "Отмена" })).not.toBeInTheDocument();
+  });
 });
