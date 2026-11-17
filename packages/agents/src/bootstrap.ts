@@ -7,6 +7,7 @@ import { registerCanonGuardContract } from "./canon-extractor.js";
 import { registerCanonFactExtractorContract } from "./canon-fact-extractor.js";
 import { registerCharacterEventExtractorContract } from "./character-event-extractor.js";
 import { registerSceneIntentContract } from "./scene-intent.js";
+import { registerScenePlanContract } from "./scene-plan.js";
 import { registerCastCheckContract } from "./cast-check.js";
 import { registerSceneStateExtractorContract } from "./scene-state-extractor.js";
 import { registerCharacterCriticContract } from "./critics/character.js";
@@ -50,6 +51,7 @@ export function registerAllAgentContracts(): void {
   registerCanonFactExtractorContract();
   registerCharacterEventExtractorContract();
   registerSceneIntentContract();
+  registerScenePlanContract();
   registerCastCheckContract();
   registerSceneStateExtractorContract();
   registerCharacterCriticContract();

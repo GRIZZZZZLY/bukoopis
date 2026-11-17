@@ -42,6 +42,7 @@ const DEFAULT_AGENT_BACKEND: Record<AgentName, LLMBackend> = {
   reranker: "subscription",
   material_classifier: "subscription",
   scene_intent: "subscription",
+  scene_plan: "subscription",
   cast_check: "subscription",
   scene_state_extractor: "subscription",
   book_chat: "subscription",

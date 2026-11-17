@@ -9,6 +9,7 @@ export * from "./canon-extractor.js";
 export * from "./canon-fact-extractor.js";
 export * from "./character-event-extractor.js";
 export * from "./scene-intent.js";
+export * from "./scene-plan.js";
 export * from "./cast-check.js";
 export * from "./scene-state-extractor.js";
 export * from "./chat.js";
