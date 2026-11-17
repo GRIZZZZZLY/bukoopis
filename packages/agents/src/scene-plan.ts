@@ -33,6 +33,8 @@ export interface ScenePlanAgentInput {
   characterContext: string | null;
   worldContext: string | null;
   sceneCount: number;
+  /** Прошлая глава написана от первого лица. */
+  firstPerson: boolean;
   model?: ModelChoice;
   onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
 }
@@ -49,6 +51,7 @@ export const SCENE_PLAN_SYSTEM = `Ты — составитель плана с�
 
 Правила:
 - Героев называй так, как они названы в карточках.
+- Если повествование от первого лица, героя-рассказчика в событиях называй «Рассказчик» (в нужном падеже: «Рассказчик», «Рассказчика», «Рассказчику»…), а не по имени и не «я». Остальных героев называй по именам из карточек.
 - Не пиши реплик и диалога, не пиши прозу: только события.
 - Не добавляй ничего, что меняет сюжет сверх содержания главы. Пробелы между пунктами содержания заполняй конкретными шагами, переходами и наблюдениями.
 - Последнее событие последней сцены — точка остановки главы. Если дана заметка о финале, это она.
@@ -60,6 +63,7 @@ export function buildScenePlanPrompt(input: ScenePlanAgentInput): string {
   const parts: string[] = [
     `Книга: "${input.bookTitle}"\nГлава: "${input.chapterTitle}"`,
   ];
+  if (input.firstPerson) parts.push("Повествование от первого лица.");
   if (input.worldContext) parts.push(input.worldContext);
   if (input.characterContext) parts.push(input.characterContext);
   if (input.previousSummary) {

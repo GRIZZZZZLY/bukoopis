@@ -24,6 +24,7 @@ const input: ScenePlanAgentInput = {
   characterContext: null,
   worldContext: null,
   sceneCount: 3,
+  firstPerson: false,
 };
 
 const scene = (n: number) => ({
@@ -40,6 +41,14 @@ describe("scene_plan", () => {
     expect(p).toContain("Мира садится в поезд");
     expect(p).toContain("дверь хлопнула");
     expect(SCENE_PLAN_SYSTEM).toContain("6–8");
+  });
+
+  it("от первого лица: строка в промпте и правило про Рассказчика", () => {
+    expect(buildScenePlanPrompt({ ...input, firstPerson: true })).toContain(
+      "Повествование от первого лица.",
+    );
+    expect(buildScenePlanPrompt(input)).not.toContain("Повествование от первого лица.");
+    expect(SCENE_PLAN_SYSTEM).toContain("Рассказчик");
   });
 
   it("runScenePlan возвращает план; иное число сцен не правится", async () => {

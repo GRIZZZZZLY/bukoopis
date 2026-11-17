@@ -91,6 +91,12 @@ import { loadBookContext } from "../utils/book-context.js";
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
 
 
+/** Манера прошлой главы по её полному тексту; null, если прошлой главы нет. */
+function previousMannerLine(sqlite: DatabaseType, ch: ChapterRow): string | null {
+  const prev = loadPreviousChapterTail(sqlite, ch.book_id, ch.order_index, 200_000);
+  return prev ? mannerLine(prev) : null;
+}
+
 export function createPlotRoute(
   sqlite: DatabaseType,
   hasVec: boolean,
@@ -410,6 +416,8 @@ export function createPlotRoute(
       worldContext: assembled.worldContext,
       // Схема записи держит не больше 12 сцен.
       sceneCount: Math.min(12, Math.max(1, Math.ceil(target / LOCAL_SCENE_WORDS))),
+      // Нашу модель учили: рассказчика в плане зовут «Рассказчик».
+      firstPerson: previousMannerLine(sqlite, ch)?.includes("от первого лица") ?? false,
       model: ctx.plotModel,
       onUsage: (usage) =>
         logUsage(sqlite, {
@@ -778,8 +786,7 @@ export function createPlotRoute(
         // сцены одной строкой на героя, хвост вместо всей предыстории.
         let localScene: ((i: number) => ReturnType<typeof runLocalScene>) | null = null;
         if (scenes && localTag) {
-          const prev = loadPreviousChapterTail(sqlite, ch.book_id, ch.order_index, 200_000);
-          const manner = prev ? mannerLine(prev) : null;
+          const manner = previousMannerLine(sqlite, ch);
           const profileStmt = sqlite.prepare("SELECT profile_json FROM characters WHERE id = ?");
           const cast = assembled.participants.map((p) => {
             const row = profileStmt.get(p.characterId) as { profile_json: string | null } | undefined;

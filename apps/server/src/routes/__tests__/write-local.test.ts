@@ -349,6 +349,34 @@ describe("POST /chapters/:id/scene-plan", () => {
     expect(usage).toHaveLength(1);
   });
 
+  async function firstPersonFor(prevText: string | null): Promise<boolean> {
+    if (prevText !== null) {
+      await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+        contentJson: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: prevText }] }] },
+      });
+    }
+    const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title: "Вторая" });
+    setPlan(ch.id, 14, 1200);
+    const res = await send(t.app, `/api/chapters/${ch.id}/scene-plan`, "POST", {});
+    expect(res.status).toBe(200);
+    return scenePlanMock.mock.calls[0]![0].firstPerson;
+  }
+
+  it("firstPerson: true after a first-person chapter", async () => {
+    expect(
+      await firstPersonFor("Я вышел на дорогу. Мне было холодно. Ветер бил меня в лицо, и я шёл дальше."),
+    ).toBe(true);
+  });
+
+  it("firstPerson: false after a third-person chapter", async () => {
+    expect(await firstPersonFor("Он шёл по дороге и думал о доме. Дверь закрылась за ним тихо.")).toBe(false);
+  });
+
+  it("firstPerson: false with no previous chapter", async () => {
+    await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(scenePlanMock.mock.calls[0]![0].firstPerson).toBe(false);
+  });
+
   it("scene count is clamped to 12", async () => {
     setPlan(chapterId, 14, 8000);
     await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
