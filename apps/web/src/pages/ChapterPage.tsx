@@ -879,7 +879,7 @@ export function ChapterPage() {
           {/* Без выбранного беат-плана автор должен видеть, по чему пойдёт
               письмо, до нажатия, а не только в подсказке при наведении. */}
           {!writing && !selectedPlan && (
-            <span className="faint text-xs chapter-write-hint">{writeHint}</span>
+            <span className="chapter-write-hint">{writeHint}</span>
           )}
           {writing ? (
             <div className="write-live" role="status">
