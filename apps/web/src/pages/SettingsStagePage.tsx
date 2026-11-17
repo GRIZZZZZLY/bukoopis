@@ -267,6 +267,14 @@ export function SettingsStagePage() {
               value={premise}
               onChange={(e) => setPremise(e.target.value)}
             />
+            {/* Пустое поле не значит «синопсиса нет»: модель читает выжимку
+                из замысла. Показываем её, чтобы автор не гадал. */}
+            {!premise.trim() && book.derivedPremise && (
+              <div className="field-hint" style={{ marginTop: 6 }}>
+                <div>{DOSSIER_LABELS.derivedPremise}</div>
+                <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{book.derivedPremise}</p>
+              </div>
+            )}
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label className="field-label" htmlFor="book-world">

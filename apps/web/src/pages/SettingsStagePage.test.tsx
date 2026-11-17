@@ -131,4 +131,25 @@ describe("SettingsStagePage", () => {
     expect(screen.getByLabelText("Мир")).toHaveAttribute("maxLength", "25000");
     expect(screen.getByText("5 / 25000")).toBeInTheDocument();
   });
+
+  it("под пустым синопсисом показывает, что модель видит из замысла", async () => {
+    m.getBook.mockResolvedValue({
+      ...book,
+      premise: null,
+      derivedPremise: "Лис ищет шлюзы\nКонфликт: Город против реки",
+    } as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    expect(screen.getByText("Сейчас модель видит синопсис из замысла:")).toBeInTheDocument();
+    expect(screen.getByText(/Конфликт: Город против реки/)).toBeInTheDocument();
+  });
+
+  it("при заполненном синопсисе подсказки нет", async () => {
+    m.getBook.mockResolvedValue({ ...book, derivedPremise: null } as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    expect(screen.queryByText(/модель видит синопсис из замысла/)).not.toBeInTheDocument();
+  });
 });

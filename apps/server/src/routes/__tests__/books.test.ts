@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { emptyBookConcept } from "@book-forge/shared";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
 let t: TestApp;
@@ -115,5 +116,32 @@ describe("books dossier", () => {
     expect(got.worldNotes).toBe(text);
     const big = await send(t.app, `/api/books/${b.id}`, "PATCH", { worldNotes: "x".repeat(25001) });
     expect(big.status).toBe(400);
+  });
+});
+
+describe("books derivedPremise", () => {
+  const concept = JSON.stringify({
+    ...emptyBookConcept(),
+    premise: { ...emptyBookConcept().premise, logline: "Лис ищет шлюзы", conflict: "Город против реки" },
+  });
+
+  it("при пустом синопсисе отдаёт выжимку из замысла — то, что видит модель", async () => {
+    const b = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Т" });
+    t.sqlite.prepare("UPDATE books SET concept = ? WHERE id = ?").run(concept, b.id);
+    const got = await sendJson<{ derivedPremise: string | null }>(t.app, `/api/books/${b.id}`, "GET");
+    expect(got.derivedPremise).toBe("Лис ищет шлюзы\nКонфликт: Город против реки");
+  });
+
+  it("при заполненном синопсисе — null", async () => {
+    const b = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Т", premise: "Своё" });
+    t.sqlite.prepare("UPDATE books SET concept = ? WHERE id = ?").run(concept, b.id);
+    const got = await sendJson<{ derivedPremise: string | null }>(t.app, `/api/books/${b.id}`, "GET");
+    expect(got.derivedPremise).toBeNull();
+  });
+
+  it("без замысла — null", async () => {
+    const b = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Т" });
+    const got = await sendJson<{ derivedPremise: string | null }>(t.app, `/api/books/${b.id}`, "GET");
+    expect(got.derivedPremise).toBeNull();
   });
 });

@@ -59,6 +59,7 @@ export const ROOM_LABELS = {
 export const DOSSIER_LABELS = {
   section: "Досье",
   premise: "Синопсис",
+  derivedPremise: "Сейчас модель видит синопсис из замысла:",
   world: "Мир",
   chapterContent: "Содержание главы",
   save: "Сохранить",

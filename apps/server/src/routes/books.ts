@@ -16,6 +16,7 @@ import {
   ENQUEUE_JOB_KINDS,
 } from "../utils/memory-queue.js";
 import type { MemoryWorker } from "../utils/memory-worker.js";
+import { derivePremiseFromConcept, loadStudioContext } from "../utils/studio-context.js";
 
 export function createBooksRoute(
   sqlite: DatabaseType,
@@ -85,7 +86,12 @@ export function createBooksRoute(
       .prepare("SELECT * FROM books WHERE id = ?")
       .get(id) as BookRow | undefined;
     if (!row) return notFound(c, "book");
-    return c.json(toBook(row));
+    // Пустой синопсис модель заменяет выжимкой из замысла (`book-context.ts`);
+    // настройки показывают автору, что именно она видит.
+    const derivedPremise = row.premise?.trim()
+      ? null
+      : derivePremiseFromConcept(loadStudioContext(sqlite, id).concept);
+    return c.json({ ...toBook(row), derivedPremise });
   });
 
   r.patch("/:id", async (c) => {

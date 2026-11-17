@@ -24,6 +24,9 @@ export const bookSchema = z.object({
   authorNotes: z.string().nullable(),
   /** Свободное поле «Мир»: уходит в промпт Writer'а. */
   worldNotes: z.string().nullable(),
+  /** Только в GET /books/:id: синопсис, который модель выводит из замысла,
+   *  пока `premise` пуст; при заполненном `premise` — null. */
+  derivedPremise: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
