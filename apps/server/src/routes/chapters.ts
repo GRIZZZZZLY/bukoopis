@@ -332,10 +332,15 @@ export function createChaptersRoute(
     const next = {
       title: parsed.data.title ?? existing.title,
       status: parsed.data.status ?? existing.status,
+      // Пустое содержание хранится как NULL.
+      intent:
+        parsed.data.intent === undefined
+          ? existing.intent
+          : parsed.data.intent?.trim() || null,
     };
     sqlite
-      .prepare("UPDATE chapters SET title=?, status=?, updated_at=? WHERE id=?")
-      .run(next.title, next.status, now, id);
+      .prepare("UPDATE chapters SET title=?, status=?, intent=?, updated_at=? WHERE id=?")
+      .run(next.title, next.status, next.intent, now, id);
     sqlite
       .prepare("UPDATE books SET updated_at = ? WHERE id = ?")
       .run(now, existing.book_id);

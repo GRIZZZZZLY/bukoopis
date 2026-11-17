@@ -122,6 +122,10 @@ export function createBooksRoute(
         parsed.data.authorNotes === undefined
           ? existing.author_notes
           : parsed.data.authorNotes,
+      worldNotes:
+        parsed.data.worldNotes === undefined
+          ? existing.world_notes
+          : parsed.data.worldNotes,
     };
     sqlite
       .prepare(
@@ -129,7 +133,7 @@ export function createBooksRoute(
          SET title=?, premise=?, status=?, style_profile_id=?,
              writer_model=?, plot_model=?, critic_model=?,
              writer_provider=?, writer_local_model=?, author_notes=?,
-             updated_at=?
+             world_notes=?, updated_at=?
          WHERE id=?`,
       )
       .run(
@@ -143,6 +147,7 @@ export function createBooksRoute(
         next.writerProvider,
         next.writerLocalModel,
         next.authorNotes,
+        next.worldNotes,
         now,
         id,
       );

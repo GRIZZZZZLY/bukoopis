@@ -21,6 +21,7 @@ function makeChapter(over: Partial<Chapter> = {}): Chapter {
     title: "Глава 1",
     intent: "intent",
     planJson: null,
+    activePlanKind: null,
     currentVersionId: null,
     status: "draft",
     createdAt: "2026-09-04T00:00:00.000Z",

@@ -11,6 +11,8 @@ export const chapterSchema = z.object({
   title: z.string().min(1),
   intent: z.string().nullable(),
   planJson: z.string().nullable(),
+  /** Действующий план: тезисы, беаты или никакого. */
+  activePlanKind: z.enum(["theses", "beats"]).nullable(),
   currentVersionId: z.number().int().positive().nullable(),
   status: chapterStatusSchema,
   createdAt: z.string(),
@@ -39,6 +41,7 @@ export const updateChapterInputSchema = z
   .strictObject({
     title: z.string().min(1).max(500).optional(),
     status: chapterStatusSchema.optional(),
+    intent: z.string().max(20_000).nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "at least one field required",

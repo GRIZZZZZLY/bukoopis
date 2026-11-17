@@ -44,6 +44,8 @@ export const books = sqliteTable(
     /** Сырые заметки автора. В промпт не уходят никогда — см. тест на маячок
      *  в litrab-borrowings.test.ts. */
     authorNotes: text("author_notes"),
+    /** Свободное поле «Мир» (миграция 0034): уходит в промпт Writer'а. */
+    worldNotes: text("world_notes"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -104,6 +106,8 @@ export const chapters = sqliteTable(
     // этой сцене. Колонка, а не таблица — он живёт одну генерацию и
     // перезаписывается следующей. NULL = подготовки не было.
     sceneIntentJson: text("scene_intent_json"),
+    /** Действующий план главы (миграция 0034): тезисы, беаты или NULL. */
+    activePlanKind: text("active_plan_kind"),
     status: text("status").notNull().default("draft"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -113,6 +117,10 @@ export const chapters = sqliteTable(
     check(
       "chapters_status_check",
       sql`${t.status} IN ('draft','in_review','final')`,
+    ),
+    check(
+      "chapters_active_plan_kind_check",
+      sql`${t.activePlanKind} IN ('theses','beats')`,
     ),
   ],
 );

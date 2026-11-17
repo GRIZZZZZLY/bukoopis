@@ -281,3 +281,17 @@ describe("chapter versions", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("chapter intent", () => {
+  it("PATCH правит intent, пустая строка хранится как null", async () => {
+    const c = await sendJson<ChapterJson>(t.app, `/api/books/${bookId}/chapters`, "POST", { title: "Г1" });
+    const r1 = await send(t.app, `/api/chapters/${c.id}`, "PATCH", { intent: "Лис идёт к шлюзам" });
+    expect(r1.status).toBe(200);
+    expect(((await r1.json()) as { intent: string | null }).intent).toBe("Лис идёт к шлюзам");
+    const r2 = await send(t.app, `/api/chapters/${c.id}`, "PATCH", { intent: "  " });
+    expect(r2.status).toBe(200);
+    expect(((await r2.json()) as { intent: string | null }).intent).toBeNull();
+    const r3 = await send(t.app, `/api/chapters/${c.id}`, "PATCH", { intent: "x".repeat(20001) });
+    expect(r3.status).toBe(400);
+  });
+});

@@ -50,6 +50,7 @@ export interface BookRow {
   concept: string | null;
   studio_state: string | null;
   author_notes: string | null;
+  world_notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +62,7 @@ export interface ChapterRow {
   title: string;
   intent: string | null;
   plan_json: string | null;
+  active_plan_kind: "theses" | "beats" | null;
   current_version_id: number | null;
   status: string;
   created_at: string;
@@ -95,6 +97,7 @@ export function toBook(r: BookRow): Book {
     writerProvider: r.writer_provider as WriterProvider,
     writerLocalModel: r.writer_local_model,
     authorNotes: r.author_notes,
+    worldNotes: r.world_notes,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -108,6 +111,7 @@ export function toChapter(r: ChapterRow): Chapter {
     title: r.title,
     intent: r.intent,
     planJson: r.plan_json,
+    activePlanKind: r.active_plan_kind,
     currentVersionId: r.current_version_id,
     status: r.status as ChapterStatus,
     createdAt: r.created_at,

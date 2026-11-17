@@ -178,3 +178,31 @@ describe("POST /api/books/:id/plan/approve", () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe("chapters.active_plan_kind", () => {
+  async function chapterWithPlan(): Promise<number> {
+    hybridSearchMock.mockResolvedValue([]);
+    const chId = await createChapter(await createBook());
+    const r = await send(t.app, `/api/chapters/${chId}/plan`, "POST", { intent: "интент" });
+    expect(r.status).toBe(200);
+    return chId;
+  }
+  const kind = async (chId: number) =>
+    (await sendJson<{ activePlanKind: string | null }>(t.app, `/api/chapters/${chId}`, "GET")).activePlanKind;
+
+  it("выбор варианта плана ставит activePlanKind = beats", async () => {
+    const chId = await chapterWithPlan();
+    expect(await kind(chId)).toBeNull();
+    const r = await send(t.app, `/api/chapters/${chId}/plan/select`, "POST", { selectedIndex: 0 });
+    expect(r.status).toBe(200);
+    expect(await kind(chId)).toBe("beats");
+  });
+
+  it("повторная генерация плана не меняет activePlanKind", async () => {
+    const chId = await chapterWithPlan();
+    await send(t.app, `/api/chapters/${chId}/plan/select`, "POST", { selectedIndex: 0 });
+    const r = await send(t.app, `/api/chapters/${chId}/plan`, "POST", { intent: "ещё" });
+    expect(r.status).toBe(200);
+    expect(await kind(chId)).toBe("beats");
+  });
+});

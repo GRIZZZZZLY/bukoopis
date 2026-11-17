@@ -310,7 +310,7 @@ export function createPlotRoute(
     const now = new Date().toISOString();
     sqlite
       .prepare(
-        "UPDATE chapters SET plan_json = ?, updated_at = ? WHERE id = ?",
+        "UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats', updated_at = ? WHERE id = ?",
       )
       .run(JSON.stringify(plan), now, id);
     sqlite

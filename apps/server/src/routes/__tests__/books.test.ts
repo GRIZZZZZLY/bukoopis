@@ -104,3 +104,16 @@ describe("books CRUD", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("books dossier", () => {
+  it("PATCH сохраняет worldNotes и отвергает 25 001 знак", async () => {
+    const b = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Т" });
+    const text = "Станция «Пустельга» вращается над Малым морем.";
+    const res = await send(t.app, `/api/books/${b.id}`, "PATCH", { worldNotes: text });
+    expect(res.status).toBe(200);
+    const got = await sendJson<{ worldNotes: string | null }>(t.app, `/api/books/${b.id}`, "GET");
+    expect(got.worldNotes).toBe(text);
+    const big = await send(t.app, `/api/books/${b.id}`, "PATCH", { worldNotes: "x".repeat(25001) });
+    expect(big.status).toBe(400);
+  });
+});
