@@ -20,3 +20,4 @@ export * from "./critics/index.js";
 export * from "./graphs/book-planning.js";
 export * from "./graphs/chapter-writing.js";
 export * from "./graphs/critique.js";
+export * from "./local-writer.js";
