@@ -84,8 +84,15 @@ export function SettingsStagePage() {
   async function onSave() {
     setSaving(true);
     setError(null);
+    // Синопсис и мир уходят, только если автор правил их здесь: иначе старая
+    // вкладка затёрла бы текст, обновлённый в другом месте (например, при
+    // утверждении замысла).
+    const premiseNext = premise.trim() || null;
+    const worldNext = worldNotes.trim() || null;
     try {
       await api.updateBook(id, {
+        ...(premiseNext !== (book!.premise?.trim() || null) ? { premise: premiseNext } : {}),
+        ...(worldNext !== (book!.worldNotes?.trim() || null) ? { worldNotes: worldNext } : {}),
         title: title.trim() || book!.title,
         status,
         styleProfileId,
@@ -93,8 +100,6 @@ export function SettingsStagePage() {
         plotModel,
         criticModel,
         writerProvider,
-        premise: premise.trim() || null,
-        worldNotes: worldNotes.trim() || null,
         writerLocalModel:
           writerProvider === "ollama" && writerLocalModel.trim()
             ? writerLocalModel.trim()

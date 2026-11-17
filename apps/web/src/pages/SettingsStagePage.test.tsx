@@ -76,7 +76,7 @@ describe("SettingsStagePage", () => {
     expect(m.getBook).not.toHaveBeenCalled();
   });
 
-  it("saves the unchanged synopsis back", async () => {
+  it("saves without sending premise or world when they were not changed", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);
     m.updateBook.mockResolvedValue(book as never);
@@ -87,7 +87,23 @@ describe("SettingsStagePage", () => {
     await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
     await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
     const arg = m.updateBook.mock.calls[0]![1] as Record<string, unknown>;
-    expect(arg.premise).toBe("СТАРЫЙ ЗАМЫСЕЛ");
+    // Устаревшая вкладка не должна затирать синопсис, обновлённый в другом месте.
+    expect("premise" in arg).toBe(false);
+    expect("worldNotes" in arg).toBe(false);
+  });
+
+  it("очищенный синопсис уходит как null", async () => {
+    m.getBook.mockResolvedValue(book as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    m.updateBook.mockResolvedValue(book as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    await userEvent.clear(screen.getByLabelText("Синопсис"));
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+    await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
+    const arg = m.updateBook.mock.calls[0]![1] as Record<string, unknown>;
+    expect(arg.premise).toBeNull();
+    expect("worldNotes" in arg).toBe(false);
   });
 
   it("сохраняет синопсис и мир", async () => {
