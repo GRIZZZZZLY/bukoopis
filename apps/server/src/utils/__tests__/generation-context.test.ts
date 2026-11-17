@@ -489,6 +489,44 @@ describe("досье: мир в сборке и источник dossier", () =>
     expect(ctx.bookContextBase).not.toContain("Мир книги");
   });
 
+  it("правка содержания главы меняет отпечаток; ссылка — на саму главу", async () => {
+    const ch = insertChapter(10, "Глава.");
+    const a = await assemble(ch);
+    expect(a.sourceRefs).toContainEqual({
+      kind: "chapter_plan",
+      id: ch,
+      versionId: null,
+      revision: expect.any(Number),
+    });
+    sqlite.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run("Рин уходит к ручью.", ch);
+    const b = await assemble(ch);
+    expect(snapshotFingerprint(a.sourceRefs)).not.toBe(snapshotFingerprint(b.sourceRefs));
+  });
+
+  it("Писатель и критика на одной базе дают одинаковые ссылки, план главы включён", async () => {
+    insertCharacter("Рин");
+    insertChapter(10, "Первая глава. Рин у ручья.");
+    const ch = insertChapter(20, "Вторая.");
+    sqlite.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run("Рин находит лодку.", ch);
+    // Представления ролей разные — как у маршрутов Писателя и критики.
+    const asWriter = await assemble(ch, {
+      scanTexts: ["Рин находит лодку."],
+      retrievalQuery: "Рин находит лодку.",
+      povName: null,
+      factsBoundary: "before_chapter",
+    });
+    const asCritic = await assemble(ch, {
+      scanTexts: ["—", "Вторая."],
+      retrievalQuery: "Содержание главы: Рин находит лодку.",
+      povName: null,
+      styleFewShot: 0,
+      includeAuthorPlan: false,
+      notesQuery: "Глава 2",
+    });
+    expect(asCritic.sourceRefs).toEqual(asWriter.sourceRefs);
+    expect(asWriter.sourceRefs.some((r) => r.kind === "chapter_plan" && r.id === ch)).toBe(true);
+  });
+
   it("манифест несёт версию stage5-dossier", async () => {
     const ch = insertChapter(10, "Глава.");
     const ctx = await assemble(ch);

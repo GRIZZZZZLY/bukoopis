@@ -27,6 +27,7 @@ import {
 import { resolveEntityDetailed } from "./entity-resolve.js";
 import { loadBookContext } from "./book-context.js";
 import { loadBoundarySceneState } from "./scene-state.js";
+import { chapterPlanForGeneration } from "./chapter-plan.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
 /**
@@ -420,6 +421,14 @@ export async function assembleGenerationContext(
   if (outlineSelected) {
     sourceRefs.push({ kind: "outline", id: book.id, versionId: null, revision: hash32(outlineSelected) });
   }
+  // План самой главы — через тот же доступ, что у Писателя и критики: правка
+  // содержания или смена выбранного варианта меняет базу главы.
+  sourceRefs.push({
+    kind: "chapter_plan",
+    id: ch.id,
+    versionId: null,
+    revision: hash32(JSON.stringify(chapterPlanForGeneration(ch))),
+  });
 
   return {
     pov,
