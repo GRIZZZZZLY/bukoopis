@@ -106,7 +106,7 @@ function buildPrompt(input: ConceptRefinerInput): string {
   parts.push("", "ИНСТРУКЦИЯ:", FIELD_INSTRUCTIONS[input.field]);
   parts.push(
     "",
-    "Сгенерируй 2–3 разных по углу варианта. Не дублируй варианты по смыслу.",
+    "Сгенерируй разные по углу варианты. Не дублируй варианты по смыслу.",
   );
 
   return parts.join("\n");
@@ -124,7 +124,7 @@ const conceptRefinerContract: AgentStructuredContract<
   mcp: {
     toolName: "submit_concept_variants",
     toolDescription:
-      "Submit 2–3 alternative formulations of one premise field (protagonist, conflict, stakes, or logline).",
+      "Submit alternative formulations of one premise field (protagonist, conflict, stakes, or logline).",
   },
 };
 
