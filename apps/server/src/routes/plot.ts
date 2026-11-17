@@ -514,7 +514,8 @@ export function createPlotRoute(
           chapterOrder: ch.order_index,
           chapterTitle: ch.title,
           bookTitle: ctx.title,
-          // Без плана замысел считается по содержанию главы.
+          // Без плана замысел считается по содержанию главы; без содержания
+          // пустая строка, и `prepareSceneIntent` модель не зовёт.
           beatSheet: beatBlob ?? intentText ?? "",
           dialogueRegister: beatSheet?.dialogueRegister ?? null,
           chapterContract: beatSheet?.contract

@@ -112,6 +112,13 @@ describe("prepareSceneIntent", () => {
     expect(out.degraded).toBe(false);
   });
 
+  it("без плана и содержания модель не зовётся, и это не деградация", async () => {
+    const out = await prepare({ beatSheet: "  " });
+    expect(runSceneIntent).not.toHaveBeenCalled();
+    expect(out.prompt).toBeNull();
+    expect(out.degraded).toBe(false);
+  });
+
   it("AC-25: ссылка на событие вне снимка выбрасывается", async () => {
     runSceneIntent.mockResolvedValue(modelAnswer([eventId, eventId + 999]));
     const out = await prepare();

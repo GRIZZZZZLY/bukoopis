@@ -233,6 +233,10 @@ export async function prepareSceneIntent(
   // Меньше двоих — замысел не о чем: у одного участника нет ни напряжений,
   // ни умолчаний от кого-то. Вызов был бы потрачен впустую.
   if (args.participants.length < 2) return EMPTY;
+  // Ни плана, ни содержания (глава пишется от финала прошлой): модели не по
+  // чему строить замысел, и платный вызов ушёл бы на пустой текст. Это не
+  // сбой подготовки — замысла просто нет, поэтому и не деградация.
+  if (!args.beatSheet.trim()) return EMPTY;
 
   const snapshot = new Set(args.snapshotEventIds);
   const availableEvents = loadAvailableEvents(sqlite, args.participants, snapshot);
