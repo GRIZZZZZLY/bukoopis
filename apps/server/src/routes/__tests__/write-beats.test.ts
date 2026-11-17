@@ -60,7 +60,11 @@ beforeEach(async () => {
   bookId = b.id;
   const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title: "Глава" });
   chapterId = ch.id;
-  t.sqlite.prepare("UPDATE chapters SET plan_json = ? WHERE id = ?").run(JSON.stringify(PLAN), chapterId);
+  // Действующий план главы теперь назван явно (`active_plan_kind`), как его
+  // ставит выбор варианта; одного `plan_json` мало.
+  t.sqlite
+    .prepare("UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats' WHERE id = ?")
+    .run(JSON.stringify(PLAN), chapterId);
 });
 afterEach(() => {
   delete process.env.LLM_AGENT_BACKEND_MAP;
@@ -345,6 +349,17 @@ describe("глава по беатам", () => {
 
       expect(sceneIntentMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("по беатам без битового плана — 400", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = ? WHERE id = ?")
+      .run("Нина ищет брата", chapterId);
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", { mode: "beats" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { details: { message: string } };
+    expect(body.details.message).toBe("«По беатам» нужен подробный план главы");
+    expect(writerMock).not.toHaveBeenCalled();
   });
 
   it("fromBeat без mode=beats и за пределами плана — 400", async () => {

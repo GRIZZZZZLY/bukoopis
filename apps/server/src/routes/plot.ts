@@ -37,6 +37,7 @@ import {
 } from "../utils/rolling-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import { assembleGenerationContext } from "../utils/generation-context.js";
+import { chapterPlanForGeneration } from "../utils/chapter-plan.js";
 import { recordContextManifest } from "../utils/context-manifests.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { loadStoredSceneIntent, prepareSceneIntent } from "../utils/scene-intent.js";
@@ -334,17 +335,18 @@ export function createPlotRoute(
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(id) as ChapterRow | undefined;
     if (!ch) return notFound(c, "chapter");
-    if (!ch.plan_json) return badRequest(c, "no plan available");
-    const plan = JSON.parse(ch.plan_json) as ChapterPlan;
-    if (plan.selectedIndex === null) {
-      return badRequest(c, "no plan variant selected");
-    }
-    const beatSheet = plan.variants[plan.selectedIndex];
-    if (!beatSheet) return badRequest(c, "selected plan variant missing");
+    // Подробный план не обязателен (рабочее место, этап 1): без него глава
+    // пишется по свободному содержанию, а без содержания — от финала прошлой.
+    const plan = chapterPlanForGeneration(ch);
+    const beatSheet = plan.kind === "beats" ? plan.variant : null;
+    const intentText = plan.kind === "intent" ? plan.intent : null;
 
     const mode = parsed.data.mode;
     const fromBeat = parsed.data.fromBeat ?? 0;
-    if (mode === "beats" && fromBeat >= beatSheet.beats.length) {
+    if (mode === "beats" && !beatSheet) {
+      return badRequest(c, "«По беатам» нужен подробный план главы");
+    }
+    if (mode === "beats" && beatSheet && fromBeat >= beatSheet.beats.length) {
       return badRequest(c, `fromBeat ${fromBeat} за пределами плана (${beatSheet.beats.length} беатов)`);
     }
     // Дописать с беата: префикс — текст принятой версии, автор его уже принял.
@@ -386,23 +388,26 @@ export function createPlotRoute(
 
     // Одна сборка на все роли (этап 4): история, участники на границе сцены,
     // лор, факты, студия, стиль, бюджет — и ссылки на источники для
-    // отпечатка. Writer сканирует план и беат-лист, ищет по беат-листу.
-    const beatBlob = beatSheet.beats
-      .map((b) => `${b.summary} ${b.goal} ${b.conflict} ${b.outcome}`)
-      .join("\n");
+    // отпечатка. Writer сканирует план и беат-лист, ищет по беат-листу; без
+    // плана — по содержанию главы, а без него ищет по названию.
+    const beatBlob = beatSheet
+      ? beatSheet.beats
+          .map((b) => `${b.summary} ${b.goal} ${b.conflict} ${b.outcome}`)
+          .join("\n")
+      : null;
     const assembled = await assembleGenerationContext(sqlite, {
       book,
       chapter: ch,
       hasVec,
-      scanTexts: [beatSheet.emotionalGoal, beatBlob],
-      retrievalQuery: beatBlob,
-      povName: beatSheet.pov,
+      scanTexts: beatSheet ? [beatSheet.emotionalGoal, beatBlob] : [intentText ?? ""],
+      retrievalQuery: beatBlob ?? intentText ?? ch.title,
+      povName: beatSheet?.pov ?? null,
       // В7: у главы может быть принятая версия, и её факты — утверждения
       // текста, который автор сейчас переписывает. Канон для Писателя
       // кончается ДО неё.
       factsBoundary: "before_chapter",
       // Регистр сцены из плана — по нему отбираются образцы речи (С3).
-      ...(beatSheet.dialogueRegister
+      ...(beatSheet?.dialogueRegister
         ? { dialogueRegister: beatSheet.dialogueRegister }
         : {}),
       label: `writer ch#${ch.order_index}`,
@@ -417,7 +422,9 @@ export function createPlotRoute(
     // именем. «POV: Ваня» и «### Иван» — для модели два человека, и знания
     // Ивана к Ване не относятся. Показываем каноническое, когда оно есть.
     const beatSheetForWriter =
-      assembled.povCharacterId !== null ? { ...beatSheet, pov: assembled.pov } : beatSheet;
+      beatSheet && assembled.povCharacterId !== null
+        ? { ...beatSheet, pov: assembled.pov }
+        : beatSheet;
     // Манифест источников (этап 4): принятие кандидата привяжет его к
     // созданной версии, и критика сверит с ним свой отпечаток.
     const contextManifest = recordContextManifest(sqlite, {
@@ -441,7 +448,7 @@ export function createPlotRoute(
       // Объявлены здесь, а не в цикле: `catch` обязан знать, сколько беатов
       // уже легло в кандидата — от этого зависит, можно ли его принять.
       let beatsDone: number | null = null;
-      const beatsTotal = mode === "beats" ? beatSheet.beats.length : null;
+      const beatsTotal = mode === "beats" && beatSheet ? beatSheet.beats.length : null;
 
       // Кандидат заводится до первого токена: он же — то, что отменяют, и то,
       // что остаётся в базе, если процесс умрёт на середине.
@@ -507,9 +514,10 @@ export function createPlotRoute(
           chapterOrder: ch.order_index,
           chapterTitle: ch.title,
           bookTitle: ctx.title,
-          beatSheet: beatBlob,
-          dialogueRegister: beatSheet.dialogueRegister ?? null,
-          chapterContract: beatSheet.contract
+          // Без плана замысел считается по содержанию главы.
+          beatSheet: beatBlob ?? intentText ?? "",
+          dialogueRegister: beatSheet?.dialogueRegister ?? null,
+          chapterContract: beatSheet?.contract
             ? renderChapterContract(beatSheet.contract)
             : null,
           characterContext: assembled.characterContext,
@@ -550,6 +558,8 @@ export function createPlotRoute(
           bookOutline: ctx.outlineSelected,
           chapterTitle: ch.title,
           beatSheet: beatSheetForWriter,
+          chapterContent: intentText,
+          worldContext: assembled.worldContext,
           sceneIntent: sceneIntent.prompt,
           previousChaptersSummary: assembled.previousChapters,
           previousChapterTail: assembled.previousTail,
@@ -592,7 +602,7 @@ export function createPlotRoute(
           return text;
         };
 
-        if (mode === "beats") {
+        if (mode === "beats" && beatSheet) {
           fullText = prefixText;
           for (let i = fromBeat; i < beatSheet.beats.length; i += 1) {
             await stream.writeSSE({

@@ -54,7 +54,14 @@ export interface WriteChapterInput {
   /** Phase 1 — top-k relevant chunks from prior chapters (hybridSearch). */
   retrievedContext: string | null;
   chapterTitle: string;
-  beatSheet: ChapterBeatSheetVariant;
+  /** `null` — подробного плана нет: глава пишется по `chapterContent` или,
+   *  без него, продолжением от финала предыдущей главы. */
+  beatSheet: ChapterBeatSheetVariant | null;
+  /** Свободное содержание главы (`chapters.intent`); читается, только когда
+   *  `beatSheet` нет. */
+  chapterContent?: string | null;
+  /** «## Мир книги (записи автора)» из общей сборки; идёт после карточек. */
+  worldContext?: string | null;
   previousChaptersSummary: string | null;
   /**
    * Verbatim closing passage of the preceding chapter. Summaries carry plot but
@@ -116,16 +123,31 @@ function renderStopPoint(closing: NonNullable<ChapterBeatSheetVariant["closing"]
 }
 
 export function buildWriterVolatilePrompt(input: WriteChapterInput): string {
-  const beatsBlock = input.beatSheet.beats
+  const beatSheet = input.beatSheet;
+  const parts = [`Глава: "${input.chapterTitle}"`];
+  // Без подробного плана нет ни POV, ни цели, ни объёма — выдумывать их
+  // здесь значило бы подсунуть модели план, которого автор не давал.
+  if (!beatSheet) {
+    if (input.sceneIntent) parts.push(input.sceneIntent);
+    const content = input.chapterContent?.trim();
+    parts.push(
+      content
+        ? `Содержание главы (что в ней должно произойти):\n${content}`
+        : "Содержание главы не задано: продолжи книгу от финала предыдущей главы, держи её линии и героев.",
+    );
+    parts.push("Напиши главу.");
+    return parts.join("\n\n");
+  }
+
+  const beatsBlock = beatSheet.beats
     .map((b) => `${b.index + 1}. ${renderBeatForWriter(b)}`)
     .join("\n\n");
 
-  const parts = [
-    `Глава: "${input.chapterTitle}"`,
-    `POV: ${input.beatSheet.pov}`,
-    `Эмоциональная цель: ${input.beatSheet.emotionalGoal}`,
-    `Целевой объём: ~${input.beatSheet.estimatedWords} слов`,
-  ];
+  parts.push(
+    `POV: ${beatSheet.pov}`,
+    `Эмоциональная цель: ${beatSheet.emotionalGoal}`,
+    `Целевой объём: ~${beatSheet.estimatedWords} слов`,
+  );
   // Замысел идёт ПЕРЕД беатами: беат говорит, что происходит, а замысел — из
   // чего герой в это идёт. Прочитанное раньше намерение окрашивает беаты;
   // прочитанное после выглядит комментарием к уже понятой сцене.
@@ -133,8 +155,8 @@ export function buildWriterVolatilePrompt(input: WriteChapterInput): string {
   parts.push(`План событий (ориентир, а не разметка текста):\n${beatsBlock}`);
   // Контракт идёт сразу после beats и перед финалом: он их ограничивает, и
   // прочитанный раньше запрет весит больше, чем прочитанный после.
-  if (input.beatSheet.contract) {
-    const contract = renderChapterContract(input.beatSheet.contract);
+  if (beatSheet.contract) {
+    const contract = renderChapterContract(beatSheet.contract);
     if (contract) parts.push(contract);
   }
   // Задание по беатам само несёт финал главы — но только последнему беату:
@@ -143,23 +165,27 @@ export function buildWriterVolatilePrompt(input: WriteChapterInput): string {
     parts.push(buildWriterBeatBlock(input));
     return parts.join("\n\n");
   }
-  if (input.beatSheet.closing) {
-    parts.push(renderStopPoint(input.beatSheet.closing));
+  if (beatSheet.closing) {
+    parts.push(renderStopPoint(beatSheet.closing));
   }
   parts.push("Напиши главу.");
   return parts.join("\n\n");
 }
 
-/** Блок одного беата. Идёт ПОСЛЕ контракта: запрет прочитан до задания. */
+/** Блок одного беата. Идёт ПОСЛЕ контракта: запрет прочитан до задания.
+ *  Достижим только с беат-листом: режим «по беатам» без плана маршрут
+ *  отклоняет до генерации. */
 export function buildWriterBeatBlock(input: WriteChapterInput): string {
   const beat = input.beat;
   if (!beat) return "";
-  const beats = input.beatSheet.beats;
+  const beatSheet = input.beatSheet;
+  if (!beatSheet) throw new Error("beat mode requires a beat sheet");
+  const beats = beatSheet.beats;
   const total = beats.length;
   const current = beats[beat.index];
   if (!current) throw new Error(`beat index ${beat.index} out of range (${total})`);
   const isLast = beat.index === total - 1;
-  const perBeatWords = Math.max(150, Math.round(input.beatSheet.estimatedWords / total));
+  const perBeatWords = Math.max(150, Math.round(beatSheet.estimatedWords / total));
   const lines = [
     "Режим: глава пишется по беатам, по одному вызову на беат.",
     beat.textSoFar.trim().length > 0
@@ -171,8 +197,8 @@ export function buildWriterBeatBlock(input: WriteChapterInput): string {
   ];
   if (isLast) {
     lines.push(
-      input.beatSheet.closing
-        ? `Это последний беат — на нём глава останавливается. ${renderStopPoint(input.beatSheet.closing)}`
+      beatSheet.closing
+        ? `Это последний беат — на нём глава останавливается. ${renderStopPoint(beatSheet.closing)}`
         : "Это последний беат — на нём глава останавливается. Не подводи итог и не добавляй рефлексивного хвоста.",
     );
   } else {
@@ -223,6 +249,7 @@ export function buildWriterStableSystem(input: WriteChapterInput): string {
   }
   if (input.sceneState) stableParts.push(input.sceneState);
   if (input.characterContext) stableParts.push(input.characterContext);
+  if (input.worldContext) stableParts.push(input.worldContext);
   if (input.loreContext) stableParts.push(input.loreContext);
   if (input.styleContext) stableParts.push(input.styleContext);
   if (input.fatigueWords.length > 0) {

@@ -269,6 +269,39 @@ describe("POST /api/chapters/:id/write", () => {
     expect(final.contentText).not.toContain("Поздний полный текст");
   });
 
+  // Рабочее место, этап 1: подробный план больше не обязателен.
+  it("пишет по содержанию главы без plan_json", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = ? WHERE id = ?")
+      .run("Лис идёт к седьмому шлюзу", chapterId);
+    mockWriter("Текст по содержанию.", "end_turn");
+
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    expect(res.status).toBe(200);
+    const events = await readSse(res);
+    expect(events.find((e) => e.event === "proposal")).toBeDefined();
+    expect(events.find((e) => e.event === "done")).toBeDefined();
+    expect(runChapterWriterMock).toHaveBeenCalledTimes(1);
+    const input = runChapterWriterMock.mock.calls[0]![0];
+    expect(input.beatSheet).toBeNull();
+    expect(input.chapterContent).toBe("Лис идёт к седьмому шлюзу");
+  });
+
+  it("без плана и без содержания всё равно пишет", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = NULL WHERE id = ?")
+      .run(chapterId);
+    mockWriter("Продолжение.", "end_turn");
+
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    expect(res.status).toBe(200);
+    const events = await readSse(res);
+    expect(events.find((e) => e.event === "done")).toBeDefined();
+    const input = runChapterWriterMock.mock.calls[0]![0];
+    expect(input.beatSheet).toBeNull();
+    expect(input.chapterContent ?? null).toBeNull();
+  });
+
   it("остановить можно только идущий запуск", async () => {
     mockWriter("Текст.", "end_turn");
     // Дочитываем поток до конца: без этого генерация ещё в процессе, кандидат

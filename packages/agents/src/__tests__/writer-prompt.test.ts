@@ -162,7 +162,7 @@ describe("buildWriterVolatilePrompt — chapter closing", () => {
     beats: [
       { index: 0, type: "hook", summary: "s", goal: "g", conflict: "c", outcome: "o" },
     ],
-  } as unknown as WriteChapterInput["beatSheet"];
+  } as unknown as NonNullable<WriteChapterInput["beatSheet"]>;
 
   it("renders the closing decision in Russian when the beat-sheet has one", () => {
     const prompt = buildWriterVolatilePrompt({
@@ -261,6 +261,61 @@ describe("buildWriterVolatilePrompt — замысел сцены", () => {
 
   it("без замысла блока нет вовсе", () => {
     expect(buildWriterVolatilePrompt(base)).not.toContain("Замысел сцены");
+  });
+});
+
+// ───────── Рабочее место, этап 1: глава без подробного плана ─────────
+
+describe("buildWriterVolatilePrompt — без плана", () => {
+  it("без плана, с содержанием: пишет по содержанию, без POV, плана и объёма", () => {
+    const out = buildWriterVolatilePrompt({
+      ...base,
+      beatSheet: null,
+      chapterContent: "Лис идёт к седьмому шлюзу",
+    });
+    expect(out).toContain("Содержание главы (что в ней должно произойти):\nЛис идёт к седьмому шлюзу");
+    expect(out).toContain("Напиши главу.");
+    expect(out).not.toContain("POV:");
+    expect(out).not.toContain("План событий");
+    expect(out).not.toContain("Целевой объём");
+    expect(out).not.toContain("Эмоциональная цель");
+  });
+
+  it("без плана и без содержания: продолжает от финала прошлой главы", () => {
+    const out = buildWriterVolatilePrompt({ ...base, beatSheet: null, chapterContent: null });
+    expect(out).toContain(
+      "Содержание главы не задано: продолжи книгу от финала предыдущей главы, держи её линии и героев.",
+    );
+    expect(out).toContain("Напиши главу.");
+    expect(out).not.toContain("POV:");
+  });
+
+  it("замысел сцены печатается и без плана", () => {
+    const out = buildWriterVolatilePrompt({
+      ...base,
+      beatSheet: null,
+      chapterContent: "Лис идёт к шлюзу",
+      sceneIntent: "Замысел сцены:\n\nЛис\n— Хочет в этой сцене: пройти шлюз",
+    });
+    expect(out).toContain("пройти шлюз");
+  });
+});
+
+describe("buildWriterStableSystem — мир книги", () => {
+  const world = "## Мир книги (записи автора)\nШлюзы закрываются на закате.";
+
+  it("мир в устойчивой части, после карточек", () => {
+    const system = buildWriterStableSystem({
+      ...base,
+      characterContext: "## Персонажи в сцене\n### Лис",
+      worldContext: world,
+    });
+    expect(system).toContain("Шлюзы закрываются на закате.");
+    expect(system.indexOf("## Мир книги")).toBeGreaterThan(system.indexOf("## Персонажи в сцене"));
+  });
+
+  it("без мира блока нет", () => {
+    expect(buildWriterStableSystem(base)).not.toContain("Мир книги");
   });
 });
 
