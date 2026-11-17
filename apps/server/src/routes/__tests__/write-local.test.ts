@@ -337,6 +337,22 @@ describe("POST /chapters/:id/scene-plan", () => {
     expect(scenePlanMock).not.toHaveBeenCalled();
   });
 
+  it("author's plan saved mid-call wins: 409, plan intact", async () => {
+    const AUTHOR = { scenes: [{ events: ["а", "б", "в"] }] };
+    scenePlanMock.mockImplementation(async () => {
+      const r = await send(t.app, `/api/chapters/${chapterId}`, "PATCH", { scenePlan: AUTHOR });
+      expect(r.status).toBe(200);
+      return PLAN;
+    });
+    const res = await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("scene_plan_changed");
+    const row = t.sqlite.prepare("SELECT scene_plan FROM chapters WHERE id = ?").get(chapterId) as {
+      scene_plan: string;
+    };
+    expect(JSON.parse(row.scene_plan).scenes).toEqual(AUTHOR.scenes);
+  });
+
   it("unknown chapter is 404", async () => {
     const res = await send(t.app, `/api/chapters/999999/scene-plan`, "POST", {});
     expect(res.status).toBe(404);

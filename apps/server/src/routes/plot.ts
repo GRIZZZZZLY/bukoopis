@@ -417,19 +417,36 @@ export function createPlotRoute(
     });
 
     // `basedOn` — содержание, по которому план составлен: если автор правил
-    // главу, пока шёл вызов, план сразу покажется устаревшим.
+    // главу, пока шёл вызов, план сразу покажется устаревшим. Сам план —
+    // CAS по тому, что лежало до вызова: сохранённый автором за это время
+    // план поздний ответ модели не затирает.
     const now = new Date().toISOString();
-    sqlite
-      .prepare("UPDATE chapters SET scene_plan = ?, updated_at = ? WHERE id = ?")
+    const written = sqlite
+      .prepare(
+        "UPDATE chapters SET scene_plan = ?, updated_at = ? WHERE id = ? AND scene_plan IS ?",
+      )
       .run(
         JSON.stringify({ ...scenePlan, basedOn: hash32(JSON.stringify(plan)) }),
         now,
         id,
+        ch.scene_plan,
       );
     const fresh = sqlite
       .prepare("SELECT * FROM chapters WHERE id = ?")
       .get(id) as ChapterRow | undefined;
     if (!fresh) return notFound(c, "chapter");
+    if (written.changes === 0) {
+      return c.json(
+        {
+          error: "scene_plan_changed",
+          details: {
+            message:
+              "План сцен изменили, пока он составлялся. Сохранённый план остался как был.",
+          },
+        },
+        409,
+      );
+    }
     return c.json(toChapter(fresh));
   });
 
