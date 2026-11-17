@@ -3,8 +3,13 @@ export { callStructured, LLMValidationError } from "./structured.js";
 export type { StructuredCallOptions, StructuredUsage } from "./structured.js";
 export { streamText, buildSystemParam, isConfirmedCompletion } from "./stream.js";
 export type { StreamCallOptions, StreamCallResult, SystemBlock } from "./stream.js";
-export { streamTextOllama } from "./ollama.js";
-export type { OllamaStreamOptions } from "./ollama.js";
+export {
+  streamTextOllama,
+  streamGenerateOllama,
+  isRawTemplateModel,
+  resetRawTemplateCache,
+} from "./ollama.js";
+export type { OllamaStreamOptions, OllamaGenerateOptions } from "./ollama.js";
 
 // Backend abstraction (etap 0.2.1)
 export type { LLMBackend, AgentName } from "./types.js";

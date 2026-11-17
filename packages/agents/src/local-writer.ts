@@ -1,4 +1,5 @@
 import type { ChapterBeatSheetVariant } from "@book-forge/shared";
+import { isRawTemplateModel, streamGenerateOllama } from "@book-forge/llm";
 
 export const LOCAL_SCENE_WORDS = 600;
 export const LOCAL_DEFAULT_CHAPTER_WORDS = 3000;
@@ -95,4 +96,33 @@ export function buildLocalScenePrompt(args: {
     `### Конец предыдущей сцены\n${tail}\n\n` +
     `### Текст главы\n`
   );
+}
+
+/** Одна сцена нашей модели: тот же контракт генератора, что у writeChapter. */
+export async function* runLocalScene(opts: {
+  prompt: string;
+  modelTag: string;
+  baseUrl?: string;
+  signal?: AbortSignal;
+}): AsyncGenerator<
+  string,
+  {
+    text: string;
+    modelId: string;
+    stopReason: string | null;
+    tokens: { input: number; output: number; cacheCreation: number; cacheRead: number };
+  },
+  void
+> {
+  const r = yield* streamGenerateOllama(opts);
+  return {
+    text: r.text,
+    modelId: r.modelId,
+    stopReason: r.stopReason,
+    tokens: { input: r.inputTokens, output: r.outputTokens, cacheCreation: 0, cacheRead: 0 },
+  };
+}
+
+export function localWriterAvailable(tag: string, baseUrl?: string): Promise<boolean> {
+  return isRawTemplateModel(tag, baseUrl);
 }
