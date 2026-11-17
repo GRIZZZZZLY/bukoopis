@@ -1,5 +1,6 @@
 import type { ChapterBeatSheetVariant } from "@book-forge/shared";
-import { isRawTemplateModel, streamGenerateOllama } from "@book-forge/llm";
+import { ollamaModelKind, streamGenerateOllama } from "@book-forge/llm";
+import type { OllamaModelKind } from "@book-forge/llm";
 
 export const LOCAL_SCENE_WORDS = 600;
 export const LOCAL_DEFAULT_CHAPTER_WORDS = 3000;
@@ -129,6 +130,6 @@ export async function* runLocalScene(opts: {
   };
 }
 
-export function localWriterAvailable(tag: string, baseUrl?: string): Promise<boolean> {
-  return isRawTemplateModel(tag, baseUrl);
+export function localWriterKind(tag: string, baseUrl?: string): Promise<OllamaModelKind> {
+  return ollamaModelKind(tag, baseUrl);
 }

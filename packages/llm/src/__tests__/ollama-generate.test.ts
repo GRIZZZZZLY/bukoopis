@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  isRawTemplateModel,
+  ollamaModelKind,
   resetRawTemplateCache,
   streamGenerateOllama,
 } from "../ollama.js";
@@ -117,40 +117,51 @@ describe("streamGenerateOllama", () => {
   });
 });
 
-describe("isRawTemplateModel", () => {
+describe("ollamaModelKind", () => {
   it("raw template detected and cached", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(Response.json({ template: "{{ .Prompt }}\n" }));
     vi.stubGlobal("fetch", fetchMock);
-    expect(await isRawTemplateModel("t", BASE)).toBe(true);
-    expect(await isRawTemplateModel("t", BASE)).toBe(true);
+    expect(await ollamaModelKind("t", BASE)).toBe("raw");
+    expect(await ollamaModelKind("t", BASE)).toBe("raw");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]![0]).toBe(`${BASE}/api/show`);
   });
 
-  it("chat template is not raw", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(Response.json({ template: "<|im_start|>user {{ .Prompt }}" })),
-    );
-    expect(await isRawTemplateModel("t", BASE)).toBe(false);
+  it("chat template is chat and cached", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ template: "<|im_start|>user {{ .Prompt }}" }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await ollamaModelKind("t", BASE)).toBe("chat");
+    expect(await ollamaModelKind("t", BASE)).toBe("chat");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("show failure is not raw and not cached", async () => {
+  it("fetch error is unavailable and not cached", async () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new Error("down"))
       .mockResolvedValueOnce(Response.json({ template: "{{ .Prompt }}" }));
     vi.stubGlobal("fetch", fetchMock);
-    expect(await isRawTemplateModel("t", BASE)).toBe(false);
-    expect(await isRawTemplateModel("t", BASE)).toBe(true);
+    expect(await ollamaModelKind("t", BASE)).toBe("unavailable");
+    expect(await ollamaModelKind("t", BASE)).toBe("raw");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("hung show times out after 5 s: not raw and not cached", async () => {
+  it("404 for a missing model is unavailable and not cached", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ error: "model 't' not found" }, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ template: "{{ .Prompt }}" }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await ollamaModelKind("t", BASE)).toBe("unavailable");
+    expect(await ollamaModelKind("t", BASE)).toBe("raw");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("hung show times out after 5 s: unavailable and not cached", async () => {
     // Таймер подменяем своим контроллером: «истекает» он по команде теста.
     const ctrl = new AbortController();
     const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(ctrl.signal);
@@ -162,12 +173,12 @@ describe("isRawTemplateModel", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     try {
-      const pending = isRawTemplateModel("t", BASE);
+      const pending = ollamaModelKind("t", BASE);
       expect(timeout).toHaveBeenCalledWith(5000);
       ctrl.abort(new DOMException("timed out", "TimeoutError"));
-      expect(await pending).toBe(false);
+      expect(await pending).toBe("unavailable");
       fetchMock.mockResolvedValueOnce(Response.json({ template: "{{ .Prompt }}" }));
-      expect(await isRawTemplateModel("t", BASE)).toBe(true);
+      expect(await ollamaModelKind("t", BASE)).toBe("raw");
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       timeout.mockRestore();

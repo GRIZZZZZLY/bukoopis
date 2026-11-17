@@ -48,6 +48,7 @@ import type {
   UpdateVoiceSampleInput,
 } from "@book-forge/shared";
 import { consumeSse, SSE_BROKEN_MESSAGE } from "./sse";
+import { WRITE_ERROR_LABELS } from "@/lib/labels";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 
@@ -1442,6 +1443,18 @@ export interface WriterStreamHandlers {
   onAbort?: () => void;
 }
 
+/** Отказ до потока идёт в тост: текст сервера, иначе подпись по коду. */
+function writeRefusalMessage(status: number, body: string): string {
+  try {
+    const p = JSON.parse(body) as { error?: string; details?: { message?: string } };
+    const msg = p.details?.message ?? (p.error ? WRITE_ERROR_LABELS[p.error] : undefined);
+    if (msg) return msg;
+  } catch {
+    // не JSON — ниже
+  }
+  return `HTTP ${status}: ${errorSummary(body)}`;
+}
+
 export async function streamWriteChapter(
   chapterId: number,
   config: GenerationConfig | undefined,
@@ -1471,7 +1484,7 @@ export async function streamWriteChapter(
   }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => res.statusText);
-    handlers.onError(`HTTP ${res.status}: ${text}`);
+    handlers.onError(writeRefusalMessage(res.status, text));
     return;
   }
   try {

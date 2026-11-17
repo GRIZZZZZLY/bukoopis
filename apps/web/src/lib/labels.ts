@@ -91,6 +91,11 @@ export const SCENE_PLAN_LABELS = {
   sceneLabel: (n: number) => `Сцена ${n}`,
 } as const;
 
+/** Отказ сервера до потока Писателя, когда тело без `details.message`. */
+export const WRITE_ERROR_LABELS: Record<string, string> = {
+  local_model_unavailable: "Наша модель недоступна в Ollama: запустите Ollama и повторите.",
+};
+
 /** Письмо по частям: Claude идёт по беатам плана, наша модель — по сценам. */
 export const WRITE_UNIT_LABELS = {
   beats: {

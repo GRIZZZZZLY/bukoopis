@@ -6,10 +6,10 @@ export type { StreamCallOptions, StreamCallResult, SystemBlock } from "./stream.
 export {
   streamTextOllama,
   streamGenerateOllama,
-  isRawTemplateModel,
+  ollamaModelKind,
   resetRawTemplateCache,
 } from "./ollama.js";
-export type { OllamaStreamOptions, OllamaGenerateOptions } from "./ollama.js";
+export type { OllamaStreamOptions, OllamaGenerateOptions, OllamaModelKind } from "./ollama.js";
 
 // Backend abstraction (etap 0.2.1)
 export type { LLMBackend, AgentName } from "./types.js";

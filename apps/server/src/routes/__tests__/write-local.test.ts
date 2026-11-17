@@ -5,7 +5,7 @@ vi.mock("@book-forge/agents", async (orig) => ({
   runChapterWriter: vi.fn(),
   runSceneIntent: vi.fn(),
   runLocalScene: vi.fn(),
-  localWriterAvailable: vi.fn(),
+  localWriterKind: vi.fn(),
   runScenePlan: vi.fn(),
 }));
 
@@ -13,7 +13,7 @@ import {
   runChapterWriter,
   runSceneIntent,
   runLocalScene,
-  localWriterAvailable,
+  localWriterKind,
   runScenePlan,
 } from "@book-forge/agents";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
@@ -23,7 +23,7 @@ import type { ChapterRow } from "../../db/rows.js";
 const writerMock = vi.mocked(runChapterWriter);
 const sceneIntentMock = vi.mocked(runSceneIntent);
 const localMock = vi.mocked(runLocalScene);
-const availableMock = vi.mocked(localWriterAvailable);
+const availableMock = vi.mocked(localWriterKind);
 const scenePlanMock = vi.mocked(runScenePlan);
 let t: TestApp;
 let bookId: number;
@@ -91,7 +91,7 @@ beforeEach(async () => {
   localMock.mockReset();
   availableMock.mockReset();
   scenePlanMock.mockReset();
-  availableMock.mockResolvedValue(true);
+  availableMock.mockResolvedValue("raw");
   writerMock.mockImplementation(async function* () {
     yield "Старый путь.";
     return result("Старый путь.");
@@ -265,10 +265,40 @@ describe("глава нашей моделью по сценам", () => {
   });
 
   it("non-raw ollama model uses the old path", async () => {
-    availableMock.mockResolvedValue(false);
+    availableMock.mockResolvedValue("chat");
     await write(chapterId);
     expect(writerMock).toHaveBeenCalledTimes(1);
     expect(localMock).not.toHaveBeenCalled();
+  });
+
+  async function expectUnavailable(body: object) {
+    availableMock.mockResolvedValue("unavailable");
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", body);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      error: "local_model_unavailable",
+      details: {
+        message: "Модель bookopis:latest недоступна в Ollama: запустите Ollama и повторите.",
+      },
+    });
+    const rows = t.sqlite.prepare("SELECT COUNT(*) AS n FROM prose_proposals").get() as { n: number };
+    expect(rows.n).toBe(0);
+    expect(writerMock).not.toHaveBeenCalled();
+    expect(localMock).not.toHaveBeenCalled();
+  }
+
+  it("unavailable ollama model: fresh write is 503, nothing written", async () => {
+    await expectUnavailable({});
+  });
+
+  it("unavailable ollama model: resume is 503, never the beat path", async () => {
+    await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+      contentJson: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Принятая сцена." }] }],
+      },
+    });
+    await expectUnavailable({ mode: "beats", fromBeat: 1 });
   });
 
   it("anthropic book never asks ollama", async () => {

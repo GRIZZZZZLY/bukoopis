@@ -235,7 +235,9 @@ export async function* streamGenerateOllama(
   };
 }
 
-const rawTemplateCache = new Map<string, boolean>();
+export type OllamaModelKind = "raw" | "chat" | "unavailable";
+
+const rawTemplateCache = new Map<string, "raw" | "chat">();
 
 export function resetRawTemplateCache(): void {
   rawTemplateCache.clear();
@@ -243,11 +245,15 @@ export function resetRawTemplateCache(): void {
 
 /**
  * Наша модель зарегистрирована с `TEMPLATE {{ .Prompt }}`. Узнаём это по
- * /api/show; сбой запроса — «не наша» и не кешируется. Проверка идёт до
- * открытия потока, поэтому ждём не дольше 5 с: зависшая Ollama иначе
- * держала бы «Написать главу» в тишине.
+ * /api/show: "raw" — наша, "chat" — обычный шаблон. Сбой сети, таймаут или
+ * не-OK ответ (404 — тега нет) дают "unavailable" и не кешируются: молча
+ * уйти на чат-путь при лежащей Ollama нельзя. Проверка идёт до открытия
+ * потока, поэтому ждём не дольше 5 с.
  */
-export async function isRawTemplateModel(tag: string, baseUrl?: string): Promise<boolean> {
+export async function ollamaModelKind(
+  tag: string,
+  baseUrl?: string,
+): Promise<OllamaModelKind> {
   const base = resolveBaseUrl(baseUrl);
   const key = `${base}|${tag}`;
   const hit = rawTemplateCache.get(key);
@@ -259,12 +265,15 @@ export async function isRawTemplateModel(tag: string, baseUrl?: string): Promise
       body: JSON.stringify({ model: tag }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return false;
+    if (!res.ok) return "unavailable";
     const json = (await res.json()) as { template?: unknown };
-    const raw = typeof json.template === "string" && json.template.trim() === "{{ .Prompt }}";
-    rawTemplateCache.set(key, raw);
-    return raw;
+    const kind =
+      typeof json.template === "string" && json.template.trim() === "{{ .Prompt }}"
+        ? "raw"
+        : "chat";
+    rawTemplateCache.set(key, kind);
+    return kind;
   } catch {
-    return false;
+    return "unavailable";
   }
 }

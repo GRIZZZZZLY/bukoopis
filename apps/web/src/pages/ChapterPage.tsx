@@ -672,7 +672,9 @@ export function ChapterPage() {
               description: msg,
               action: {
                 label: "Повторить",
-                onClick: () => void onRunWriter(),
+                // Тот же запрос: сорвавшееся дописывание повторяется с той же
+                // сцены, а не превращается в переписывание всей главы.
+                onClick: () => void onRunWriter(fromBeat),
               },
             });
             setWriting(false);

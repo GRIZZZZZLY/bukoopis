@@ -25,7 +25,7 @@ import {
   characterContextToPrompt,
   gatherLoreContext,
   loreContextToPrompt,
-  localWriterAvailable,
+  localWriterKind,
   planLocalScenes,
   buildLocalScenePrompt,
   localTail,
@@ -490,13 +490,25 @@ export function createPlotRoute(
     if (!ctx) return notFound(c, "book");
     // Наша модель (Ollama, сырой шаблон) обучена на сценах ~600 слов и пишет
     // главу всегда по сценам, при любом `mode`. Решается один раз, до
-    // кандидата; книга на Anthropic Ollama не спрашивает вовсе.
-    const localTag =
-      ctx.writerProvider === "ollama" &&
-      ctx.writerLocalModel &&
-      (await localWriterAvailable(ctx.writerLocalModel))
-        ? ctx.writerLocalModel
+    // кандидата; книга на Anthropic Ollama не спрашивает вовсе. Недоступная
+    // Ollama — 503 до потока: тихий уход на чат-путь писал бы главу чужой
+    // моделью, а «дописать» читал бы номер сцены как номер беата.
+    const localKind =
+      ctx.writerProvider === "ollama" && ctx.writerLocalModel
+        ? await localWriterKind(ctx.writerLocalModel)
         : null;
+    if (localKind === "unavailable") {
+      return c.json(
+        {
+          error: "local_model_unavailable",
+          details: {
+            message: `Модель ${ctx.writerLocalModel} недоступна в Ollama: запустите Ollama и повторите.`,
+          },
+        },
+        503,
+      );
+    }
+    const localTag = localKind === "raw" ? ctx.writerLocalModel : null;
     // План сцен автора (или составленный Claude) главнее нарезки: устаревший
     // тоже идёт в дело — решает автор, интерфейс предупреждает.
     const storedScenePlan = localTag ? parseStoredScenePlan(ch.scene_plan) : null;

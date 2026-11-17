@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 
@@ -77,6 +77,11 @@ vi.mock("@/api/client", () => {
   };
 });
 
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("@/lib/toast", () => ({
+  toast: { error: toastError, success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+
 import { ChapterPage } from "@/pages/ChapterPage";
 import { DOSSIER_LABELS } from "@/lib/labels";
 
@@ -145,6 +150,56 @@ describe("ChapterPage без плана", () => {
         expect.anything(),
         expect.anything(),
         { mode: "beats", fromBeat: 1 },
+      );
+    });
+
+    const FAIL = "Модель bookopis:latest недоступна в Ollama: запустите Ollama и повторите.";
+    type WriteArgs = [number, unknown, { onError: (m: string) => void }, unknown, unknown];
+    function failOnce() {
+      toastError.mockClear();
+      (streamWriteChapter as unknown as { mockImplementationOnce: (f: (...a: WriteArgs) => Promise<void>) => void })
+        .mockImplementationOnce((...a: WriteArgs) => {
+          a[2].onError(FAIL);
+          return Promise.resolve();
+        });
+    }
+    async function retryFromToast() {
+      expect(toastError).toHaveBeenCalledWith(
+        "Не удалось написать главу",
+        expect.objectContaining({ description: FAIL }),
+      );
+      const opts = toastError.mock.calls[0]![1] as { action: { onClick: () => void } };
+      opts.action.onClick();
+      await waitFor(() => expect(streamWriteChapter).toHaveBeenCalledTimes(2));
+    }
+
+    it("сбой дописывания: тост с сообщением сервера, «Повторить» дописывает с той же сцены", async () => {
+      book.writerProvider = "ollama";
+      failOnce();
+      renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Как писать" }));
+      await userEvent.click(await screen.findByRole("menuitem", { name: "Дописать со сцены 2" }));
+      await retryFromToast();
+      expect(streamWriteChapter).toHaveBeenLastCalledWith(
+        10,
+        undefined,
+        expect.anything(),
+        expect.anything(),
+        { mode: "beats", fromBeat: 1 },
+      );
+    });
+
+    it("сбой целой главы: «Повторить» снова пишет целиком", async () => {
+      failOnce();
+      renderPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Написать главу" }));
+      await retryFromToast();
+      expect(streamWriteChapter).toHaveBeenLastCalledWith(
+        10,
+        undefined,
+        expect.anything(),
+        expect.anything(),
+        { mode: "whole" },
       );
     });
 
