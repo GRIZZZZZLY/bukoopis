@@ -6,10 +6,12 @@ import {
   type Pitch,
 } from "@book-forge/shared";
 import { CONCEPT_LANGUAGE_RULES } from "./language-rules.js";
+import { findContrastClichés } from "./contrast-cliches.js";
 import {
   registerAgentContract,
   dispatchStructured,
   type AgentStructuredContract,
+  type StructuredUsage,
 } from "@book-forge/llm";
 
 export interface PitchGeneratorInput {
@@ -38,8 +40,9 @@ const DEFAULT_COUNT = 4;
 export const PITCH_GENERATOR_SYSTEM = `Ты — редактор-разработчик замыслов. Автор приносит задумку книги, ты возвращаешь несколько разных питчей, из которых он выберет один. Работаешь на русском.
 
 Правила:
-- Всё, что автор сказал явно, сохраняй по смыслу в каждом питче. Питчи различаются углом, героем, конфликтом или масштабом, но не подменяют его идею на «более правильную».
-- Питчи должны быть по-настоящему разными: разные протагонисты, разные конфликты или разный масштаб истории. Два питча с одним героем и одним конфликтом — брак.
+- Всё, что автор сказал явно, сохраняй по смыслу в каждом питче. Его идею на «более правильную» не подменяй.
+- Если автор задал героя или этап его пути (например, становление, первая книга цикла), каждый питч сохраняет этого героя и этот этап. Питчи тогда различаются конфликтом, противником, местом действия или масштабом. Если героя автор не задал, питчи различаются и героями.
+- Два питча с одним конфликтом — брак.
 - Все поля заполнены. Автор не должен ничего дописывать руками.
 - workingTitle: 1–5 слов, без кавычек.
 - logline: одно-два предложения, не длиннее 280 символов: кто чего хочет и что стоит на пути. Начало свободное, «Когда…» допустимо, но не обязательно. Логлайны одной партии должны начинаться по-разному.
@@ -63,7 +66,7 @@ export function buildPitchGeneratorPrompt(input: PitchGeneratorInput): string {
     parts.push("ПОЖЕЛАНИЕ К ЭТОЙ ПАРТИИ:", input.direction.trim(), "");
   }
   if (input.avoid && input.avoid.length > 0) {
-    parts.push("УЖЕ ПОКАЗАННЫЕ ПИТЧИ (не повторять ни героя, ни конфликт):");
+    parts.push("УЖЕ ПОКАЗАННЫЕ ПИТЧИ (их конфликты не повторять; заданного автором героя сохранять):");
     for (const a of input.avoid) {
       parts.push(`- «${a.workingTitle}»: ${a.logline}`);
     }
@@ -124,18 +127,56 @@ export function toPitches(drafts: PitchDraft[], makeId: () => string): Pitch[] {
 export interface RunPitchGeneratorOptions {
   model?: ModelChoice;
   temperature?: number;
+  /** Расход каждого вызова, включая повтор. */
+  onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
 }
 
+function pitchContrasts(out: PitchGeneratorOutput): string[] {
+  return out.pitches.flatMap((p) =>
+    Object.values(p).flatMap((v) => (typeof v === "string" ? findContrastClichés(v) : [])),
+  );
+}
+
+function contrastRetryDirection(direction: string | undefined, fragments: string[]): string {
+  const line =
+    "Перепиши питчи без противопоставлений вида «не X, а Y» и «X, а не Y». " +
+    `В прошлой партии они были: ${fragments.map((f) => `«${f}»`).join("; ")}. ` +
+    "Каждую такую мысль скажи прямо, одним утверждением.";
+  return direction?.trim() ? `${direction.trim()}\n${line}` : line;
+}
+
+/** Правило в промпте противопоставления не убрало: найденные в ответе
+ *  отправляем на один повтор и берём партию, где их меньше. */
 export async function runPitchGenerator(
   input: PitchGeneratorInput,
   options: RunPitchGeneratorOptions = {},
 ): Promise<PitchGeneratorOutput> {
-  const { raw } = await dispatchStructured<PitchGeneratorInput, PitchGeneratorOutput>({
-    agentName: "pitch_generator",
-    payload: input,
-    model: options.model ?? "sonnet",
-    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-    maxTokens: 6000,
-  });
-  return raw;
+  const call = async (payload: PitchGeneratorInput): Promise<PitchGeneratorOutput> => {
+    const { raw, diagnostics } = await dispatchStructured<PitchGeneratorInput, PitchGeneratorOutput>({
+      agentName: "pitch_generator",
+      payload,
+      model: options.model ?? "sonnet",
+      ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+      maxTokens: 6000,
+    });
+    options.onUsage?.({
+      modelId: diagnostics.modelId,
+      inputTokens: diagnostics.inputTokens,
+      outputTokens: diagnostics.outputTokens,
+      cacheCreationInputTokens: diagnostics.cacheCreationInputTokens,
+      cacheReadInputTokens: diagnostics.cacheReadInputTokens,
+    });
+    return raw;
+  };
+
+  const first = await call(input);
+  const firstHits = pitchContrasts(first);
+  if (firstHits.length === 0) return first;
+  let second: PitchGeneratorOutput;
+  try {
+    second = await call({ ...input, direction: contrastRetryDirection(input.direction, firstHits) });
+  } catch {
+    return first;
+  }
+  return pitchContrasts(second).length < firstHits.length ? second : first;
 }

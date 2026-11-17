@@ -1,12 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("@book-forge/llm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@book-forge/llm")>()),
+  dispatchStructured: vi.fn(),
+}));
+
+import { dispatchStructured } from "@book-forge/llm";
 import { renderClicheRule, AUDIENCE_LABELS } from "@book-forge/shared";
 import {
   PITCH_GENERATOR_SYSTEM,
   buildPitchGeneratorPrompt,
+  runPitchGenerator,
   toPitches,
   pitchDraftSchema,
   type PitchDraft,
+  type PitchGeneratorInput,
+  type PitchGeneratorOutput,
 } from "../pitches.js";
+import { CONCEPT_LANGUAGE_RULES } from "../language-rules.js";
 
 const DRAFT: PitchDraft = {
   workingTitle: "  Маршрут, который врёт ",
@@ -90,5 +101,112 @@ describe("PITCH_GENERATOR_SYSTEM", () => {
 
   it("uses the plain label for ya", () => {
     expect(AUDIENCE_LABELS.ya).toBe("подростки и молодёжь");
+  });
+
+  it("keeps the author's hero and stage; heroes differ only when the author set none", () => {
+    expect(PITCH_GENERATOR_SYSTEM).toContain(
+      "Если автор задал героя или этап его пути (например, становление, первая книга цикла), каждый питч сохраняет этого героя и этот этап.",
+    );
+    expect(PITCH_GENERATOR_SYSTEM).toContain(
+      "Питчи тогда различаются конфликтом, противником, местом действия или масштабом.",
+    );
+    expect(PITCH_GENERATOR_SYSTEM).toContain("Если героя автор не задал, питчи различаются и героями.");
+    expect(PITCH_GENERATOR_SYSTEM).not.toContain("разные протагонисты");
+  });
+
+  it("the avoid block does not ask to change the author's hero", () => {
+    const p = buildPitchGeneratorPrompt({
+      idea: "Первая книга — становление героя.",
+      avoid: [{ workingTitle: "Соляной архив", logline: "Инженер читает регистр." }],
+    });
+    expect(p).not.toContain("ни героя");
+  });
+});
+
+describe("CONCEPT_LANGUAGE_RULES", () => {
+  it("lists the new calques", () => {
+    expect(CONCEPT_LANGUAGE_RULES).toContain("«клиффхэнгер»");
+    expect(CONCEPT_LANGUAGE_RULES).toContain("«арка (персонажа)»");
+  });
+});
+
+describe("runPitchGenerator: contrast retry", () => {
+  const dispatchMock = vi.mocked(dispatchStructured);
+  const INPUT: PitchGeneratorInput = { idea: "Первая книга — становление героя.", direction: "мрачнее" };
+  const DIAG = {
+    modelId: "claude-sonnet",
+    backend: "api" as const,
+    inputTokens: 10,
+    outputTokens: 5,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    latencyMs: 1,
+  };
+
+  function out(...extra: Array<Partial<PitchDraft>>): PitchGeneratorOutput {
+    return {
+      pitches: [DRAFT, DRAFT, DRAFT].map((d, i) => ({ ...d, ...(extra[i] ?? {}) })),
+      questions: [],
+    };
+  }
+  function answers(...outs: Array<PitchGeneratorOutput | Error>) {
+    for (const o of outs) {
+      if (o instanceof Error) dispatchMock.mockRejectedValueOnce(o);
+      else dispatchMock.mockResolvedValueOnce({ raw: o, diagnostics: DIAG });
+    }
+  }
+  function payloadOf(call: number): PitchGeneratorInput {
+    return dispatchMock.mock.calls[call]![0].payload as PitchGeneratorInput;
+  }
+
+  beforeEach(() => dispatchMock.mockReset());
+
+  it("a clean first result makes no retry", async () => {
+    const clean = out();
+    answers(clean);
+    const onUsage = vi.fn();
+    expect(await runPitchGenerator(INPUT, { onUsage })).toBe(clean);
+    expect(dispatchMock).toHaveBeenCalledTimes(1);
+    expect(onUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("«не X, а Y» triggers exactly one retry naming the fragment", async () => {
+    const dirty = out({ stakes: "Он крадёт не из амбиций, а из необходимости." });
+    const clean = out();
+    answers(dirty, clean);
+    const onUsage = vi.fn();
+    expect(await runPitchGenerator(INPUT, { onUsage })).toBe(clean);
+    expect(dispatchMock).toHaveBeenCalledTimes(2);
+    const retry = payloadOf(1);
+    expect(retry.idea).toBe(INPUT.idea);
+    expect(retry.direction).toContain("мрачнее");
+    expect(retry.direction).toContain("не из амбиций, а из необходимости");
+    expect(retry.direction).toContain("«не X, а Y»");
+    expect(retry.direction).toContain("«X, а не Y»");
+    expect(onUsage).toHaveBeenCalledTimes(2);
+    expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({ modelId: "claude-sonnet", inputTokens: 10 }));
+  });
+
+  it("a still-dirty retry: the result with fewer matches wins, and no third call", async () => {
+    const two = out({ hook: "Это настоящий поворот, а не просто закрытие." }, { risk: "Не трофей, а инструмент." });
+    const one = out({ conflict: "Он остаётся одиночкой без будущего, а не тем, кем мог стать." });
+    answers(two, one);
+    expect(await runPitchGenerator(INPUT)).toBe(one);
+    expect(dispatchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a tie keeps the first result", async () => {
+    const a = out({ hook: "Не трофей, а инструмент." });
+    const b = out({ risk: "Не долг, а страх." });
+    answers(a, b);
+    expect(await runPitchGenerator(INPUT)).toBe(a);
+  });
+
+  it("a failed retry returns the first result", async () => {
+    const dirty = out({ hook: "Не трофей, а инструмент." });
+    answers(dirty, new Error("boom"));
+    const onUsage = vi.fn();
+    expect(await runPitchGenerator(INPUT, { onUsage })).toBe(dirty);
+    expect(onUsage).toHaveBeenCalledTimes(1);
   });
 });

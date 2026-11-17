@@ -544,7 +544,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
         ...(parsed.data.count !== undefined ? { count: parsed.data.count } : {}),
         avoid: concept.pitches.map((p) => ({ workingTitle: p.workingTitle, logline: p.logline })),
-      });
+      }, { onUsage: usageLoggerFor("studio.concept_pitches", id) });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
