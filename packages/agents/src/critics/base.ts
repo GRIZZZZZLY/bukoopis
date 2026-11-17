@@ -16,8 +16,12 @@ export interface CriticInput {
   chapterTitle: string;
   pov: string;
   emotionalGoal: string;
-  /** Rendered accepted beat-sheet of the chapter (optional; editor critic uses it). */
+  /** Rendered accepted beat-sheet of the chapter (optional; editor critic uses it).
+   *  При `planBasis: "intent"` здесь содержание главы, написанное автором. */
   beatSheet?: string | null;
+  /** По чему писали главу: подробный план, содержание или ничего. Без поля —
+   *  как прежде, `beatSheet` считается планом. */
+  planBasis?: "beats" | "intent" | "none";
   bookContext: string; // premise + outline
   previousChaptersSummary: string | null;
   /** Финал предыдущей главы дословно и найденные фрагменты ранних глав —

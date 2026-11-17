@@ -221,7 +221,8 @@ describe("POST /api/chapter-versions/:id/repair — structural context", () => {
     await res.text();
 
     const input = reviseChapterMock.mock.calls[0]![0]!;
-    expect(input.beatSheet).toBe("Содержание главы: Иван ждёт гонца до рассвета.");
+    expect(input.beatSheet).toBe("Иван ждёт гонца до рассвета.");
+    expect(input.planBasis).toBe("intent");
     expect(input.chapterContract).toBeNull();
   });
 });

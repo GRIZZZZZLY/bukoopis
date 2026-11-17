@@ -517,7 +517,7 @@ describe("досье: мир в сборке и источник dossier", () =>
     });
     const asCritic = await assemble(ch, {
       scanTexts: ["—", "Вторая."],
-      retrievalQuery: "Содержание главы: Рин находит лодку.",
+      retrievalQuery: "Рин находит лодку.",
       povName: null,
       styleFewShot: 0,
       includeAuthorPlan: false,

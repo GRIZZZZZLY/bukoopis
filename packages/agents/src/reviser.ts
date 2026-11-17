@@ -55,8 +55,11 @@ export interface ReviseChapterInput {
   chapterTitle: string;
   pov: string;
   emotionalGoal: string;
-  /** Rendered accepted beat-sheet (optional) — beats the revision must preserve. */
+  /** Rendered accepted beat-sheet (optional) — beats the revision must preserve.
+   *  При `planBasis: "intent"` здесь содержание главы, написанное автором. */
   beatSheet?: string | null;
+  /** По чему писали главу; без поля `beatSheet` считается планом. */
+  planBasis?: "beats" | "intent" | "none";
   /**
    * Rendered narrative architecture sheet of the selected outline. Repair is
    * the last pass over the prose, so it is the last place a structural
@@ -185,13 +188,19 @@ export function buildReviserVolatilePrompt(input: ReviseChapterInput): string {
     "suggestion",
     "nit",
   ];
+  // Глава по содержанию: POV и цели у неё нет, а содержание — её задача.
+  const fromContent = input.planBasis === "intent" && !!input.beatSheet;
   return [
     `Глава: "${input.chapterTitle}"`,
-    `POV: ${input.pov}`,
-    `Эмоциональная цель: ${input.emotionalGoal}`,
-    ...(input.beatSheet
-      ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
-      : []),
+    ...(fromContent
+      ? [`Содержание главы (задача главы):\n${input.beatSheet}`]
+      : [
+          `POV: ${input.pov}`,
+          `Эмоциональная цель: ${input.emotionalGoal}`,
+          ...(input.beatSheet
+            ? [`Принятый beat-sheet главы (сохраняй эти beats):\n${input.beatSheet}`]
+            : []),
+        ]),
     `Итерация repair: ${input.iteration}`,
     input.selectedIssueIds && input.selectedIssueIds.length > 0
       ? `Замечания, выбранные автором — правь ТОЛЬКО это, остального он не просил:\n${formatCriticIssues(input.critics, severityFilter, input.selectedIssueIds)}`

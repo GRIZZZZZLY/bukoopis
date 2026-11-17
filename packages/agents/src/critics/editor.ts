@@ -40,7 +40,11 @@ const TASK_WITH_BEATS = `Прочитай главу. Сверь её с при�
 
 const TASK_NO_BEATS = `Прочитай главу. План не передан — не утверждай, что глава ему противоречит; оценивай, понятно ли движется сама глава (POV и эмоциональная цель указаны выше). Найди места, где читатель теряет ход событий.`;
 
-const editorOutputSchema = criticReportSchema.omit({ critic: true });
+// Глава написана по содержанию, которое задал автор, а не по подробному
+// плану: судим по её задаче — ни POV, ни обязательств плана у неё нет.
+const TASK_FROM_CONTENT = `Прочитай главу. Сверь её с содержанием, которое задал автор: произошло ли то, что в нём названо, и в понятном ли порядке. Содержание — задача главы, а не подробный план: другое распределение внимания, детали и эпизоды сверх него ошибкой не считаются. Найди места, где читатель теряет ход событий.`;
+
+const editorOutputSchema =criticReportSchema.omit({ critic: true });
 type EditorCriticOutput = z.infer<typeof editorOutputSchema>;
 
 export function buildEditorPrompt(input: CriticInput): string {
@@ -52,16 +56,22 @@ export function buildEditorPrompt(input: CriticInput): string {
   if (input.characterContext) stableParts.push(input.characterContext);
   if (input.loreContext) stableParts.push(input.loreContext);
 
-  const volatileParts: string[] = [
-    `Глава: "${input.chapterTitle}"`,
-    `POV: ${input.pov}`,
-    `Эмоциональная цель: ${input.emotionalGoal}`,
-    ...(input.beatSheet
-      ? [`Принятый beat-sheet:\n${input.beatSheet}`]
-      : []),
-    `Текст главы:\n\n${input.chapterText}`,
-    `\nЗадача:\n${input.beatSheet ? TASK_WITH_BEATS : TASK_NO_BEATS}`,
-  ];
+  const volatileParts: string[] =
+    input.planBasis === "intent" && input.beatSheet
+      ? [
+          `Глава: "${input.chapterTitle}"`,
+          `Содержание главы (задача главы):\n${input.beatSheet}`,
+          `Текст главы:\n\n${input.chapterText}`,
+          `\nЗадача:\n${TASK_FROM_CONTENT}`,
+        ]
+      : [
+          `Глава: "${input.chapterTitle}"`,
+          `POV: ${input.pov}`,
+          `Эмоциональная цель: ${input.emotionalGoal}`,
+          ...(input.beatSheet ? [`Принятый beat-sheet:\n${input.beatSheet}`] : []),
+          `Текст главы:\n\n${input.chapterText}`,
+          `\nЗадача:\n${input.beatSheet ? TASK_WITH_BEATS : TASK_NO_BEATS}`,
+        ];
 
   return [...stableParts, ...volatileParts].join("\n\n---\n\n");
 }

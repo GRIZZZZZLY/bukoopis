@@ -38,7 +38,8 @@ export interface ChapterProseContext {
   pov: string;
   emotionalGoal: string;
   /** Rendered beats of the accepted plan variant, closing decision included;
-   *  без плана — «Содержание главы: …», без содержания — null. */
+   *  без плана — текст содержания главы как есть (заголовок ставит агент по
+   *  `planBasis`), без содержания — null. */
   beatSheet: string | null;
   /** Контракт главы (слайс 4.5), отрендеренный тем же способом, что у
    *  Писателя: критик канона отличает по нему запланированную отмену факта
@@ -130,11 +131,13 @@ export async function loadChapterProseContext(
     chapterContract = sel.contract ? renderChapterContract(sel.contract) : null;
     registerFromPlan = sel.dialogueRegister ?? null;
   } else if (plan.kind === "intent") {
-    beatSheet = `Содержание главы: ${plan.intent}`;
+    beatSheet = plan.intent;
   }
 
   // Критика сканирует сам текст главы (кто в нём есть), а ищет по плану —
   // тому, с чем глава должна сходиться, а не тому, что она уже сказала.
+  // Содержание главы идёт в поиск голым текстом, как у Писателя: иначе
+  // критик и Писатель находят разные фрагменты.
   const assembled = await assembleGenerationContext(sqlite, {
     book,
     chapter: ch,

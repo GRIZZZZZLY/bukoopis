@@ -158,6 +158,18 @@ describe("loadChapterProseContext", () => {
     expect(ctx.previousChapterTail).toContain("Финал третьей главы");
   });
 
+  it("критика ищет по голому содержанию главы — тем же запросом, что Писатель", async () => {
+    insertChapter(10, "Первая. ".repeat(10), "Сводка 1");
+    const second = insertChapter(20, "Вторая.", "Сводка 2");
+    sqlite.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run("  Рин находит лодку.  ", second);
+    const { book, ch } = rows(second);
+    const ctx = await loadChapterProseContext(sqlite, book, ch, "Вторая.", { hasVec: false });
+    expect(ctx.planBasis).toBe("intent");
+    expect(ctx.beatSheet).toBe("Рин находит лодку.");
+    expect(hybridSearchMock).toHaveBeenCalled();
+    expect(hybridSearchMock.mock.calls[0]![1]).toMatchObject({ query: "Рин находит лодку." });
+  });
+
   it("у первой главы истории нет, и это не ошибка", async () => {
     const first = insertChapter(10, "Первая.", "Сводка 1");
     const { book, ch } = rows(first);

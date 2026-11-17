@@ -212,3 +212,33 @@ describe("Reviser — порядок удаления (слепое сравне
     expect(system).toMatch(/не выполняй телесной реакцией/);
   });
 });
+
+describe("buildReviserVolatilePrompt — глава по содержанию", () => {
+  it("путь с беатами не изменился ни на байт", () => {
+    const p = buildReviserVolatilePrompt({ ...base, beatSheet: "1. [setup] Завязка", planBasis: "beats" });
+    expect(p.startsWith(
+      [
+        'Глава: "Глава 1"',
+        "POV: Иван",
+        "Эмоциональная цель: тревога",
+        "Принятый beat-sheet главы (сохраняй эти beats):\n1. [setup] Завязка",
+        "Итерация repair: 1",
+      ].join("\n\n"),
+    )).toBe(true);
+    expect(buildReviserVolatilePrompt({ ...base, beatSheet: "1. [setup] Завязка" })).toBe(p);
+  });
+
+  it("содержание главы под своим заголовком, без beat-sheet и контракта", () => {
+    const p = buildReviserVolatilePrompt({
+      ...base,
+      pov: "—",
+      emotionalGoal: "—",
+      beatSheet: "Иван ждёт гонца до рассвета.",
+      planBasis: "intent",
+    });
+    expect(p).toContain("Содержание главы (задача главы):\nИван ждёт гонца до рассвета.");
+    expect(p).not.toContain("beat-sheet");
+    expect(p).not.toMatch(/контракт/i);
+    expect(p).not.toContain("POV");
+  });
+});

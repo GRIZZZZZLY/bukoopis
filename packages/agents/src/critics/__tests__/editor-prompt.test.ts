@@ -34,3 +34,36 @@ describe("buildEditorPrompt — optional beat-sheet", () => {
     expect(p).toContain("не утверждай, что глава ему противоречит");
   });
 });
+
+describe("buildEditorPrompt — глава по содержанию", () => {
+  it("путь с беатами не изменился ни на байт", () => {
+    const p = buildEditorPrompt({ ...base, beatSheet: "1. [setup] Завязка", planBasis: "beats" });
+    expect(p).toBe(
+      [
+        "Книга/контекст:\nКонтекст книги",
+        'Глава: "Глава 1"',
+        "POV: Иван",
+        "Эмоциональная цель: тревога",
+        "Принятый beat-sheet:\n1. [setup] Завязка",
+        "Текст главы:\n\nТекст главы.",
+        "\nЗадача:\nПрочитай главу. Сверь её с принятым планом: произошли ли ключевые события и в понятном ли порядке, держится ли POV. Беаты плана — ориентир писателю: другое распределение внимания или другое число абзацев на беат ошибкой не считается. Найди места, где читатель теряет ход событий, и нарушения обязательств.",
+      ].join("\n\n---\n\n"),
+    );
+    expect(buildEditorPrompt({ ...base, beatSheet: "1. [setup] Завязка" })).toBe(p);
+  });
+
+  it("содержание главы — задача главы, без beat-sheet, POV и контракта", () => {
+    const p = buildEditorPrompt({
+      ...base,
+      pov: "—",
+      emotionalGoal: "—",
+      beatSheet: "Нина находит письмо отца.",
+      planBasis: "intent",
+    });
+    expect(p).toContain("Содержание главы (задача главы):\nНина находит письмо отца.");
+    expect(p).toContain("Сверь её с содержанием, которое задал автор");
+    expect(p).not.toContain("beat-sheet");
+    expect(p).not.toMatch(/контракт/i);
+    expect(p).not.toContain("POV");
+  });
+});

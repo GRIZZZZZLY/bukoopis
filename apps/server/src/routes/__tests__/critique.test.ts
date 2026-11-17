@@ -284,7 +284,8 @@ describe("критики видят тот же план, что Писател�
     const r = await run();
     expect(r.report?.planBasis).toBe("intent");
     const input = criticInput();
-    expect(input.beatSheet).toBe("Содержание главы: Нина находит письмо отца.");
+    expect(input.beatSheet).toBe("Нина находит письмо отца.");
+    expect(input.planBasis).toBe("intent");
     expect(input.chapterContract).toBeNull();
     expect(input.pov).toBe("—");
   });
@@ -315,6 +316,7 @@ describe("критики видят тот же план, что Писател�
     expect(input.chapterContract).toBe(renderChapterContract(CONTRACT));
     expect(input.emotionalGoal).toBe("тревога");
     expect(input.beatSheet).toContain("1. [setup] Письмо");
+    expect(input.planBasis).toBe("beats");
     expect(input.beatSheet).not.toContain("Содержание главы");
   });
 
