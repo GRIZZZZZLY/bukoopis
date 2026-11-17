@@ -90,6 +90,21 @@ describe("SettingsStagePage", () => {
     // Устаревшая вкладка не должна затирать синопсис, обновлённый в другом месте.
     expect("premise" in arg).toBe(false);
     expect("worldNotes" in arg).toBe(false);
+    // Название меняет и выбор питча в Мастерской — старая вкладка его не возвращает.
+    expect("title" in arg).toBe(false);
+  });
+
+  it("изменённое название уходит", async () => {
+    m.getBook.mockResolvedValue(book as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    m.updateBook.mockResolvedValue(book as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    await userEvent.clear(screen.getByLabelText("Название книги"));
+    await userEvent.type(screen.getByLabelText("Название книги"), "Шлюзы");
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+    await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
+    expect((m.updateBook.mock.calls[0]![1] as Record<string, unknown>).title).toBe("Шлюзы");
   });
 
   it("очищенный синопсис уходит как null", async () => {

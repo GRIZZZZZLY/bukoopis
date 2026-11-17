@@ -84,16 +84,17 @@ export function SettingsStagePage() {
   async function onSave() {
     setSaving(true);
     setError(null);
-    // Синопсис и мир уходят, только если автор правил их здесь: иначе старая
-    // вкладка затёрла бы текст, обновлённый в другом месте (например, при
-    // утверждении замысла).
+    // Название, синопсис и мир уходят, только если автор правил их здесь:
+    // иначе старая вкладка затёрла бы текст, обновлённый в другом месте
+    // (название — при выборе питча, синопсис — при утверждении замысла).
+    const titleNext = title.trim();
     const premiseNext = premise.trim() || null;
     const worldNext = worldNotes.trim() || null;
     try {
       await api.updateBook(id, {
+        ...(titleNext && titleNext !== book!.title ? { title: titleNext } : {}),
         ...(premiseNext !== (book!.premise?.trim() || null) ? { premise: premiseNext } : {}),
         ...(worldNext !== (book!.worldNotes?.trim() || null) ? { worldNotes: worldNext } : {}),
-        title: title.trim() || book!.title,
         status,
         styleProfileId,
         writerModel,
