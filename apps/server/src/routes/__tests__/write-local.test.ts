@@ -6,6 +6,7 @@ vi.mock("@book-forge/agents", async (orig) => ({
   runSceneIntent: vi.fn(),
   runLocalScene: vi.fn(),
   localWriterAvailable: vi.fn(),
+  runScenePlan: vi.fn(),
 }));
 
 import {
@@ -13,13 +14,17 @@ import {
   runSceneIntent,
   runLocalScene,
   localWriterAvailable,
+  runScenePlan,
 } from "@book-forge/agents";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
+import { chapterPlanForGeneration, hash32 } from "../../utils/chapter-plan.js";
+import type { ChapterRow } from "../../db/rows.js";
 
 const writerMock = vi.mocked(runChapterWriter);
 const sceneIntentMock = vi.mocked(runSceneIntent);
 const localMock = vi.mocked(runLocalScene);
 const availableMock = vi.mocked(localWriterAvailable);
+const scenePlanMock = vi.mocked(runScenePlan);
 let t: TestApp;
 let bookId: number;
 let chapterId: number;
@@ -74,7 +79,7 @@ async function secondChapter(): Promise<number> {
     },
   });
   const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title: "Вторая" });
-  setPlan(ch.id, 4, 1200);
+  setPlan(ch.id, 14, 1200);
   return ch.id;
 }
 
@@ -85,6 +90,7 @@ beforeEach(async () => {
   sceneIntentMock.mockReset();
   localMock.mockReset();
   availableMock.mockReset();
+  scenePlanMock.mockReset();
   availableMock.mockResolvedValue(true);
   writerMock.mockImplementation(async function* () {
     yield "Старый путь.";
@@ -103,7 +109,8 @@ beforeEach(async () => {
     .run(bookId);
   const ch = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", { title: "Глава" });
   chapterId = ch.id;
-  setPlan(chapterId, 4, 1200);
+  // 14 беатов на 1200 слов: порог плотности даёт ровно 2 сцены по 7.
+  setPlan(chapterId, 14, 1200);
 });
 afterEach(() => {
   delete process.env.LLM_AGENT_BACKEND_MAP;
@@ -160,7 +167,8 @@ describe("глава нашей моделью по сценам", () => {
     expect(p0).toContain("Дверь закрылась за ним тихо.\n\n### Текст главы\n");
     expect(p1).toContain("### Конец предыдущей сцены\nСцена 0.\n\n### Текст главы\n");
     expect(p0).toContain("События:\n1. беат 0\n2. беат 1\n");
-    expect(p1).toContain("События:\n1. беат 2\n2. беат 3\n");
+    expect(p0).toContain("7. беат 6\nОбязано произойти: беат 6\n");
+    expect(p1).toContain("События:\n1. беат 7\n2. беат 8\n");
   });
 
   it("manner from previous chapter", async () => {
@@ -185,7 +193,7 @@ describe("глава нашей моделью по сценам", () => {
   });
 
   it("cancel stops before next scene", async () => {
-    setPlan(chapterId, 3, 1800);
+    setPlan(chapterId, 15, 1800); // 3 сцены по 5 (схема держит ≤15 беатов)
     let n = 0;
     localMock.mockImplementation(async function* () {
       const i = n++;
@@ -230,5 +238,107 @@ describe("глава нашей моделью по сценам", () => {
     expect(availableMock).not.toHaveBeenCalled();
     expect(localMock).not.toHaveBeenCalled();
     expect(writerMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("thin content gives one scene", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = ? WHERE id = ?")
+      .run("Раз. Два. Три. Четыре.", chapterId);
+    await write(chapterId);
+    expect(localMock).toHaveBeenCalledTimes(1);
+    expect(prompts()[0]).toContain("События:\n1. Раз.\n2. Два.\n3. Три.\n4. Четыре.\n");
+  });
+
+  it("write uses stored scene plan", async () => {
+    const scenes = [0, 1, 2].map((s) => ({ events: [0, 1, 2].map((e) => `с${s} событие ${e}`) }));
+    t.sqlite
+      .prepare("UPDATE chapters SET scene_plan = ? WHERE id = ?")
+      .run(JSON.stringify({ scenes, basedOn: 1 }), chapterId);
+    await write(chapterId);
+    expect(localMock).toHaveBeenCalledTimes(3);
+    prompts().forEach((p, s) => {
+      expect(p).toContain(
+        `События:\n1. с${s} событие 0\n2. с${s} событие 1\n3. с${s} событие 2\n` +
+          `Обязано произойти: с${s} событие 2\nОстанавливается на: с${s} событие 2\n\n`,
+      );
+      expect(p).not.toContain("беат");
+    });
+  });
+});
+
+describe("POST /chapters/:id/scene-plan", () => {
+  const PLAN = { scenes: [{ events: ["раз", "два", "три"] }, { events: ["четыре", "пять", "шесть"] }] };
+
+  beforeEach(() => {
+    scenePlanMock.mockImplementation(async (input) => {
+      input.onUsage?.({
+        modelId: "claude-sonnet",
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+      });
+      return PLAN;
+    });
+  });
+
+  type ChapterWire = { scenePlan: { scenes: unknown; basedOn: number } | null; scenePlanStale: boolean };
+
+  it("scene-plan route saves plan and basedOn", async () => {
+    const res = await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(res.status).toBe(200);
+    const ch = (await res.json()) as ChapterWire;
+    expect(ch.scenePlan?.scenes).toEqual(PLAN.scenes);
+    expect(ch.scenePlanStale).toBe(false);
+
+    const row = t.sqlite.prepare("SELECT * FROM chapters WHERE id = ?").get(chapterId) as ChapterRow;
+    expect(JSON.parse(row.scene_plan!)).toEqual({
+      ...PLAN,
+      basedOn: hash32(JSON.stringify(chapterPlanForGeneration(row))),
+    });
+
+    expect(scenePlanMock).toHaveBeenCalledTimes(1);
+    const input = scenePlanMock.mock.calls[0]![0];
+    expect(input.sceneCount).toBe(Math.ceil(1200 / 600));
+    expect(input.chapterTitle).toBe("Глава");
+    expect(input.beats).toContain("беат 13");
+    expect(input.chapterContent).toBeNull();
+
+    const usage = t.sqlite
+      .prepare("SELECT route FROM llm_usage WHERE route = 'plot.scene_plan'")
+      .all();
+    expect(usage).toHaveLength(1);
+  });
+
+  it("scene count is clamped to 12", async () => {
+    setPlan(chapterId, 14, 8000);
+    await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(scenePlanMock.mock.calls[0]![0].sceneCount).toBe(12);
+  });
+
+  it("content without beats; default length", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = ? WHERE id = ?")
+      .run("Герой уходит из дома.", chapterId);
+    const res = await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(res.status).toBe(200);
+    const input = scenePlanMock.mock.calls[0]![0];
+    expect(input.chapterContent).toBe("Герой уходит из дома.");
+    expect(input.beats).toBeNull();
+    expect(input.sceneCount).toBe(5);
+  });
+
+  it("nothing to plan from is 400", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET plan_json = NULL, active_plan_kind = NULL, intent = NULL WHERE id = ?")
+      .run(chapterId);
+    const res = await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
+    expect(res.status).toBe(400);
+    expect(scenePlanMock).not.toHaveBeenCalled();
+  });
+
+  it("unknown chapter is 404", async () => {
+    const res = await send(t.app, `/api/chapters/999999/scene-plan`, "POST", {});
+    expect(res.status).toBe(404);
   });
 });

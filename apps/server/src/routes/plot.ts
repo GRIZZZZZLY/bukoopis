@@ -15,6 +15,7 @@ import {
   renderChapterContract,
   docToBlocks,
   normalizeCharacterProfile,
+  parseStoredScenePlan,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -30,6 +31,10 @@ import {
   localTail,
   localCastLine,
   runLocalScene,
+  runScenePlan,
+  LOCAL_DEFAULT_CHAPTER_WORDS,
+  LOCAL_SCENE_WORDS,
+  type LocalScene,
 } from "@book-forge/agents";
 import { mannerLine } from "@book-forge/style-engine";
 import { loadStyleContext } from "../utils/style-context.js";
@@ -46,7 +51,7 @@ import {
 } from "../utils/rolling-context.js";
 import { requiredOverflowMessage } from "../utils/context-compiler.js";
 import { assembleGenerationContext } from "../utils/generation-context.js";
-import { chapterPlanForGeneration } from "../utils/chapter-plan.js";
+import { chapterPlanForGeneration, hash32 } from "../utils/chapter-plan.js";
 import { recordContextManifest } from "../utils/context-manifests.js";
 import { renderActiveFactsPrompt } from "../utils/book-facts.js";
 import { loadStoredSceneIntent, prepareSceneIntent } from "../utils/scene-intent.js";
@@ -333,6 +338,101 @@ export function createPlotRoute(
     return c.json(toChapter(ch));
   });
 
+  // ───────── Scene plan (для нашей модели) ─────────
+
+  // Claude расписывает главу на сцены по 6–8 событий: нашей модели нужен
+  // плотный план, на тонком она уплывает. Контекст — та же сборка, что у
+  // Писателя; пишем только своё поле.
+  r.post("/chapters/:id/scene-plan", async (c) => {
+    const id = Number(c.req.param("id"));
+    const ch = sqlite
+      .prepare("SELECT * FROM chapters WHERE id = ?")
+      .get(id) as ChapterRow | undefined;
+    if (!ch) return notFound(c, "chapter");
+    const plan = chapterPlanForGeneration(ch);
+    const beatSheet = plan.kind === "beats" ? plan.variant : null;
+    const intentText = plan.kind === "intent" ? plan.intent : null;
+    if (!beatSheet && !intentText) {
+      return badRequest(c, "плану сцен нужно содержание главы или подробный план");
+    }
+    const ctx = loadBookContext(sqlite, ch.book_id);
+    if (!ctx) return notFound(c, "book");
+    const book = sqlite
+      .prepare("SELECT * FROM books WHERE id = ?")
+      .get(ch.book_id) as BookRow;
+
+    const beatBlob = beatSheet
+      ? beatSheet.beats
+          .map((b) => `${b.summary} ${b.goal} ${b.conflict} ${b.outcome}`)
+          .join("\n")
+      : null;
+    const assembled = await assembleGenerationContext(sqlite, {
+      book,
+      chapter: ch,
+      hasVec,
+      scanTexts: [intentText ?? beatBlob],
+      retrievalQuery: beatBlob ?? intentText ?? ch.title,
+      povName: beatSheet?.pov ?? null,
+      factsBoundary: "before_chapter",
+      label: `scene_plan ch#${ch.order_index}`,
+    });
+    if (assembled.compiled.requiredOverflow) {
+      return badRequest(c, requiredOverflowMessage(assembled.compiled));
+    }
+
+    const target = beatSheet?.estimatedWords ?? LOCAL_DEFAULT_CHAPTER_WORDS;
+    const scenePlan = await runScenePlan({
+      bookTitle: ctx.title,
+      chapterTitle: ch.title,
+      chapterContent: intentText,
+      beats: beatSheet
+        ? beatSheet.beats
+            .map(
+              (b, i) =>
+                `${i + 1}. ${b.summary} (цель: ${b.goal}; конфликт: ${b.conflict}; итог: ${b.outcome})`,
+            )
+            .join("\n")
+        : null,
+      closingNote: beatSheet?.closing?.note?.trim() || null,
+      previousTail: assembled.previousTail,
+      previousSummary: assembled.previousChapters,
+      characterContext: assembled.characterContext,
+      worldContext: assembled.worldContext,
+      // Схема записи держит не больше 12 сцен.
+      sceneCount: Math.min(12, Math.max(1, Math.ceil(target / LOCAL_SCENE_WORDS))),
+      model: ctx.plotModel,
+      onUsage: (usage) =>
+        logUsage(sqlite, {
+          route: "plot.scene_plan",
+          model: usage.modelId,
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheCreationInputTokens: usage.cacheCreationInputTokens,
+            cacheReadInputTokens: usage.cacheReadInputTokens,
+          },
+          bookId: ch.book_id,
+          chapterId: ch.id,
+        }),
+    });
+
+    // `basedOn` — содержание, по которому план составлен: если автор правил
+    // главу, пока шёл вызов, план сразу покажется устаревшим.
+    const now = new Date().toISOString();
+    sqlite
+      .prepare("UPDATE chapters SET scene_plan = ?, updated_at = ? WHERE id = ?")
+      .run(
+        JSON.stringify({ ...scenePlan, basedOn: hash32(JSON.stringify(plan)) }),
+        now,
+        id,
+      );
+    const fresh = sqlite
+      .prepare("SELECT * FROM chapters WHERE id = ?")
+      .get(id) as ChapterRow | undefined;
+    if (!fresh) return notFound(c, "chapter");
+    return c.json(toChapter(fresh));
+  });
+
   // ───────── Writer (SSE streaming) ─────────
 
   r.post("/chapters/:id/write", async (c) => {
@@ -362,7 +462,17 @@ export function createPlotRoute(
       (await localWriterAvailable(ctx.writerLocalModel))
         ? ctx.writerLocalModel
         : null;
-    const scenes = localTag ? planLocalScenes({ beatSheet, chapterContent: intentText }) : null;
+    // План сцен автора (или составленный Claude) главнее нарезки: устаревший
+    // тоже идёт в дело — решает автор, интерфейс предупреждает.
+    const storedScenePlan = localTag ? parseStoredScenePlan(ch.scene_plan) : null;
+    const scenes: LocalScene[] | null = !localTag
+      ? null
+      : storedScenePlan
+        ? storedScenePlan.scenes.map(({ events }) => {
+            const last = events[events.length - 1]!;
+            return { events, must: last, stop: last };
+          })
+        : planLocalScenes({ beatSheet, chapterContent: intentText });
 
     const mode = parsed.data.mode;
     const fromBeat = parsed.data.fromBeat ?? 0;

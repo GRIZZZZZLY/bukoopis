@@ -48,34 +48,34 @@ describe("buildLocalScenePrompt", () => {
 });
 
 describe("planLocalScenes", () => {
-  it("scene count from estimatedWords", () => {
-    expect(plan(sheet(7, 4000)).map((s) => s.events.length)).toEqual([1, 1, 1, 1, 1, 1, 1]);
-    expect(plan(sheet(14, 4000)).map((s) => s.events.length)).toEqual([2, 2, 2, 2, 2, 2, 2]);
+  // Порог плотности: не больше сцен, чем по 7 событий на сцену.
+  it("density floor caps scene count", () => {
+    expect(plan(sheet(14, 4000)).map((s) => s.events.length)).toEqual([7, 7]);
+    expect(plan(sheet(7, 4000)).map((s) => s.events.length)).toEqual([7]);
+    expect(plan(sheet(3, 4000)).map((s) => s.events.length)).toEqual([3]);
   });
-  it("fewer beats than scenes", () => {
-    const s = plan(sheet(3, 4000));
-    expect(s).toHaveLength(3);
-    expect(s.every((x) => x.events.length > 0)).toBe(true);
+  it("enough beats: scene count from estimatedWords", () => {
+    expect(plan(sheet(49, 4000)).map((s) => s.events.length)).toEqual([7, 7, 7, 7, 7, 7, 7]);
   });
   it("uneven split", () => {
-    expect(plan(sheet(8, 1800)).map((s) => s.events.length)).toEqual([3, 3, 2]);
+    expect(plan(sheet(16, 4000)).map((s) => s.events.length)).toEqual([6, 5, 5]);
   });
   it("closing note stops the last scene", () => {
-    const s = plan(sheet(6, 1200, "Дверь закрылась."));
+    const s = plan(sheet(14, 1200, "Дверь закрылась."));
+    expect(s).toHaveLength(2);
     expect(s[1]!.stop).toBe("Дверь закрылась.");
-    expect(s[1]!.must).toBe("Бит 6.");
-    expect(s[0]!.stop).toBe("Бит 3.");
+    expect(s[1]!.must).toBe("Бит 14.");
+    expect(s[0]!.stop).toBe("Бит 7.");
   });
-  it("content without beats", () => {
-    const content = Array.from({ length: 10 }, (_, i) => `Фраза ${i + 1}.`).join(" ");
-    const s = plan(null, content);
-    expect(s).toHaveLength(5);
-    expect(s.every((x) => x.events.length === 2)).toBe(true);
+  it("thin content without beats gives one scene", () => {
+    const s = plan(null, "Раз. Два. Три. Четыре.");
+    expect(s).toHaveLength(1);
+    expect(s[0]!.events).toEqual(["Раз.", "Два.", "Три.", "Четыре."]);
   });
   it("nothing at all", () => {
-    const s = plan(null, null);
-    expect(s).toHaveLength(5);
-    expect(s.every((x) => x.events.length === 1 && x.events[0] === "Продолжение главы")).toBe(true);
+    expect(plan(null, null)).toEqual([
+      { events: ["Продолжение главы"], must: "Продолжение главы", stop: "Продолжение главы" },
+    ]);
   });
 });
 

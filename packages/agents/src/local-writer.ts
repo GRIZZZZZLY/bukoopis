@@ -3,6 +3,7 @@ import { isRawTemplateModel, streamGenerateOllama } from "@book-forge/llm";
 
 export const LOCAL_SCENE_WORDS = 600;
 export const LOCAL_DEFAULT_CHAPTER_WORDS = 3000;
+export const LOCAL_EVENTS_PER_SCENE = 7;
 
 export interface LocalScene {
   events: string[];
@@ -32,7 +33,6 @@ export function planLocalScenes(args: {
 }): LocalScene[] {
   const { beatSheet, chapterContent } = args;
   const target = beatSheet?.estimatedWords ?? LOCAL_DEFAULT_CHAPTER_WORDS;
-  const k = Math.max(1, Math.ceil(target / LOCAL_SCENE_WORDS));
 
   let items: string[] = (beatSheet?.beats ?? []).map((b) => b.summary);
   if (items.length === 0) {
@@ -42,10 +42,16 @@ export function planLocalScenes(args: {
       .filter((s) => s.length > 0);
   }
 
-  const groups =
-    items.length === 0
-      ? Array.from({ length: k }, () => ["Продолжение главы"])
-      : groupConsecutive(items, Math.min(k, items.length));
+  // Порог плотности: сцене ~600 слов нужно ~7 событий, иначе модель
+  // уплывает. Тонкое содержание даёт короткую главу, а не дрейф.
+  const k = Math.max(
+    1,
+    Math.min(
+      Math.ceil(target / LOCAL_SCENE_WORDS),
+      Math.ceil(items.length / LOCAL_EVENTS_PER_SCENE),
+    ),
+  );
+  const groups = items.length === 0 ? [["Продолжение главы"]] : groupConsecutive(items, k);
 
   const scenes = groups.map((events): LocalScene => {
     const last = events[events.length - 1] ?? "Продолжение главы";
