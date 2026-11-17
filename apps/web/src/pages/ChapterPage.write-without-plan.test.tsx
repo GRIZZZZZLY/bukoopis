@@ -75,21 +75,40 @@ vi.mock("@/api/client", () => {
 });
 
 import { ChapterPage } from "@/pages/ChapterPage";
+import { DOSSIER_LABELS } from "@/lib/labels";
+
+function renderPage() {
+  render(
+    <RouterProvider
+      router={createMemoryRouter(
+        [{ path: "/books/:bookId/chapters/:chapterId", element: <ChapterPage /> }],
+        { initialEntries: ["/books/1/chapters/10"] },
+      )}
+    />,
+  );
+}
 
 describe("ChapterPage без плана", () => {
   it("Написать главу доступна без плана; «По беатам» выключен", async () => {
-    render(
-      <RouterProvider
-        router={createMemoryRouter(
-          [{ path: "/books/:bookId/chapters/:chapterId", element: <ChapterPage /> }],
-          { initialEntries: ["/books/1/chapters/10"] },
-        )}
-      />,
-    );
+    renderPage();
     const write = await screen.findByRole("button", { name: "Написать главу" });
     expect(write).not.toBeDisabled();
     expect(write).toHaveAttribute("title", expect.stringContaining("Будет написано по содержанию главы"));
+    // Подпись видна рядом с кнопкой, а не только при наведении.
+    expect(screen.getByText(DOSSIER_LABELS.writeFromContent)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Как писать" }));
     expect(screen.getByRole("checkbox", { name: /По беатам/ })).toBeDisabled();
+  });
+
+  it("без содержания подпись предупреждает, что модель продолжит от прошлой главы", async () => {
+    const saved = chapter.intent;
+    chapter.intent = null as unknown as string;
+    try {
+      renderPage();
+      await screen.findByRole("button", { name: "Написать главу" });
+      expect(screen.getByText(DOSSIER_LABELS.writeFromPrevious)).toBeVisible();
+    } finally {
+      chapter.intent = saved;
+    }
   });
 });
