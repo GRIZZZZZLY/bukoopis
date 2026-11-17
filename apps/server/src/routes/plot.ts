@@ -14,6 +14,7 @@ import {
   boundaryForChapter,
   renderChapterContract,
   docToBlocks,
+  normalizeCharacterProfile,
 } from "@book-forge/shared";
 import {
   runBookPlanning,
@@ -23,7 +24,14 @@ import {
   characterContextToPrompt,
   gatherLoreContext,
   loreContextToPrompt,
+  localWriterAvailable,
+  planLocalScenes,
+  buildLocalScenePrompt,
+  localTail,
+  localCastLine,
+  runLocalScene,
 } from "@book-forge/agents";
+import { mannerLine } from "@book-forge/style-engine";
 import { loadStyleContext } from "../utils/style-context.js";
 import {
   derivePremiseFromConcept,
@@ -32,6 +40,7 @@ import {
 } from "../utils/studio-context.js";
 import { gatherRetrievedChunks } from "../utils/chapter-retrieval.js";
 import {
+  loadPreviousChapterTail,
   loadPreviousChapterTailWithOrder,
   loadRollingChapterContext,
 } from "../utils/rolling-context.js";
@@ -52,6 +61,7 @@ import type { MemoryWorker } from "../utils/memory-worker.js";
 import {
   toBook,
   toChapter,
+  parseJsonOrNull,
   type BookRow,
   type ChapterRow,
 } from "../db/rows.js";
@@ -341,12 +351,28 @@ export function createPlotRoute(
     const beatSheet = plan.kind === "beats" ? plan.variant : null;
     const intentText = plan.kind === "intent" ? plan.intent : null;
 
+    const ctx = loadBookContext(sqlite, ch.book_id);
+    if (!ctx) return notFound(c, "book");
+    // Наша модель (Ollama, сырой шаблон) обучена на сценах ~600 слов и пишет
+    // главу всегда по сценам, при любом `mode`. Решается один раз, до
+    // кандидата; книга на Anthropic Ollama не спрашивает вовсе.
+    const localTag =
+      ctx.writerProvider === "ollama" &&
+      ctx.writerLocalModel &&
+      (await localWriterAvailable(ctx.writerLocalModel))
+        ? ctx.writerLocalModel
+        : null;
+    const scenes = localTag ? planLocalScenes({ beatSheet, chapterContent: intentText }) : null;
+
     const mode = parsed.data.mode;
     const fromBeat = parsed.data.fromBeat ?? 0;
-    if (mode === "beats" && !beatSheet) {
+    if (!scenes && mode === "beats" && !beatSheet) {
       return badRequest(c, "«По беатам» нужен подробный план главы");
     }
-    if (mode === "beats" && beatSheet && fromBeat >= beatSheet.beats.length) {
+    if (scenes && fromBeat >= scenes.length) {
+      return badRequest(c, `fromBeat ${fromBeat} за пределами плана (${scenes.length} сцен)`);
+    }
+    if (!scenes && mode === "beats" && beatSheet && fromBeat >= beatSheet.beats.length) {
       return badRequest(c, `fromBeat ${fromBeat} за пределами плана (${beatSheet.beats.length} беатов)`);
     }
     // Дописать с беата: префикс — текст принятой версии, автор его уже принял.
@@ -380,8 +406,6 @@ export function createPlotRoute(
       }
     }
 
-    const ctx = loadBookContext(sqlite, ch.book_id);
-    if (!ctx) return notFound(c, "book");
     const book = sqlite
       .prepare("SELECT * FROM books WHERE id = ?")
       .get(ch.book_id) as BookRow;
@@ -448,7 +472,11 @@ export function createPlotRoute(
       // Объявлены здесь, а не в цикле: `catch` обязан знать, сколько беатов
       // уже легло в кандидата — от этого зависит, можно ли его принять.
       let beatsDone: number | null = null;
-      const beatsTotal = mode === "beats" && beatSheet ? beatSheet.beats.length : null;
+      const beatsTotal = scenes
+        ? scenes.length
+        : mode === "beats" && beatSheet
+          ? beatSheet.beats.length
+          : null;
 
       // Кандидат заводится до первого токена: он же — то, что отменяют, и то,
       // что остаётся в базе, если процесс умрёт на середине.
@@ -498,8 +526,10 @@ export function createPlotRoute(
         // больше половины ожидания уходило на пересчёт известного. Берём
         // сохранённое; если брать нечего, считаем обычным путём, потому что
         // тихо остаться без замысла хуже, чем заплатить за вызов.
+        //
+        // Нашей модели замысел не подаётся: её промпт — формат обучения.
         const stored =
-          mode === "beats" && fromBeat > 0
+          !scenes && mode === "beats" && fromBeat > 0
             ? loadStoredSceneIntent(sqlite, {
                 chapterId: ch.id,
                 participants: assembled.participants,
@@ -508,7 +538,9 @@ export function createPlotRoute(
                   .map((r) => r.id),
               })
             : null;
-        const sceneIntent = stored ?? (await prepareSceneIntent(sqlite, {
+        const sceneIntent = scenes
+          ? { prompt: null, degraded: false, droppedEventIds: [] }
+          : stored ?? (await prepareSceneIntent(sqlite, {
           bookId: ch.book_id,
           chapterId: ch.id,
           chapterOrder: ch.order_index,
@@ -581,10 +613,10 @@ export function createPlotRoute(
           ...(signal !== undefined ? { signal } : {}),
         };
 
-        // Один проход Писателя: целая глава или один беат. Статистика
-        // копится по всем проходам — расход главы считается разом.
-        const runOnce = async (beat?: { index: number; textSoFar: string }): Promise<string> => {
-          const gen = runChapterWriter(beat ? { ...writerInput, beat } : writerInput);
+        // Один проход Писателя: целая глава, один беат или одна сцена нашей
+        // модели. Статистика копится по всем проходам — расход главы
+        // считается разом.
+        const runOnce = async (gen: ReturnType<typeof runChapterWriter>): Promise<string> => {
           let text = "";
           while (true) {
             const next = await gen.next();
@@ -603,14 +635,46 @@ export function createPlotRoute(
           return text;
         };
 
-        if (mode === "beats" && beatSheet) {
+        // Нашей модели — её формат обучения: манера прошлой главы, состав
+        // сцены одной строкой на героя, хвост вместо всей предыстории.
+        let localScene: ((i: number) => ReturnType<typeof runLocalScene>) | null = null;
+        if (scenes && localTag) {
+          const prev = loadPreviousChapterTail(sqlite, ch.book_id, ch.order_index, 200_000);
+          const manner = prev ? mannerLine(prev) : null;
+          const profileStmt = sqlite.prepare("SELECT profile_json FROM characters WHERE id = ?");
+          const cast = assembled.participants.map((p) => {
+            const row = profileStmt.get(p.characterId) as { profile_json: string | null } | undefined;
+            const profile = normalizeCharacterProfile(parseJsonOrNull(row?.profile_json ?? null));
+            return localCastLine({ name: p.name, role: profile.role, description: profile.description });
+          });
+          localScene = (i) =>
+            runLocalScene({
+              prompt: buildLocalScenePrompt({
+                chapterTitle: ch.title,
+                manner,
+                scene: scenes[i]!,
+                cast,
+                tail: localTail(i === 0 ? assembled.previousTail : fullText),
+              }),
+              modelTag: localTag,
+              ...(signal !== undefined ? { signal } : {}),
+            });
+        }
+
+        if (beatsTotal !== null) {
           fullText = prefixText;
-          for (let i = fromBeat; i < beatSheet.beats.length; i += 1) {
+          for (let i = fromBeat; i < beatsTotal; i += 1) {
             await stream.writeSSE({
               event: "beat",
-              data: JSON.stringify({ index: i, total: beatSheet.beats.length }),
+              data: JSON.stringify({ index: i, total: beatsTotal }),
             });
-            const piece = (await runOnce({ index: i, textSoFar: fullText })).trim();
+            const piece = (
+              await runOnce(
+                localScene
+                  ? localScene(i)
+                  : runChapterWriter({ ...writerInput, beat: { index: i, textSoFar: fullText } }),
+              )
+            ).trim();
             fullText = fullText.trim().length > 0 ? `${fullText.trim()}\n\n${piece}` : piece;
             beatsDone = i + 1;
             // Кандидат растёт по ходу: падение процесса не теряет написанное.
@@ -618,17 +682,17 @@ export function createPlotRoute(
               contentText: fullText,
               wordCount: countWords(fullText),
               beatsDone,
-              beatsTotal: beatSheet.beats.length,
+              beatsTotal,
             });
             if (cancels.shouldStop(proposalId)) break;
             // На последнем беате удерживать нечего: кандидат и так дописан.
-            if (cancels.shouldHold(proposalId) && i < beatSheet.beats.length - 1) {
+            if (cancels.shouldHold(proposalId) && i < beatsTotal - 1) {
               held = true;
               break;
             }
           }
         } else {
-          fullText = await runOnce();
+          fullText = await runOnce(runChapterWriter(writerInput));
         }
 
         // Второй рубеж: бэкенд подписки прервать нечем, и поздний ответ
