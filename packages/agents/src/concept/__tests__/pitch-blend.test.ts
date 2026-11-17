@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildPitchBlenderPrompt } from "../pitch-blend.js";
+import { renderClicheRule } from "@book-forge/shared";
+import { buildPitchBlenderPrompt, PITCH_BLENDER_SYSTEM } from "../pitch-blend.js";
 import type { Pitch } from "@book-forge/shared";
 
 const A: Pitch = {
@@ -40,5 +41,16 @@ describe("buildPitchBlenderPrompt", () => {
       note: "сделай камернее",
     });
     expect(p).toContain("сделай камернее");
+  });
+});
+
+describe("PITCH_BLENDER_SYSTEM", () => {
+  it("carries the shared cliche rule and the plain-language rule", () => {
+    expect(PITCH_BLENDER_SYSTEM).toContain(renderClicheRule());
+    expect(PITCH_BLENDER_SYSTEM).toContain("рабочая записка редактора");
+  });
+
+  it("does not force the «Когда» logline template", () => {
+    expect(PITCH_BLENDER_SYSTEM).not.toContain("по схеме «Когда");
   });
 });

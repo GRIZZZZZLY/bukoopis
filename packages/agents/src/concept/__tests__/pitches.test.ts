@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { renderClicheRule, AUDIENCE_LABELS } from "@book-forge/shared";
 import {
+  PITCH_GENERATOR_SYSTEM,
   buildPitchGeneratorPrompt,
   toPitches,
   pitchDraftSchema,
@@ -64,5 +66,29 @@ describe("pitchDraftSchema", () => {
     expect(pitchDraftSchema.safeParse(DRAFT).success).toBe(true);
     expect(pitchDraftSchema.safeParse({ ...DRAFT, id: "x" }).success).toBe(true);
     expect(pitchDraftSchema.safeParse({ ...DRAFT, risk: "" }).success).toBe(false);
+  });
+});
+
+describe("PITCH_GENERATOR_SYSTEM", () => {
+  it("carries the shared cliche rule", () => {
+    expect(PITCH_GENERATOR_SYSTEM).toContain(renderClicheRule());
+  });
+
+  it("does not force the «Когда» logline template", () => {
+    expect(PITCH_GENERATOR_SYSTEM).not.toContain("Схема: «Когда");
+    expect(PITCH_GENERATOR_SYSTEM).toContain("начинаться по-разному");
+  });
+
+  it("defaults audience to adult and says a young hero is not a reason for ya", () => {
+    expect(PITCH_GENERATOR_SYSTEM).toContain("По умолчанию adult");
+    expect(PITCH_GENERATOR_SYSTEM).toContain("Юный герой сам по себе не повод для ya");
+  });
+
+  it("forbids invented facts", () => {
+    expect(PITCH_GENERATOR_SYSTEM).toContain("не добавляй биографических фактов");
+  });
+
+  it("uses the plain label for ya", () => {
+    expect(AUDIENCE_LABELS.ya).toBe("подростки и молодёжь");
   });
 });

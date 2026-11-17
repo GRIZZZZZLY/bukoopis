@@ -5,7 +5,7 @@ export type Audience = z.infer<typeof audienceSchema>;
 
 /** Как аудитория называется для автора и в промптах. */
 export const AUDIENCE_LABELS: Record<Audience, string> = {
-  ya: "подростки и молодые взрослые",
+  ya: "подростки и молодёжь",
   adult: "взрослые",
   all_ages: "для всех возрастов",
   mg: "дети 9–12",
