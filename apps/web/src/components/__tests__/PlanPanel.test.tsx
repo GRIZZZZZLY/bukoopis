@@ -223,7 +223,8 @@ describe("PlanPanel — содержание главы", () => {
     renderWith(null);
     const field = screen.getByLabelText("Содержание главы");
     expect(field).toHaveAttribute("maxLength", "20000");
-    expect(screen.getByText("0 / 20000")).toBeInTheDocument();
+    // Тот же вид, что у счётчика поля «Мир» в настройках.
+    expect(screen.getByText("0 / 20000")).toHaveClass("field-hint");
     await userEvent.type(field, "Лис");
     expect(screen.getByText("3 / 20000")).toBeInTheDocument();
   });

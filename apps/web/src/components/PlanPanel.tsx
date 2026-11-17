@@ -127,9 +127,9 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <span className="text-xs text-[var(--color-muted-foreground)]">
+          <p className="field-hint">
             {DOSSIER_LABELS.charCount(draft.length, INTENT_MAX)}
-          </span>
+          </p>
           <div className="flex gap-2">
             <Button
               onClick={() => void onSaveIntent()}
