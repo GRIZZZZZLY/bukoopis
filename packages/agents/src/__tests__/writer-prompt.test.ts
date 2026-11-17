@@ -100,6 +100,13 @@ describe("Writer system rules — structural tells", () => {
   it("forbids copying beat-sheet wording verbatim", () => {
     expect(system).toMatch(/дословно/i);
   });
+
+  // StoryScope, шаблон 4: обстановка-настроение, запах как фактура, глава,
+  // открытая описанием комнаты, герой, введённый через внешность.
+  it("lets setting be setting and opens on action", () => {
+    expect(system).toMatch(/погода бывает просто погодой/);
+    expect(system).toMatch(/начни на шаг позже/);
+  });
 });
 
 describe("buildWriterStableSystem — narrative architecture from the outline", () => {

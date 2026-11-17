@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import {
   bookOutlineToolSchema,
   chapterBeatSheetToolSchema,
@@ -41,9 +42,35 @@ const architecture = {
   emotionMode: "mixed",
   rarityMove: "r",
   humanMoves: ["a", "b", "c"],
+  openingPoint: "o",
+  leftOpen: "l",
+  stance: "s",
+  teller: "t",
+  anchors: ["a"],
+  places: ["p"],
+  unsaid: "u",
 };
 
 describe("plot tool schemas", () => {
+  it("outline tool output requires the structure card", () => {
+    const { openingPoint: _o, ...withoutCardField } = architecture;
+    const r = bookOutlineToolSchema.safeParse({
+      variants: [{ ...variant, chapters, architecture: withoutCardField }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  // Модель видит не zod, а JSON Schema: обязательность должна дожить до неё.
+  it("the model's JSON schema lists the card fields as required", () => {
+    const js = z.toJSONSchema(bookOutlineToolSchema) as unknown as {
+      properties: { variants: { items: { properties: { architecture: { required: string[] } } } } };
+    };
+    const required = js.properties.variants.items.properties.architecture.required;
+    for (const field of ["openingPoint", "leftOpen", "stance", "teller", "anchors", "places", "unsaid"]) {
+      expect(required).toContain(field);
+    }
+  });
+
   it("outline tool output requires the architecture sheet", () => {
     expect(bookOutlineToolSchema.safeParse({ variants: [variant] }).success).toBe(false);
     expect(
@@ -151,6 +178,16 @@ describe("plot system prompts — architecture calibration", () => {
     expect(SYSTEM_BOOK_OUTLINE).toMatch(/3[–-]5/);
     expect(SYSTEM_BOOK_OUTLINE).toContain("rarityMove");
     expect(SYSTEM_BOOK_OUTLINE).toMatch(/внутренн\S* принят/i);
+  });
+
+  it("outline prompt explains every structure card field", () => {
+    for (const field of ["openingPoint", "leftOpen", "stance", "teller", "anchors", "places", "unsaid"]) {
+      expect(SYSTEM_BOOK_OUTLINE).toContain(`— ${field}:`);
+    }
+  });
+
+  it("outline prompt counters the writer model's flat escalation", () => {
+    expect(SYSTEM_BOOK_OUTLINE).toMatch(/эскалаци/i);
   });
 
   it("chapter plan prompt bans the reflection tail and the acceptance default", () => {
