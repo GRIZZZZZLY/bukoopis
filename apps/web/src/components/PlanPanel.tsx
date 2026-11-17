@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DOSSIER_LABELS } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import {
@@ -98,7 +99,7 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
 
       {intent.length > 0 && !editing ? (
         <div>
-          <div className="caption">Содержание главы</div>
+          <div className="caption">{DOSSIER_LABELS.chapterContent}</div>
           <p className="text-sm" style={{ whiteSpace: "pre-wrap" }}>{intent}</p>
           <Button
             variant="secondary"
@@ -107,13 +108,13 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
               setEditing(true);
             }}
           >
-            Изменить
+            {DOSSIER_LABELS.edit}
           </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
           <label className="caption" htmlFor={`chapter-intent-${chapter.id}`}>
-            Содержание главы
+            {DOSSIER_LABELS.chapterContent}
           </label>
           <textarea
             id={`chapter-intent-${chapter.id}`}
@@ -127,7 +128,7 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             disabled={savingIntent}
             className="self-start"
           >
-            Сохранить
+            {DOSSIER_LABELS.save}
           </Button>
         </div>
       )}

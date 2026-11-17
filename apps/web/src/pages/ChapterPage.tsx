@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { DOSSIER_LABELS } from "@/lib/labels";
 import { Link, useBlocker, useParams } from "react-router-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -143,10 +144,10 @@ export function ChapterPage() {
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
   // Без выбранного беат-плана глава пишется по содержанию или от прошлой главы.
   const writeHint = selectedPlan
-    ? "Написать главу (Ctrl+Enter)"
+    ? "Написать главу"
     : (chapter?.intent ?? "").trim()
-      ? "Будет написано по содержанию главы"
-      : "Содержания нет — модель продолжит от прошлой главы";
+      ? DOSSIER_LABELS.writeFromContent
+      : DOSSIER_LABELS.writeFromPrevious;
   const planShown = planOpen ?? selectedPlan === null;
   const [outlinePosition, setOutlinePosition] = useState<number | null>(null);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
@@ -908,7 +909,7 @@ export function ChapterPage() {
                 type="button"
                 className="btn btn-primary write-main"
                 onClick={() => void onRunWriter()}
-                title={writeHint}
+                title={`${writeHint} (Ctrl+Enter)`}
               >
                 Написать главу
               </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DOSSIER_LABELS } from "@/lib/labels";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ConfirmDialog } from "@/components/ui/AlertDialog";
 import { PageSkeleton } from "@/components/ui/Skeleton";
@@ -245,11 +246,11 @@ export function SettingsStagePage() {
         {/* Досье: временные поля до полноценного досье слева */}
         <div className="card">
           <div className="panel-head" style={{ marginBottom: 14 }}>
-            <h3>Досье</h3>
+            <h3>{DOSSIER_LABELS.section}</h3>
           </div>
           <div className="field">
             <label className="field-label" htmlFor="book-premise">
-              Синопсис
+              {DOSSIER_LABELS.premise}
             </label>
             <textarea
               id="book-premise"
@@ -261,7 +262,7 @@ export function SettingsStagePage() {
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label className="field-label" htmlFor="book-world">
-              Мир
+              {DOSSIER_LABELS.world}
             </label>
             <textarea
               id="book-world"

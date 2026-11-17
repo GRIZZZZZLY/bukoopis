@@ -45,3 +45,15 @@ export const ROOM_LABELS = {
   styles: "Профили стиля",
   costs: "Расходы",
 } as const;
+
+/** Временные поля досье и содержание главы (до экрана досье этапа 3). */
+export const DOSSIER_LABELS = {
+  section: "Досье",
+  premise: "Синопсис",
+  world: "Мир",
+  chapterContent: "Содержание главы",
+  save: "Сохранить",
+  edit: "Изменить",
+  writeFromContent: "Будет написано по содержанию главы",
+  writeFromPrevious: "Содержания нет — модель продолжит от прошлой главы",
+} as const;
