@@ -10,11 +10,14 @@ import {
   type ChapterPlan,
 } from "@book-forge/shared";
 import { plural } from "@/lib/format";
+import { ScenePlanSection } from "@/components/ScenePlanSection";
 
 interface Props {
   chapter: Chapter;
   onUpdated: () => void | Promise<void>;
   onPlanReady: (plan: ChapterBeatSheetVariant | null) => void;
+  /** План сцен нужен только книгам с нашей моделью-писателем. */
+  showScenePlan?: boolean;
 }
 
 /** Предел `intent` в схеме главы (`chapter.ts`): длиннее сервер не примет. */
@@ -29,7 +32,7 @@ function parsePlan(json: string | null): ChapterPlan | null {
   }
 }
 
-export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
+export function PlanPanel({ chapter, onUpdated, onPlanReady, showScenePlan }: Props) {
   const initial = useMemo(() => parsePlan(chapter.planJson), [chapter]);
   const [plan, setPlan] = useState<ChapterPlan | null>(initial);
   // Содержание приходит из плана книги или вписывается здесь (временное поле
@@ -186,6 +189,10 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
             />
           ))}
         </div>
+      )}
+
+      {showScenePlan && (
+        <ScenePlanSection chapter={chapter} onUpdated={onUpdated} />
       )}
     </section>
   );

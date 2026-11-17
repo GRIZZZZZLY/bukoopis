@@ -1077,7 +1077,12 @@ export function ChapterPage() {
                 <span className="faint">{planShown ? "свернуть" : "развернуть"}</span>
               </button>
               <div hidden={!planShown}>
-                <PlanPanel chapter={chapter} onUpdated={load} onPlanReady={setSelectedPlan} />
+                <PlanPanel
+                  chapter={chapter}
+                  onUpdated={load}
+                  onPlanReady={setSelectedPlan}
+                  showScenePlan={book?.writerProvider === "ollama"}
+                />
               </div>
             </section>
 

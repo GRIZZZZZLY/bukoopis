@@ -5,6 +5,7 @@ import type {
   BookNote,
   BookOutline,
   Chapter,
+  ScenePlan,
   ChapterDraft,
   ChapterPlan,
   ChapterVersion,
@@ -236,6 +237,14 @@ export const api = {
     req<Chapter>(`/api/chapters/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+  /** План сцен для нашей модели: сервер составляет и сохраняет, отвечает главой. */
+  generateScenePlan: (chapterId: number) =>
+    req<Chapter>(`/api/chapters/${chapterId}/scene-plan`, { method: "POST" }),
+  saveScenePlan: (chapterId: number, scenePlan: ScenePlan | null) =>
+    req<Chapter>(`/api/chapters/${chapterId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ scenePlan }),
     }),
   deleteChapter: (id: number) =>
     req<void>(`/api/chapters/${id}`, { method: "DELETE" }),
