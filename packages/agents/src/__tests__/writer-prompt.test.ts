@@ -301,6 +301,16 @@ describe("buildWriterVolatilePrompt — без плана", () => {
   });
 });
 
+describe("buildWriterStableSystem — без плана", () => {
+  it("правила не ссылаются на beat-sheet и его поля", () => {
+    const system = buildWriterStableSystem({ ...base, beatSheet: null, chapterContent: "Лис идёт" });
+    expect(system).not.toContain("beat-sheet");
+    expect(system).not.toContain("estimatedWords");
+    expect(system).toContain("Если в задании указан POV, соблюдай его.");
+    expect(system).toContain("Если указан целевой объём, держись близко к нему ± 30%.");
+  });
+});
+
 describe("buildWriterStableSystem — мир книги", () => {
   const world = "## Мир книги (записи автора)\nШлюзы закрываются на закате.";
 
