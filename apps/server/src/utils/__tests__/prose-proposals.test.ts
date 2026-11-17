@@ -3,6 +3,7 @@ import { makeTestApp, sendJson, type TestApp } from "../../routes/__tests__/_hel
 import Database, { type Database as DatabaseType } from "better-sqlite3";
 import {
   acceptProposal,
+  contextFingerprint,
   createProposal,
   finishProposal,
   loadProposal,
@@ -499,5 +500,17 @@ describe("частичное принятие сохраняет разметк�
       .prepare("SELECT content_json FROM chapter_versions WHERE id = ?")
       .get(out.versionId) as { content_json: string };
     expect(row.content_json).toBe(PLAIN_CANDIDATE_JSON);
+  });
+});
+
+describe("contextFingerprint", () => {
+  it("меняется при смене действующего плана, даже если plan_json тот же", () => {
+    db.prepare("UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats' WHERE id = ?").run(
+      JSON.stringify({ beats: [] }),
+      chapterId,
+    );
+    const withBeats = contextFingerprint(db, chapterId);
+    db.prepare("UPDATE chapters SET active_plan_kind = NULL WHERE id = ?").run(chapterId);
+    expect(contextFingerprint(db, chapterId)).not.toBe(withBeats);
   });
 });
