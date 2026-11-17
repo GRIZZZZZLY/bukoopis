@@ -67,3 +67,21 @@ describe("buildEditorPrompt — глава по содержанию", () => {
     expect(p).not.toContain("POV");
   });
 });
+
+describe("buildEditorPrompt — ни плана, ни содержания", () => {
+  it("задача не ссылается на POV и цель, а сверяет с прошлыми главами и карточками", () => {
+    const p = buildEditorPrompt({ ...base, pov: "—", emotionalGoal: "—", planBasis: "none" });
+    expect(p).toContain("Ни плана, ни содержания главы автор не задавал");
+    expect(p).toContain("прошлыми главами и карточками героев");
+    expect(p).not.toContain("указаны выше");
+    expect(p).not.toContain("POV");
+    expect(p).not.toContain("Эмоциональная цель");
+    expect(p).not.toContain("beat-sheet");
+  });
+
+  it("без поля planBasis и без плана — прежняя задача, побайтно", () => {
+    expect(buildEditorPrompt(base)).toContain(
+      "\nЗадача:\nПрочитай главу. План не передан — не утверждай, что глава ему противоречит; оценивай, понятно ли движется сама глава (POV и эмоциональная цель указаны выше). Найди места, где читатель теряет ход событий.",
+    );
+  });
+});

@@ -44,7 +44,11 @@ const TASK_NO_BEATS = `Прочитай главу. План не передан
 // плану: судим по её задаче — ни POV, ни обязательств плана у неё нет.
 const TASK_FROM_CONTENT = `Прочитай главу. Сверь её с содержанием, которое задал автор: произошло ли то, что в нём названо, и в понятном ли порядке. Содержание — задача главы, а не подробный план: другое распределение внимания, детали и эпизоды сверх него ошибкой не считаются. Найди места, где читатель теряет ход событий.`;
 
-const editorOutputSchema =criticReportSchema.omit({ critic: true });
+// Ни плана, ни содержания: POV и цели нет («—»), сверять не с чем, кроме
+// уже написанного — прошлых глав и карточек героев.
+const TASK_NO_PLAN_NO_CONTENT = `Прочитай главу. Ни плана, ни содержания главы автор не задавал — не утверждай, что глава чему-то из них противоречит. Сверь её с прошлыми главами и карточками героев выше: продолжает ли она их линии, понятно ли, кто где и что изменилось. Найди места, где читатель теряет ход событий.`;
+
+const editorOutputSchema = criticReportSchema.omit({ critic: true });
 type EditorCriticOutput = z.infer<typeof editorOutputSchema>;
 
 export function buildEditorPrompt(input: CriticInput): string {
@@ -63,6 +67,12 @@ export function buildEditorPrompt(input: CriticInput): string {
           `Содержание главы (задача главы):\n${input.beatSheet}`,
           `Текст главы:\n\n${input.chapterText}`,
           `\nЗадача:\n${TASK_FROM_CONTENT}`,
+        ]
+      : input.planBasis === "none"
+      ? [
+          `Глава: "${input.chapterTitle}"`,
+          `Текст главы:\n\n${input.chapterText}`,
+          `\nЗадача:\n${TASK_NO_PLAN_NO_CONTENT}`,
         ]
       : [
           `Глава: "${input.chapterTitle}"`,
