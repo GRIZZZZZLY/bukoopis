@@ -48,8 +48,18 @@ beforeEach(async () => {
     title: "Глава",
   });
   chapterId = ch.id;
+  // План, проходящий схему, и явный `active_plan_kind`: основной путь с
+  // беат-листом, а не путь «без плана».
+  const beat = (index: number) => ({
+    index,
+    type: "rising_action",
+    summary: `беат ${index}`,
+    goal: "g",
+    conflict: "c",
+    outcome: "o",
+  });
   const db = new Database(`${t.dbDir}/test.sqlite`);
-  db.prepare("UPDATE chapters SET plan_json = ? WHERE id = ?").run(
+  db.prepare("UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats' WHERE id = ?").run(
     JSON.stringify({
       variants: [
         {
@@ -57,12 +67,11 @@ beforeEach(async () => {
           pov: "Рин",
           emotionalGoal: "решимость",
           estimatedWords: 1200,
-          beats: [
-            { index: 0, type: "scene", summary: "s", goal: "g", conflict: "c", outcome: "o" },
-          ],
+          beats: [beat(0), beat(1), beat(2)],
         },
       ],
       selectedIndex: 0,
+      generatedAt: "2026-11-17T00:00:00.000Z",
     }),
     chapterId,
   );

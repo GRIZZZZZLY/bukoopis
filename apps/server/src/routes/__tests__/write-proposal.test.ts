@@ -61,9 +61,20 @@ function mockWriter(text: string, stopReason: string | null): void {
   );
 }
 
+/** Выбранный план, проходящий схему (≥3 беатов), и явный `active_plan_kind`:
+ *  так выглядит основной путь старых глав после миграции. Однобеатный план
+ *  без колонки молча уводил эти тесты на путь «без плана». */
 function seedSelectedPlan(): void {
+  const beat = (index: number) => ({
+    index,
+    type: "rising_action",
+    summary: `беат ${index}`,
+    goal: "g",
+    conflict: "c",
+    outcome: "o",
+  });
   const db = new Database(`${t.dbDir}/test.sqlite`);
-  db.prepare("UPDATE chapters SET plan_json = ? WHERE id = ?").run(
+  db.prepare("UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats' WHERE id = ?").run(
     JSON.stringify({
       variants: [
         {
@@ -71,12 +82,11 @@ function seedSelectedPlan(): void {
           pov: "Рин",
           emotionalGoal: "решимость",
           estimatedWords: 1200,
-          beats: [
-            { index: 0, type: "scene", summary: "s", goal: "g", conflict: "c", outcome: "o" },
-          ],
+          beats: [beat(0), beat(1), beat(2)],
         },
       ],
       selectedIndex: 0,
+      generatedAt: "2026-11-17T00:00:00.000Z",
     }),
     chapterId,
   );
@@ -267,6 +277,20 @@ describe("POST /api/chapters/:id/write", () => {
     );
     expect(final.status).toBe("cancelled");
     expect(final.contentText).not.toContain("Поздний полный текст");
+  });
+
+  it("глава с выбранным планом пишется целиком по беат-листу", async () => {
+    mockWriter("Текст по плану.", "end_turn");
+    const res = await send(t.app, `/api/chapters/${chapterId}/write`, "POST", {});
+    expect(res.status).toBe(200);
+    const events = await readSse(res);
+    expect(events.find((e) => e.event === "done")).toBeDefined();
+    expect(runChapterWriterMock).toHaveBeenCalledTimes(1);
+    const input = runChapterWriterMock.mock.calls[0]![0];
+    expect(input.beat).toBeUndefined();
+    expect(input.beatSheet).not.toBeNull();
+    expect(input.beatSheet?.beats).toHaveLength(3);
+    expect(input.chapterContent ?? null).toBeNull();
   });
 
   // Рабочее место, этап 1: подробный план больше не обязателен.
