@@ -7,7 +7,6 @@ import { setFocus, useFocusMode } from "../../lib/focusMode";
 import { useSaveStatus } from "../../lib/saveStatus";
 import { BOOK_SECTIONS, ROOM_LABELS, STAGE_LABELS } from "../../lib/labels";
 import { DustLayer, shouldShowDust } from "../atmosphere/DustLayer";
-import { CatCompanion } from "../atmosphere/CatCompanion";
 import { JobIndicator } from "./JobIndicator";
 
 export interface RouteInfo {
@@ -336,7 +335,6 @@ function LeftRail({ route }: { route: RouteInfo }) {
           </Link>
         ))}
       </nav>
-      <CatCompanion />
     </aside>
   );
 }
