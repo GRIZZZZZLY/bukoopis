@@ -20,6 +20,8 @@ export class PlanApproveError extends Error {
 export interface ApprovePlanResult {
   created: number;
   updated: number;
+  /** Глав, у которых содержание уже было и осталось как есть. */
+  keptIntents: number;
 }
 
 /** Превращает выбранный вариант плана в главы.
@@ -31,7 +33,12 @@ export interface ApprovePlanResult {
  *
  *  Что не делается никогда: не меняется название существующей главы (её назвал
  *  автор), не трогается текст, не удаляются главы, которых в плане больше нет.
- *  Утверждение плана — это про намерения, а не про уборку. */
+ *  Утверждение плана — это про намерения, а не про уборку.
+ *
+ *  Содержание главы (`intent`) заполняется, только если оно пустое: теперь
+ *  его пишет и автор, и повторное утверждение не вправе молча заменить его
+ *  строкой плана. Отличить «написал автор» от «вписал прошлый план» нельзя,
+ *  поэтому сохраняется любое непустое — и считается в `keptIntents`. */
 export function approvePlan(
   sqlite: DatabaseType,
   bookId: number,
@@ -76,8 +83,10 @@ export function approvePlan(
       .all(bookId) as Array<{ id: number; order_index: number }>;
 
     const now = new Date().toISOString();
+    // Условие в самом UPDATE: непустое содержание не перезаписывается.
     const updateIntent = sqlite.prepare(
-      "UPDATE chapters SET intent = ?, updated_at = ? WHERE id = ?",
+      `UPDATE chapters SET intent = ?, updated_at = ?
+       WHERE id = ? AND (intent IS NULL OR trim(intent) = '')`,
     );
     const insertChapter = sqlite.prepare(
       `INSERT INTO chapters (book_id, order_index, title, intent, status, created_at, updated_at)
@@ -93,13 +102,14 @@ export function approvePlan(
 
     let created = 0;
     let updated = 0;
+    let keptIntents = 0;
     for (let i = 0; i < rows.length; i++) {
       const planRow = rows[i]!;
       const intent = renderOutlineChapterIntent(planRow);
       const match = existing[i];
       if (match) {
-        updateIntent.run(intent, now, match.id);
-        updated++;
+        if (updateIntent.run(intent, now, match.id).changes > 0) updated++;
+        else keptIntents++;
       } else {
         insertChapter.run(bookId, nextOrder, planRow.title, intent, now, now);
         nextOrder += 10;
@@ -107,7 +117,7 @@ export function approvePlan(
       }
     }
     sqlite.prepare("UPDATE books SET updated_at = ? WHERE id = ?").run(now, bookId);
-    return { created, updated };
+    return { created, updated, keptIntents };
   });
   return tx.immediate();
 }

@@ -301,7 +301,7 @@ export const api = {
       body: JSON.stringify({ selectedIndex }),
     }),
   approvePlan: (bookId: number) =>
-    req<{ created: number; updated: number; chapters: Chapter[] }>(
+    req<{ created: number; updated: number; keptIntents?: number; chapters: Chapter[] }>(
       `/api/books/${bookId}/plan/approve`,
       { method: "POST", body: JSON.stringify({}) },
     ),

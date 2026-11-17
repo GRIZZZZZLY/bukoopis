@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { toast } from "@/lib/toast";
+import { PLAN_APPROVE_LABELS } from "@/lib/labels";
 import { isPlanApproved } from "@book-forge/shared";
 import type {
   Book,
@@ -47,7 +48,11 @@ export function PlanStagePage() {
   const [generating, setGenerating] = useState(false);
   const [selecting, setSelecting] = useState<number | null>(null);
   const [approving, setApproving] = useState(false);
-  const [approved, setApproved] = useState<{ created: number; updated: number } | null>(null);
+  const [approved, setApproved] = useState<{
+    created: number;
+    updated: number;
+    keptIntents: number;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -114,7 +119,11 @@ export function PlanStagePage() {
     setError(null);
     try {
       const result = await api.approvePlan(bookId);
-      setApproved({ created: result.created, updated: result.updated });
+      setApproved({
+        created: result.created,
+        updated: result.updated,
+        keptIntents: result.keptIntents ?? 0,
+      });
       toast.success("План утверждён");
       await load();
     } catch (e) {
@@ -234,6 +243,8 @@ export function PlanStagePage() {
           {approved && (
             <p className="text-sm">
               Создано глав: {approved.created}. Обновлено намерений: {approved.updated}.
+              {approved.keptIntents > 0 &&
+                ` ${PLAN_APPROVE_LABELS.keptIntents}: ${approved.keptIntents}.`}
             </p>
           )}
         </div>

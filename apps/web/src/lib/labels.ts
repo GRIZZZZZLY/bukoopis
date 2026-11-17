@@ -38,6 +38,11 @@ export const PLAN_BASIS_LABELS = {
   none: "Плана и содержания не было — проверено по прошлым главам и карточкам",
 } as const;
 
+/** Итог утверждения плана книги в Мастерской. */
+export const PLAN_APPROVE_LABELS = {
+  keptIntents: "Содержание глав оставлено как было",
+} as const;
+
 export const ROOM_LABELS = {
   shelf: "Полка",
   book: "Книга",

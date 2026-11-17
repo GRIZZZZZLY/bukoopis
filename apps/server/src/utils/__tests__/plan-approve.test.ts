@@ -68,7 +68,7 @@ describe("approvePlan", () => {
     setOutline(planWith([{ title: "Порог", pov: "Рин" }, { title: "Мост" }]));
     const out = approvePlan(db, bookId);
 
-    expect(out).toEqual({ created: 2, updated: 0 });
+    expect(out).toEqual({ created: 2, updated: 0, keptIntents: 0 });
     const rows = chapterRows();
     expect(rows.map((r) => r.title)).toEqual(["Порог", "Мост"]);
     expect(rows[0]?.intent).toContain("POV: Рин");
@@ -82,7 +82,7 @@ describe("approvePlan", () => {
     setOutline(planWith([{ title: "Порог", pov: "Рин" }, { title: "Мост" }]));
 
     const out = approvePlan(db, bookId);
-    expect(out).toEqual({ created: 1, updated: 1 });
+    expect(out).toEqual({ created: 1, updated: 1, keptIntents: 0 });
 
     const rows = chapterRows();
     expect(rows).toHaveLength(2);
@@ -92,15 +92,36 @@ describe("approvePlan", () => {
     expect(rows[1]?.title).toBe("Мост");
   });
 
-  it("повторное утверждение обновляет намерения и не плодит главы", () => {
+  // Прежде повторное утверждение переписывало намерение; теперь содержание
+  // главы пишет и автор, и непустое не заменяется (финальное ревью этапа 1).
+  it("повторное утверждение не трогает непустое содержание и не плодит главы", () => {
     setOutline(planWith([{ title: "Порог" }]));
     approvePlan(db, bookId);
+    const first = chapterRows()[0]?.intent;
     setOutline(planWith([{ title: "Порог", pov: "Сарек" }]));
     const out = approvePlan(db, bookId);
 
-    expect(out).toEqual({ created: 0, updated: 1 });
+    expect(out).toEqual({ created: 0, updated: 0, keptIntents: 1 });
     expect(chapterRows()).toHaveLength(1);
-    expect(chapterRows()[0]?.intent).toContain("POV: Сарек");
+    expect(chapterRows()[0]?.intent).toBe(first);
+  });
+
+  it("содержание, написанное автором, переживает утверждение плана; пустое заполняется", async () => {
+    const mine = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", {
+      title: "Моя",
+    });
+    const blank = await sendJson<{ id: number }>(t.app, `/api/books/${bookId}/chapters`, "POST", {
+      title: "Пустая",
+    });
+    db.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run("Нина уходит со станции.", mine.id);
+    db.prepare("UPDATE chapters SET intent = ? WHERE id = ?").run("   ", blank.id);
+    setOutline(planWith([{ title: "Порог", pov: "Рин" }, { title: "Мост", pov: "Сарек" }]));
+
+    const out = approvePlan(db, bookId);
+    expect(out).toEqual({ created: 0, updated: 1, keptIntents: 1 });
+    const rows = chapterRows();
+    expect(rows[0]?.intent).toBe("Нина уходит со станции.");
+    expect(rows[1]?.intent).toContain("POV: Сарек");
   });
 
   it("написанный текст не трогается", async () => {
@@ -136,7 +157,7 @@ describe("approvePlan", () => {
     setOutline(planWith([{ title: "Порог", pov: "Рин" }]));
 
     const out = approvePlan(db, bookId);
-    expect(out).toEqual({ created: 0, updated: 1 });
+    expect(out).toEqual({ created: 0, updated: 1, keptIntents: 0 });
     const rows = chapterRows();
     expect(rows).toHaveLength(2);
     expect(rows[1]?.intent).toBeNull();
