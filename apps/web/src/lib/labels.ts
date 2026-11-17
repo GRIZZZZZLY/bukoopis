@@ -31,6 +31,13 @@ export const BOOK_SECTIONS = [
 
 export type BookSectionId = (typeof BOOK_SECTIONS)[number]["id"];
 
+/** Основа проверки главы в отчёте критики. Для `beats` подписи нет: сверка
+ *  с выбранным планом — обычный случай, о нём не говорят. */
+export const PLAN_BASIS_LABELS = {
+  intent: "Плана не было — проверено по содержанию главы",
+  none: "Плана и содержания не было — проверено по прошлым главам и карточкам",
+} as const;
+
 export const ROOM_LABELS = {
   shelf: "Полка",
   book: "Книга",

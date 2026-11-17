@@ -34,16 +34,16 @@ beforeEach(async () => {
       pov: "Иван",
       emotionalGoal: "тревога",
       estimatedWords: 1200,
-      beats: [
-        {
-          index: 0,
-          type: "hook",
-          summary: "s",
-          goal: "g",
-          conflict: "c",
-          outcome: "o",
-        },
-      ],
+      // Три беата — минимум схемы плана: вариант короче доступ к плану
+      // (`chapterPlanForGeneration`) не признаёт, как и Писатель.
+      beats: [0, 1, 2].map((index) => ({
+        index,
+        type: "hook",
+        summary: "s",
+        goal: "g",
+        conflict: "c",
+        outcome: "o",
+      })),
       closing: { mode: "cut_mid_action", note: "Обрыв на пороге." },
     },
   ] as unknown as Awaited<ReturnType<typeof runChapterPlan>>);

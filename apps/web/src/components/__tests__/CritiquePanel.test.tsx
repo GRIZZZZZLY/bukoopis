@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CritiquePanel } from "../CritiquePanel";
-import type { CritiqueReport, ProseProposal } from "@book-forge/shared";
+import { SEVERITY_LABELS, type CritiqueReport, type ProseProposal } from "@book-forge/shared";
+import { PLAN_BASIS_LABELS } from "@/lib/labels";
 
 vi.mock("@/api/client", () => ({
   api: {
@@ -307,6 +308,57 @@ describe("CritiquePanel — пропущенные критики", () => {
     );
     await screen.findByText(/Просили:/);
     expect(screen.queryByText(/Не запускались/)).not.toBeInTheDocument();
+  });
+});
+
+// Глава без подробного плана проверена по другой основе — отчёт обязан
+// сказать это первой строкой, иначе «замечаний нет» читается как сверка с планом.
+describe("CritiquePanel — основа проверки", () => {
+  const renderPanel = () =>
+    render(
+      <CritiquePanel
+        versionId={10}
+        expectedVersionId={10}
+        expectedDraftRevision={null}
+        onRepairDone={vi.fn()}
+      />,
+    );
+
+  it("отчёт по содержанию главы называет основу первой строкой", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: { ...REPORT.report!, planBasis: "intent" },
+    });
+    renderPanel();
+    const line = await screen.findByText(PLAN_BASIS_LABELS.intent);
+    // Первая строка отчёта: раньше счётчиков замечаний.
+    const counts = screen.getByText(`${SEVERITY_LABELS.blocking}: 1`, { selector: ".pill" });
+    expect(line.compareDocumentPosition(counts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("без плана и содержания — своя подпись", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: { ...REPORT.report!, planBasis: "none" },
+    });
+    renderPanel();
+    expect(await screen.findByText(PLAN_BASIS_LABELS.none)).toBeInTheDocument();
+  });
+
+  it("у отчёта по плану и у старого отчёта без поля строки нет", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: { ...REPORT.report!, planBasis: "beats" },
+    });
+    const { unmount } = renderPanel();
+    await screen.findByText(/Просили:/);
+    expect(screen.queryByText(/проверено по/)).not.toBeInTheDocument();
+    unmount();
+
+    vi.mocked(api.getCritique).mockResolvedValue(REPORT);
+    renderPanel();
+    await screen.findByText(/Просили:/);
+    expect(screen.queryByText(/проверено по/)).not.toBeInTheDocument();
   });
 });
 

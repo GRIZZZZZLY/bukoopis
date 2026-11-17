@@ -5,11 +5,14 @@ import {
   extractNarrativeArchitecture,
   renderChapterClosing,
   renderNarrativeArchitecture,
+  type ChapterBeatSheetVariant,
+  type VoiceSampleSituation,
 } from "@book-forge/shared";
 import {
   assembleGenerationContext,
   type AssembledContext,
 } from "./generation-context.js";
+import { chapterPlanForGeneration, type GenerationPlan } from "./chapter-plan.js";
 import type { CompiledContext } from "./context-compiler.js";
 import type { BookRow, ChapterRow } from "../db/rows.js";
 
@@ -28,10 +31,14 @@ import type { BookRow, ChapterRow } from "../db/rows.js";
  * виде, архитектурный лист и склейка `bookContext` в одну строку.
  */
 export interface ChapterProseContext {
+  /** По чему судят главу — та же развилка, что у Писателя
+   *  (`chapterPlanForGeneration`); пишется в отчёт критики. */
+  planBasis: GenerationPlan["kind"];
   /** POV of the accepted beat-sheet, or "—" when no plan is selected. */
   pov: string;
   emotionalGoal: string;
-  /** Rendered beats of the accepted plan variant, closing decision included. */
+  /** Rendered beats of the accepted plan variant, closing decision included;
+   *  без плана — «Содержание главы: …», без содержания — null. */
   beatSheet: string | null;
   /** Контракт главы (слайс 4.5), отрендеренный тем же способом, что у
    *  Писателя: критик канона отличает по нему запланированную отмену факта
@@ -61,30 +68,14 @@ export interface ChapterProseContext {
   assembled: AssembledContext;
 }
 
-interface PlanVariantLite {
-  pov: string;
-  emotionalGoal: string;
-  beats?: Array<{
-    index?: number;
-    type: string;
-    summary: string;
-    goal: string;
-    conflict: string;
-    outcome: string;
-  }>;
-  closing?: unknown;
-  contract?: import("@book-forge/shared").ChapterContract;
-  dialogueRegister?: import("@book-forge/shared").VoiceSampleSituation;
-}
-
 /**
  * Render the accepted plan variant's beats in the same shape Writer uses, so
  * Editor/Reviser see the exact beat list the chapter was written against. The
  * closing decision rides along: repair is where a deliberate cut-mid-action
  * ending would otherwise be "fixed" into a tidy resolution.
  */
-export function renderBeatSheetBlock(v: PlanVariantLite): string | null {
-  if (!v.beats || v.beats.length === 0) return null;
+export function renderBeatSheetBlock(v: ChapterBeatSheetVariant): string | null {
+  if (v.beats.length === 0) return null;
   const beats = v.beats
     .map(
       (b, i) =>
@@ -123,28 +114,23 @@ export async function loadChapterProseContext(
   const outlineSelected = selectedOutlineJson(book);
   const architecture = extractNarrativeArchitecture(outlineSelected);
 
+  // План — через тот же доступ, что у Писателя: критик судит главу по той
+  // основе, по которой её писали, а не по брошенному варианту в plan_json.
+  const plan = chapterPlanForGeneration(ch);
   let planPov: string | null = null;
   let emotionalGoal = "—";
   let beatSheet: string | null = null;
   let chapterContract: string | null = null;
-  let registerFromPlan: import("@book-forge/shared").VoiceSampleSituation | null = null;
-  if (ch.plan_json) {
-    try {
-      const p = JSON.parse(ch.plan_json) as {
-        variants: Array<PlanVariantLite>;
-        selectedIndex: number | null;
-      };
-      if (p.selectedIndex !== null && p.variants[p.selectedIndex]) {
-        const sel = p.variants[p.selectedIndex]!;
-        planPov = sel.pov;
-        emotionalGoal = sel.emotionalGoal;
-        beatSheet = renderBeatSheetBlock(sel);
-        chapterContract = sel.contract ? renderChapterContract(sel.contract) : null;
-        registerFromPlan = sel.dialogueRegister ?? null;
-      }
-    } catch {
-      /* ignore corrupt plan */
-    }
+  let registerFromPlan: VoiceSampleSituation | null = null;
+  if (plan.kind === "beats") {
+    const sel = plan.variant;
+    planPov = sel.pov;
+    emotionalGoal = sel.emotionalGoal;
+    beatSheet = renderBeatSheetBlock(sel);
+    chapterContract = sel.contract ? renderChapterContract(sel.contract) : null;
+    registerFromPlan = sel.dialogueRegister ?? null;
+  } else if (plan.kind === "intent") {
+    beatSheet = `Содержание главы: ${plan.intent}`;
   }
 
   // Критика сканирует сам текст главы (кто в нём есть), а ищет по плану —
@@ -173,6 +159,7 @@ export async function loadChapterProseContext(
   }${assembled.notesPrompt ? `\n\n${assembled.notesPrompt}` : ""}`;
 
   return {
+    planBasis: plan.kind,
     pov: planPov === null ? "—" : assembled.pov,
     emotionalGoal,
     beatSheet,

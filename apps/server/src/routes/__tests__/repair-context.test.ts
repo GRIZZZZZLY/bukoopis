@@ -103,16 +103,16 @@ beforeEach(async () => {
       pov: "Иван",
       emotionalGoal: "тревога",
       estimatedWords: 1200,
-      beats: [
-        {
-          index: 0,
-          type: "hook",
-          summary: "s",
-          goal: "g",
-          conflict: "c",
-          outcome: "o",
-        },
-      ],
+      // Три беата — минимум схемы плана: вариант короче доступ к плану
+      // (`chapterPlanForGeneration`) не признаёт, как и Писатель.
+      beats: [0, 1, 2].map((index) => ({
+        index,
+        type: "hook",
+        summary: "s",
+        goal: "g",
+        conflict: "c",
+        outcome: "o",
+      })),
       closing: { mode: "cut_mid_action", note: "Обрыв на пороге." },
     },
   ] as unknown as Awaited<ReturnType<typeof runChapterPlan>>);
@@ -209,5 +209,19 @@ describe("POST /api/chapter-versions/:id/repair — structural context", () => {
     const input = reviseChapterMock.mock.calls[0]![0]!;
     expect(input.architectureContext).toBeNull();
     expect(input.beatSheet).toBeNull();
+  });
+
+  it("правка по главе с intent видит то же содержание, что Писатель", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET intent = ? WHERE id = ?")
+      .run("Иван ждёт гонца до рассвета.", chapterId);
+    await sendJson(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {});
+
+    const res = await send(t.app, `/api/chapter-versions/${versionId}/repair`, "POST", {});
+    await res.text();
+
+    const input = reviseChapterMock.mock.calls[0]![0]!;
+    expect(input.beatSheet).toBe("Содержание главы: Иван ждёт гонца до рассвета.");
+    expect(input.chapterContract).toBeNull();
   });
 });

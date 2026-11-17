@@ -1,5 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Шпион поверх настоящего runCritique: остальные тесты файла идут прежним
+// путём (без ключа критики падают), а вход критиков виден.
+vi.mock("@book-forge/agents", async (orig) => {
+  const actual = await orig<typeof import("@book-forge/agents")>();
+  return { ...actual, runCritique: vi.fn(actual.runCritique) };
+});
+
+import { runCritique } from "@book-forge/agents";
+import { renderChapterContract } from "@book-forge/shared";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
+
+const runCritiqueSpy = vi.mocked(runCritique);
 
 interface BookJson {
   id: number;
@@ -221,6 +233,87 @@ describe("отпечаток базы в отчёте критики (AC-13)", (
     const changed = await run();
     expect(changed.report?.baseChanged).toBe(true);
     expect(changed.report?.contextFingerprint).not.toBe(fp);
+  });
+});
+
+// ───────── План главы у критиков: тот же доступ, что у Писателя ─────────
+//
+// Глава может быть написана без подробного плана — по содержанию или от
+// финала прошлой. Критики должны судить её по той же основе и сказать в
+// отчёте, по какой.
+describe("критики видят тот же план, что Писатель", () => {
+  interface PlanReport {
+    report: { planBasis?: string } | null;
+  }
+  const run = () =>
+    sendJson<PlanReport>(t.app, `/api/chapter-versions/${versionId}/critique`, "POST", {});
+  const criticInput = () => runCritiqueSpy.mock.calls.at(-1)![0].input;
+
+  const CONTRACT = {
+    mustHappen: ["Нина находит письмо"],
+    mustNotHappen: ["Ворт раскрывает себя"],
+    expectedRevelations: [],
+    allowedCanonSupersessions: [],
+  };
+  const beat = (index: number, summary: string) => ({
+    index,
+    type: "setup",
+    summary,
+    goal: "g",
+    conflict: "c",
+    outcome: "o",
+  });
+
+  // Фигурные скобки нужны: функция, возвращённая из beforeEach, — это teardown.
+  beforeEach(() => {
+    runCritiqueSpy.mockClear();
+  });
+
+  it("глава с intent без плана: отчёт с planBasis=intent", async () => {
+    t.sqlite
+      .prepare("UPDATE chapters SET intent = ? WHERE id = ?")
+      .run("Нина находит письмо отца.", chapterId);
+    const r = await run();
+    expect(r.report?.planBasis).toBe("intent");
+    const input = criticInput();
+    expect(input.beatSheet).toBe("Содержание главы: Нина находит письмо отца.");
+    expect(input.chapterContract).toBeNull();
+    expect(input.pov).toBe("—");
+  });
+
+  it("старая глава с выбранным битовым планом: planBasis=beats и тот же контракт, что раньше", async () => {
+    const plan = {
+      variants: [
+        {
+          label: "v1",
+          pov: "Нина",
+          emotionalGoal: "тревога",
+          estimatedWords: 1200,
+          beats: [beat(0, "Письмо"), beat(1, "Сомнение"), beat(2, "Решение")],
+          contract: CONTRACT,
+        },
+      ],
+      selectedIndex: 0,
+      generatedAt: "2026-09-01T00:00:00.000Z",
+    };
+    t.sqlite
+      .prepare(
+        "UPDATE chapters SET plan_json = ?, active_plan_kind = 'beats', intent = ? WHERE id = ?",
+      )
+      .run(JSON.stringify(plan), "Содержание, которое план перекрывает.", chapterId);
+    const r = await run();
+    expect(r.report?.planBasis).toBe("beats");
+    const input = criticInput();
+    expect(input.chapterContract).toBe(renderChapterContract(CONTRACT));
+    expect(input.emotionalGoal).toBe("тревога");
+    expect(input.beatSheet).toContain("1. [setup] Письмо");
+    expect(input.beatSheet).not.toContain("Содержание главы");
+  });
+
+  it("ни плана, ни содержания: planBasis=none, плана в промпте нет", async () => {
+    const r = await run();
+    expect(r.report?.planBasis).toBe("none");
+    expect(criticInput().beatSheet).toBeNull();
   });
 });
 

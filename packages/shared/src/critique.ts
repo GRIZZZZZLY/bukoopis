@@ -145,6 +145,10 @@ export const fullCritiqueReportSchema = z.object({
    *  Необязательные: отчёты до этапа 4 их не несут. */
   contextFingerprint: z.string().optional(),
   baseChanged: z.boolean().nullable().optional(),
+  /** По чему судили главу: выбранный подробный план, свободное содержание
+   *  главы или ни то ни другое (тогда — прошлые главы и карточки).
+   *  Необязательное: отчёты до рабочего места его не несут. */
+  planBasis: z.enum(["beats", "intent", "none"]).optional(),
 });
 export type FullCritiqueReport = z.infer<typeof fullCritiqueReportSchema>;
 

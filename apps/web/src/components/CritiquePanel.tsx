@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, streamRepair } from "@/api/client";
+import { PLAN_BASIS_LABELS } from "@/lib/labels";
 import {
   ProposalPanel,
   type ProposalReread,
@@ -284,6 +285,14 @@ export function CritiquePanel({
       {!loading && !report && (
         <p className="text-sm text-[var(--color-muted-foreground)]">
           Разбор ещё не запускался для этой версии.
+        </p>
+      )}
+
+      {/* Первая строка отчёта: без подробного плана главу судили по другой
+          основе, и «замечаний нет» не значит «сходится с планом». */}
+      {(report?.report?.planBasis === "intent" || report?.report?.planBasis === "none") && (
+        <p className="text-xs text-[var(--color-muted-foreground)]">
+          {PLAN_BASIS_LABELS[report.report.planBasis]}
         </p>
       )}
 

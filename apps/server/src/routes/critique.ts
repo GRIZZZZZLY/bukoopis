@@ -158,7 +158,7 @@ export function createCritiqueRoute(
     const {
       pov, emotionalGoal, beatSheet, bookContext, characterContext, loreContext,
       previousChaptersSummary: prevSummary, previousChapterTail, sceneState, retrievedContext, compiled, assembled,
-      chapterContract,
+      chapterContract, planBasis,
     } = await loadChapterProseContext(sqlite, book, ch, version.content_text, { hasVec });
     if (compiled.requiredOverflow) {
       return badRequest(c, requiredOverflowMessage(compiled));
@@ -282,6 +282,7 @@ export function createCritiqueRoute(
             ...result.report,
             contextFingerprint: critiqueManifest.fingerprint,
             baseChanged,
+            planBasis,
           }),
           errorMessage,
           completedAt,
