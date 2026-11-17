@@ -1,4 +1,4 @@
-// Port of manner_line (D:\models\work\build_pairs.py) and its counters (corpus_measure.py).
+// Port of manner_line (build_pairs.py in the fine-tune workspace, outside this repo) and its counters (corpus_measure.py).
 // Output must match the Python original: the fine-tuned model was trained on this exact line.
 
 const WORD = /[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*/gu;

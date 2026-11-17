@@ -65,7 +65,7 @@
 **Interfaces:**
 - Produces: `mannerLine(text: string): string`. Text has paragraphs separated by `\n\n`. Returns the full line beginning with `Манера: `.
 
-Port these from `D:\models\work\build_pairs.py` and `corpus_measure.py`:
+Port these from `build_pairs.py` and `corpus_measure.py` (fine-tune workspace, outside this repo):
 - `WORD = /[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*/gu`.
 - `SENT = /[.!?…]+["»'’)\]]*\s+|\n+/u`. Do NOT reuse `splitSentences` from metrics.ts: its class has `''` where Python has `'’`.
 - Sentence lengths are per paragraph, counting only sentences with more than 0 words.

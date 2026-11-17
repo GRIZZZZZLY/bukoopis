@@ -4,13 +4,13 @@ Approved by the author on 2026-11-17.
 
 ## Why
 
-The author read the chapter 9–10 comparisons openly and preferred the prose of our fine-tuned model to Litrab's. It is YandexGPT-5-Lite-8B-pretrain with a QLoRA adapter (run3), trained on plan → scene pairs. Today it runs only from scripts in `D:\models`. The author wants it to write chapters inside book-forge. Critique, repair and phrase fixes stay on Claude and catch its logic slips (a character switching gender, a scene written past the stop point).
+The author read the chapter 9–10 comparisons openly and preferred the prose of our fine-tuned model to Litrab's. It is YandexGPT-5-Lite-8B-pretrain with a QLoRA adapter (run3), trained on plan → scene pairs. Today it runs only from scripts in the fine-tune workspace outside this repo. The author wants it to write chapters inside book-forge. Critique, repair and phrase fixes stay on Claude and catch its logic slips (a character switching gender, a scene written past the stop point).
 
 ## What exists
 
 - Books already have `writer_provider = 'ollama'` and `writer_local_model`, with a switch and a model tag field in the book settings. `streamTextOllama` (packages/llm/src/ollama.ts) calls `/api/chat` with Claude's instruction prompt (system + user).
 - The model is registered in Ollama as `bookforge-writer:run3`:
-  - Q4_K_M GGUF, built by merging the LoRA (`D:\models\work\merge_lora.py`), then `convert_hf_to_gguf.py`, then Ollama's `llama-quantize`;
+  - Q4_K_M GGUF, built by merging the LoRA (`merge_lora.py` in the fine-tune workspace), then `convert_hf_to_gguf.py`, then Ollama's `llama-quantize`;
   - Modelfile: `TEMPLATE {{ .Prompt }}`, num_ctx 8192, temperature 0.8, top_p 0.95, repeat_penalty 1.05, num_predict 1300;
   - Through `/api/generate` with `raw: true` it writes ~450–650 words in 12–17 s and stops by itself (`done_reason: "stop"`).
 - The model was trained on scenes of ~600 words: mean 602, p10 569, p90 641. One call writes one scene.
@@ -93,7 +93,7 @@ The format is byte-for-byte what `gen_fresh.py` / `build_pairs.py` produce:
 ## Non-goals
 
 - Training from the app.
-- Automatic conversion of new runs. A new run is converted with the scripts in `D:\models\work` and registered under a new tag; the author types the tag.
+- Automatic conversion of new runs. A new run is converted with the scripts in the fine-tune workspace and registered under a new tag; the author types the tag.
 - A model picker. The UI stays as is.
 
 ## Anti-goals
