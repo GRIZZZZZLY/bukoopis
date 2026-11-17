@@ -242,7 +242,8 @@ export function PlanStagePage() {
           )}
           {approved && (
             <p className="text-sm">
-              Создано глав: {approved.created}. Обновлено намерений: {approved.updated}.
+              {PLAN_APPROVE_LABELS.created}: {approved.created}.{" "}
+              {PLAN_APPROVE_LABELS.filled}: {approved.updated}.
               {approved.keptIntents > 0 &&
                 ` ${PLAN_APPROVE_LABELS.keptIntents}: ${approved.keptIntents}.`}
             </p>

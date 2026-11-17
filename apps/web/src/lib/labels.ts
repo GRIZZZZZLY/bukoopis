@@ -40,7 +40,11 @@ export const PLAN_BASIS_LABELS = {
 
 /** Итог утверждения плана книги в Мастерской. */
 export const PLAN_APPROVE_LABELS = {
-  keptIntents: "Содержание глав оставлено как было",
+  created: "Создано глав",
+  /** `updated`: пустые содержания глав, заполненные из плана. */
+  filled: "Заполнено содержаний глав",
+  /** `keptIntents`: текст автора, который план не тронул. */
+  keptIntents: "Сохранено вашего текста",
 } as const;
 
 export const ROOM_LABELS = {

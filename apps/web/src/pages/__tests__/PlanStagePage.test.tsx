@@ -126,6 +126,23 @@ describe("PlanStagePage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Утвердить план" }));
     await waitFor(() => expect(api.approvePlan).toHaveBeenCalledWith(3));
     expect(await screen.findByText(/создано глав: 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Заполнено содержаний глав: 0\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Сохранено вашего текста/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/намерений/)).not.toBeInTheDocument();
+  });
+
+  it("называет, сколько текста автора план сохранил", async () => {
+    vi.mocked(api.approvePlan).mockResolvedValue({
+      created: 0,
+      updated: 1,
+      keptIntents: 2,
+      chapters: [],
+    } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Утвердить план" }));
+    expect(
+      await screen.findByText(/Заполнено содержаний глав: 1\. Сохранено вашего текста: 2\./),
+    ).toBeInTheDocument();
   });
 
   it("без поглавных строк кнопка утверждения недоступна и сказано почему", async () => {
