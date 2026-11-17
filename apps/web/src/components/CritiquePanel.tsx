@@ -289,8 +289,10 @@ export function CritiquePanel({
       )}
 
       {/* Первая строка отчёта: без подробного плана главу судили по другой
-          основе, и «замечаний нет» не значит «сходится с планом». */}
-      {(report?.report?.planBasis === "intent" || report?.report?.planBasis === "none") && (
+          основе, и «замечаний нет» не значит «сходится с планом». Пока
+          грузится или идёт новый отчёт, строка прежнего могла бы соврать. */}
+      {!loading && !running &&
+        (report?.report?.planBasis === "intent" || report?.report?.planBasis === "none") && (
         <p className="text-xs text-[var(--color-muted-foreground)]">
           {PLAN_BASIS_LABELS[report.report.planBasis]}
         </p>

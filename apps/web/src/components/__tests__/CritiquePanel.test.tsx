@@ -360,6 +360,36 @@ describe("CritiquePanel — основа проверки", () => {
     await screen.findByText(/Просили:/);
     expect(screen.queryByText(/проверено по/)).not.toBeInTheDocument();
   });
+
+  it("пока грузится отчёт другой версии, строки прежнего отчёта нет", async () => {
+    vi.mocked(api.getCritique).mockResolvedValueOnce({
+      ...REPORT,
+      report: { ...REPORT.report!, planBasis: "intent" },
+    });
+    const props = { expectedDraftRevision: null, onRepairDone: vi.fn() };
+    const { rerender } = render(
+      <CritiquePanel versionId={10} expectedVersionId={10} {...props} />,
+    );
+    await screen.findByText(PLAN_BASIS_LABELS.intent);
+
+    vi.mocked(api.getCritique).mockReturnValueOnce(new Promise(() => {}));
+    rerender(<CritiquePanel versionId={11} expectedVersionId={11} {...props} />);
+    expect(await screen.findByText("Загрузка…")).toBeInTheDocument();
+    expect(screen.queryByText(PLAN_BASIS_LABELS.intent)).not.toBeInTheDocument();
+  });
+
+  it("пока идёт новый разбор, строки прежнего отчёта нет", async () => {
+    vi.mocked(api.getCritique).mockResolvedValue({
+      ...REPORT,
+      report: { ...REPORT.report!, planBasis: "intent" },
+    });
+    vi.mocked(api.runCritique).mockReturnValueOnce(new Promise(() => {}));
+    renderPanel();
+    await screen.findByText(PLAN_BASIS_LABELS.intent);
+    await userEvent.click(screen.getByRole("button", { name: "Запустить критику" }));
+    expect(await screen.findByRole("button", { name: "Анализ…" })).toBeInTheDocument();
+    expect(screen.queryByText(PLAN_BASIS_LABELS.intent)).not.toBeInTheDocument();
+  });
 });
 
 // Замечание критика персонажей несёт больше, чем summary и цитата: кого
