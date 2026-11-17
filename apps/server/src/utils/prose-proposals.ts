@@ -78,13 +78,13 @@ export function toProposal(row: ProseProposalRow): ProseProposal {
 
 /** Отпечаток того, от чего кандидат зависит и что могло уехать, пока модель
  *  писала: план главы, какой план действует (`active_plan_kind` решает, по
- *  чему пишет Writer), текущая версия и время последней правки книги (её
+ *  чему пишет Writer), план сцен, текущая версия и время последней правки книги (её
  *  двигают правки персонажей, лора и плана). Совпал — база та же; разошёлся —
  *  автор увидит предупреждение и решит сам, а не примет вслепую. */
 export function contextFingerprint(sqlite: DatabaseType, chapterId: number): string {
   const row = sqlite
     .prepare(
-      `SELECT c.plan_json, c.active_plan_kind, c.current_version_id, c.intent, b.updated_at AS book_updated_at
+      `SELECT c.plan_json, c.active_plan_kind, c.current_version_id, c.intent, c.scene_plan, b.updated_at AS book_updated_at
        FROM chapters c JOIN books b ON b.id = c.book_id
        WHERE c.id = ?`,
     )
@@ -94,6 +94,7 @@ export function contextFingerprint(sqlite: DatabaseType, chapterId: number): str
         active_plan_kind: string | null;
         current_version_id: number | null;
         intent: string | null;
+        scene_plan: string | null;
         book_updated_at: string;
       }
     | undefined;
@@ -106,6 +107,9 @@ export function contextFingerprint(sqlite: DatabaseType, chapterId: number): str
         row.current_version_id,
         row.intent,
         row.book_updated_at,
+        // План сцен (наша модель пишет по нему) — только когда он есть: у
+        // глав без него отпечаток прежний, и старые кандидаты не устаревают.
+        ...(row.scene_plan !== null ? [row.scene_plan] : []),
       ]),
     )
     .digest("hex")

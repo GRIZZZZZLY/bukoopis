@@ -225,6 +225,45 @@ describe("глава нашей моделью по сценам", () => {
     expect((events(body, "done")[0] as Done).proposal.status).toBe("incomplete");
   });
 
+  it("truncated middle scene makes the chapter incomplete", async () => {
+    setPlan(chapterId, 15, 1800); // 3 сцены
+    let n = 0;
+    localMock.mockImplementation(async function* () {
+      const i = n++;
+      const text = `Сцена ${i}.`;
+      yield text;
+      return result(text, i === 1 ? "max_tokens" : "end_turn");
+    });
+    const body = await write(chapterId);
+    const done = events(body, "done")[0] as Done & { proposal: { stopReason: string | null } };
+    expect(done.proposal.status).toBe("incomplete");
+    expect(done.proposal.stopReason).toBe("max_tokens");
+  });
+
+  it("resumes from scene N: accepted text is the prefix and the tail", async () => {
+    setPlan(chapterId, 15, 1800); // 3 сцены
+    await send(t.app, `/api/chapters/${chapterId}/versions`, "POST", {
+      contentJson: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Принятая первая сцена." }] }],
+      },
+    });
+    const body = await write(chapterId, { mode: "beats", fromBeat: 1 });
+    expect(localMock).toHaveBeenCalledTimes(2);
+    expect(events(body, "beat")).toEqual([
+      { index: 1, total: 3 },
+      { index: 2, total: 3 },
+    ]);
+    const [p1, p2] = prompts();
+    expect(p1).toContain("### Конец предыдущей сцены\nПринятая первая сцена.\n\n### Текст главы\n");
+    expect(p1).toContain("События:\n1. беат 5\n");
+    expect(p2).toContain("События:\n1. беат 10\n");
+    const done = events(body, "done")[0] as Done & { proposal: { beatsDone: number | null } };
+    expect(done.proposal.contentText).toBe("Принятая первая сцена.\n\nСцена 0.\n\nСцена 1.");
+    expect(done.proposal.beatsDone).toBe(3);
+    expect(done.proposal.status).toBe("ready");
+  });
+
   it("non-raw ollama model uses the old path", async () => {
     availableMock.mockResolvedValue(false);
     await write(chapterId);
@@ -334,6 +373,10 @@ describe("POST /chapters/:id/scene-plan", () => {
       .run(chapterId);
     const res = await send(t.app, `/api/chapters/${chapterId}/scene-plan`, "POST", {});
     expect(res.status).toBe(400);
+    // Свой код причины: интерфейс отличает его от прочих 400 (переполнение контекста).
+    expect(((await res.json()) as { details: { reason?: string } }).details.reason).toBe(
+      "nothing_to_plan",
+    );
     expect(scenePlanMock).not.toHaveBeenCalled();
   });
 

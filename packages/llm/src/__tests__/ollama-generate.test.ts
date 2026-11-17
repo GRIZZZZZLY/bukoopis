@@ -149,4 +149,28 @@ describe("isRawTemplateModel", () => {
     expect(await isRawTemplateModel("t", BASE)).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("hung show times out after 5 s: not raw and not cached", async () => {
+    // Таймер подменяем своим контроллером: «истекает» он по команде теста.
+    const ctrl = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(ctrl.signal);
+    const fetchMock = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const pending = isRawTemplateModel("t", BASE);
+      expect(timeout).toHaveBeenCalledWith(5000);
+      ctrl.abort(new DOMException("timed out", "TimeoutError"));
+      expect(await pending).toBe(false);
+      fetchMock.mockResolvedValueOnce(Response.json({ template: "{{ .Prompt }}" }));
+      expect(await isRawTemplateModel("t", BASE)).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
 });

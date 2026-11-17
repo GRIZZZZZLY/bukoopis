@@ -243,7 +243,9 @@ export function resetRawTemplateCache(): void {
 
 /**
  * Наша модель зарегистрирована с `TEMPLATE {{ .Prompt }}`. Узнаём это по
- * /api/show; сбой запроса — «не наша» и не кешируется.
+ * /api/show; сбой запроса — «не наша» и не кешируется. Проверка идёт до
+ * открытия потока, поэтому ждём не дольше 5 с: зависшая Ollama иначе
+ * держала бы «Написать главу» в тишине.
  */
 export async function isRawTemplateModel(tag: string, baseUrl?: string): Promise<boolean> {
   const base = resolveBaseUrl(baseUrl);
@@ -255,6 +257,7 @@ export async function isRawTemplateModel(tag: string, baseUrl?: string): Promise
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: tag }),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return false;
     const json = (await res.json()) as { template?: unknown };

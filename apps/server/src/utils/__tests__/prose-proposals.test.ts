@@ -513,4 +513,17 @@ describe("contextFingerprint", () => {
     db.prepare("UPDATE chapters SET active_plan_kind = NULL WHERE id = ?").run(chapterId);
     expect(contextFingerprint(db, chapterId)).not.toBe(withBeats);
   });
+
+  it("меняется при правке плана сцен", () => {
+    const before = contextFingerprint(db, chapterId);
+    const setScenePlan = (events: string[]) =>
+      db
+        .prepare("UPDATE chapters SET scene_plan = ? WHERE id = ?")
+        .run(JSON.stringify({ scenes: [{ events }], basedOn: 1 }), chapterId);
+    setScenePlan(["а", "б", "в"]);
+    const withPlan = contextFingerprint(db, chapterId);
+    expect(withPlan).not.toBe(before);
+    setScenePlan(["а", "б", "г"]);
+    expect(contextFingerprint(db, chapterId)).not.toBe(withPlan);
+  });
 });

@@ -353,7 +353,17 @@ export function createPlotRoute(
     const beatSheet = plan.kind === "beats" ? plan.variant : null;
     const intentText = plan.kind === "intent" ? plan.intent : null;
     if (!beatSheet && !intentText) {
-      return badRequest(c, "плану сцен нужно содержание главы или подробный план");
+      // Своя причина: интерфейс отличает её от прочих 400 (переполнения контекста).
+      return c.json(
+        {
+          error: "bad_request",
+          details: {
+            message: "плану сцен нужно содержание главы или подробный план",
+            reason: "nothing_to_plan",
+          },
+        },
+        400,
+      );
     }
     const ctx = loadBookContext(sqlite, ch.book_id);
     if (!ctx) return notFound(c, "book");
@@ -750,7 +760,9 @@ export function createPlotRoute(
             if (next.done) {
               text = next.value.text;
               modelId = next.value.modelId;
-              stopReason = next.value.stopReason;
+              // Обрыв по длине в любой сцене или беате — обрыв главы: дальше
+              // `max_tokens` не перетирается, и кандидат выйдет `incomplete`.
+              if (stopReason !== "max_tokens") stopReason = next.value.stopReason;
               inputTokens += next.value.tokens.input;
               outputTokens += next.value.tokens.output;
               cacheCreationTokens += next.value.tokens.cacheCreation;
