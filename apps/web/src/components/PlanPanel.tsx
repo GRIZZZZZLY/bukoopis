@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import {
@@ -29,13 +28,16 @@ function parsePlan(json: string | null): ChapterPlan | null {
 export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
   const initial = useMemo(() => parsePlan(chapter.planJson), [chapter]);
   const [plan, setPlan] = useState<ChapterPlan | null>(initial);
-  // Намерение приходит из утверждённого плана книги, а не из головы автора в
-  // этой форме: одно и то же он не должен набирать дважды.
+  // Содержание приходит из плана книги или вписывается здесь (временное поле
+  // до экрана главы этапа 3).
   const intent = (chapter.intent ?? "").trim();
   const [variants, setVariants] = useState(2);
   const [generating, setGenerating] = useState(false);
   const [selecting, setSelecting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [savingIntent, setSavingIntent] = useState(false);
 
   useEffect(() => {
     if (plan && plan.selectedIndex !== null) {
@@ -46,12 +48,22 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
     }
   }, [plan, onPlanReady]);
 
+  async function onSaveIntent() {
+    setSavingIntent(true);
+    setError(null);
+    try {
+      await api.updateChapter(chapter.id, { intent: draft.trim() || null });
+      setEditing(false);
+      await onUpdated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingIntent(false);
+    }
+  }
+
   async function onGenerate() {
     setError(null);
-    if (intent.length === 0) {
-      setError("У главы нет намерения — утвердите план книги.");
-      return;
-    }
     setGenerating(true);
     try {
       const result = await api.generateChapterPlan(chapter.id, intent, {
@@ -84,16 +96,40 @@ export function PlanPanel({ chapter, onUpdated, onPlanReady }: Props) {
     <section className="flex flex-col gap-3 border border-[var(--color-border)] rounded-md p-4">
       <h2 className="panel-title">План главы</h2>
 
-      {intent.length > 0 ? (
+      {intent.length > 0 && !editing ? (
         <div>
-          <div className="caption">Намерение главы (из плана книги)</div>
+          <div className="caption">Содержание главы</div>
           <p className="text-sm" style={{ whiteSpace: "pre-wrap" }}>{intent}</p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setDraft(intent);
+              setEditing(true);
+            }}
+          >
+            Изменить
+          </Button>
         </div>
       ) : (
-        <p className="text-sm">
-          У главы нет намерения. Оно приходит из плана книги — откройте{" "}
-          <Link to={`/books/${chapter.bookId}/studio/plot`}>план</Link> и утвердите его.
-        </p>
+        <div className="flex flex-col gap-2">
+          <label className="caption" htmlFor={`chapter-intent-${chapter.id}`}>
+            Содержание главы
+          </label>
+          <textarea
+            id={`chapter-intent-${chapter.id}`}
+            className="input"
+            rows={4}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <Button
+            onClick={() => void onSaveIntent()}
+            disabled={savingIntent}
+            className="self-start"
+          >
+            Сохранить
+          </Button>
+        </div>
       )}
 
       <div className="flex items-center gap-2">

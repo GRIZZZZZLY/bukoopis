@@ -44,6 +44,8 @@ export function SettingsStagePage() {
   const [writerProvider, setWriterProvider] =
     useState<WriterProvider>("anthropic");
   const [writerLocalModel, setWriterLocalModel] = useState<string>("");
+  const [premise, setPremise] = useState("");
+  const [worldNotes, setWorldNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -62,6 +64,8 @@ export function SettingsStagePage() {
       setCriticModel(b.criticModel);
       setWriterProvider(b.writerProvider);
       setWriterLocalModel(b.writerLocalModel ?? "");
+      setPremise(b.premise ?? "");
+      setWorldNotes(b.worldNotes ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -85,6 +89,8 @@ export function SettingsStagePage() {
         plotModel,
         criticModel,
         writerProvider,
+        premise: premise.trim() || null,
+        worldNotes: worldNotes.trim() || null,
         writerLocalModel:
           writerProvider === "ollama" && writerLocalModel.trim()
             ? writerLocalModel.trim()
@@ -233,6 +239,37 @@ export function SettingsStagePage() {
                 ))}
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* Досье: временные поля до полноценного досье слева */}
+        <div className="card">
+          <div className="panel-head" style={{ marginBottom: 14 }}>
+            <h3>Досье</h3>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="book-premise">
+              Синопсис
+            </label>
+            <textarea
+              id="book-premise"
+              className="input"
+              rows={4}
+              value={premise}
+              onChange={(e) => setPremise(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginTop: 14 }}>
+            <label className="field-label" htmlFor="book-world">
+              Мир
+            </label>
+            <textarea
+              id="book-world"
+              className="input"
+              rows={8}
+              value={worldNotes}
+              onChange={(e) => setWorldNotes(e.target.value)}
+            />
           </div>
         </div>
 

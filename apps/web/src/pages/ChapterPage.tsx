@@ -141,6 +141,12 @@ export function ChapterPage() {
   const [chapterCost, setChapterCost] = useState<number | null>(null);
   /** null — автор ещё не трогал: план открыт, пока не выбран. */
   const [planOpen, setPlanOpen] = useState<boolean | null>(null);
+  // Без выбранного беат-плана глава пишется по содержанию или от прошлой главы.
+  const writeHint = selectedPlan
+    ? "Написать главу (Ctrl+Enter)"
+    : (chapter?.intent ?? "").trim()
+      ? "Будет написано по содержанию главы"
+      : "Содержания нет — модель продолжит от прошлой главы";
   const planShown = planOpen ?? selectedPlan === null;
   const [outlinePosition, setOutlinePosition] = useState<number | null>(null);
   const [canonRunningSignal, setCanonRunningSignal] = useState(0);
@@ -605,7 +611,6 @@ export function ChapterPage() {
   }
 
   async function onRunWriter(fromBeat?: number) {
-    if (!selectedPlan) return;
     if (writing) return;
     const ctrl = new AbortController();
     writerAbortRef.current = ctrl;
@@ -683,7 +688,7 @@ export function ChapterPage() {
         ctrl.signal,
         // Дописывание по определению идёт по беатам: иначе снятая галочка
         // превращала бы кнопку «Дописать с беата» в отказ сервера.
-        fromBeat !== undefined ? { mode: "beats", fromBeat } : { mode: writeMode },
+        fromBeat !== undefined ? { mode: "beats", fromBeat } : { mode: selectedPlan ? writeMode : "whole" },
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -730,7 +735,7 @@ export function ChapterPage() {
         void onSave();
       },
       "mod+enter": (e) => {
-        if (writing || !selectedPlan) return;
+        if (writing) return;
         e.preventDefault();
         void onRunWriter();
       },
@@ -903,8 +908,7 @@ export function ChapterPage() {
                 type="button"
                 className="btn btn-primary write-main"
                 onClick={() => void onRunWriter()}
-                disabled={!selectedPlan}
-                title={selectedPlan ? "Написать главу (Ctrl+Enter)" : "Сначала выберите план главы"}
+                title={writeHint}
               >
                 Написать главу
               </button>
@@ -923,7 +927,8 @@ export function ChapterPage() {
                   <label className="write-menu-row">
                     <input
                       type="checkbox"
-                      checked={writeMode === "beats"}
+                      checked={writeMode === "beats" && selectedPlan !== null}
+                      disabled={selectedPlan === null}
                       onChange={(e) => {
                         const next = e.target.checked ? "beats" : "whole";
                         setWriteMode(next);
@@ -959,7 +964,7 @@ export function ChapterPage() {
                     {selectedPlan ? (
                       <WriterCostBadge book={book} estimatedWords={selectedPlan.estimatedWords} />
                     ) : (
-                      <span>Сначала выберите план главы.</span>
+                      <span>{writeHint}.</span>
                     )}
                   </div>
                 </div>

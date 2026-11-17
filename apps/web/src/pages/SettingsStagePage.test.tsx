@@ -51,15 +51,14 @@ describe("SettingsStagePage", () => {
     vi.resetAllMocks();
   });
 
-  it("renders settings without a Замысел/premise field", async () => {
+  it("shows the synopsis from the book in the Досье section", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);
     m.getConcept.mockResolvedValue(emptyBookConcept() as never);
     m.getStudioState.mockResolvedValue(emptyStudioState() as never);
     renderAt();
     await waitFor(() => screen.getByDisplayValue("Тест"));
-    expect(screen.queryByLabelText(/Замысел/)).not.toBeInTheDocument();
-    expect(screen.queryByDisplayValue("СТАРЫЙ ЗАМЫСЕЛ")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Синопсис")).toHaveValue("СТАРЫЙ ЗАМЫСЕЛ");
   });
 
   it("shows an error for a non-numeric bookId instead of an infinite skeleton", () => {
@@ -77,7 +76,7 @@ describe("SettingsStagePage", () => {
     expect(m.getBook).not.toHaveBeenCalled();
   });
 
-  it("saves without sending premise", async () => {
+  it("saves the unchanged synopsis back", async () => {
     m.getBook.mockResolvedValue(book as never);
     m.listStyleProfiles.mockResolvedValue([] as never);
     m.updateBook.mockResolvedValue(book as never);
@@ -88,6 +87,23 @@ describe("SettingsStagePage", () => {
     await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
     await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
     const arg = m.updateBook.mock.calls[0]![1] as Record<string, unknown>;
-    expect("premise" in arg).toBe(false);
+    expect(arg.premise).toBe("СТАРЫЙ ЗАМЫСЕЛ");
+  });
+
+  it("сохраняет синопсис и мир", async () => {
+    m.getBook.mockResolvedValue(book as never);
+    m.listStyleProfiles.mockResolvedValue([] as never);
+    m.updateBook.mockResolvedValue(book as never);
+    renderAt();
+    await waitFor(() => screen.getByDisplayValue("Тест"));
+    await userEvent.clear(screen.getByLabelText("Синопсис"));
+    await userEvent.type(screen.getByLabelText("Синопсис"), "Лис ищет шлюзы");
+    await userEvent.type(screen.getByLabelText("Мир"), "Город на воде");
+    await userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+    await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
+    expect(m.updateBook.mock.calls[0]![1]).toMatchObject({
+      premise: "Лис ищет шлюзы",
+      worldNotes: "Город на воде",
+    });
   });
 });

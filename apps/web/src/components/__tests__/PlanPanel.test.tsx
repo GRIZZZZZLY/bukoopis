@@ -10,6 +10,7 @@ vi.mock("@/api/client", () => ({
   api: {
     generateChapterPlan: vi.fn(),
     selectChapterPlan: vi.fn(),
+    updateChapter: vi.fn(),
   },
 }));
 
@@ -155,7 +156,7 @@ describe("PlanPanel — намерение приходит из плана", ()
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("без намерения отправляет автора на экран плана, а не просит печатать", () => {
+  it("без содержания даёт ввести его, а не отсылает на экран плана", () => {
     render(
       <MemoryRouter>
         <PlanPanel
@@ -165,9 +166,8 @@ describe("PlanPanel — намерение приходит из плана", ()
         />
       </MemoryRouter>,
     );
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    const link = screen.getByRole("link", { name: /план/i });
-    expect(link).toHaveAttribute("href", "/books/7/studio/plot");
+    expect(screen.getByLabelText("Содержание главы")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /план/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Сгенерировать план/ })).toBeDisabled();
   });
 
@@ -190,5 +190,24 @@ describe("PlanPanel — намерение приходит из плана", ()
     expect(api.generateChapterPlan).toHaveBeenCalledWith(expect.any(Number), "Порог", {
       variants: 2,
     });
+  });
+});
+
+describe("PlanPanel — содержание главы", () => {
+  it("без содержания показывает поле и сохраняет его", async () => {
+    vi.mocked(api.updateChapter).mockResolvedValue({} as never);
+    const onUpdated = vi.fn();
+    render(
+      <MemoryRouter>
+        <PlanPanel
+          chapter={makeChapter({ intent: null })}
+          onUpdated={onUpdated}
+          onPlanReady={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.type(screen.getByLabelText("Содержание главы"), "Лис идёт к шлюзам");
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    expect(api.updateChapter).toHaveBeenCalledWith(1, { intent: "Лис идёт к шлюзам" });
   });
 });
