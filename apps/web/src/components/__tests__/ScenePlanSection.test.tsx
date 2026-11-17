@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { Chapter } from "@book-forge/shared";
 import { PlanPanel } from "../PlanPanel";
 import { api } from "@/api/client";
+import { getJob } from "@/lib/jobs";
 
 vi.mock("@/api/client", () => ({
   api: {
@@ -17,6 +19,7 @@ vi.mock("@/api/client", () => ({
 }));
 
 const ev = (p: string) => [`${p}1`, `${p}2`, `${p}3`];
+const A = "a1\na2\na3";
 
 function ch(over: Partial<Chapter> = {}): Chapter {
   return {
@@ -36,16 +39,29 @@ function ch(over: Partial<Chapter> = {}): Chapter {
     ...over,
   };
 }
+const withPlan = (over: Partial<Chapter> = {}) =>
+  ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 }, ...over });
+const apiError = (status: number, message: string) =>
+  Object.assign(new Error(message), { status });
 
-function show(chapter: Chapter, showScenePlan = true) {
+/** Родитель: после onUpdated отдаёт панели главу, которую вернул сервер. */
+let serverChapter: Chapter;
+function Harness({ initial, on }: { initial: Chapter; on: boolean }) {
+  const [chapter, setChapter] = useState(initial);
+  return (
+    <PlanPanel
+      chapter={chapter}
+      onUpdated={() => setChapter(serverChapter)}
+      onPlanReady={vi.fn()}
+      showScenePlan={on}
+    />
+  );
+}
+function show(chapter: Chapter, on = true) {
+  serverChapter = chapter;
   return render(
     <MemoryRouter>
-      <PlanPanel
-        chapter={chapter}
-        onUpdated={vi.fn()}
-        onPlanReady={vi.fn()}
-        showScenePlan={showScenePlan}
-      />
+      <Harness initial={chapter} on={on} />
     </MemoryRouter>,
   );
 }
@@ -59,12 +75,11 @@ describe("План сцен", () => {
   });
 
   it("генерация заполняет поля", async () => {
-    vi.mocked(api.generateScenePlan).mockResolvedValue(
-      ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 } }),
-    );
+    vi.mocked(api.generateScenePlan).mockResolvedValue(withPlan());
     show(ch());
+    serverChapter = withPlan();
     await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
-    expect(await screen.findByRole("textbox")).toHaveValue("a1\na2\na3");
+    expect(await screen.findByRole("textbox")).toHaveValue(A);
   });
 
   it("правка и сохранение шлют обрезанный план без пустой сцены", async () => {
@@ -84,22 +99,80 @@ describe("План сцен", () => {
   });
 
   it("устаревший план предупреждает", () => {
-    show(ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 }, scenePlanStale: true }));
+    show(withPlan({ scenePlanStale: true }));
     expect(
       screen.getByText("План сцен составлен по прежнему содержанию главы"),
     ).toBeInTheDocument();
   });
 
   it("«Сохранить» неактивна без правок", () => {
-    show(ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 } }));
+    show(withPlan());
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
   });
 
-  it("ошибку сервера показывает на месте", async () => {
-    vi.mocked(api.saveScenePlan).mockRejectedValue(new Error("HTTP 400: в сцене 2 события"));
-    show(ch({ scenePlan: { scenes: [{ events: ev("a") }], basedOn: 1 } }));
+  it("ошибку сохранения показывает как есть", async () => {
+    vi.mocked(api.saveScenePlan).mockRejectedValue(apiError(400, "HTTP 400: в сцене 2 события"));
+    show(withPlan());
     await userEvent.type(screen.getAllByRole("textbox")[0]!, "z");
     await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("в сцене 2 события");
+  });
+
+  it("«Очистить» шлёт null", async () => {
+    vi.mocked(api.saveScenePlan).mockResolvedValue(ch());
+    show(withPlan());
+    serverChapter = ch();
+    await userEvent.click(screen.getByRole("button", { name: "Очистить" }));
+    await waitFor(() => expect(api.saveScenePlan).toHaveBeenCalledWith(1, null));
+    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+  });
+
+  it("генерация публикует и снимает работу", async () => {
+    let resolve!: (c: Chapter) => void;
+    vi.mocked(api.generateScenePlan).mockReturnValue(
+      new Promise<Chapter>((r) => (resolve = r)),
+    );
+    show(ch());
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    expect(getJob()?.label).toBe("Составляет план сцен");
+    await act(async () => resolve(withPlan()));
+    expect(getJob()).toBeNull();
+  });
+
+  it("правки не затираются перечитыванием главы", async () => {
+    const panel = (c: Chapter) => (
+      <MemoryRouter>
+        <PlanPanel chapter={c} onUpdated={vi.fn()} onPlanReady={vi.fn()} showScenePlan />
+      </MemoryRouter>
+    );
+    const { rerender } = render(panel(withPlan()));
+    await userEvent.type(screen.getByRole("textbox"), "z");
+    rerender(panel(withPlan()));
+    expect(screen.getByRole("textbox")).toHaveValue(A + "z");
+  });
+
+  it("генерация поверх правок просит подтверждения", async () => {
+    vi.mocked(api.generateScenePlan).mockResolvedValue(withPlan());
+    show(withPlan());
+    await userEvent.type(screen.getByRole("textbox"), "z");
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    expect(api.generateScenePlan).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Заменить правки?" }));
+    await waitFor(() => expect(api.generateScenePlan).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(A));
+  });
+
+  it("409 при генерации объясняет по-русски", async () => {
+    vi.mocked(api.generateScenePlan).mockRejectedValue(apiError(409, "HTTP 409: x"));
+    show(ch());
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ваш план сохранён");
+  });
+
+  it("400 при генерации: нечего разворачивать", async () => {
+    vi.mocked(api.generateScenePlan).mockRejectedValue(apiError(400, "HTTP 400: x"));
+    show(ch());
+    await userEvent.click(screen.getByRole("button", { name: "Составить план сцен" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Нечего разворачивать");
   });
 });
