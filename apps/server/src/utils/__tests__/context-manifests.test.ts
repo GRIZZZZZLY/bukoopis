@@ -145,6 +145,31 @@ describe("манифест контекста", () => {
     expect(compareWithWriterBase(sqlite, v, snapshotFingerprint(refsB))).toBe(true);
   });
 
+  it("манифест Writer'а прежней версии правил — сравнить нечем, а не «база изменилась»", () => {
+    const rec = recordContextManifest(sqlite, {
+      bookId,
+      chapterId,
+      chapterVersionId: null,
+      purpose: "writer",
+      assembled: fakeAssembled(refsA),
+    });
+    const v = insertVersion();
+    attachManifestToVersion(sqlite, rec.id, v);
+    // Так выглядит глава, написанная до досье: другой `promptVersion`, и в
+    // наборе нет новых видов источников.
+    const old = JSON.parse(
+      (sqlite.prepare("SELECT manifest_json FROM context_manifests WHERE id = ?").get(rec.id) as {
+        manifest_json: string;
+      }).manifest_json,
+    ) as Record<string, unknown>;
+    sqlite
+      .prepare("UPDATE context_manifests SET manifest_json = ? WHERE id = ?")
+      .run(JSON.stringify({ ...old, promptVersion: "stage4-2" }), rec.id);
+    const refsNow = [...refsA, { kind: "dossier" as const, id: bookId, versionId: null, revision: 1 }];
+    expect(writerFingerprintForVersion(sqlite, v)).toBeNull();
+    expect(compareWithWriterBase(sqlite, v, snapshotFingerprint(refsNow))).toBeNull();
+  });
+
   it("сравнивается только манифест Writer'а, не критики", () => {
     const v = insertVersion();
     recordContextManifest(sqlite, {

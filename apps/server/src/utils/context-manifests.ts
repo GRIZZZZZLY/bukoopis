@@ -113,19 +113,30 @@ export function attachManifestToVersion(
 }
 
 /** Отпечаток базы, на которой версия была НАПИСАНА. null — версия не из
- *  Writer'а (импорт, ручная правка, написана до этапа 4): сравнивать нечем. */
+ *  Writer'а (импорт, ручная правка, написана до этапа 4) или манифест
+ *  собран по другим правилам (`promptVersion`): сравнивать нечем. Без этой
+ *  проверки каждая глава, написанная до смены состава источников, кричала
+ *  бы «база изменилась» — в старом наборе просто нет новых видов. */
 export function writerFingerprintForVersion(
   sqlite: DatabaseType,
   versionId: number,
 ): string | null {
   const row = sqlite
     .prepare(
-      `SELECT fingerprint FROM context_manifests
+      `SELECT fingerprint, manifest_json FROM context_manifests
        WHERE chapter_version_id = ? AND purpose = 'writer'
        ORDER BY id DESC LIMIT 1`,
     )
-    .get(versionId) as { fingerprint: string } | undefined;
-  return row?.fingerprint ?? null;
+    .get(versionId) as { fingerprint: string; manifest_json: string } | undefined;
+  if (!row) return null;
+  let promptVersion: unknown;
+  try {
+    promptVersion = (JSON.parse(row.manifest_json) as { promptVersion?: unknown } | null)
+      ?.promptVersion;
+  } catch {
+    return null;
+  }
+  return promptVersion === CONTEXT_PROMPT_VERSION ? row.fingerprint : null;
 }
 
 /** true — база уехала с момента написания; false — та же; null — сравнить

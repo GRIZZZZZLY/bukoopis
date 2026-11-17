@@ -8,7 +8,7 @@ vi.mock("@book-forge/agents", async (orig) => {
 });
 
 import { runCritique } from "@book-forge/agents";
-import { renderChapterContract } from "@book-forge/shared";
+import { CONTEXT_PROMPT_VERSION, renderChapterContract } from "@book-forge/shared";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
 const runCritiqueSpy = vi.mocked(runCritique);
@@ -201,14 +201,22 @@ describe("отпечаток базы в отчёте критики (AC-13)", (
   it("та же база — false; появившаяся ранняя глава — true", async () => {
     const first = await run();
     const fp = first.report!.contextFingerprint!;
-    // Как будто версию писал Writer на этой же базе.
+    // Как будто версию писал Writer на этой же базе и по тем же правилам
+    // сборки: манифест другой версии правил сравнению не подлежит.
     t.sqlite
       .prepare(
         `INSERT INTO context_manifests
            (book_id, chapter_id, chapter_version_id, purpose, fingerprint, manifest_json, created_at)
-         VALUES (?, ?, ?, 'writer', ?, '{}', ?)`,
+         VALUES (?, ?, ?, 'writer', ?, ?, ?)`,
       )
-      .run(bookId, chapterId, versionId, fp, new Date().toISOString());
+      .run(
+        bookId,
+        chapterId,
+        versionId,
+        fp,
+        JSON.stringify({ promptVersion: CONTEXT_PROMPT_VERSION }),
+        new Date().toISOString(),
+      );
     const same = await run();
     expect(same.report?.baseChanged).toBe(false);
 
