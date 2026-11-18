@@ -59,6 +59,8 @@ Adding an agent takes three steps:
 
 Every agent either ends its system prompt with `AUTHOR_FACING_LANGUAGE_RULES` ([language-rules.ts](packages/agents/src/language-rules.ts); concept agents use `CONCEPT_LANGUAGE_RULES`, which contains it) or is listed in `LANGUAGE_RULE_EXEMPT` with a reason; `language-rules-guard.test.ts` enforces it.
 
+The Workshop agents (concept, pitches, aspects, `plot_outline`) go to a local Ollama chat model when the book's `studio_provider` is `ollama`: `dispatchStructured({ local })`, never a silent fallback to Claude; locally generated pitches and outline variants carry `generatedBy: "ollama:<tag>"`. Agent list: [spec](docs/superpowers/specs/2026-11-18-local-studio-model-design.md).
+
 `style_extractor`/`style_blender` register separately in [index.ts](apps/server/src/index.ts). Each agent's backend comes from `DEFAULT_AGENT_BACKEND` ([router.ts](packages/llm/src/router.ts)) — look it up, never infer it from a neighbour. Model ids come only from `MODEL_IDS` ([pricing.ts](packages/shared/src/pricing.ts)). **Opus does not accept `temperature`**: pass it conditionally.
 
 **Studio** (`/books/:id/studio`): 7 stages — concept, world, lore, characters, items, plot, chapters. State lives in `books.studio_state` (JSON). Any PATCH needs `expectedRevision`; a mismatch is 409. Hard invariants: [studio-invariants.ts](packages/shared/src/studio-invariants.ts). Stage status is derived by `deriveStageStatus`; only the author's explicit button sets `skipped`.
