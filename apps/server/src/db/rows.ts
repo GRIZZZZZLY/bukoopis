@@ -49,6 +49,8 @@ export interface BookRow {
   critic_model: string;
   writer_provider: string;
   writer_local_model: string | null;
+  studio_provider: string;
+  studio_local_model: string | null;
   concept: string | null;
   studio_state: string | null;
   author_notes: string | null;
@@ -99,6 +101,8 @@ export function toBook(r: BookRow): Book {
     criticModel: r.critic_model as ModelChoice,
     writerProvider: r.writer_provider as WriterProvider,
     writerLocalModel: r.writer_local_model,
+    studioProvider: r.studio_provider as WriterProvider,
+    studioLocalModel: r.studio_local_model,
     authorNotes: r.author_notes,
     worldNotes: r.world_notes,
     createdAt: r.created_at,

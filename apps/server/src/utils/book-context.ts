@@ -21,6 +21,8 @@ export interface BookContext {
   criticModel: "sonnet" | "opus";
   writerProvider: "anthropic" | "ollama";
   writerLocalModel: string | null;
+  studioProvider: "anthropic" | "ollama";
+  studioLocalModel: string | null;
 }
 
 /** Экспортируется ради быстрого сбора ([utils/quick-start-run.ts]): он обязан
@@ -64,6 +66,8 @@ export function loadBookContext(
     criticModel: row.critic_model as "sonnet" | "opus",
     writerProvider: (row.writer_provider as "anthropic" | "ollama") ?? "anthropic",
     writerLocalModel: row.writer_local_model,
+    studioProvider: (row.studio_provider as "anthropic" | "ollama") ?? "anthropic",
+    studioLocalModel: row.studio_local_model,
   };
 }
 

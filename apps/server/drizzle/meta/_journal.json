@@ -253,6 +253,13 @@
       "when": 1794917107036,
       "tag": "0035_scene_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1795023700176,
+      "tag": "0036_local_studio_model",
+      "breakpoints": true
     }
   ]
 }

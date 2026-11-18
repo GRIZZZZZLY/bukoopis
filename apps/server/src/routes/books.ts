@@ -124,6 +124,11 @@ export function createBooksRoute(
         parsed.data.writerLocalModel === undefined
           ? existing.writer_local_model
           : parsed.data.writerLocalModel,
+      studioProvider: parsed.data.studioProvider ?? existing.studio_provider,
+      studioLocalModel:
+        parsed.data.studioLocalModel === undefined
+          ? existing.studio_local_model
+          : parsed.data.studioLocalModel,
       authorNotes:
         parsed.data.authorNotes === undefined
           ? existing.author_notes
@@ -133,12 +138,22 @@ export function createBooksRoute(
           ? existing.world_notes
           : parsed.data.worldNotes,
     };
+    if (next.studioProvider === "ollama" && !next.studioLocalModel?.trim()) {
+      return c.json(
+        {
+          error: "validation_failed",
+          message: "Для локальной мастерской укажите модель Ollama.",
+        },
+        400,
+      );
+    }
     sqlite
       .prepare(
         `UPDATE books
          SET title=?, premise=?, status=?, style_profile_id=?,
              writer_model=?, plot_model=?, critic_model=?,
-             writer_provider=?, writer_local_model=?, author_notes=?,
+             writer_provider=?, writer_local_model=?,
+             studio_provider=?, studio_local_model=?, author_notes=?,
              world_notes=?, updated_at=?
          WHERE id=?`,
       )
@@ -152,6 +167,8 @@ export function createBooksRoute(
         next.criticModel,
         next.writerProvider,
         next.writerLocalModel,
+        next.studioProvider,
+        next.studioLocalModel,
         next.authorNotes,
         next.worldNotes,
         now,

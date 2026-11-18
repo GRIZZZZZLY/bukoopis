@@ -20,6 +20,8 @@ export const bookSchema = z.object({
   criticModel: modelChoiceSchema,
   writerProvider: writerProviderSchema,
   writerLocalModel: z.string().nullable(),
+  studioProvider: writerProviderSchema,
+  studioLocalModel: z.string().nullable(),
   /** Сырые заметки автора; в запросы к модели не уходят. */
   authorNotes: z.string().nullable(),
   /** Свободное поле «Мир»: уходит в промпт Writer'а. */
@@ -59,6 +61,8 @@ export const updateBookInputSchema = z
     criticModel: modelChoiceSchema.optional(),
     writerProvider: writerProviderSchema.optional(),
     writerLocalModel: z.string().min(1).max(120).nullable().optional(),
+    studioProvider: writerProviderSchema.optional(),
+    studioLocalModel: z.string().min(1).max(120).nullable().optional(),
     authorNotes: z.string().max(200_000).nullable().optional(),
     worldNotes: z.string().max(25_000).nullable().optional(),
   })

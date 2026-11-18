@@ -36,6 +36,8 @@ export const books = sqliteTable(
     criticModel: text("critic_model").notNull().default("sonnet"),
     writerProvider: text("writer_provider").notNull().default("anthropic"),
     writerLocalModel: text("writer_local_model"),
+    studioProvider: text("studio_provider").notNull().default("anthropic"),
+    studioLocalModel: text("studio_local_model"),
     concept: text("concept"),
     studioState: text("studio_state"),
     // ADR 0002: first chapter order whose derived memory (facts/notes/chunks)
@@ -69,6 +71,10 @@ export const books = sqliteTable(
     check(
       "books_writer_provider_check",
       sql`${t.writerProvider} IN ('anthropic','ollama')`,
+    ),
+    check(
+      "books_studio_provider_check",
+      sql`${t.studioProvider} IN ('anthropic','ollama')`,
     ),
   ],
 );

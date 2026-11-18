@@ -106,6 +106,46 @@ describe("books CRUD", () => {
   });
 });
 
+describe("books studio local model", () => {
+  interface StudioJson {
+    id: number;
+    studioProvider: string;
+    studioLocalModel: string | null;
+  }
+
+  it("new book defaults studioProvider to anthropic", async () => {
+    const b = await sendJson<StudioJson>(t.app, "/api/books", "POST", {
+      title: "X",
+    });
+    expect(b.studioProvider).toBe("anthropic");
+    expect(b.studioLocalModel).toBeNull();
+  });
+
+  it("PATCH studioProvider+studioLocalModel round-trips", async () => {
+    const b = await sendJson<StudioJson>(t.app, "/api/books", "POST", {
+      title: "X",
+    });
+    const res = await send(t.app, `/api/books/${b.id}`, "PATCH", {
+      studioProvider: "ollama",
+      studioLocalModel: "qwen:9b",
+    });
+    expect(res.status).toBe(200);
+    const got = await sendJson<StudioJson>(t.app, `/api/books/${b.id}`, "GET");
+    expect(got.studioProvider).toBe("ollama");
+    expect(got.studioLocalModel).toBe("qwen:9b");
+  });
+
+  it("PATCH studioProvider ollama without a model is 400", async () => {
+    const b = await sendJson<StudioJson>(t.app, "/api/books", "POST", {
+      title: "X",
+    });
+    const res = await send(t.app, `/api/books/${b.id}`, "PATCH", {
+      studioProvider: "ollama",
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("books dossier", () => {
   it("PATCH сохраняет worldNotes и отвергает 25 001 знак", async () => {
     const b = await sendJson<BookJson>(t.app, "/api/books", "POST", { title: "Т" });
