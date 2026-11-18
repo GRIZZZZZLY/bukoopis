@@ -277,6 +277,13 @@ ${JSON.stringify(jsonSchema)}`;
     promptTokens += res.promptTokens;
     outputTokens += res.outputTokens;
     lastContent = res.content;
+    // Ollama молча обрезает промпт, не влезший в окно (num_ctx 32768 минус
+    // место под ответ). Обрезанный ответ выбрасываем, не повторяем.
+    if (res.promptTokens + (input.maxTokens ?? 0) >= 32768 - 256) {
+      throw new LLMError(
+        `Задание не поместилось в окно локальной модели ${tag}: ответ отброшен.`,
+      );
+    }
 
     let parsed: unknown;
     try {
@@ -310,7 +317,8 @@ ${JSON.stringify(jsonSchema)}`;
     input.onDiagnostics?.(diagnostics);
     return { raw: validated.data, diagnostics };
   }
-  throw new LLMError(
-    `[dispatcher] локальная модель ${tag} не вернула валидный ответ для ${input.agentName}: ${lastError}. Ответ: ${lastContent.slice(0, 300)}`,
+  console.warn(
+    `[llm/ollama] ${tag} не вернула валидный ответ для ${input.agentName}: ${lastError}. Ответ: ${lastContent.slice(0, 300)}`,
   );
+  throw new LLMError(`Локальная модель ${tag} дважды вернула ответ не той формы.`);
 }

@@ -3,6 +3,7 @@ import type { LocalModelRef } from "@book-forge/llm";
 import type { BookOutline } from "@book-forge/shared";
 import { derivePremiseFromConcept, loadStudioContext } from "./studio-context.js";
 import type { BookRow } from "../db/rows.js";
+import { aspectModelLabel } from "./aspect-model-label.js";
 
 /**
  * Книга глазами агентов: название, премиса (выведенная из замысла, когда
@@ -45,7 +46,11 @@ export function loadBookContext(
         parsed.selectedIndex !== null &&
         parsed.variants[parsed.selectedIndex]
       ) {
-        outlineSelected = JSON.stringify(parsed.variants[parsed.selectedIndex]);
+        // generatedBy — метка для автора, в промпты и хеш не идёт.
+        const { generatedBy: _g, ...variant } = parsed.variants[
+          parsed.selectedIndex
+        ] as unknown as Record<string, unknown>;
+        outlineSelected = JSON.stringify(variant);
       }
     } catch {
       /* ignore corrupt outline */
@@ -86,8 +91,24 @@ export function studioLocalOpt(
 /** Локальная модель для заданий мастерской: только когда книга выбрала
  *  Ollama и модель названа. Иначе `undefined` — задание идёт в Claude. */
 export function studioLocal(ctx: BookContext): LocalModelRef | undefined {
+  if (ctx.studioProvider !== "ollama") return undefined;
   const model = ctx.studioLocalModel?.trim();
-  return ctx.studioProvider === "ollama" && model ? { model } : undefined;
+  // Половина переключателя — ошибка, а не тихий уход в платный Claude.
+  if (!model) {
+    throw new Error(
+      "Мастерская переключена на локальную модель, но название модели не задано: укажите его в настройках книги.",
+    );
+  }
+  return { model };
+}
+
+/** Подпись модели для варианта аспекта: `ollama:<тег>` на локальной книге,
+ *  иначе прежняя подпись Claude. */
+export function aspectLabelFor(
+  agent: Parameters<typeof aspectModelLabel>[0],
+  local?: LocalModelRef,
+): string {
+  return local ? `ollama:${local.model}` : aspectModelLabel(agent);
 }
 
 /** Метка происхождения для питчей и вариантов плана: `ollama:<тег>`, когда их

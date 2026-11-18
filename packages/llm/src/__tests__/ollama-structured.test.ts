@@ -16,7 +16,7 @@ const contract: AgentStructuredContract<{ q: string }, z.infer<typeof schema>> =
   mcp: { toolName: "submit_test", toolDescription: "test" },
 };
 
-type ChatReply = { status?: number; content?: string; reject?: unknown };
+type ChatReply = { status?: number; content?: string; reject?: unknown; promptTokens?: number };
 let chatReplies: ChatReply[];
 let chatBodies: Array<Record<string, any>>;
 let showStatus: number;
@@ -36,7 +36,7 @@ function stubFetch(): void {
       return new Response(
         JSON.stringify({
           message: { role: "assistant", content: r.content ?? "" },
-          prompt_eval_count: 11,
+          prompt_eval_count: r.promptTokens ?? 11,
           eval_count: 7,
         }),
         { status: 200 },
@@ -136,13 +136,18 @@ describe("dispatchStructured · local Ollama", () => {
     expect(second.length).toBeGreaterThan("Q:hi".length);
   });
 
-  it("два раза не по схеме → LLMError с первыми 300 символами ответа", async () => {
+  it("два раза не по схеме → одна русская фраза, подробности в console.warn", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bad = `{"value":"${"x".repeat(400)}"}`;
     chatReplies = [{ content: bad }, { content: bad }];
     const err = await run().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(LLMError);
-    expect((err as Error).message).toContain(bad.slice(0, 300));
-    expect((err as Error).message).not.toContain(bad.slice(0, 301));
+    expect((err as Error).message).toBe("Локальная модель t дважды вернула ответ не той формы.");
+    const logged = warn.mock.calls.map((c) => String(c[0])).join(" ");
+    expect(logged).toContain("[llm/ollama]");
+    expect(logged).toContain(bad.slice(0, 300));
+    expect(logged).not.toContain(bad.slice(0, 301));
+    warn.mockRestore();
     expect(chatBodies).toHaveLength(2);
     expect(chatBodies[1]!.messages.at(-1).content).toContain("ответ не подошёл под схему");
   });
@@ -160,6 +165,25 @@ describe("dispatchStructured · local Ollama", () => {
     expect(err).toBeInstanceOf(LLMError);
     expect((err as Error).message).not.toContain("недоступна");
     expect((err as Error).message).toContain("не разобрался");
+  });
+
+  it("HTTP 500: сообщение без тела ответа, тело в console.warn", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    chatReplies = [{ status: 500 }];
+    const err = await run().catch((e: unknown) => e);
+    expect((err as Error).message).toBe("Локальная модель t ответила ошибкой HTTP 500.");
+    expect(String(warn.mock.calls[0]?.[0])).toContain("bad");
+    warn.mockRestore();
+  });
+
+  it("промпт + maxTokens не влезли в окно → ошибка без повтора", async () => {
+    chatReplies = [{ content: '{"value":1}', promptTokens: 20000 }, { content: '{"value":1}' }];
+    const err = await run({ maxTokens: 16000 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect((err as Error).message).toBe(
+      "Задание не поместилось в окно локальной модели t: ответ отброшен.",
+    );
+    expect(chatBodies).toHaveLength(1);
   });
 
   it("404 от /api/chat (модель удалили) → «недоступна»", async () => {

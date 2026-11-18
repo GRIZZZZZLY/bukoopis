@@ -284,6 +284,7 @@ function VariantCard({
   busy: boolean;
   onSelect: () => void;
 }) {
+  const badge = generatedByBadge(variant.generatedBy);
   return (
     <div
       className="card"
@@ -298,9 +299,7 @@ function VariantCard({
         {variant.source === "author_material" && (
           <span className="cap mono faint">из ваших материалов</span>
         )}
-        {generatedByBadge(variant.generatedBy) && (
-          <span className="cap mono faint">{generatedByBadge(variant.generatedBy)}</span>
-        )}
+        {badge && <span className="cap mono faint">{badge}</span>}
       </div>
       {variant.logline && (
         <p className="text-sm">

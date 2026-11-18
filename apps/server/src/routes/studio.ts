@@ -1,4 +1,3 @@
-import { aspectModelLabel } from "../utils/aspect-model-label.js";
 import { Hono, type Context } from "hono";
 import type { Database as DatabaseType } from "better-sqlite3";
 import type { StructuredUsage } from "@book-forge/llm";
@@ -29,7 +28,7 @@ import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
 import type { LocalModelRef } from "@book-forge/llm";
-import { stampGeneratedBy, studioLocalOpt } from "../utils/book-context.js";
+import { aspectLabelFor, stampGeneratedBy, studioLocalOpt } from "../utils/book-context.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
 import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
@@ -324,6 +323,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
    *  провайдеру Писателя. Пусто — задание идёт в Claude. */
   const localOpt = (bookId: number): { local?: LocalModelRef } =>
     studioLocalOpt(sqlite, bookId);
+  const modelLabel = (agent: Parameters<typeof aspectLabelFor>[0], bookId: number): string =>
+    aspectLabelFor(agent, localOpt(bookId).local);
   const intakeCancels = createIntakeCancelRegistry();
   // Разбор, идущий сейчас для книги — для GET .../intake/inflight. Отдельно от
   // intakeCancels: тот хранит только «остановить или нет», не «что сейчас
@@ -1063,7 +1064,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         }, localOpt(id));
         const variants = toStoredEntityVariants(result, {
           contextRef: contextRefEntity,
-          modelId: aspectModelLabel("aspect_entity_variants"),
+          modelId: modelLabel("aspect_entity_variants", id),
         });
         return c.json({ variants, contextRef: contextRefEntity });
       } catch (e) {
@@ -1123,7 +1124,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       });
       const variants = toStoredVariants(result, {
         contextRef,
-        modelId: aspectModelLabel("aspect_variants"),
+        modelId: modelLabel("aspect_variants", id),
       });
       return c.json({ variants, contextRef });
     } catch (e) {
@@ -1195,7 +1196,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
               contextRef,
-              modelId: aspectModelLabel("aspect_entity_variants"),
+              modelId: modelLabel("aspect_entity_variants", id),
             }),
             contextRef,
           }),
@@ -1241,7 +1242,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         buildDone: (result) => ({
           variants: toStoredVariants(result, {
             contextRef,
-            modelId: aspectModelLabel("aspect_variants"),
+            modelId: modelLabel("aspect_variants", id),
           }),
           contextRef,
         }),
@@ -1305,7 +1306,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           variant: toStoredRefinedVariant(result, {
             parentVariantId: payload.parentVariant.id,
             contextRef,
-            modelId: aspectModelLabel("aspect_variants"),
+            modelId: modelLabel("aspect_variants", id),
           }),
           contextRef,
         }),
@@ -1451,7 +1452,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       return c.json({
         sections: result.sections,
         contextRef: prepared.input.contextRef,
-        modelId: aspectModelLabel("aspect_document"),
+        modelId: modelLabel("aspect_document", prepared.bookId),
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1485,7 +1486,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       buildDone: (result) => ({
         sections: result.sections,
         contextRef: prepared.input.contextRef,
-        modelId: aspectModelLabel("aspect_document"),
+        modelId: modelLabel("aspect_document", prepared.bookId),
       }),
     });
   });
@@ -1534,7 +1535,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       const variant = toStoredRefinedVariant(result, {
         parentVariantId: parsed.data.parentVariant.id,
         contextRef,
-        modelId: aspectModelLabel("aspect_variants"),
+        modelId: modelLabel("aspect_variants", id),
       });
       return c.json({ variant, contextRef });
     } catch (e) {

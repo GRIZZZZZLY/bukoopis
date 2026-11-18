@@ -63,7 +63,11 @@ export function createInlineRoute(sqlite: DatabaseType): Hono {
           selectedIndex: number | null;
         };
         if (o.selectedIndex !== null && o.variants[o.selectedIndex]) {
-          outlineSelected = JSON.stringify(o.variants[o.selectedIndex]);
+          // generatedBy — метка для автора, в промпты не идёт.
+          const { generatedBy: _g, ...variant } = o.variants[
+            o.selectedIndex
+          ] as Record<string, unknown>;
+          outlineSelected = JSON.stringify(variant);
         }
       } catch {
         /* ignore */

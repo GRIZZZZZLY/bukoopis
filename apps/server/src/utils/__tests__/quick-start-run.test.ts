@@ -177,6 +177,56 @@ describe("runQuickStart", () => {
     expect(opts.length).toBeGreaterThan(0);
     for (const o of opts) expect(o).toMatchObject({ local: { model: "qwen:9b" } });
     expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0].local).toEqual({ model: "qwen:9b" });
+
+    // Обычная книга: тот же сбор без local ни в одном задании.
+    vi.mocked(runAspectPlaybook).mockClear();
+    vi.mocked(runAspectVariants).mockClear();
+    vi.mocked(runAspectDocument).mockClear();
+    vi.mocked(runBookPlanning).mockClear();
+    db.prepare("UPDATE books SET studio_provider = 'anthropic', outline_json = NULL, studio_state = NULL WHERE id = ?").run(bookId);
+    await runQuickStart(deps(), {});
+    const plain = [
+      ...vi.mocked(runAspectPlaybook).mock.calls.map((c) => c[1]),
+      ...vi.mocked(runAspectVariants).mock.calls.map((c) => c[1]),
+      ...vi.mocked(runAspectDocument).mock.calls.map((c) => c[1]),
+    ];
+    expect(plain.length).toBeGreaterThan(0);
+    for (const o of plain) expect(o).not.toHaveProperty("local");
+    expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0]).not.toHaveProperty("local");
+  });
+
+  it("локальная модель: варианты разделов идут по одному, Claude — параллельно", async () => {
+    const aspect = (n: string) => ({
+      name: n,
+      description: "d",
+      required: true,
+      payloadKind: "markdown" as const,
+    });
+    vi.mocked(runAspectPlaybook).mockResolvedValue({
+      aspects: [aspect("Раз"), aspect("Два"), aspect("Три")],
+    });
+    let active = 0;
+    let peak = 0;
+    const slow = async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return { variants: [{ label: "v1", payload: "Текст раздела, достаточно длинный для схемы." }] };
+    };
+    vi.mocked(runAspectVariants).mockImplementation(slow);
+    vi.mocked(runAspectEntityVariants).mockImplementation(async () => {
+      await slow();
+      return { variants: [] };
+    });
+
+    await runQuickStart(deps(), {});
+    expect(peak).toBeGreaterThan(1);
+
+    peak = 0;
+    db.prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b', studio_state = NULL, outline_json = NULL WHERE id = ?").run(bookId);
+    await runQuickStart(deps(), {});
+    expect(peak).toBe(1);
   });
 
   it("варианты плана локальной книги несут generatedBy, у Claude-книги его нет", async () => {

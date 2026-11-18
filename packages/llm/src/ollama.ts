@@ -329,7 +329,11 @@ export async function chatStructuredOllama(opts: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
-      throw new OllamaHttpError(res.status, `ollama HTTP ${res.status}: ${text}`);
+      console.warn(`[llm/ollama] HTTP ${res.status} от ${opts.tag}: ${text}`);
+      throw new OllamaHttpError(
+        res.status,
+        `Локальная модель ${opts.tag} ответила ошибкой HTTP ${res.status}.`,
+      );
     }
     const json = (await res.json()) as OllamaChatStreamEvent;
     return {

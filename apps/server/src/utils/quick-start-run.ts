@@ -1,4 +1,3 @@
-import { aspectModelLabel } from "./aspect-model-label.js";
 import { randomUUID } from "node:crypto";
 import type { Database as DatabaseType } from "better-sqlite3";
 import {
@@ -32,7 +31,7 @@ import { runBookPlanning } from "@book-forge/agents";
 import type { StudioRepository } from "../db/studio.js";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { loadBookContext } from "../routes/plot.js";
-import { stampGeneratedBy, studioLocalOpt } from "./book-context.js";
+import { aspectLabelFor, stampGeneratedBy, studioLocalOpt } from "./book-context.js";
 import type { LocalModelRef } from "@book-forge/llm";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
 import { logUsage } from "./usageLogger.js";
@@ -327,7 +326,12 @@ async function fillVariants(
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, aspects.length) }, worker),
+    // Локальная модель одна: параллельные вызовы встают в очередь Ollama, и
+    // таймаут тикал бы за время ожидания, а не работы.
+    Array.from(
+      { length: Math.min(localArg.local ? 1 : CONCURRENCY, aspects.length) },
+      worker,
+    ),
   );
 
   if (results.size === 0) return;
@@ -371,7 +375,7 @@ async function generateVariants(
     }, localArg);
     return toStoredEntityVariants(result, {
       contextRef,
-      modelId: aspectModelLabel("aspect_entity_variants"),
+      modelId: aspectLabelFor("aspect_entity_variants", localArg.local),
     });
   }
   const contextRef = buildContextRef({
@@ -389,7 +393,7 @@ async function generateVariants(
   }, localArg);
   return toStoredVariants(result, {
     contextRef,
-    modelId: aspectModelLabel("aspect_variants"),
+    modelId: aspectLabelFor("aspect_variants", localArg.local),
   });
 }
 
@@ -572,7 +576,7 @@ async function generateDocumentStage(
     },
   );
 
-  const modelId = aspectModelLabel("aspect_document");
+  const modelId = aspectLabelFor("aspect_document", localArg.local);
   patchStage(deps, stageId, (current) =>
     mergeDocumentSections(current, result.sections, { contextRef, modelId }),
   );
