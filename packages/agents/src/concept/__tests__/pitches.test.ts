@@ -17,7 +17,7 @@ import {
   type PitchGeneratorInput,
   type PitchGeneratorOutput,
 } from "../pitches.js";
-import { AUTHOR_FACING_LANGUAGE_RULES } from "../../language-rules.js";
+import { AUTHOR_FACING_LANGUAGE_RULES, CONCEPT_LANGUAGE_RULES } from "../../language-rules.js";
 
 const DRAFT: PitchDraft = {
   workingTitle: "  Маршрут, который врёт ",
@@ -127,6 +127,13 @@ describe("AUTHOR_FACING_LANGUAGE_RULES", () => {
   it("lists the new calques", () => {
     expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«клиффхэнгер»");
     expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«арка (персонажа)»");
+  });
+
+  it("keeps the note register and the no-praise line to the concept agents", () => {
+    expect(AUTHOR_FACING_LANGUAGE_RULES).not.toMatch(/записка|похвал/);
+    expect(CONCEPT_LANGUAGE_RULES.startsWith(AUTHOR_FACING_LANGUAGE_RULES)).toBe(true);
+    expect(CONCEPT_LANGUAGE_RULES).toContain("рабочая записка редактора");
+    expect(PITCH_GENERATOR_SYSTEM).toContain(CONCEPT_LANGUAGE_RULES);
   });
 });
 

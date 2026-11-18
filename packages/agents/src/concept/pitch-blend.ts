@@ -10,7 +10,7 @@ import {
   dispatchStructured,
   type AgentStructuredContract,
 } from "@book-forge/llm";
-import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
+import { CONCEPT_LANGUAGE_RULES } from "../language-rules.js";
 import { pitchDraftSchema, type PitchDraft } from "./pitches.js";
 
 export interface PitchBlenderInput {
@@ -29,7 +29,7 @@ export const PITCH_BLENDER_SYSTEM = `Ты — редактор-разработ�
 - Поля, которые автор указал «из питча X», сохраняй по смыслу; править можно только для согласования (имена, время, место).
 - Остальные поля перепиши так, чтобы они естественно следовали из взятых. Не тяни в них детали из питчей, которые автор не выбирал, если они противоречат взятым.
 - Заполни все поля. Форматы те же, что у питча: workingTitle 1–5 слов; logline ≤ 280 символов, кто чего хочет и что мешает, начало свободное; protagonist и conflict 30–80 слов; stakes 20–60 слов; hook одна деталь; genre и tone свободный текст 1–4 слова; audience одно из ya, adult, all_ages, mg; strength и risk по одному простому предложению о сюжете, без оценочных прилагательных о книге. Биографических фактов, дат и чисел, которых нет в источниках, не добавляй.
-${AUTHOR_FACING_LANGUAGE_RULES}`;
+${CONCEPT_LANGUAGE_RULES}`;
 
 const LETTERS = "ABCDEFGHIJ";
 

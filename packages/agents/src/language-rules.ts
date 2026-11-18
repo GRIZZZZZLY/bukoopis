@@ -3,10 +3,14 @@ import type { AgentName } from "@book-forge/llm";
 
 /** Общие правила языка для всех помощников, чей текст автор читает как текст. */
 export const AUTHOR_FACING_LANGUAGE_RULES = `${renderClicheRule()}
-— Язык: пиши как рабочая записка редактора к автору, простым русским языком.
+— Язык: простой русский.
   Без противопоставлений «не X, а Y» и «не только X, но и Y»: сразу скажи, что есть.
-  Без похвалы книге и оценочных прилагательных о ней.
   Без калек с английского: «эмоциональный хребет», «янг-эдалт», «клиффхэнгер», «арка (персонажа)». Слово «крючок» как название поля допустимо.`;
+
+/** Правила языка агентов замысла (питчи, смешивание, уточнение полей): общее ядро и регистр записки. */
+export const CONCEPT_LANGUAGE_RULES = `${AUTHOR_FACING_LANGUAGE_RULES}
+— Пиши как рабочая записка редактора к автору.
+  Без похвалы книге и оценочных прилагательных о ней.`;
 
 /** Агенты без правила языка: имя → почему. Страж языка требует причину у каждого. */
 export const LANGUAGE_RULE_EXEMPT: Partial<Record<AgentName, string>> = {
@@ -32,7 +36,6 @@ export const LANGUAGE_RULE_EXEMPT: Partial<Record<AgentName, string>> = {
   scene_state_extractor: "Extractor: returns scene state facts for memory.",
   reranker: "Returns relevance scores for retrieval, no text.",
   material_classifier: "Classifier: cuts the author's own files into fragments and labels them.",
-  cast_check: "Returns swappable character pairs as working notes for the author's review.",
   scene_intent: "Returns working notes on each participant's intent for the Writer prompt.",
   // Регистрируются в сервере (style-engine).
   style_extractor: "Registered in the server: it describes the author's style as a fingerprint.",

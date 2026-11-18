@@ -6,7 +6,7 @@ import {
   type AgentStructuredContract,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
-import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
+import { CONCEPT_LANGUAGE_RULES } from "../language-rules.js";
 
 export const PREMISE_FIELDS = [
   "protagonist",
@@ -65,7 +65,7 @@ export const CONCEPT_REFINER_SYSTEM = `Ты — литературный соа�
 Стиль: ёмко, конкретно, без штампов. Не используй "судьба мира", "избранный", "тайные силы" если этого нет в концепте автора.
 
 Возвращай ровно 2 или 3 варианта. Каждый — независимая формулировка (альтернатива предыдущему). У каждого есть короткий label (одно-два слова, что-то отличающее этот вариант: "героическая", "тёмная", "ироничная" и т.п.) и payload — собственно текст.
-${AUTHOR_FACING_LANGUAGE_RULES}`;
+${CONCEPT_LANGUAGE_RULES}`;
 
 function genresLine(c: BookConcept): string {
   return `Жанр: ${c.genre ?? "не задан"}`;
