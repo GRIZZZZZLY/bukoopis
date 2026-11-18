@@ -166,6 +166,19 @@ describe("createQuickStartCancelRegistry", () => {
 });
 
 describe("runQuickStart", () => {
+  it("книга с studio_provider ollama: каждое задание уходит с local, обычная — без", async () => {
+    db.prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?").run(bookId);
+    await runQuickStart(deps(), {});
+    const opts = [
+      ...vi.mocked(runAspectPlaybook).mock.calls.map((c) => c[1]),
+      ...vi.mocked(runAspectVariants).mock.calls.map((c) => c[1]),
+      ...vi.mocked(runAspectDocument).mock.calls.map((c) => c[1]),
+    ];
+    expect(opts.length).toBeGreaterThan(0);
+    for (const o of opts) expect(o).toMatchObject({ local: { model: "qwen:9b" } });
+    expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0].local).toEqual({ model: "qwen:9b" });
+  });
+
   it("сообщает о каждом этапе по порядку", async () => {
     const seen: string[] = [];
     const result = await runQuickStart(deps(), { onStage: (e) => seen.push(`${e.stageId}:${e.status}`) });

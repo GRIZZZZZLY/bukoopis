@@ -73,6 +73,16 @@ export function loadBookContext(
 }
 
 
+/** Готовый фрагмент опций для агента мастерской: `{ local }` или `{}`. */
+export function studioLocalOpt(
+  sqlite: DatabaseType,
+  bookId: number,
+): { local?: LocalModelRef } {
+  const ctx = loadBookContext(sqlite, bookId);
+  const local = ctx ? studioLocal(ctx) : undefined;
+  return local ? { local } : {};
+}
+
 /** Локальная модель для заданий мастерской: только когда книга выбрала
  *  Ollama и модель названа. Иначе `undefined` — задание идёт в Claude. */
 export function studioLocal(ctx: BookContext): LocalModelRef | undefined {

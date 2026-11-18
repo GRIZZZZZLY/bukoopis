@@ -29,7 +29,7 @@ import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
 import type { LocalModelRef } from "@book-forge/llm";
-import { loadBookContext, studioLocal } from "../utils/book-context.js";
+import { studioLocalOpt } from "../utils/book-context.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
 import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
@@ -322,11 +322,8 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
 
   /** Параметр `local` для заданий мастерской: по настройке книги, не по
    *  провайдеру Писателя. Пусто — задание идёт в Claude. */
-  function localOpt(bookId: number): { local?: LocalModelRef } {
-    const ctx = loadBookContext(sqlite, bookId);
-    const local = ctx ? studioLocal(ctx) : undefined;
-    return local ? { local } : {};
-  }
+  const localOpt = (bookId: number): { local?: LocalModelRef } =>
+    studioLocalOpt(sqlite, bookId);
   const intakeCancels = createIntakeCancelRegistry();
   // Разбор, идущий сейчас для книги — для GET .../intake/inflight. Отдельно от
   // intakeCancels: тот хранит только «остановить или нет», не «что сейчас

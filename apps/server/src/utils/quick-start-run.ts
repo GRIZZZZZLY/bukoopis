@@ -32,7 +32,7 @@ import { runBookPlanning } from "@book-forge/agents";
 import type { StudioRepository } from "../db/studio.js";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { loadBookContext } from "../routes/plot.js";
-import { studioLocal } from "./book-context.js";
+import { studioLocalOpt } from "./book-context.js";
 import type { LocalModelRef } from "@book-forge/llm";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
 import { logUsage } from "./usageLogger.js";
@@ -113,6 +113,7 @@ export async function runQuickStart(
   const stages: QuickStartStageEvent[] = [];
   const total = QUICK_START_STAGES.length;
   let cancelled = false;
+  const localArg = studioLocalOpt(sqlite, bookId);
 
   for (let index = 0; index < total; index++) {
     const stageId = QUICK_START_STAGES[index]!;
@@ -188,7 +189,7 @@ export async function runQuickStart(
 
     const startedAt = Date.now();
     try {
-      await generateStage(deps, stageId);
+      await generateStage(deps, stageId, localArg);
       const done: QuickStartStageEvent = { index, total, stageId, status: "done" };
       stages.push(done);
       emit(onStage, done);
@@ -221,26 +222,27 @@ const ENTITY_STAGES = new Set<StageId>(["characters", "items"]);
  *  этап из девяти разделов занял бы двадцать минут. */
 const CONCURRENCY = 3;
 
+/** Параметр `local` для заданий мастерской. Читается один раз на быстрый
+ *  сбор: переключатель посреди прогона не смешает Claude и локальную модель. */
+type LocalOpt = { local?: LocalModelRef };
+
 /** Один этап. Вызовы агентов здесь — те же, что делают обработчики Мастерской
  *  (`/stages/:stageId/playbook` и `/aspects/:aspectId/generate`), а для плана —
  *  тот же `runBookPlanning`, что и `POST /books/:id/outline`. Аспекты
  *  сохраняются `reviewing`, как их кладёт приём материала. */
-/** Параметр `local` для заданий мастерской: по настройке книги. */
-function localOpt(deps: QuickStartDeps): { local?: LocalModelRef } {
-  const ctx = loadBookContext(deps.sqlite, deps.bookId);
-  const local = ctx ? studioLocal(ctx) : undefined;
-  return local ? { local } : {};
-}
-
-async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<void> {
+async function generateStage(
+  deps: QuickStartDeps,
+  stageId: StageId,
+  localArg: LocalOpt,
+): Promise<void> {
   if (stageId === "plot") {
-    await generatePlan(deps);
+    await generatePlan(deps, localArg);
     return;
   }
   // Мир и лор — документные этапы (фаза 3): ветка стоит до чтения плейбука,
   // потому что для них плейбука с вариантами на раздел больше нет вовсе.
   if (isDocumentStage(stageId)) {
-    await generateDocumentStage(deps, stageId);
+    await generateDocumentStage(deps, stageId, localArg);
     return;
   }
   const { repo, bookId } = deps;
@@ -255,7 +257,7 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
     (a) => a.variants.length === 0 && a.status === "pending",
   );
   if (unfinished.length > 0) {
-    await fillVariants(deps, stageId, concept, unfinished);
+    await fillVariants(deps, stageId, concept, unfinished, localArg);
     return;
   }
 
@@ -271,7 +273,7 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
       accumulated: [],
       extra: { kind: "playbook" },
     }),
-  }, localOpt(deps));
+  }, localArg);
   const proposed = playbook.aspects.map((a) => ({
     ...a,
     payloadKind: isEntity ? ("entity_set" as const) : a.payloadKind,
@@ -300,7 +302,7 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
 
   // 3. Варианты каждого раздела. Накопленного контекста нет: ничего ещё не
   //    принято, и принимать за автора мы не собираемся.
-  await fillVariants(deps, stageId, concept, aspects);
+  await fillVariants(deps, stageId, concept, aspects, localArg);
 }
 
 /** Собирает варианты для перечисленных разделов и кладёт их в состояние.
@@ -311,6 +313,7 @@ async function fillVariants(
   stageId: StageId,
   concept: BookConcept,
   aspects: StageAspect[],
+  localArg: LocalOpt,
 ): Promise<void> {
   if (aspects.length === 0) return;
   const results = new Map<string, AspectVariant[]>();
@@ -319,7 +322,7 @@ async function fillVariants(
     for (;;) {
       const aspect = aspects[cursor++];
       if (!aspect) return;
-      const variants = await generateVariants(concept, stageId, aspect, localOpt(deps));
+      const variants = await generateVariants(concept, stageId, aspect, localArg);
       results.set(aspect.id, variants);
     }
   };
@@ -345,7 +348,7 @@ async function generateVariants(
   concept: BookConcept,
   stageId: StageId,
   aspect: StageAspect,
-  localArg: { local?: LocalModelRef },
+  localArg: LocalOpt,
 ): Promise<AspectVariant[]> {
   const aspectRef = {
     id: aspect.id,
@@ -508,6 +511,7 @@ function mergeDocumentSections(
 async function generateDocumentStage(
   deps: QuickStartDeps,
   stageId: StageId,
+  localArg: LocalOpt,
 ): Promise<void> {
   const { repo, bookId, sqlite } = deps;
   const concept = repo.loadConcept(bookId);
@@ -552,7 +556,7 @@ async function generateDocumentStage(
       contextRef,
     },
     {
-      ...localOpt(deps),
+      ...localArg,
       onUsage: (usage) =>
         logUsage(sqlite, {
           route: "studio.aspect_document",
@@ -576,7 +580,7 @@ async function generateDocumentStage(
 
 /** План книги. Варианты дописываются к тем, что уже есть (их мог принести
  *  приём материала), и выбор за автора не делается. */
-async function generatePlan(deps: QuickStartDeps): Promise<void> {
+async function generatePlan(deps: QuickStartDeps, localArg: LocalOpt): Promise<void> {
   const { sqlite, bookId } = deps;
   const ctx = loadBookContext(sqlite, bookId);
   if (!ctx) throw new Error(`book ${bookId} not found`);
@@ -590,7 +594,7 @@ async function generatePlan(deps: QuickStartDeps): Promise<void> {
     language: ctx.language,
     ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
     config: { variants: 2, model: ctx.plotModel },
-    ...localOpt(deps),
+    ...localArg,
     onUsage: (usage) =>
       logUsage(sqlite, {
         route: "quick_start.book_outline",
