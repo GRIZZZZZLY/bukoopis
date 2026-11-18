@@ -131,15 +131,41 @@ describe("dispatchStructured · local Ollama", () => {
     expect(chatBodies).toHaveLength(2);
     const second = chatBodies[1]!.messages.at(-1).content as string;
     expect(second).toContain("Q:hi");
-    expect(second).toMatch(/JSON|json/);
+    expect(second).toContain("ответ не разобрался как JSON: ");
+    expect(second).toMatch(/ответ не разобрался как JSON: .*(JSON|token|Unexpected)/);
     expect(second.length).toBeGreaterThan("Q:hi".length);
   });
 
   it("два раза не по схеме → LLMError с первыми 300 символами ответа", async () => {
-    const bad = "x".repeat(400);
+    const bad = `{"value":"${"x".repeat(400)}"}`;
     chatReplies = [{ content: bad }, { content: bad }];
-    await expect(run()).rejects.toThrow("x".repeat(300));
+    const err = await run().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect((err as Error).message).toContain(bad.slice(0, 300));
+    expect((err as Error).message).not.toContain(bad.slice(0, 301));
     expect(chatBodies).toHaveLength(2);
+    expect(chatBodies[1]!.messages.at(-1).content).toContain("ответ не подошёл под схему");
+  });
+
+  it("200 с битым телом → LLMError со своим текстом, не «недоступна»", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/api/show")
+          ? new Response(JSON.stringify({ template: "x" }))
+          : new Response("<html>", { status: 200 }),
+      ),
+    );
+    const err = await run().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LLMError);
+    expect((err as Error).message).not.toContain("недоступна");
+    expect((err as Error).message).toContain("не разобрался");
+  });
+
+  it("404 от /api/chat (модель удалили) → «недоступна»", async () => {
+    chatReplies = [{ status: 404 }];
+    await expect(run()).rejects.toThrow("недоступна");
+    expect(chatBodies).toHaveLength(1);
   });
 
   it("HTTP 400 на format → повтор с format json и схемой в system", async () => {

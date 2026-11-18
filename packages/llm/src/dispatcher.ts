@@ -240,16 +240,27 @@ async function dispatchLocal<I, O>(
   for (let attempt = 0; attempt < 2; attempt++) {
     emit({ kind: "attempt", attempt: attempt + 1 });
     let res;
-    const call = () =>
-      chatStructuredOllama({
-        tag,
-        system,
-        user: userText,
-        format,
-        ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-        ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
-        timeoutMs,
-      });
+    const call = async () => {
+      try {
+        return await chatStructuredOllama({
+          tag,
+          system,
+          user: userText,
+          format,
+          ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+          ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+          timeoutMs,
+        });
+      } catch (err) {
+        // Модель удалили уже после проверки вида: /api/chat отвечает 404.
+        if (err instanceof OllamaHttpError && err.status === 404) {
+          throw new LLMError(
+            `Локальная модель ${tag} недоступна: запущена ли Ollama и есть ли такая модель?`,
+          );
+        }
+        throw err;
+      }
+    };
     try {
       res = await call();
     } catch (err) {

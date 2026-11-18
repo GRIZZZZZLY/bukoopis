@@ -345,10 +345,13 @@ export async function chatStructuredOllama(opts: {
         `Локальная модель ${opts.tag} не ответила за ${Math.round(opts.timeoutMs / 1000)} с`,
       );
     }
+    if (err instanceof TypeError) {
+      throw new LLMError(
+        `Локальная модель ${opts.tag} недоступна: запущена ли Ollama и есть ли такая модель? (${err.message})`,
+      );
+    }
     throw new LLMError(
-      `Локальная модель ${opts.tag} недоступна: запущена ли Ollama и есть ли такая модель? (${
-        err instanceof Error ? err.message : String(err)
-      })`,
+      `Ответ локальной модели ${opts.tag} не разобрался: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
