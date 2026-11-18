@@ -28,9 +28,9 @@ They are ordered by how often they have gone wrong here.
 4. **Prompts.**
    - Russian prompt text does not itself use the «не X, а Y» contrast.
    - No quota rules.
-   - Every agent whose text the author reads carries the shared language rule; the guard test lists the exemptions with reasons.
+   - Every agent either ends its system prompt with `AUTHOR_FACING_LANGUAGE_RULES` or is listed in `LANGUAGE_RULE_EXEMPT` with a reason; the guard test enforces it.
    - A rule about prose agrees along the chain plan → Writer → critics → Reviser.
-5. **Russian text in code.** No `\b` and no `lower()` in regexes over Russian; `\p{L}` lookarounds with the `u` flag instead.
+5. **Russian text in code.** No `\b` and no `lower()` in regexes over Russian; use `uRe` / `mentionsEntityName` (`packages/shared/src/entity-names.ts`), and `\p{L}` lookarounds with the `u` flag for new patterns.
 6. **Schemas.** No `.transform` in a tool schema. Reads are lenient, writes strict.
 7. **What the author sees.** UI words live in `labels.ts`. An error shown to the author is a readable sentence, never raw JSON or `HTTP 400: …`.
 8. **Migrations.** Hand-written SQL with its journal entry. Never `drizzle:generate`.
@@ -46,8 +46,8 @@ They are ordered by how often they have gone wrong here.
 
 Unit tests mock the models, so they cannot see what a model does with a prompt.
 
-- **The Writer path changed** (prompt builders, `local-writer.ts`, the Ollama client, the chapter write route, scene plans): the report must carry a live check, `pnpm live:chapter`, with its numbers. Passing unit tests alone are not evidence for this path.
-- **A prompt for author-facing text changed:** the report should show at least one real output, or say plainly that none was produced.
+- **The local Writer path changed** (`local-writer.ts`, the Ollama client, scene plans, the chapter write route): the report must carry a live check, `pnpm live:chapter`, with its numbers. Passing unit tests alone are not evidence for this path.
+- **The Claude Writer or another prose prompt changed** (`writer.ts`, critics, Reviser): the report shows at least one real output, or says plainly that none was produced.
 - **Before a push:** `pnpm check:outgoing` passes. It looks for local absolute paths, keys and session links in the outgoing commits.
 
 ## Keeping this file useful

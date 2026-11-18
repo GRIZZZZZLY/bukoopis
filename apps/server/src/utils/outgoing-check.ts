@@ -27,8 +27,8 @@ const PATTERNS: { kind: OutgoingProblem["kind"]; re: RegExp }[] = [
   { kind: "session_link", re: /claude\.ai\/(?:code|chat)\/|vault:\/\/|Claude-Session:/ },
 ];
 const API_KEY_ASSIGN = /ANTHROPIC_API_KEY\s*=\s*["']?([\p{L}\p{N}][^\s"']*)/u;
-const PLACEHOLDER = /^[<$…]|xxx|your-key/i;
-const FORBIDDEN_FILE = /(?:^|\/)\.env$|\.env$|\.(?:sqlite|sqlite-wal|sqlite-shm|gguf|safetensors)$/;
+const PLACEHOLDER = /\.\.\.|…|xxx|your-key|^`/i;
+const FORBIDDEN_FILE = /\.env$|\.(?:sqlite|sqlite-wal|sqlite-shm|gguf|safetensors)$/;
 const ALLOW = "check-outgoing: allow";
 const SELF = new Set([
   "apps/server/src/utils/outgoing-check.ts",

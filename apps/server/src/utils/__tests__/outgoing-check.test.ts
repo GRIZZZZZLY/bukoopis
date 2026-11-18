@@ -45,6 +45,9 @@ describe("findOutgoingProblems", () => {
     expect(run([line(keyName + "=realvalue123")]).map((x) => x.kind)).toEqual(["secret"]);
     expect(run([line(keyName + "=<your key>")])).toEqual([]);
     expect(run([line(keyName + "=your-key")])).toEqual([]);
+    expect(run([line(keyName + "=your-key-here")])).toEqual([]);
+    expect(run([line(keyName + "=sk-" + "ant-...")])).toEqual([]);
+    expect(run([line("sk-" + "ant-...")])).toEqual([]);
     expect(run([line("set " + keyName + " in .env")])).toEqual([]);
     expect(run([line("`" + keyName + "=` with a value")])).toEqual([]);
   });
