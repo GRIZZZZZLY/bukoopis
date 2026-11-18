@@ -9,7 +9,8 @@ const keyName = "ANTHROPIC" + "_API_KEY";
 
 const line = (text: string, file = "docs/x.md"): AddedLine => ({ file, line: 1, text });
 const run = (added: AddedLine[], messages: string[] = [], addedFiles: string[] = []) =>
-  findOutgoingProblems({ added, messages, addedFiles });
+  findOutgoingProblems({ added, messages, addedFiles }).problems;
+const runFull = (added: AddedLine[]) => findOutgoingProblems({ added, messages: [], addedFiles: [] });
 
 describe("findOutgoingProblems", () => {
   it("windows local path is reported", () => {
@@ -74,9 +75,38 @@ describe("findOutgoingProblems", () => {
     expect(run([line("see " + win("models") + " check-outgoing: allow")])).toEqual([]);
   });
 
+  it("secret excerpts are masked", () => {
+    const ghp = "gh" + "p_" + "A".repeat(32);
+    for (const text of [ant, ghp, keyName + "=realvalue123"]) {
+      const [p] = run([line(text)]);
+      expect(p?.kind).toBe("secret");
+      expect(p?.excerpt).not.toContain(text.slice(-6));
+      expect(p?.excerpt).toMatch(/…\(\d+\)$/);
+    }
+  });
+
+  it("ghp token is reported", () => {
+    expect(run([line("t " + "gh" + "p_" + "A".repeat(30))]).map((x) => x.kind)).toEqual(["secret"]);
+    expect(run([line("t " + "gh" + "p_" + "A".repeat(29))])).toEqual([]);
+  });
+
+  it("escaped double backslashes are reported", () => {
+    expect(run([line('"C:' + BS + BS + "Users" + BS + BS + 'x"')]).map((x) => x.kind)).toEqual(["local_path"]);
+  });
+
+  it("allow marker is listed as allowed", () => {
+    const r = runFull([
+      { file: "a.md", line: 3, text: win("models") + " check-outgoing: allow" },
+      { file: "a.md", line: 4, text: "nothing here check-outgoing: allow" },
+    ]);
+    expect(r.problems).toEqual([]);
+    expect(r.allowed).toEqual(["a.md:3"]);
+  });
+
   it("own source and test are skipped", () => {
     const bad = "see " + win("models");
     expect(run([line(bad, "apps/server/src/utils/outgoing-check.ts")])).toEqual([]);
+    expect(run([line(bad, "other/outgoing-check.ts")])).toHaveLength(1);
     expect(run([line(bad, "apps/server/src/utils/__tests__/outgoing-check.test.ts")])).toEqual([]);
   });
 
@@ -110,5 +140,19 @@ describe("parseAddedLines", () => {
       { file: "a.md", line: 12, text: "later" },
       { file: "b.md", line: 1, text: "first" },
     ]);
+  });
+
+
+  it("handles quoted and non-ascii file headers", () => {
+    const hunk = ["@@ -0,0 +1 @@", "+text"];
+    const quoted = ["diff --git a/x b/x", '+++ "b/' + BS + "321" + BS + '204.md"', ...hunk].join("\n");
+    expect(parseAddedLines(quoted)).toEqual([{ file: "ф.md", line: 1, text: "text" }]);
+    const plain = ["diff --git a/x b/x", "+++ b/глава.md", ...hunk].join("\n");
+    expect(parseAddedLines(plain)).toEqual([{ file: "глава.md", line: 1, text: "text" }]);
+  });
+
+  it("handles CRLF diffs", () => {
+    const diff = ["diff --git a/a.md b/a.md", "+++ b/a.md", "@@ -0,0 +1 @@", "+text"].join("\r\n");
+    expect(parseAddedLines(diff)).toEqual([{ file: "a.md", line: 1, text: "text" }]);
   });
 });
