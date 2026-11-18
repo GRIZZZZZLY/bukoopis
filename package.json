@@ -13,7 +13,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "migrate": "pnpm --filter @book-forge/server migrate"
+    "migrate": "pnpm --filter @book-forge/server migrate",
+    "check:outgoing": "pnpm --filter @book-forge/server check:outgoing"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

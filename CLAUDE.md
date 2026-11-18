@@ -22,6 +22,7 @@ pnpm test                   # vitest across all packages
 pnpm build
 pnpm --filter @book-forge/server test -- src/routes/__tests__/studio.test.ts   # one file
 pnpm --filter @book-forge/server recompute-text   # rebuild content_text from content_json (backs up DB first)
+pnpm check:outgoing         # before every push: local paths, keys, session links in outgoing commits (base origin/main; marker "check-outgoing: allow" skips a line)
 ```
 
 Migrations are **hand-written plain SQL** — the official process. Drizzle-kit snapshots are broken since 0008; never use `drizzle:generate`.

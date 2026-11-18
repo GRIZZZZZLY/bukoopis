@@ -55,12 +55,12 @@
 **What counts as a problem:**
 - `local_path`:
   - a Windows drive path into a local root: a drive letter, `:`, `\` or `/`, then one of `Users`, `models`, `PROJECTS`, `Temp`, `Ollama` (case-insensitive, not followed by a letter);
-  - the Git Bash form `/c/Users/…`, `/d/models/…`, `/d/PROJECTS/…`.
+  - the Git Bash form `/c/Users/…`, `/d/models/…`, `/d/PROJECTS/…`. (check-outgoing: allow)
 - `secret`:
   - `sk-ant-` followed by 10 or more key characters;
   - `ghp_` followed by 30 or more;
   - `ANTHROPIC_API_KEY` followed by `=` and a non-empty value that is not a placeholder (`<…>`, `…`, `xxx`, `your-key`).
-- `session_link`: `claude.ai/code/`, `claude.ai/chat/`, `vault://`, `Claude-Session:`.
+- `session_link`: `claude.ai/code/`, `claude.ai/chat/`, `vault://`, `Claude-Session:`. (check-outgoing: allow)
 - `forbidden_file`: an added path that is `.env` or ends with `.env`, `.sqlite`, `.sqlite-wal`, `.sqlite-shm`, `.gguf`, `.safetensors`.
 - The same patterns are applied to commit messages (`where` = `commit message`).
 - **Allow marker:** a line containing `check-outgoing: allow` is skipped.
