@@ -1,3 +1,4 @@
+import { LLMError, LLMTimeoutError } from "./errors.js";
 import type {
   StreamCallOptions,
   StreamCallResult,
@@ -275,5 +276,79 @@ export async function ollamaModelKind(
     return kind;
   } catch {
     return "unavailable";
+  }
+}
+
+export class OllamaHttpError extends LLMError {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "OllamaHttpError";
+  }
+}
+
+/**
+ * Один не-потоковый /api/chat для структурного ответа мастерской. `format` —
+ * JSON-схема (или "json"). Ошибки: не-OK HTTP → OllamaHttpError, таймаут →
+ * LLMTimeoutError, сбой сети → LLMError «недоступна».
+ */
+export async function chatStructuredOllama(opts: {
+  tag: string;
+  system: string;
+  user: string;
+  format: unknown;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs: number;
+  baseUrl?: string;
+}): Promise<{ content: string; promptTokens: number; outputTokens: number }> {
+  const url = `${resolveBaseUrl(opts.baseUrl)}/api/chat`;
+  const body = {
+    model: opts.tag,
+    stream: false,
+    think: false,
+    format: opts.format,
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+    options: {
+      num_ctx: 32768,
+      ...(opts.maxTokens !== undefined ? { num_predict: opts.maxTokens } : {}),
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+    },
+  };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new OllamaHttpError(res.status, `ollama HTTP ${res.status}: ${text}`);
+    }
+    const json = (await res.json()) as OllamaChatStreamEvent;
+    return {
+      content: json.message?.content ?? "",
+      promptTokens: json.prompt_eval_count ?? 0,
+      outputTokens: json.eval_count ?? 0,
+    };
+  } catch (err) {
+    if (err instanceof LLMError) throw err;
+    const name = err instanceof Error ? err.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new LLMTimeoutError(
+        `Локальная модель ${opts.tag} не ответила за ${Math.round(opts.timeoutMs / 1000)} с`,
+      );
+    }
+    throw new LLMError(
+      `Локальная модель ${opts.tag} недоступна: запущена ли Ollama и есть ли такая модель? (${
+        err instanceof Error ? err.message : String(err)
+      })`,
+    );
   }
 }

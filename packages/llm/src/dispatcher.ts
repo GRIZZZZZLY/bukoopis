@@ -1,5 +1,6 @@
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import { LLMError } from "./errors.js";
+import { chatStructuredOllama, ollamaModelKind, OllamaHttpError } from "./ollama.js";
 import { getAgentContract } from "./structured-registry.js";
 import { resolveBackendForCall, resolveStructuredMode } from "./router.js";
 import { callViaAnthropicApi, type StructuredUsage } from "./structured.js";
@@ -9,6 +10,7 @@ import type {
   AgentName,
   AgentStructuredContract,
   LLMBackend,
+  LocalModelRef,
   StructuredMode,
 } from "./types.js";
 import type { ModelChoice } from "@book-forge/shared";
@@ -32,6 +34,8 @@ export interface DispatchStructuredInput<I> {
   agentName: AgentName;
   payload: I;
   model: ModelChoice;
+  /** Локальная чат-модель Ollama: вызов идёт мимо Claude, `model` игнорируется. */
+  local?: LocalModelRef;
   /** Optional override of the contract's resolved mode for this call only. */
   mode?: StructuredMode;
   /** Override the system prompt — defaults to contract.systemPrompt. */
@@ -71,6 +75,9 @@ export async function dispatchStructured<I, O>(
 ): Promise<DispatchStructuredResult<O>> {
   const contract = getAgentContract(input.agentName) as AgentStructuredContract<I, O>;
   const outputSchema = contract.getOutputSchema(input.payload);
+  if (input.local) {
+    return dispatchLocal(input, contract, outputSchema as ZodType<O>);
+  }
   const backend = resolveBackendForCall({
     agentName: input.agentName,
     provider: "anthropic",
@@ -173,4 +180,126 @@ export async function dispatchStructured<I, O>(
   };
   input.onDiagnostics?.(diagnostics);
   return { raw: validated.data, diagnostics };
+}
+
+function stripFence(text: string): string {
+  const t = text.trim();
+  const m = /^```[a-zA-Z]*\s*([\s\S]*?)\s*```$/.exec(t);
+  return (m ? m[1]! : t).trim();
+}
+
+async function dispatchLocal<I, O>(
+  input: DispatchStructuredInput<I>,
+  contract: AgentStructuredContract<I, O>,
+  outputSchema: ZodType<O>,
+): Promise<DispatchStructuredResult<O>> {
+  const tag = input.local!.model;
+  const modelId = `ollama:${tag}`;
+  const start = performance.now();
+  const emit = (e: StructuredProgressEvent): void => {
+    try {
+      input.onProgress?.(e);
+    } catch {
+      /* прогресс — best-effort */
+    }
+  };
+
+  const kind = await ollamaModelKind(tag);
+  if (kind === "raw") {
+    throw new LLMError(
+      `Модель ${tag} умеет только продолжать прозу; мастерской нужна обычная чат-модель Ollama.`,
+    );
+  }
+  if (kind === "unavailable") {
+    throw new LLMError(
+      `Локальная модель ${tag} недоступна: запущена ли Ollama и есть ли такая модель?`,
+    );
+  }
+  emit({ kind: "dispatch", backend: "api", modelId });
+
+  const baseSystem =
+    input.systemBlocks === undefined
+      ? contract.systemPrompt
+      : typeof input.systemBlocks === "string"
+        ? input.systemBlocks
+        : input.systemBlocks.map((b) => b.text).join("\n\n");
+  const user = contract.buildPrompt(input.payload);
+  const jsonSchema = z.toJSONSchema(outputSchema);
+  const timeoutMs = Math.max(input.timeoutMs ?? 0, 600_000);
+
+  let format: unknown = jsonSchema;
+  let system = baseSystem;
+  let promptTokens = 0;
+  let outputTokens = 0;
+  let userText = user;
+  let lastError = "";
+  let lastContent = "";
+
+  // Не более 3 вызовов /api/chat: откат на format "json" (HTTP 400) не тратит
+  // единственный повтор по разбору/валидации.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    emit({ kind: "attempt", attempt: attempt + 1 });
+    let res;
+    const call = () =>
+      chatStructuredOllama({
+        tag,
+        system,
+        user: userText,
+        format,
+        ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+        ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+        timeoutMs,
+      });
+    try {
+      res = await call();
+    } catch (err) {
+      if (!(err instanceof OllamaHttpError) || err.status !== 400 || format === "json") {
+        throw err;
+      }
+      format = "json";
+      system = `${baseSystem}
+
+Отвечай только JSON по этой схеме:
+${JSON.stringify(jsonSchema)}`;
+      res = await call();
+    }
+    promptTokens += res.promptTokens;
+    outputTokens += res.outputTokens;
+    lastContent = res.content;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripFence(res.content));
+    } catch (err) {
+      lastError = `ответ не разобрался как JSON: ${err instanceof Error ? err.message : String(err)}`;
+      userText = `${user}
+
+Прошлый ответ не подошёл (${lastError}). Верни только корректный JSON по схеме.`;
+      continue;
+    }
+    const validated = outputSchema.safeParse(parsed);
+    if (!validated.success) {
+      lastError = `ответ не подошёл под схему: ${validated.error.message}`;
+      userText = `${user}
+
+Прошлый ответ не подошёл (${lastError}). Верни только корректный JSON по схеме.`;
+      continue;
+    }
+    emit({ kind: "tool_call" });
+    emit({ kind: "validated" });
+    const diagnostics: StructuredDiagnostics = {
+      modelId,
+      backend: "api",
+      inputTokens: promptTokens,
+      outputTokens,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      latencyMs: performance.now() - start,
+    };
+    input.onDiagnostics?.(diagnostics);
+    return { raw: validated.data, diagnostics };
+  }
+  throw new LLMError(
+    `[dispatcher] локальная модель ${tag} не вернула валидный ответ для ${input.agentName}: ${lastError}. Ответ: ${lastContent.slice(0, 300)}`,
+  );
 }

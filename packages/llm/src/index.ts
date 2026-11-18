@@ -8,6 +8,8 @@ export {
   streamGenerateOllama,
   ollamaModelKind,
   resetRawTemplateCache,
+  chatStructuredOllama,
+  OllamaHttpError,
 } from "./ollama.js";
 export type { OllamaStreamOptions, OllamaGenerateOptions, OllamaModelKind } from "./ollama.js";
 
@@ -21,6 +23,7 @@ export type {
   AgentMcpSpec,
   AgentStructuredContract,
 } from "./types.js";
+export type { LocalModelRef } from "./types.js";
 export { STRUCTURED_AGENT_NAMES } from "./types.js";
 export {
   LLMError,

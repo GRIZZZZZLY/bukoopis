@@ -109,3 +109,8 @@ export const STRUCTURED_AGENT_NAMES: ReadonlySet<AgentName> = new Set<AgentName>
   "reranker",
   "material_classifier",
 ]);
+
+/** Локальная чат-модель Ollama, на которую переключена мастерская книги. */
+export interface LocalModelRef {
+  model: string;
+}
