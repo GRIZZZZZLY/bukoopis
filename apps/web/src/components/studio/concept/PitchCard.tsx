@@ -4,6 +4,7 @@ import {
   type Pitch,
   type PitchMixField,
 } from "@book-forge/shared";
+import { generatedByBadge } from "@/lib/labels";
 
 interface Props {
   pitch: Pitch;
@@ -44,11 +45,13 @@ export function PitchCard({ pitch, isNew, mixMode, picks, onPick, onChoose, onRe
     );
   }
 
+  const badge = generatedByBadge(pitch.generatedBy);
   return (
     <article className={"pitch-card" + (isNew ? " is-new" : "")} aria-label={pitch.workingTitle}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <h4 className="pitch-title">{pitch.workingTitle}</h4>
         {isNew && <span className="pill pill-brass">новый</span>}
+        {badge && <span className="cap mono faint">{badge}</span>}
       </header>
       <div className="pitch-tags">
         <span className="pill">{pitch.genre}</span>

@@ -47,4 +47,10 @@ describe("mergeOutlineVariants", () => {
     expect(titles(next)).not.toContain("G0");
     expect(next.variants).toHaveLength(MAX_OUTLINE_VARIANTS);
   });
+
+  it("keeps generatedBy on merged variants", () => {
+    const stamped = { ...v("L", "llm"), generatedBy: "ollama:qwen:9b" };
+    const { outline: next } = mergeOutlineVariants(outline([stamped], 0), [{ ...v("N", "llm"), generatedBy: "ollama:x" }], "n");
+    expect(next.variants.map((x) => x.generatedBy)).toEqual(["ollama:qwen:9b", "ollama:x"]);
+  });
 });

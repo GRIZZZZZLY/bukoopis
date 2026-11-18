@@ -89,3 +89,9 @@ export function studioLocal(ctx: BookContext): LocalModelRef | undefined {
   const model = ctx.studioLocalModel?.trim();
   return ctx.studioProvider === "ollama" && model ? { model } : undefined;
 }
+
+/** Метка происхождения для питчей и вариантов плана: `ollama:<тег>`, когда их
+ *  сочинила локальная модель. Без `local` объекты отдаются как есть. */
+export function stampGeneratedBy<T extends object>(items: T[], local?: LocalModelRef): T[] {
+  return local ? items.map((x) => ({ ...x, generatedBy: `ollama:${local.model}` })) : items;
+}

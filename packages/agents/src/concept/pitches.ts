@@ -26,7 +26,7 @@ export interface PitchGeneratorInput {
   count?: number;
 }
 
-export const pitchDraftSchema = pitchSchema.omit({ id: true });
+export const pitchDraftSchema = pitchSchema.omit({ id: true, generatedBy: true });
 export type PitchDraft = z.infer<typeof pitchDraftSchema>;
 
 const pitchGeneratorOutputSchema = z.object({

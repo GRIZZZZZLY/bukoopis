@@ -34,6 +34,9 @@ export const pitchSchema = z.object({
   audience: audienceSchema,
   strength: z.string().min(1).max(600),
   risk: z.string().min(1).max(600),
+  /** `ollama:<тег>`, если питч сочинила локальная модель. У питчей Claude поля нет.
+   *  Ставит сервер; в тулсхемы моделей не попадает. */
+  generatedBy: z.string().min(1).optional(),
 });
 export type Pitch = z.infer<typeof pitchSchema>;
 

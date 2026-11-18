@@ -233,3 +233,35 @@ describe("POST /api/books/:id/outline: studio provider switch", () => {
   });
 
 });
+
+describe("POST /api/books/:id/outline: generatedBy label", () => {
+  const VARIANT = { label: "тёмный", estimatedChapters: 12 };
+  async function book(local: boolean): Promise<number> {
+    const id = await createBook();
+    t.sqlite.prepare("UPDATE books SET premise = 'Картограф ищет остров.' WHERE id = ?").run(id);
+    if (local) {
+      t.sqlite
+        .prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?")
+        .run(id);
+    }
+    vi.mocked(runBookPlanning).mockReset();
+    vi.mocked(runBookPlanning).mockResolvedValue([{ ...VARIANT }] as never);
+    return id;
+  }
+
+  it("local book: stored variants carry generatedBy", async () => {
+    const id = await book(true);
+    const out = await sendJson<{ variants: Array<{ generatedBy?: string }> }>(
+      t.app, `/api/books/${id}/outline`, "POST", {},
+    );
+    expect(out.variants[0]?.generatedBy).toBe("ollama:qwen:9b");
+  });
+
+  it("Claude book: no generatedBy", async () => {
+    const id = await book(false);
+    const out = await sendJson<{ variants: Array<Record<string, unknown>> }>(
+      t.app, `/api/books/${id}/outline`, "POST", {},
+    );
+    expect(out.variants[0]).not.toHaveProperty("generatedBy");
+  });
+});

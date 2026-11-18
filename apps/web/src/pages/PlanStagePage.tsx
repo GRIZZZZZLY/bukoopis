@@ -4,7 +4,7 @@ import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { StageStepper } from "@/components/studio/StageStepper";
 import { toast } from "@/lib/toast";
-import { PLAN_APPROVE_LABELS } from "@/lib/labels";
+import { PLAN_APPROVE_LABELS, generatedByBadge } from "@/lib/labels";
 import { isPlanApproved } from "@book-forge/shared";
 import type {
   Book,
@@ -297,6 +297,9 @@ function VariantCard({
         <h4>{variant.label}</h4>
         {variant.source === "author_material" && (
           <span className="cap mono faint">из ваших материалов</span>
+        )}
+        {generatedByBadge(variant.generatedBy) && (
+          <span className="cap mono faint">{generatedByBadge(variant.generatedBy)}</span>
         )}
       </div>
       {variant.logline && (

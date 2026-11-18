@@ -32,7 +32,7 @@ export type UsageHandler = (usage: StructuredUsage) => void;
 export const bookOutlineToolSchema = z.object({
   variants: z
     .array(
-      bookOutlineVariantSchema.extend({
+      bookOutlineVariantSchema.omit({ generatedBy: true }).extend({
         logline: z.string().min(1),
         synopsis: z.string().min(1),
         themes: z.array(z.string()).min(1).max(8),

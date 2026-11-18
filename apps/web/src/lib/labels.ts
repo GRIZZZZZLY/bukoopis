@@ -119,3 +119,11 @@ export const WRITE_UNIT_LABELS = {
     held: "Остановлено после сцены",
   },
 } as const;
+
+/** Метка у питча или варианта плана, сочинённого локальной моделью.
+ *  Принимает тег без префикса `ollama:`. */
+export const localModelBadge = (tag: string): string => `локальная: ${tag}`;
+
+/** `generatedBy` (`ollama:<тег>`) → текст метки; у материала Claude — `null`. */
+export const generatedByBadge = (generatedBy: string | undefined): string | null =>
+  generatedBy?.startsWith("ollama:") ? localModelBadge(generatedBy.slice("ollama:".length)) : null;

@@ -179,6 +179,19 @@ describe("runQuickStart", () => {
     expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0].local).toEqual({ model: "qwen:9b" });
   });
 
+  it("варианты плана локальной книги несут generatedBy, у Claude-книги его нет", async () => {
+    const stored = () =>
+      (JSON.parse((db.prepare("SELECT outline_json FROM books WHERE id = ?").get(bookId) as { outline_json: string }).outline_json) as {
+        variants: Array<Record<string, unknown>>;
+      }).variants;
+    db.prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?").run(bookId);
+    await runQuickStart(deps(), {});
+    expect(stored()[0]?.generatedBy).toBe("ollama:qwen:9b");
+    db.prepare("UPDATE books SET studio_provider = 'anthropic', outline_json = NULL WHERE id = ?").run(bookId);
+    await runQuickStart(deps(), {});
+    expect(stored()[0]).not.toHaveProperty("generatedBy");
+  });
+
   it("сообщает о каждом этапе по порядку", async () => {
     const seen: string[] = [];
     const result = await runQuickStart(deps(), { onStage: (e) => seen.push(`${e.stageId}:${e.status}`) });

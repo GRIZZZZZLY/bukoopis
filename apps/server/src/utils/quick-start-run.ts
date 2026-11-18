@@ -32,7 +32,7 @@ import { runBookPlanning } from "@book-forge/agents";
 import type { StudioRepository } from "../db/studio.js";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { loadBookContext } from "../routes/plot.js";
-import { studioLocalOpt } from "./book-context.js";
+import { stampGeneratedBy, studioLocalOpt } from "./book-context.js";
 import type { LocalModelRef } from "@book-forge/llm";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
 import { logUsage } from "./usageLogger.js";
@@ -621,7 +621,7 @@ async function generatePlan(deps: QuickStartDeps, localArg: LocalOpt): Promise<v
   }
   // Прежде `.slice(0, 5)` молча отрезал новые варианты у книги, где их уже
   // пять (F04). Сгенерированные вытесняют старые сгенерированные.
-  const { outline: next } = mergeOutlineVariants(outline, variants, now);
+  const { outline: next } = mergeOutlineVariants(outline, stampGeneratedBy(variants, localArg.local), now);
   sqlite
     .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
     .run(JSON.stringify(next), now, bookId);

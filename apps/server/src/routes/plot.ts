@@ -85,7 +85,7 @@ import { judgeProseCompletion } from "@book-forge/shared";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 export { loadBookContext, type BookContext } from "../utils/book-context.js";
-import { loadBookContext, studioLocal } from "../utils/book-context.js";
+import { loadBookContext, stampGeneratedBy, studioLocal } from "../utils/book-context.js";
 
 // Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
@@ -158,7 +158,7 @@ export function createPlotRoute(
       const prev = bookOutlineSchema.safeParse(JSON.parse(stored.outline_json));
       if (prev.success) current = prev.data;
     }
-    const { outline } = mergeOutlineVariants(current, variants, now);
+    const { outline } = mergeOutlineVariants(current, stampGeneratedBy(variants, local), now);
     sqlite
       .prepare("UPDATE books SET outline_json = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(outline), now, id);

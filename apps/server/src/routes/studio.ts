@@ -29,7 +29,7 @@ import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
 import type { LocalModelRef } from "@book-forge/llm";
-import { studioLocalOpt } from "../utils/book-context.js";
+import { stampGeneratedBy, studioLocalOpt } from "../utils/book-context.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
 import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
@@ -544,6 +544,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     if (idea.length < 10) {
       return badRequest(c, "idea is too short: write what the book is about first");
     }
+    const localSel = localOpt(id);
     let out;
     try {
       out = await runPitchGenerator({
@@ -551,12 +552,12 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
         ...(parsed.data.count !== undefined ? { count: parsed.data.count } : {}),
         avoid: concept.pitches.map((p) => ({ workingTitle: p.workingTitle, logline: p.logline })),
-      }, { ...localOpt(id), onUsage: usageLoggerFor("studio.concept_pitches", id) });
+      }, { ...localSel, onUsage: usageLoggerFor("studio.concept_pitches", id) });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
     }
-    const fresh = toPitches(out.pitches, () => randomUUID());
+    const fresh = stampGeneratedBy(toPitches(out.pitches, () => randomUUID()), localSel.local);
     try {
       // К3: концепт перечитывается после вызова модели — он идёт десятками
       // секунд, и `concept` выше уже мог устареть. Дописываем только питчи.
@@ -592,6 +593,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       const p = byId.get(pid);
       return p ? [p] : [];
     });
+    const localSel = localOpt(id);
     let draft;
     try {
       draft = await runPitchBlender({
@@ -599,12 +601,12 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         sources,
         picks: parsed.data.picks,
         ...(parsed.data.note ? { note: parsed.data.note } : {}),
-      }, localOpt(id));
+      }, localSel);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_blend_failed", details: { message } }, 500);
     }
-    const blended = toPitches([draft], () => randomUUID())[0];
+    const blended = stampGeneratedBy(toPitches([draft], () => randomUUID()), localSel.local)[0];
     if (!blended) {
       return c.json(
         { error: "pitch_blend_failed", details: { message: "blender returned no pitch" } },

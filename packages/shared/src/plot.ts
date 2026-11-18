@@ -208,6 +208,9 @@ export const bookOutlineVariantSchema = z.object({
    *  варианта, который автор дополнил руками. */
   chapters: z.array(outlineChapterSchema).max(200).optional(),
   source: outlineSourceSchema.optional(),
+  /** `ollama:<тег>`, если вариант сочинила локальная модель. Ставит сервер;
+   *  в тулсхему агента не попадает. */
+  generatedBy: z.string().min(1).optional(),
 });
 export type BookOutlineVariant = z.infer<typeof bookOutlineVariantSchema>;
 

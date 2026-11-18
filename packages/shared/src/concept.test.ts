@@ -53,6 +53,12 @@ describe("bookConceptSchema", () => {
     expect(audienceSchema.safeParse("everyone").success).toBe(false);
   });
 
+  it("pitchSchema accepts a pitch without generatedBy and one with it", () => {
+    expect(pitchSchema.safeParse(PITCH).success).toBe(true);
+    const r = pitchSchema.safeParse({ ...PITCH, generatedBy: "ollama:qwen:9b" });
+    expect(r.success && r.data.generatedBy).toBe("ollama:qwen:9b");
+  });
+
   it("pitchSchema requires every field non-empty", () => {
     expect(pitchSchema.safeParse({ ...PITCH, hook: "" }).success).toBe(false);
     expect(pitchSchema.safeParse(PITCH).success).toBe(true);

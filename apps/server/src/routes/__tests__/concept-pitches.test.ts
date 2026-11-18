@@ -252,3 +252,36 @@ describe("pitches: studio provider switch", () => {
     expect(vi.mocked(runPitchGenerator).mock.calls[0]?.[1]).not.toHaveProperty("local");
   });
 });
+
+describe("pitches: generatedBy label", () => {
+  const OUT = { pitches: [draft("А"), draft("Б"), draft("В")], questions: [] };
+
+  it("local book: every new pitch (generate and blend) carries generatedBy ollama:<tag>", async () => {
+    vi.mocked(runPitchGenerator).mockResolvedValue(OUT);
+    const id = await createBookWithIdea();
+    t.sqlite
+      .prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?")
+      .run(id);
+    const gen = await sendJson<PitchesResponse>(t.app, `/api/books/${id}/concept/pitches`, "POST", {});
+    expect(gen.concept.pitches).toHaveLength(3);
+    for (const p of gen.concept.pitches) expect(p.generatedBy).toBe("ollama:qwen:9b");
+    vi.mocked(runPitchBlender).mockResolvedValue(draft("Смесь"));
+    const [a, b] = gen.newPitchIds;
+    const out = await sendJson<{ concept: BookConcept }>(t.app, `/api/books/${id}/concept/pitches/blend`, "POST", {
+      picks: { protagonist: a, conflict: b },
+    });
+    expect(out.concept.pitches[3]?.generatedBy).toBe("ollama:qwen:9b");
+  });
+
+  it("Claude book: no generatedBy on generated or blended pitches", async () => {
+    vi.mocked(runPitchGenerator).mockResolvedValue(OUT);
+    const id = await createBookWithIdea();
+    const gen = await sendJson<PitchesResponse>(t.app, `/api/books/${id}/concept/pitches`, "POST", {});
+    vi.mocked(runPitchBlender).mockResolvedValue(draft("Смесь"));
+    const [a, b] = gen.newPitchIds;
+    const out = await sendJson<{ concept: BookConcept }>(t.app, `/api/books/${id}/concept/pitches/blend`, "POST", {
+      picks: { protagonist: a, conflict: b },
+    });
+    for (const p of out.concept.pitches) expect(p).not.toHaveProperty("generatedBy");
+  });
+});
