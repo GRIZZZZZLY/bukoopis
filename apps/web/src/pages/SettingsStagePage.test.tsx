@@ -160,6 +160,61 @@ describe("SettingsStagePage", () => {
     expect(screen.getByText(/Конфликт: Город против реки/)).toBeInTheDocument();
   });
 
+  describe("мастерская через локальную модель", () => {
+    const setup = async (extra: Record<string, unknown> = {}) => {
+      m.getBook.mockResolvedValue({ ...book, studioProvider: "anthropic", studioLocalModel: null, ...extra } as never);
+      m.listStyleProfiles.mockResolvedValue([] as never);
+      m.updateBook.mockResolvedValue(book as never);
+      renderAt();
+      await waitFor(() => screen.getByDisplayValue("Тест"));
+    };
+    const save = () => userEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+
+    it("у книги по умолчанию флажок снят и поля тега нет", async () => {
+      await setup();
+      expect(screen.getByLabelText("Мастерская через локальную модель")).not.toBeChecked();
+      expect(screen.queryByLabelText("Тег чат-модели Ollama")).not.toBeInTheDocument();
+    });
+
+    it("флажок открывает поле тега с подсказкой", async () => {
+      await setup();
+      await userEvent.click(screen.getByLabelText("Мастерская через локальную модель"));
+      expect(screen.getByLabelText("Тег чат-модели Ollama")).toBeInTheDocument();
+      expect(screen.getByText(/Модель Писателя сюда не подходит/)).toBeInTheDocument();
+    });
+
+    it("сохранение отправляет ollama и тег", async () => {
+      await setup();
+      await userEvent.click(screen.getByLabelText("Мастерская через локальную модель"));
+      await userEvent.type(screen.getByLabelText("Тег чат-модели Ollama"), "qwen:9b");
+      await save();
+      await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
+      expect(m.updateBook.mock.calls[0]![1]).toMatchObject({
+        studioProvider: "ollama",
+        studioLocalModel: "qwen:9b",
+      });
+    });
+
+    it("снятый флажок отправляет anthropic и не трогает сохранённый тег", async () => {
+      await setup({ studioProvider: "ollama", studioLocalModel: "qwen:9b" });
+      await userEvent.click(screen.getByLabelText("Мастерская через локальную модель"));
+      await save();
+      await waitFor(() => expect(m.updateBook).toHaveBeenCalled());
+      const arg = m.updateBook.mock.calls[0]![1] as Record<string, unknown>;
+      expect(arg.studioProvider).toBe("anthropic");
+      expect(arg.studioLocalModel).toBe("qwen:9b");
+    });
+
+    it("с флажком и пустым тегом сохранение блокируется", async () => {
+      await setup();
+      await userEvent.click(screen.getByLabelText("Мастерская через локальную модель"));
+      await save();
+      expect(m.updateBook).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(/тег/i);
+      expect(screen.getByText(/Модель Писателя сюда не подходит/)).toBeInTheDocument();
+    });
+  });
+
   it("при заполненном синопсисе подсказки нет", async () => {
     m.getBook.mockResolvedValue({ ...book, derivedPremise: null } as never);
     m.listStyleProfiles.mockResolvedValue([] as never);

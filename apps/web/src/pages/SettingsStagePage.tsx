@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DOSSIER_LABELS } from "@/lib/labels";
+import { DOSSIER_LABELS, STUDIO_LOCAL_LABELS } from "@/lib/labels";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ConfirmDialog } from "@/components/ui/AlertDialog";
 import { PageSkeleton } from "@/components/ui/Skeleton";
@@ -48,6 +48,9 @@ export function SettingsStagePage() {
   const [writerProvider, setWriterProvider] =
     useState<WriterProvider>("anthropic");
   const [writerLocalModel, setWriterLocalModel] = useState<string>("");
+  const [studioLocal, setStudioLocal] = useState(false);
+  const [studioLocalModel, setStudioLocalModel] = useState("");
+  const [studioTagMissing, setStudioTagMissing] = useState(false);
   const [premise, setPremise] = useState("");
   const [worldNotes, setWorldNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -68,6 +71,8 @@ export function SettingsStagePage() {
       setCriticModel(b.criticModel);
       setWriterProvider(b.writerProvider);
       setWriterLocalModel(b.writerLocalModel ?? "");
+      setStudioLocal(b.studioProvider === "ollama");
+      setStudioLocalModel(b.studioLocalModel ?? "");
       setPremise(b.premise ?? "");
       setWorldNotes(b.worldNotes ?? "");
     } catch (err) {
@@ -82,6 +87,11 @@ export function SettingsStagePage() {
   }, [id]);
 
   async function onSave() {
+    if (studioLocal && !studioLocalModel.trim()) {
+      setStudioTagMissing(true);
+      return;
+    }
+    setStudioTagMissing(false);
     setSaving(true);
     setError(null);
     // Название, синопсис и мир уходят, только если автор правил их здесь:
@@ -105,6 +115,9 @@ export function SettingsStagePage() {
           writerProvider === "ollama" && writerLocalModel.trim()
             ? writerLocalModel.trim()
             : null,
+        studioProvider: studioLocal ? "ollama" : "anthropic",
+        // Снятый флажок оставляет сохранённый тег как есть.
+        ...(studioLocalModel.trim() ? { studioLocalModel: studioLocalModel.trim() } : {}),
       });
       await load();
       room?.reloadBook();
@@ -397,6 +410,40 @@ export function SettingsStagePage() {
                 http://127.0.0.1:11434). План и критика остаются на
                 cloud-моделях.
               </p>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <label className="field-label" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={studioLocal}
+              onChange={(e) => {
+                setStudioLocal(e.target.checked);
+                setStudioTagMissing(false);
+              }}
+            />
+            {STUDIO_LOCAL_LABELS.checkbox}
+          </label>
+          {studioLocal && (
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="field-label" htmlFor="studio-local-model">
+                {STUDIO_LOCAL_LABELS.tag}
+              </label>
+              <input
+                id="studio-local-model"
+                className="input"
+                value={studioLocalModel}
+                onChange={(e) => setStudioLocalModel(e.target.value)}
+                placeholder="например, qwen3:14b"
+              />
+              <p className="field-hint">{STUDIO_LOCAL_LABELS.hint}</p>
+              {studioTagMissing && (
+                <p role="alert" className="field-hint" style={{ color: "var(--color-ink-red)" }}>
+                  {STUDIO_LOCAL_LABELS.tagRequired}
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -127,3 +127,11 @@ export const localModelBadge = (tag: string): string => `локальная: ${t
 /** `generatedBy` (`ollama:<тег>`) → текст метки; у материала Claude — `null`. */
 export const generatedByBadge = (generatedBy: string | undefined): string | null =>
   generatedBy?.startsWith("ollama:") ? localModelBadge(generatedBy.slice("ollama:".length)) : null;
+
+/** Настройки книги: мастерская через локальную модель Ollama. */
+export const STUDIO_LOCAL_LABELS = {
+  checkbox: "Мастерская через локальную модель",
+  tag: "Тег чат-модели Ollama",
+  hint: "Нужна обычная чат-модель Ollama. Модель Писателя сюда не подходит: она умеет только продолжать прозу. Память, критики и план главы остаются на Claude.",
+  tagRequired: "Укажите тег модели: без него мастерскую не переключить.",
+} as const;
