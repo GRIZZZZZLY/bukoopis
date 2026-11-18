@@ -126,11 +126,11 @@ describe("PITCH_GENERATOR_SYSTEM", () => {
 describe("AUTHOR_FACING_LANGUAGE_RULES", () => {
   it("lists the new calques", () => {
     expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«клиффхэнгер»");
-    expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«арка (персонажа)»");
+    expect(CONCEPT_LANGUAGE_RULES).toContain("«арка (персонажа)»");
   });
 
-  it("keeps the note register and the no-praise line to the concept agents", () => {
-    expect(AUTHOR_FACING_LANGUAGE_RULES).not.toMatch(/записка|похвал/);
+  it("keeps the note register, the no-praise line and «арка» to the concept agents", () => {
+    expect(AUTHOR_FACING_LANGUAGE_RULES).not.toMatch(/записка|похвал|арка/);
     expect(CONCEPT_LANGUAGE_RULES.startsWith(AUTHOR_FACING_LANGUAGE_RULES)).toBe(true);
     expect(CONCEPT_LANGUAGE_RULES).toContain("рабочая записка редактора");
     expect(PITCH_GENERATOR_SYSTEM).toContain(CONCEPT_LANGUAGE_RULES);

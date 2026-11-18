@@ -5,12 +5,15 @@ import type { AgentName } from "@book-forge/llm";
 export const AUTHOR_FACING_LANGUAGE_RULES = `${renderClicheRule()}
 — Язык: простой русский.
   Без противопоставлений «не X, а Y» и «не только X, но и Y»: сразу скажи, что есть.
-  Без калек с английского: «эмоциональный хребет», «янг-эдалт», «клиффхэнгер», «арка (персонажа)». Слово «крючок» как название поля допустимо.`;
+  Без калек с английского: «эмоциональный хребет», «янг-эдалт», «клиффхэнгер». Слово «крючок» как название поля допустимо.`;
 
-/** Правила языка агентов замысла (питчи, смешивание, уточнение полей): общее ядро и регистр записки. */
+/** Правила языка агентов замысла (питчи, смешивание, уточнение полей): общее ядро,
+ *  регистр записки и «арка». В планах, карточках и заметках «арка» — рабочее
+ *  слово; жаргоном она была только в питчах. */
 export const CONCEPT_LANGUAGE_RULES = `${AUTHOR_FACING_LANGUAGE_RULES}
 — Пиши как рабочая записка редактора к автору.
-  Без похвалы книге и оценочных прилагательных о ней.`;
+  Без похвалы книге и оценочных прилагательных о ней.
+  Без кальки «арка (персонажа)».`;
 
 /** Агенты без правила языка: имя → почему. Страж языка требует причину у каждого. */
 export const LANGUAGE_RULE_EXEMPT: Partial<Record<AgentName, string>> = {
@@ -32,10 +35,11 @@ export const LANGUAGE_RULE_EXEMPT: Partial<Record<AgentName, string>> = {
   // Возвращают факты, метки, цитаты или рабочие заметки для другого промпта.
   canon_fact_extractor: "Extractor: returns canon facts with quotes for memory.",
   character_event_extractor: "Extractor: returns character events with verbatim quotes for memory.",
-  episodic_note_extractor: "Extractor: returns open threads and notes for memory.",
+  episodic_note_extractor: "Its notes are memory, shown read-only in Memory notes; they must stay accurate, so no style rule.",
   scene_state_extractor: "Extractor: returns scene state facts for memory.",
   reranker: "Returns relevance scores for retrieval, no text.",
-  material_classifier: "Classifier: cuts the author's own files into fragments and labels them.",
+  material_classifier: "Fragment bodies are the author's own text verbatim; only short captions and titles are model text.",
+  summarizer: "Summaries feed other prompts and memory, where accuracy outranks style; the cliché list bans meaning-bearing words such as «казалось».",
   scene_intent: "Returns working notes on each participant's intent for the Writer prompt.",
   // Регистрируются в сервере (style-engine).
   style_extractor: "Registered in the server: it describes the author's style as a fingerprint.",

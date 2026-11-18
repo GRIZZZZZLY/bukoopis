@@ -8,8 +8,6 @@ import {
 } from "@book-forge/llm";
 import { registerAllAgentContracts } from "../bootstrap.js";
 import { CHAT_SYSTEM } from "../chat.js";
-import { CHAPTER_SUMMARY_SYSTEM } from "../summarize-chapter.js";
-import { META_SUMMARY_SYSTEM } from "../meta-summarizer.js";
 import {
   AUTHOR_FACING_LANGUAGE_RULES,
   LANGUAGE_RULE_EXEMPT,
@@ -20,7 +18,6 @@ import {
  *  Новый такой агент без записи тут или в LANGUAGE_RULE_EXEMPT валит страж. */
 const FREE_TEXT_PROMPTS: Partial<Record<AgentName, readonly string[]>> = {
   book_chat: [CHAT_SYSTEM],
-  summarizer: [CHAPTER_SUMMARY_SYSTEM, META_SUMMARY_SYSTEM],
 };
 
 function systemPromptsOf(name: string): readonly string[] {
