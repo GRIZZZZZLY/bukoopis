@@ -32,6 +32,8 @@ import { runBookPlanning } from "@book-forge/agents";
 import type { StudioRepository } from "../db/studio.js";
 import { buildContextRef } from "../services/studio/contextHash.js";
 import { loadBookContext } from "../routes/plot.js";
+import { studioLocal } from "./book-context.js";
+import type { LocalModelRef } from "@book-forge/llm";
 import { loadStudioContext, studioContextToPrompt } from "./studio-context.js";
 import { logUsage } from "./usageLogger.js";
 
@@ -223,6 +225,13 @@ const CONCURRENCY = 3;
  *  (`/stages/:stageId/playbook` и `/aspects/:aspectId/generate`), а для плана —
  *  тот же `runBookPlanning`, что и `POST /books/:id/outline`. Аспекты
  *  сохраняются `reviewing`, как их кладёт приём материала. */
+/** Параметр `local` для заданий мастерской: по настройке книги. */
+function localOpt(deps: QuickStartDeps): { local?: LocalModelRef } {
+  const ctx = loadBookContext(deps.sqlite, deps.bookId);
+  const local = ctx ? studioLocal(ctx) : undefined;
+  return local ? { local } : {};
+}
+
 async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<void> {
   if (stageId === "plot") {
     await generatePlan(deps);
@@ -262,7 +271,7 @@ async function generateStage(deps: QuickStartDeps, stageId: StageId): Promise<vo
       accumulated: [],
       extra: { kind: "playbook" },
     }),
-  });
+  }, localOpt(deps));
   const proposed = playbook.aspects.map((a) => ({
     ...a,
     payloadKind: isEntity ? ("entity_set" as const) : a.payloadKind,
@@ -310,7 +319,7 @@ async function fillVariants(
     for (;;) {
       const aspect = aspects[cursor++];
       if (!aspect) return;
-      const variants = await generateVariants(concept, stageId, aspect);
+      const variants = await generateVariants(concept, stageId, aspect, localOpt(deps));
       results.set(aspect.id, variants);
     }
   };
@@ -336,6 +345,7 @@ async function generateVariants(
   concept: BookConcept,
   stageId: StageId,
   aspect: StageAspect,
+  localArg: { local?: LocalModelRef },
 ): Promise<AspectVariant[]> {
   const aspectRef = {
     id: aspect.id,
@@ -355,7 +365,7 @@ async function generateVariants(
       aspect: aspectRef,
       accumulated: [],
       contextRef,
-    });
+    }, localArg);
     return toStoredEntityVariants(result, {
       contextRef,
       modelId: aspectModelLabel("aspect_entity_variants"),
@@ -373,7 +383,7 @@ async function generateVariants(
     aspect: aspectRef,
     accumulated: [],
     contextRef,
-  });
+  }, localArg);
   return toStoredVariants(result, {
     contextRef,
     modelId: aspectModelLabel("aspect_variants"),
@@ -542,6 +552,7 @@ async function generateDocumentStage(
       contextRef,
     },
     {
+      ...localOpt(deps),
       onUsage: (usage) =>
         logUsage(sqlite, {
           route: "studio.aspect_document",
@@ -579,6 +590,7 @@ async function generatePlan(deps: QuickStartDeps): Promise<void> {
     language: ctx.language,
     ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
     config: { variants: 2, model: ctx.plotModel },
+    ...localOpt(deps),
     onUsage: (usage) =>
       logUsage(sqlite, {
         route: "quick_start.book_outline",

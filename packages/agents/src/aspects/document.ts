@@ -9,6 +9,7 @@ import type {
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
   type StructuredProgressEvent,
   type StructuredUsage,
@@ -152,6 +153,8 @@ export function registerAspectDocumentContract(): void {
 
 export interface RunAspectDocumentOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
   onProgress?: (e: StructuredProgressEvent) => void;
   onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
@@ -172,6 +175,7 @@ export async function runAspectDocument(
     agentName: "aspect_document",
     payload: input,
     model: options.model ?? "sonnet",
+    ...(options.local ? { local: options.local } : {}),
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
       : {}),

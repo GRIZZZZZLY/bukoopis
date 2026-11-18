@@ -217,3 +217,20 @@ describe("runPitchGenerator: contrast retry", () => {
     expect(onUsage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("runPitchGenerator: local", () => {
+  it("forwards local to dispatchStructured, including on the contrast retry", async () => {
+    const dispatchMock = vi.mocked(dispatchStructured);
+    dispatchMock.mockReset();
+    const diag = {
+      modelId: "ollama:qwen:9b", backend: "api" as const, inputTokens: 1, outputTokens: 1,
+      cacheCreationInputTokens: 0, cacheReadInputTokens: 0, latencyMs: 1,
+    };
+    const dirty = { pitches: [{ ...DRAFT, hook: "Не трофей, а инструмент." }, DRAFT, DRAFT], questions: [] };
+    dispatchMock.mockResolvedValueOnce({ raw: dirty, diagnostics: diag });
+    dispatchMock.mockResolvedValueOnce({ raw: { pitches: [DRAFT, DRAFT, DRAFT], questions: [] }, diagnostics: diag });
+    await runPitchGenerator({ idea: "Первая книга — становление героя." }, { local: { model: "qwen:9b" } });
+    expect(dispatchMock).toHaveBeenCalledTimes(2);
+    for (const call of dispatchMock.mock.calls) expect(call[0].local).toEqual({ model: "qwen:9b" });
+  });
+});

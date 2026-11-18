@@ -10,6 +10,7 @@ import { findContrastClichés } from "./contrast-cliches.js";
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
   type StructuredUsage,
 } from "@book-forge/llm";
@@ -126,6 +127,8 @@ export function toPitches(drafts: PitchDraft[], makeId: () => string): Pitch[] {
 
 export interface RunPitchGeneratorOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
   /** Расход каждого вызова, включая повтор. */
   onUsage?: (usage: StructuredUsage & { modelId: string }) => void;
@@ -156,6 +159,7 @@ export async function runPitchGenerator(
       agentName: "pitch_generator",
       payload,
       model: options.model ?? "sonnet",
+      ...(options.local ? { local: options.local } : {}),
       ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
       maxTokens: 6000,
     });

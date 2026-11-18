@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@book-forge/agents", async (orig) => ({
   ...(await orig<typeof import("@book-forge/agents")>()),
   runChapterPlan: vi.fn(),
+  runBookPlanning: vi.fn(),
 }));
 vi.mock("@book-forge/retrieval", async (orig) => ({
   ...(await orig<typeof import("@book-forge/retrieval")>()),
@@ -13,7 +14,7 @@ vi.mock("@book-forge/retrieval", async (orig) => ({
 }));
 
 import Database from "better-sqlite3";
-import { runChapterPlan } from "@book-forge/agents";
+import { runChapterPlan, runBookPlanning } from "@book-forge/agents";
 import { hybridSearch } from "@book-forge/retrieval";
 import { makeTestApp, send, sendJson, type TestApp } from "./_helpers.js";
 
@@ -205,4 +206,30 @@ describe("chapters.active_plan_kind", () => {
     expect(r.status).toBe(200);
     expect(await kind(chId)).toBe("beats");
   });
+});
+
+describe("POST /api/books/:id/outline: studio provider switch", () => {
+  async function bookWithPremise(): Promise<number> {
+    const id = await createBook();
+    t.sqlite.prepare("UPDATE books SET premise = 'Картограф ищет остров.' WHERE id = ?").run(id);
+    vi.mocked(runBookPlanning).mockReset();
+    vi.mocked(runBookPlanning).mockResolvedValue([]);
+    return id;
+  }
+
+  it("book outline on a local book passes local into runBookPlanning input", async () => {
+    const id = await bookWithPremise();
+    t.sqlite
+      .prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?")
+      .run(id);
+    await send(t.app, `/api/books/${id}/outline`, "POST", {});
+    expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0].local).toEqual({ model: "qwen:9b" });
+  });
+
+  it("an ordinary book passes no local", async () => {
+    const id = await bookWithPremise();
+    await send(t.app, `/api/books/${id}/outline`, "POST", {});
+    expect(vi.mocked(runBookPlanning).mock.calls[0]?.[0]).not.toHaveProperty("local");
+  });
+
 });

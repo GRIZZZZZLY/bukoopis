@@ -28,6 +28,8 @@ import {
 import { parseJsonOrNull } from "../db/rows.js";
 import { notFound, validationFailed, badRequest } from "../utils/errors.js";
 import { logUsage } from "../utils/usageLogger.js";
+import type { LocalModelRef } from "@book-forge/llm";
+import { loadBookContext, studioLocal } from "../utils/book-context.js";
 import { runConceptRefiner } from "@book-forge/agents/concept/refiner";
 import { runPitchGenerator, toPitches } from "@book-forge/agents/concept/pitches";
 import { runPitchBlender } from "@book-forge/agents/concept/pitch-blend";
@@ -317,6 +319,14 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
 
   const r = new Hono();
   const repo = createStudioRepository(sqlite);
+
+  /** Параметр `local` для заданий мастерской: по настройке книги, не по
+   *  провайдеру Писателя. Пусто — задание идёт в Claude. */
+  function localOpt(bookId: number): { local?: LocalModelRef } {
+    const ctx = loadBookContext(sqlite, bookId);
+    const local = ctx ? studioLocal(ctx) : undefined;
+    return local ? { local } : {};
+  }
   const intakeCancels = createIntakeCancelRegistry();
   // Разбор, идущий сейчас для книги — для GET .../intake/inflight. Отдельно от
   // intakeCancels: тот хранит только «остановить или нет», не «что сейчас
@@ -505,7 +515,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         concept,
         accumulated,
         ...(parsed.data.draft !== undefined ? { draft: parsed.data.draft } : {}),
-      });
+      }, localOpt(id));
       return c.json(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -544,7 +554,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
         ...(parsed.data.count !== undefined ? { count: parsed.data.count } : {}),
         avoid: concept.pitches.map((p) => ({ workingTitle: p.workingTitle, logline: p.logline })),
-      }, { onUsage: usageLoggerFor("studio.concept_pitches", id) });
+      }, { ...localOpt(id), onUsage: usageLoggerFor("studio.concept_pitches", id) });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_generation_failed", details: { message } }, 500);
@@ -592,7 +602,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         sources,
         picks: parsed.data.picks,
         ...(parsed.data.note ? { note: parsed.data.note } : {}),
-      });
+      }, localOpt(id));
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return c.json({ error: "pitch_blend_failed", details: { message } }, 500);
@@ -987,7 +997,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         concept,
         existingAspectNames: parsed.data.existingAspectNames ?? [],
         contextRef,
-      });
+      }, localOpt(id));
       const isEntity = ENTITY_STAGES.has(
         stageParse.data as "characters" | "items",
       );
@@ -1051,7 +1061,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
           aspect: parsed.data.aspect,
           accumulated: accumulatedEntities,
           contextRef: contextRefEntity,
-        });
+        }, localOpt(id));
         const variants = toStoredEntityVariants(result, {
           contextRef: contextRefEntity,
           modelId: aspectModelLabel("aspect_entity_variants"),
@@ -1098,6 +1108,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         ...(parsed.data.draft !== undefined ? { draft: parsed.data.draft } : {}),
         contextRef,
       }, {
+        ...localOpt(id),
         onUsage: (usage) =>
           logUsage(sqlite, {
             route: "studio.aspect_variants",
@@ -1180,7 +1191,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
                 accumulated: accumulatedEntities,
                 contextRef,
               },
-              { onProgress, onUsage: usageLoggerFor("studio.aspect_entity_variants", id) },
+              { ...localOpt(id), onProgress, onUsage: usageLoggerFor("studio.aspect_entity_variants", id) },
             ),
           buildDone: (result) => ({
             variants: toStoredEntityVariants(result, {
@@ -1226,7 +1237,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
               ...(payload.draft !== undefined ? { draft: payload.draft } : {}),
               contextRef,
             },
-            { onProgress, onUsage: usageLoggerFor("studio.aspect_variants", id) },
+            { ...localOpt(id), onProgress, onUsage: usageLoggerFor("studio.aspect_variants", id) },
           ),
         buildDone: (result) => ({
           variants: toStoredVariants(result, {
@@ -1289,7 +1300,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
               accumulated: payload.accumulated,
               contextRef,
             },
-            { onProgress, onUsage: usageLoggerFor("studio.aspect_refine", id) },
+            { ...localOpt(id), onProgress, onUsage: usageLoggerFor("studio.aspect_refine", id) },
           ),
         buildDone: (result) => ({
           variant: toStoredRefinedVariant(result, {
@@ -1335,7 +1346,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       run: (onProgress) =>
         runAspectPlaybook(
           { stageId, concept, existingAspectNames, contextRef },
-          { onProgress, onUsage: usageLoggerFor("studio.aspect_playbook", id) },
+          { ...localOpt(id), onProgress, onUsage: usageLoggerFor("studio.aspect_playbook", id) },
         ),
       // Для entity-стадий сервер сам проставляет payloadKind — фронт больше не
       // угадывает (иначе аспект уходил в state как markdown, см. инвариант
@@ -1424,6 +1435,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
     if ("error" in prepared) return prepared.error;
     try {
       const result = await runAspectDocument(prepared.input, {
+        ...localOpt(prepared.bookId),
         onUsage: (usage) =>
           logUsage(sqlite, {
             route: "studio.aspect_document",
@@ -1456,6 +1468,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
       estimateMs: ESTIMATE_MS.document,
       run: (onProgress) =>
         runAspectDocument(prepared.input, {
+          ...localOpt(prepared.bookId),
           onProgress,
           onUsage: (usage) =>
             logUsage(sqlite, {
@@ -1518,7 +1531,7 @@ export function createStudioRoute(sqlite: DatabaseType, hasVec: boolean): Hono {
         instructions: parsed.data.instructions,
         accumulated: parsed.data.accumulated,
         contextRef,
-      });
+      }, localOpt(id));
       const variant = toStoredRefinedVariant(result, {
         parentVariantId: parsed.data.parentVariant.id,
         contextRef,

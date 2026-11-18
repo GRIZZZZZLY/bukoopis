@@ -108,3 +108,21 @@ describe("POST /books/:id/stages/:stageId/document", () => {
     expect(text).toContain("вера");
   });
 });
+
+describe("document: studio provider switch", () => {
+  it("книга с studio_provider ollama отдаёт агенту local", async () => {
+    runDocumentMock.mockResolvedValue({ sections: [] });
+    t.sqlite
+      .prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?")
+      .run(bookId);
+    const res = await send(t.app, `/api/books/${bookId}/stages/world/document`, "POST", {});
+    expect(res.status).toBe(200);
+    expect(runDocumentMock.mock.calls[0]?.[1]).toMatchObject({ local: { model: "qwen:9b" } });
+  });
+
+  it("обычная книга local не передаёт", async () => {
+    runDocumentMock.mockResolvedValue({ sections: [] });
+    await send(t.app, `/api/books/${bookId}/stages/world/document`, "POST", {});
+    expect(runDocumentMock.mock.calls[0]?.[1]).not.toHaveProperty("local");
+  });
+});

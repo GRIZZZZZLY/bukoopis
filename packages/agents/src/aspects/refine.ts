@@ -8,6 +8,7 @@ import type {
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
   type StructuredProgressEvent,
   type StructuredUsage,
@@ -115,6 +116,8 @@ export function registerAspectRefineContract(): void {
 
 export interface RunAspectRefineOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
   /** Вехи вызова для SSE-прогресса в UI. */
   onProgress?: (e: StructuredProgressEvent) => void;
@@ -134,6 +137,7 @@ export async function runAspectRefine(
     agentName: "aspect_refine",
     payload: input,
     model: options.model ?? "sonnet",
+    ...(options.local ? { local: options.local } : {}),
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
       : {}),

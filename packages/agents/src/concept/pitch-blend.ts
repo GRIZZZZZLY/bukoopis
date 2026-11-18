@@ -8,6 +8,7 @@ import {
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
 } from "@book-forge/llm";
 import { CONCEPT_LANGUAGE_RULES } from "../language-rules.js";
@@ -86,6 +87,8 @@ export function registerPitchBlenderContract(): void {
 
 export interface RunPitchBlenderOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
 }
 
@@ -97,6 +100,7 @@ export async function runPitchBlender(
     agentName: "pitch_blender",
     payload: input,
     model: options.model ?? "sonnet",
+    ...(options.local ? { local: options.local } : {}),
     ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
     maxTokens: 2048,
   });

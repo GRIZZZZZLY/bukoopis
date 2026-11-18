@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
   type StructuredUsage,
 } from "@book-forge/llm";
@@ -168,6 +169,8 @@ export interface GenerateBookOutlineInput {
   studioContext?: string | null;
   config?: GenerationConfig;
   onUsage?: UsageHandler;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
 }
 
 function buildBookOutlinePrompt(input: GenerateBookOutlineInput): string {
@@ -217,6 +220,7 @@ export async function generateBookOutline(
     agentName: "plot_outline",
     payload: input,
     model: input.config?.model ?? "sonnet",
+    ...(input.local ? { local: input.local } : {}),
     ...(input.config?.temperature !== undefined
       ? { temperature: input.config.temperature }
       : {}),

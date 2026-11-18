@@ -228,3 +228,27 @@ describe("POST /api/books/:id/concept/lock and /unlock", () => {
     expect(rec[id]).toBe("concept");
   });
 });
+
+describe("pitches: studio provider switch", () => {
+  const OUT = { pitches: [draft("А"), draft("Б"), draft("В")], questions: [] };
+
+  it("book with studio_provider ollama passes local {model:\"qwen:9b\"}", async () => {
+    vi.mocked(runPitchGenerator).mockResolvedValue(OUT);
+    const id = await createBookWithIdea();
+    t.sqlite
+      .prepare("UPDATE books SET studio_provider = 'ollama', studio_local_model = 'qwen:9b' WHERE id = ?")
+      .run(id);
+    await send(t.app, `/api/books/${id}/concept/pitches`, "POST", {});
+    expect(vi.mocked(runPitchGenerator).mock.calls[0]?.[1]).toMatchObject({ local: { model: "qwen:9b" } });
+  });
+
+  it("book with writer_provider ollama and studio_provider anthropic passes no local", async () => {
+    vi.mocked(runPitchGenerator).mockResolvedValue(OUT);
+    const id = await createBookWithIdea();
+    t.sqlite
+      .prepare("UPDATE books SET writer_provider = 'ollama', writer_local_model = 'qwen:9b', studio_provider = 'anthropic' WHERE id = ?")
+      .run(id);
+    await send(t.app, `/api/books/${id}/concept/pitches`, "POST", {});
+    expect(vi.mocked(runPitchGenerator).mock.calls[0]?.[1]).not.toHaveProperty("local");
+  });
+});

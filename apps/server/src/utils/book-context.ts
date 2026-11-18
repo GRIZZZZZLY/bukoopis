@@ -1,4 +1,5 @@
 import type { Database as DatabaseType } from "better-sqlite3";
+import type { LocalModelRef } from "@book-forge/llm";
 import type { BookOutline } from "@book-forge/shared";
 import { derivePremiseFromConcept, loadStudioContext } from "./studio-context.js";
 import type { BookRow } from "../db/rows.js";
@@ -71,3 +72,10 @@ export function loadBookContext(
   };
 }
 
+
+/** Локальная модель для заданий мастерской: только когда книга выбрала
+ *  Ollama и модель названа. Иначе `undefined` — задание идёт в Claude. */
+export function studioLocal(ctx: BookContext): LocalModelRef | undefined {
+  const model = ctx.studioLocalModel?.trim();
+  return ctx.studioProvider === "ollama" && model ? { model } : undefined;
+}

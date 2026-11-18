@@ -85,7 +85,7 @@ import { judgeProseCompletion } from "@book-forge/shared";
 import { isConfirmedCompletion } from "@book-forge/llm";
 
 export { loadBookContext, type BookContext } from "../utils/book-context.js";
-import { loadBookContext } from "../utils/book-context.js";
+import { loadBookContext, studioLocal } from "../utils/book-context.js";
 
 // Phase 2: previous-chapters context moved to ../utils/rolling-context.ts
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
@@ -124,12 +124,14 @@ export function createPlotRoute(
     }
 
     const studioCtx = studioContextToPrompt(loadStudioContext(sqlite, id));
+    const local = studioLocal(ctx);
     const variants = await runBookPlanning({
       bookTitle: ctx.title,
       premise: ctx.premise,
       language: ctx.language,
       ...(studioCtx !== null ? { studioContext: studioCtx } : {}),
       config: { variants: 2, ...parsed.data.config, model: parsed.data.config?.model ?? ctx.plotModel },
+      ...(local ? { local } : {}),
       onUsage: (usage) =>
         logUsage(sqlite, {
           route: "plot.book_outline",

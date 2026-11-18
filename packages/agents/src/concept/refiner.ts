@@ -3,6 +3,7 @@ import type { BookConcept } from "@book-forge/shared";
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
@@ -134,6 +135,8 @@ export function registerConceptRefinerContract(): void {
 
 export interface RunConceptRefinerOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
 }
 
@@ -148,6 +151,7 @@ export async function runConceptRefiner(
     agentName: "concept_refiner",
     payload: input,
     model: options.model ?? "sonnet",
+    ...(options.local ? { local: options.local } : {}),
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
       : {}),

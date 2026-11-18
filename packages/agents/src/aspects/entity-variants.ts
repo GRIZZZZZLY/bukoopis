@@ -8,6 +8,7 @@ import type {
 import {
   registerAgentContract,
   dispatchStructured,
+  type LocalModelRef,
   type AgentStructuredContract,
   type StructuredProgressEvent,
   type StructuredUsage,
@@ -183,6 +184,8 @@ export function registerAspectEntityVariantsContract(): void {
 
 export interface RunAspectEntityVariantsOptions {
   model?: ModelChoice;
+  /** Локальная модель мастерской (настройка книги); без неё — Claude. */
+  local?: LocalModelRef;
   temperature?: number;
   /** Вехи вызова для SSE-прогресса в UI. */
   onProgress?: (e: StructuredProgressEvent) => void;
@@ -202,6 +205,7 @@ export async function runAspectEntityVariants(
     agentName: "aspect_entity_variants",
     payload: input,
     model: options.model ?? "sonnet",
+    ...(options.local ? { local: options.local } : {}),
     ...(options.temperature !== undefined
       ? { temperature: options.temperature }
       : {}),
