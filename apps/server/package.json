@@ -14,6 +14,7 @@
     "recompute-text": "tsx src/scripts/recompute-content-text.ts",
     "check:outgoing": "tsx src/scripts/check-outgoing.ts",
     "eval:memory": "tsx src/scripts/eval-memory.ts",
+    "live:chapter": "tsx src/scripts/live-chapter.ts",
     "drizzle:new": "tsx src/scripts/new-migration.ts",
     "drizzle:generate": "drizzle-kit generate"
   },

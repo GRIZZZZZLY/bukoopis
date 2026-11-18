@@ -44,4 +44,4 @@ export {
   type BlendParent,
   type BlendNumericStats,
 } from "./blender.js";
-export { mannerLine, roundHalfEven } from "./manner.js";
+export { mannerLine, narrationPerson, roundHalfEven } from "./manner.js";

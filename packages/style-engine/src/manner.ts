@@ -32,9 +32,19 @@ function sentLens(paras: string[]): number[] {
   return out;
 }
 
+const paragraphs = (text: string): string[] => text.split("\n\n").filter((p) => p.trim());
+
+/** Narration person by the narration (replies excluded): first when first-person
+ *  pronouns are at least 1% of its words. Paragraphs separated by "\n\n". */
+export function narrationPerson(text: string): "first" | "third" {
+  const narr = paragraphs(text).filter((p) => !isReply(p)).join(" ");
+  const nw = words(narr);
+  return nw > 0 && ((narr.match(FIRST_PERSON) ?? []).length * 100) / nw >= 1.0 ? "first" : "third";
+}
+
 /** Measured manner of the scene; paragraphs separated by "\n\n". */
 export function mannerLine(text: string): string {
-  const paras = text.split("\n\n").filter((p) => p.trim());
+  const paras = paragraphs(text);
   const lens = sentLens(paras);
   const mean = sum(lens) / Math.max(1, lens.length);
   const total = sum(paras.map(words));
@@ -42,9 +52,7 @@ export function mannerLine(text: string): string {
   const dlg = dlgWords / Math.max(1, total);
 
   const replies = paras.filter(isReply).map((p) => ({ n: words(p), said: SAY.test(p) }));
-  const narr = paras.filter((p) => !isReply(p)).join(" ");
-  const nw = words(narr);
-  const first = nw > 0 && ((narr.match(FIRST_PERSON) ?? []).length * 100) / nw >= 1.0;
+  const first = narrationPerson(text) === "first";
 
   let line = `Манера: повествование от ${first ? "первого" : "третьего"} лица, предложения в среднем ${roundHalfEven(mean)} слов, реплики ${5 * roundHalfEven(dlg * 20)}% текста`;
   if (replies.length >= 3) {

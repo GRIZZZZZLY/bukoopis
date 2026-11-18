@@ -36,7 +36,7 @@ import {
   LOCAL_SCENE_WORDS,
   type LocalScene,
 } from "@book-forge/agents";
-import { mannerLine } from "@book-forge/style-engine";
+import { mannerLine, narrationPerson } from "@book-forge/style-engine";
 import { loadStyleContext } from "../utils/style-context.js";
 import {
   derivePremiseFromConcept,
@@ -91,9 +91,14 @@ import { loadBookContext } from "../utils/book-context.js";
 // (loadRollingChapterContext — bounded rolling window + meta-summary).
 
 
+/** Полный текст прошлой главы; null, если её нет. */
+function previousChapterText(sqlite: DatabaseType, ch: ChapterRow): string | null {
+  return loadPreviousChapterTail(sqlite, ch.book_id, ch.order_index, 200_000);
+}
+
 /** Манера прошлой главы по её полному тексту; null, если прошлой главы нет. */
 function previousMannerLine(sqlite: DatabaseType, ch: ChapterRow): string | null {
-  const prev = loadPreviousChapterTail(sqlite, ch.book_id, ch.order_index, 200_000);
+  const prev = previousChapterText(sqlite, ch);
   return prev ? mannerLine(prev) : null;
 }
 
@@ -397,6 +402,7 @@ export function createPlotRoute(
     }
 
     const target = beatSheet?.estimatedWords ?? LOCAL_DEFAULT_CHAPTER_WORDS;
+    const prevText = previousChapterText(sqlite, ch);
     const scenePlan = await runScenePlan({
       bookTitle: ctx.title,
       chapterTitle: ch.title,
@@ -417,7 +423,7 @@ export function createPlotRoute(
       // Схема записи держит не больше 12 сцен.
       sceneCount: Math.min(12, Math.max(1, Math.ceil(target / LOCAL_SCENE_WORDS))),
       // Нашу модель учили: рассказчика в плане зовут «Рассказчик».
-      firstPerson: previousMannerLine(sqlite, ch)?.includes("от первого лица") ?? false,
+      firstPerson: prevText !== null && narrationPerson(prevText) === "first",
       model: ctx.plotModel,
       onUsage: (usage) =>
         logUsage(sqlite, {

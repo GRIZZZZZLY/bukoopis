@@ -14,7 +14,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "migrate": "pnpm --filter @book-forge/server migrate",
-    "check:outgoing": "pnpm --filter @book-forge/server check:outgoing"
+    "check:outgoing": "pnpm --filter @book-forge/server check:outgoing",
+    "live:chapter": "pnpm --filter @book-forge/server live:chapter"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
