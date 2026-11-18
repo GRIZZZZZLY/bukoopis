@@ -13,3 +13,4 @@ data/backups/
 .claude/
 .superpowers/
 .worktrees/
+data/live-checks/
