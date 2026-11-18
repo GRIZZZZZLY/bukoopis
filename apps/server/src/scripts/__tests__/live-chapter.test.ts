@@ -13,7 +13,13 @@ vi.mock("@book-forge/agents", async (orig) => ({
   runScenePlan: vi.fn(),
 }));
 
-import { runLocalScene, localWriterKind, runScenePlan, runChapterWriter } from "@book-forge/agents";
+import {
+  runLocalScene,
+  localWriterKind,
+  runScenePlan,
+  runChapterWriter,
+  runSceneIntent,
+} from "@book-forge/agents";
 import { makeTestApp, sendJson } from "../../routes/__tests__/_helpers.js";
 import { runLiveChapter, liveChapterMain, type LiveOptions } from "../live-chapter.js";
 
@@ -21,6 +27,7 @@ const localMock = vi.mocked(runLocalScene);
 const availableMock = vi.mocked(localWriterKind);
 const scenePlanMock = vi.mocked(runScenePlan);
 const writerMock = vi.mocked(runChapterWriter);
+const sceneIntentMock = vi.mocked(runSceneIntent);
 
 let dir: string;
 let srcPath: string;
@@ -88,6 +95,7 @@ beforeEach(async () => {
   availableMock.mockReset();
   scenePlanMock.mockReset();
   writerMock.mockReset();
+  sceneIntentMock.mockReset();
   availableMock.mockResolvedValue("raw");
   let n = 0;
   localMock.mockImplementation(async function* () {
@@ -112,6 +120,7 @@ function options(over: Partial<LiveOptions> = {}): LiveOptions {
     model: "bookopis:latest",
     saveDrafts: false,
     scenePlan: false,
+    timeoutMin: 15,
     db: srcPath,
     out: outDir,
     ...over,
@@ -152,7 +161,8 @@ describe("live chapter check", () => {
     expect(report.options.model).toBe("bookopis:latest");
     const md = readFileSync(join(outDir, "report.md"), "utf8");
     expect(md).toContain("| Сцен | 2 |");
-    expect(lines.join("\n")).toContain("| Сцен | 2 |");  });
+    expect(lines.join("\n")).toContain("| Сцен | 2 |");
+  });
 
   it("save-drafts gives the previous chapter a version", async () => {
     await runLiveChapter(options({ saveDrafts: true }), deps());
@@ -205,8 +215,86 @@ describe("live chapter check", () => {
   it("book not on our model is refused before any call", async () => {
     const r = await runLiveChapter(options({ model: null }), deps());
     expect(r.exitCode).toBe(1);
+    expect(r.report.failures).toEqual([
+      "Писатель книги — не наша модель. Укажите --model <тег Ollama>, и проверка пойдёт на ней.",
+    ]);
     expect(availableMock).not.toHaveBeenCalled();
     expect(writerMock).not.toHaveBeenCalled();
+  });
+
+  it("chat model is refused: no Writer, no scene intent", async () => {
+    availableMock.mockResolvedValue("chat");
+    const r = await runLiveChapter(options({ model: "qwen:chat" }), deps());
+    expect(r.exitCode).toBe(1);
+    expect(r.report.failures).toEqual([
+      "Модель qwen:chat в Ollama работает как чат-модель. Живая проверка меряет только нашу дообученную модель с сырым шаблоном: укажите её тег в --model.",
+    ]);
+    expect(writerMock).not.toHaveBeenCalled();
+    expect(sceneIntentMock).not.toHaveBeenCalled();
+    expect(localMock).not.toHaveBeenCalled();
+  });
+
+  it("time limit cancels the write and keeps what was written", async () => {
+    let n = 0;
+    localMock.mockImplementation(async function* (input: { signal?: AbortSignal }) {
+      if (n++ === 0) {
+        yield "Сцена 0.";
+        return { text: "Сцена 0.", modelId: "bookopis:latest", stopReason: "end_turn", tokens: { input: 1, output: 1, cacheCreation: 0, cacheRead: 0 } };
+      }
+      // Вторая сцена не отдаёт ни слова, пока её не отменят.
+      await new Promise((_, reject) =>
+        input.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }),
+      );
+      throw new Error("unreachable");
+    } as unknown as typeof runLocalScene);
+    const t0 = Date.now();
+    const r = await runLiveChapter(options({ timeoutMin: 0.01 }), deps());
+    expect(Date.now() - t0).toBeLessThan(4_000);
+    expect(r.exitCode).toBe(1);
+    expect(r.report.failures[0]).toBe(
+      "Время вышло: глава писалась дольше 0.01 мин, запись остановлена. Что успело написаться — в chapter.txt.",
+    );
+    expect(readFileSync(join(outDir, "chapter.txt"), "utf8")).toContain("Сцена 0.");
+    const db = copy();
+    try {
+      expect(db.prepare("SELECT status FROM prose_proposals WHERE chapter_id = ?").all(secondId)).toEqual([
+        { status: "cancelled" },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("a pending memory job in the source stays pending in the copy", async () => {
+    const src = new Database(srcPath);
+    try {
+      const now = new Date().toISOString();
+      const v = src
+        .prepare(
+          "INSERT INTO chapter_versions (chapter_id, content_json, content_text, word_count, source, created_at) VALUES (?, ?, ?, 13, 'manual', ?)",
+        )
+        .run(firstId, DRAFT_JSON, DRAFT_TEXT, now);
+      src.prepare("UPDATE chapters SET current_version_id = ? WHERE id = ?").run(v.lastInsertRowid, firstId);
+      // Короткая версия: задание «summary» исполнитель закрыл бы без модели, и
+      // перемену статуса было бы видно.
+      src
+        .prepare(
+          "INSERT INTO memory_jobs (book_id, chapter_id, chapter_version_id, kind, status, created_at, updated_at) VALUES (?, ?, ?, 'summary', 'pending', ?, ?)",
+        )
+        .run(bookId, firstId, v.lastInsertRowid, now, now);
+    } finally {
+      src.close();
+    }
+    const r = await runLiveChapter(options(), deps());
+    expect(r.exitCode).toBe(0);
+    const db = copy();
+    try {
+      expect(db.prepare("SELECT kind, status FROM memory_jobs").all()).toEqual([
+        { kind: "summary", status: "pending" },
+      ]);
+    } finally {
+      db.close();
+    }
   });
 });
 
@@ -225,5 +313,14 @@ describe("argument errors", () => {
     );
     expect(code).toBe(2);
     expect(out.join("\n")).toMatch(/--chapter.*--new-title|--new-title.*--chapter/u);
+  });
+
+  it("bad --timeout-min", async () => {
+    const out: string[] = [];
+    const code = await liveChapterMain(["--book", "1", "--chapter", "2", "--timeout-min", "0"], {
+      log: (l) => out.push(l),
+    });
+    expect(code).toBe(2);
+    expect(out[0]).toBe("--timeout-min ждёт число минут больше нуля, получено «0».");
   });
 });

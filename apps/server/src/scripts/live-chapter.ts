@@ -4,7 +4,9 @@
  * Пишет главу нашей моделью через настоящие маршруты сервера, собранного в
  * этом же процессе на КОПИИ базы, и меряет результат: сцены, слова, лицо
  * повествования, повторы. Это скрипт, а не тест: он зовёт живую модель
- * (и Claude один раз с `--scene-plan`).
+ * (и Claude один раз с `--scene-plan`). Модель должна быть нашей, с сырым
+ * шаблоном: чат-модель пошла бы другим путём, с замыслом сцены от Claude, и
+ * отказывается до первого вызова.
  *
  * База автора не пишется никогда: источник открывается только на чтение и
  * копируется `backup()` в папку отчёта, всё остальное идёт по копии.
@@ -16,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import Database, { type Database as DatabaseType } from "better-sqlite3";
 import type { Hono } from "hono";
+import { localWriterKind } from "@book-forge/agents";
 import { registerAllAgentContracts } from "@book-forge/agents/bootstrap";
 import {
   registerStyleExtractorContract,
@@ -46,9 +49,15 @@ export interface LiveOptions {
   model: string | null;
   saveDrafts: boolean;
   scenePlan: boolean;
+  /** Предел на запись главы, минуты. */
+  timeoutMin: number;
   db: string;
   out: string;
 }
+
+const DEFAULT_TIMEOUT_MIN = 15;
+/** Сколько ждать итога после отмены, прежде чем перестать читать поток. */
+const CANCEL_GRACE_MS = 5_000;
 
 export interface LiveDeps {
   log: (line: string) => void;
@@ -76,6 +85,8 @@ const USAGE = [
   "  pnpm live:chapter --book <id> --chapter <id>",
   "  pnpm live:chapter --book <id> --new-title <название> (--intent <текст> | --intent-file <путь>)",
   "Ещё: --model <тег Ollama>  --save-drafts  --scene-plan  --db <путь к базе>  --out <папка отчёта>",
+  `     --timeout-min <минуты> (предел на запись главы, по умолчанию ${DEFAULT_TIMEOUT_MIN})`,
+  "Прогоны лежат в data/live-checks/, каждый размером примерно с базу; старые можно удалять.",
 ].join("\n");
 
 class ArgError extends Error {}
@@ -108,6 +119,7 @@ export function parseLiveArgs(
         model: { type: "string" },
         "save-drafts": { type: "boolean" },
         "scene-plan": { type: "boolean" },
+        "timeout-min": { type: "string" },
         db: { type: "string" },
         out: { type: "string" },
       },
@@ -141,8 +153,14 @@ export function parseLiveArgs(
   if (newTitle === null && intent !== null) {
     throw new ArgError("--intent и --intent-file работают только с --new-title.");
   }
+  const timeoutMin =
+    values["timeout-min"] === undefined ? DEFAULT_TIMEOUT_MIN : Number(values["timeout-min"]);
+  if (!Number.isFinite(timeoutMin) || timeoutMin <= 0) {
+    throw new ArgError(`--timeout-min ждёт число минут больше нуля, получено «${values["timeout-min"]}».`);
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return {
+    timeoutMin,
     bookId: positiveId("--book", values.book),
     chapterId: values.chapter === undefined ? null : positiveId("--chapter", values.chapter),
     newTitle,
@@ -250,9 +268,16 @@ async function ok<T>(res: Response, what: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Кадры SSE по мере прихода: `event:` и `data:` (JSON). */
-async function readSse(res: Response, on: (event: string, data: unknown) => void): Promise<void> {
+/** Кадры SSE по мере прихода: `event:` и `data:` (JSON). `stop` обрывает чтение. */
+async function readSse(
+  res: Response,
+  on: (event: string, data: unknown) => void,
+  stop: AbortSignal,
+): Promise<void> {
   const reader = res.body!.getReader();
+  const cancel = () => void reader.cancel().catch(() => {});
+  if (stop.aborted) cancel();
+  else stop.addEventListener("abort", cancel, { once: true });
   const dec = new TextDecoder();
   let buf = "";
   const emit = (frame: string) => {
@@ -274,7 +299,17 @@ async function readSse(res: Response, on: (event: string, data: unknown) => void
     }
     if (done) break;
   }
-  if (buf.trim()) emit(buf);
+  // Оборванный поток может кончиться половиной кадра — её не разбираем.
+  if (buf.trim() && !stop.aborted) emit(buf);
+}
+
+/** Ответ, который перестают ждать по сигналу: запись могла зависнуть до потока. */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal, message: string): Promise<T> {
+  return new Promise((res, rej) => {
+    if (signal.aborted) return rej(new LiveFailure(message));
+    signal.addEventListener("abort", () => rej(new LiveFailure(message)), { once: true });
+    p.then(res, rej);
+  });
 }
 
 type ProposalWire = {
@@ -338,6 +373,18 @@ export async function runLiveChapter(
         "Писатель книги — не наша модель. Укажите --model <тег Ollama>, и проверка пойдёт на ней.",
       );
     }
+    // Чат-модель маршрут повёл бы старым путём: замысел сцены от Claude и
+    // Писатель целиком. Замеры судили бы не нашу модель, а вызов был бы платным.
+    const tag = writer.writer_local_model;
+    const kind = await localWriterKind(tag);
+    if (kind === "unavailable") {
+      throw new LiveFailure(`Модель ${tag} недоступна в Ollama: запустите Ollama и повторите.`);
+    }
+    if (kind !== "raw") {
+      throw new LiveFailure(
+        `Модель ${tag} в Ollama работает как чат-модель. Живая проверка меряет только нашу дообученную модель с сырым шаблоном: укажите её тег в --model.`,
+      );
+    }
     if (o.chapterId !== null) {
       const ch = db
         .prepare("SELECT id FROM chapters WHERE id = ? AND book_id = ?")
@@ -376,32 +423,61 @@ export async function runLiveChapter(
     }
 
     const t0 = Date.now();
-    const res = await call(app, `/api/chapters/${chapterId}/write`, "POST", {});
-    if (!res.ok) throw new LiveFailure(`Писатель: ${await serverMessage(res)}`);
-    let sceneStart = Date.now();
+    const timeoutMessage = `Время вышло: глава писалась дольше ${o.timeoutMin} мин, запись остановлена. Что успело написаться — в chapter.txt.`;
+    const stop = new AbortController();
+    let timedOut = false;
+    let proposalId: number | null = null;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    const limit = setTimeout(() => {
+      timedOut = true;
+      if (proposalId === null) return stop.abort();
+      // Отмена через продукт: сервер обрывает вызов модели сигналом кандидата
+      // и присылает итог. Модели, которая отмену не слышит, даём пять секунд.
+      void call(app, `/api/prose-proposals/${proposalId}/cancel`, "POST", {}).catch(() => {});
+      grace = setTimeout(() => stop.abort(), CANCEL_GRACE_MS);
+    }, o.timeoutMin * 60_000);
     let streamError: string | null = null;
     let cancelled = false;
-    await readSse(res, (event, data) => {
-      if (event === "beat") {
-        const { index, total } = data as { index: number; total: number };
-        if (scenes.length > 0) scenesMs.push(Date.now() - sceneStart);
-        sceneStart = Date.now();
-        scenes.push("");
-        deps.log(`Сцена ${index + 1} из ${total}…`);
-      } else if (event === "chunk") {
-        if (scenes.length === 0) scenes.push("");
-        scenes[scenes.length - 1] += (data as { text: string }).text;
-      } else if (event === "done") {
-        const d = data as { proposal?: ProposalWire; cancelled?: boolean };
-        proposal = d.proposal ?? null;
-        cancelled = d.cancelled === true;
-      } else if (event === "error") {
-        streamError = (data as { message?: string }).message ?? "без текста";
-      }
-    });
-    if (scenes.length > 0) scenesMs.push(Date.now() - sceneStart);
-    writeMs = Date.now() - t0;
-    if (streamError !== null) failures.push(`Писатель остановился с ошибкой: ${streamError}`);
+    try {
+      const res = await untilAborted(
+        call(app, `/api/chapters/${chapterId}/write`, "POST", {}),
+        stop.signal,
+        timeoutMessage,
+      );
+      if (!res.ok) throw new LiveFailure(`Писатель: ${await serverMessage(res)}`);
+      let sceneStart = Date.now();
+      await readSse(
+        res,
+        (event, data) => {
+          if (event === "proposal") {
+            proposalId = (data as { proposalId: number }).proposalId;
+          } else if (event === "beat") {
+            const { index, total } = data as { index: number; total: number };
+            if (scenes.length > 0) scenesMs.push(Date.now() - sceneStart);
+            sceneStart = Date.now();
+            scenes.push("");
+            deps.log(`Сцена ${index + 1} из ${total}…`);
+          } else if (event === "chunk") {
+            if (scenes.length === 0) scenes.push("");
+            scenes[scenes.length - 1] += (data as { text: string }).text;
+          } else if (event === "done") {
+            const d = data as { proposal?: ProposalWire; cancelled?: boolean };
+            proposal = d.proposal ?? null;
+            cancelled = d.cancelled === true;
+          } else if (event === "error") {
+            streamError = (data as { message?: string }).message ?? "без текста";
+          }
+        },
+        stop.signal,
+      );
+      if (scenes.length > 0) scenesMs.push(Date.now() - sceneStart);
+    } finally {
+      clearTimeout(limit);
+      clearTimeout(grace);
+      writeMs = Date.now() - t0;
+    }
+    if (timedOut) failures.push(timeoutMessage);
+    else if (streamError !== null) failures.push(`Писатель остановился с ошибкой: ${streamError}`);
     else if (cancelled) failures.push("Генерацию отменили до конца главы.");
     else if (proposal === null) failures.push("Поток оборвался без итога: глава не дописана.");
 
@@ -420,10 +496,10 @@ export async function runLiveChapter(
 
   const metrics = scenes.length > 0 ? measureChapter({ scenes, previousChapterText: previousText }) : null;
   const done = proposal as ProposalWire | null;
-  const judged =
-    metrics && done
-      ? judgeLiveRun({ metrics, proposalStatus: done.status, stopReason: done.stopReason })
-      : { failures: [], warnings: [] };
+  // Статус судится и без сцен: не готовый кандидат — сбой при любых замерах.
+  const judged = done
+    ? judgeLiveRun({ metrics, proposalStatus: done.status, stopReason: done.stopReason })
+    : { failures: [], warnings: [] };
   const report: LiveReport = {
     options: o,
     chapterId,
@@ -436,7 +512,7 @@ export async function runLiveChapter(
     timings: { totalMs: Date.now() - started, scenePlanMs, writeMs, scenesMs },
   };
 
-  const chapterText = done?.contentText ?? scenes.map((s) => s.trim()).join("\n\n");
+  const chapterText = done?.contentText || scenes.map((s) => s.trim()).join("\n\n");
   writeFileSync(join(o.out, "chapter.txt"), chapterText);
   writeFileSync(join(o.out, "report.json"), JSON.stringify(report, null, 2));
   const md = renderReport(report);

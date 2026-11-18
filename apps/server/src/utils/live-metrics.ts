@@ -84,13 +84,14 @@ export function stopLabel(stopReason: string | null): string {
   }
 }
 
-export const personWord =(p: Person): string => (p === "first" ? "первого" : "третьего");
+export const personWord = (p: Person): string => (p === "first" ? "первого" : "третьего");
 
 const SHORT_SCENE_WORDS = 150;
 const REPEAT_WARN = 4;
 
+/** `metrics` — null, когда сцен нет вовсе: статус кандидата судится и тогда. */
 export function judgeLiveRun(input: {
-  metrics: LiveMetrics;
+  metrics: LiveMetrics | null;
   proposalStatus: string;
   stopReason: string | null;
 }): { failures: string[]; warnings: string[] } {
@@ -102,6 +103,7 @@ export function judgeLiveRun(input: {
       `Глава не готова: статус «${input.proposalStatus}», ${stopLabel(input.stopReason)}.`,
     );
   }
+  if (!m) return { failures, warnings };
   if (m.personKept === false && m.previousPerson !== null) {
     failures.push(
       `Лицо повествования сменилось: прошлая глава написана от ${personWord(m.previousPerson)} лица, эта от ${personWord(m.person)}.`,

@@ -89,6 +89,14 @@ describe("judgeLiveRun", () => {
     expect(r.failures[0]).toContain("incomplete");
   });
 
+  it("incomplete status with zero scenes is still a failure", () => {
+    const r = judgeLiveRun({ metrics: null, proposalStatus: "incomplete", stopReason: null });
+    expect(r.failures).toEqual([
+      "Глава не готова: статус «incomplete», причина остановки неизвестна.",
+    ]);
+    expect(r.warnings).toEqual([]);
+  });
+
   it("person not kept is a failure", () => {
     const r = judgeLiveRun({
       metrics: metrics({ previousPerson: "first", personKept: false }),

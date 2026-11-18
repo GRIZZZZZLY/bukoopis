@@ -23,7 +23,7 @@ pnpm build
 pnpm --filter @book-forge/server test -- src/routes/__tests__/studio.test.ts   # one file
 pnpm --filter @book-forge/server recompute-text   # rebuild content_text from content_json (backs up DB first)
 pnpm check:outgoing         # before every push: local paths, keys, session links in outgoing commits (base origin/main; marker "check-outgoing: allow" skips a line)
-pnpm live:chapter --book <id> --chapter <id> [--model <ollama tag>] [--save-drafts] [--scene-plan]   # real local-model chapter on a read-only-sourced COPY of the DB; report in data/live-checks/ (--help)
+pnpm live:chapter --book <id> --chapter <id> [--model <ollama tag>] [--save-drafts] [--scene-plan] [--timeout-min 15]   # real local-model chapter on a read-only-sourced COPY of the DB; report in data/live-checks/ (--help). Each run keeps a DB-sized copy there; old runs can be deleted.
 ```
 
 Migrations are **hand-written plain SQL** — the official process. Drizzle-kit snapshots are broken since 0008; never use `drizzle:generate`.
