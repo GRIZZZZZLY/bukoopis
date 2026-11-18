@@ -56,6 +56,8 @@ Adding an agent takes three steps:
 2. Write the contract.
 3. Register it in [bootstrap.ts](packages/agents/src/bootstrap.ts). A drift-guard test enforces parity.
 
+Every agent whose text the author reads ends its system prompt with `AUTHOR_FACING_LANGUAGE_RULES` ([language-rules.ts](packages/agents/src/language-rules.ts)); any other agent is listed in `LANGUAGE_RULE_EXEMPT` with a reason. `language-rules-guard.test.ts` fails on an agent with neither.
+
 `style_extractor`/`style_blender` register separately in [index.ts](apps/server/src/index.ts). Each agent's backend comes from `DEFAULT_AGENT_BACKEND` ([router.ts](packages/llm/src/router.ts)) — look it up, never infer it from a neighbour. Model ids come only from `MODEL_IDS` ([pricing.ts](packages/shared/src/pricing.ts)). **Opus does not accept `temperature`**: pass it conditionally.
 
 **Studio** (`/books/:id/studio`): 7 stages — concept, world, lore, characters, items, plot, chapters. State lives in `books.studio_state` (JSON). Any PATCH needs `expectedRevision`; a mismatch is 409. Hard invariants: [studio-invariants.ts](packages/shared/src/studio-invariants.ts). Stage status is derived by `deriveStageStatus`; only the author's explicit button sets `skipped`.

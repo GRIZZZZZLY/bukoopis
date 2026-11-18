@@ -13,6 +13,7 @@ import {
   type StructuredUsage,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
 
 export interface AspectRefineInput {
   stageId: StageId;
@@ -58,7 +59,9 @@ const SYSTEM = `Ты — литературный соавтор. Работае
 
 Сохраняй внутреннюю согласованность: учитывай все принятые аспекты той же стадии. Не придумывай противоречий с ними.
 
-Label: одно-два слова, кратко описывающие изменение ("темнее", "короче", "с фракцией X").`;
+Label: одно-два слова, кратко описывающие изменение ("темнее", "короче", "с фракцией X").
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 function buildPrompt(input: AspectRefineInput): string {
   const parts: string[] = [

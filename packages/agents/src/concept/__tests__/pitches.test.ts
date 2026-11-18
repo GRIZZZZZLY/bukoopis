@@ -17,7 +17,7 @@ import {
   type PitchGeneratorInput,
   type PitchGeneratorOutput,
 } from "../pitches.js";
-import { CONCEPT_LANGUAGE_RULES } from "../language-rules.js";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../../language-rules.js";
 
 const DRAFT: PitchDraft = {
   workingTitle: "  Маршрут, который врёт ",
@@ -123,10 +123,10 @@ describe("PITCH_GENERATOR_SYSTEM", () => {
   });
 });
 
-describe("CONCEPT_LANGUAGE_RULES", () => {
+describe("AUTHOR_FACING_LANGUAGE_RULES", () => {
   it("lists the new calques", () => {
-    expect(CONCEPT_LANGUAGE_RULES).toContain("«клиффхэнгер»");
-    expect(CONCEPT_LANGUAGE_RULES).toContain("«арка (персонажа)»");
+    expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«клиффхэнгер»");
+    expect(AUTHOR_FACING_LANGUAGE_RULES).toContain("«арка (персонажа)»");
   });
 });
 

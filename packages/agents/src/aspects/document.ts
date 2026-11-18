@@ -13,6 +13,7 @@ import {
   type StructuredProgressEvent,
   type StructuredUsage,
 } from "@book-forge/llm";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
 
 export interface AspectDocumentInput {
   stageId: StageId;
@@ -69,9 +70,11 @@ export const documentSystemPrompt = `Ты — литературный соав�
 Если даны ПУСТЫЕ РАЗДЕЛЫ — напиши каждый из них под тем же именем.
 Если даны только разделы с текстом, а пустых нет — значит документ уже собран и тебя просят его дополнить: добавь разделы, которых этапу не хватает, и ни один из перечисленных не трогай.
 Если ни тех, ни других нет — собери документ целиком: 5–9 разделов, сам выбери темы под жанр и тон.
-Если даны ЗАМЕТКИ АВТОРА — это ограничения, а не пожелания: то, что в них сказано, обязано попасть в документ и не может быть отменено.
+Если даны ЗАМЕТКИ АВТОРА — это обязательные ограничения: то, что в них сказано, обязано попасть в документ и не может быть отменено.
 
-Каждый раздел возвращается тремя полями: name (одно-два слова), description (одна строка, о чём раздел), markdown (сам текст).`;
+Каждый раздел возвращается тремя полями: name (одно-два слова), description (одна строка, о чём раздел), markdown (сам текст).
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 export function buildDocumentPrompt(input: AspectDocumentInput): string {
   const label = STAGE_LABELS[input.stageId];

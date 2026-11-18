@@ -1,7 +1,8 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "./language-rules.js";
 
-const SYSTEM = `Ты — литературный редактор, делаешь сжатое содержание глав художественной книги.
+export const CHAPTER_SUMMARY_SYSTEM = `Ты — литературный редактор, делаешь сжатое содержание глав художественной книги.
 
 Цель: дать Writer-агенту короткий контекст о том, что уже произошло, чтобы он мог писать следующую главу без потери связности.
 
@@ -12,7 +13,9 @@ const SYSTEM = `Ты — литературный редактор, делаеш
 — Имена, места, артефакты, ключевые повороты, открытые вопросы — всё это сохраняй.
 — Не упоминай beats, не говори про «структуру». Пиши как краткий пересказ для редактора.
 
-Возвращай ТОЛЬКО текст резюме. Без преамбулы, без заголовка.`;
+Возвращай ТОЛЬКО текст резюме. Без преамбулы, без заголовка.
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 export interface SummarizeChapterInput {
   chapterTitle: string;
@@ -34,7 +37,7 @@ export async function summarizeChapter(
   const system: SystemBlock[] = [
     {
       type: "text",
-      text: SYSTEM,
+      text: CHAPTER_SUMMARY_SYSTEM,
       cache_control: { type: "ephemeral" },
     },
   ];

@@ -1,5 +1,6 @@
 import { streamText, type SystemBlock } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "./language-rules.js";
 
 /**
  * Phase 2 — rolling-window memory.
@@ -9,7 +10,7 @@ import type { ModelChoice } from "@book-forge/shared";
  * keep their verbatim per-chapter summary; everything older collapses here).
  */
 
-const SYSTEM = `Ты — литературный редактор. Делаешь единое сжатое содержание группы ранних глав художественной книги.
+export const META_SUMMARY_SYSTEM = `Ты — литературный редактор. Делаешь единое сжатое содержание группы ранних глав художественной книги.
 
 Цель: дать Writer-агенту компактный, но непрерывный контекст о том, что произошло за все ранние главы, чтобы он не терял связность на длинной книге.
 
@@ -19,7 +20,9 @@ const SYSTEM = `Ты — литературный редактор. Делаеш
 — Соблюдай хронологию. Не оценивай, не интерпретируй мотивы, не упоминай «структуру»/«beats».
 — Это рекурсивное сжатие уже сжатых резюме — не выдумывай деталей, которых нет во входных резюме.
 
-Возвращай ТОЛЬКО текст мета-резюме. Без преамбулы, без заголовка.`;
+Возвращай ТОЛЬКО текст мета-резюме. Без преамбулы, без заголовка.
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 export interface MetaSummarizeInput {
   bookTitle: string;
@@ -56,7 +59,7 @@ export async function metaSummarize(
   }
 
   const system: SystemBlock[] = [
-    { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
+    { type: "text", text: META_SUMMARY_SYSTEM, cache_control: { type: "ephemeral" } },
   ];
   const prompt = `Книга: «${input.bookTitle}»\n\nРезюме ранних глав (по порядку):\n\n${joined}\n\nДай единое мета-резюме (200-400 слов).`;
 

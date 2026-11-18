@@ -13,6 +13,7 @@ import {
   type StructuredUsage,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
 
 export type EntityStageId = "characters" | "items";
 
@@ -94,7 +95,9 @@ const SYSTEM = `Ты — литературный соавтор, генерир
 
 У каждого варианта есть короткий label (одно-два слова, что отличает: "героическая команда", "одиночка", "наёмники").
 
-Не дублируй сущности между вариантами и не противоречь уже принятым.`;
+Не дублируй сущности между вариантами и не противоречь уже принятым.
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 const ENTITY_LABEL: Record<EntityStageId, string> = {
   characters: "персонажи",

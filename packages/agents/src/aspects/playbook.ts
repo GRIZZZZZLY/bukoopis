@@ -8,6 +8,7 @@ import {
   type StructuredUsage,
 } from "@book-forge/llm";
 import type { ModelChoice } from "@book-forge/shared";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
 
 export interface AspectPlaybookInput {
   stageId: StageId;
@@ -53,7 +54,9 @@ const SYSTEM = `Ты — литературный соавтор, формиру
 
 Возвращай только аспекты с payloadKind === "markdown". Сейчас поддерживается только текстовый формат.
 
-Не дублируй уже существующие аспекты из existingAspectNames.`;
+Не дублируй уже существующие аспекты из existingAspectNames.
+
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 function buildPrompt(input: AspectPlaybookInput): string {
   const parts: string[] = [

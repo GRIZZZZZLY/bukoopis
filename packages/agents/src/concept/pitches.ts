@@ -5,7 +5,7 @@ import {
   type ModelChoice,
   type Pitch,
 } from "@book-forge/shared";
-import { CONCEPT_LANGUAGE_RULES } from "./language-rules.js";
+import { AUTHOR_FACING_LANGUAGE_RULES } from "../language-rules.js";
 import { findContrastClichés } from "./contrast-cliches.js";
 import {
   registerAgentContract,
@@ -57,7 +57,7 @@ export const PITCH_GENERATOR_SYSTEM = `Ты — редактор-разрабо�
 - Если автор назвал жанр или тон прямо, сохрани их. Служебные и черновые слова из заметок («как у…», «надо», «потом») в tone и genre не переноси.
 - questions: только если задумка действительно тонкая. Есть герой И конфликт — вопросов не задавай вовсе, пустой массив. Нет ни того, ни другого и меньше ~40 слов — можно до трёх, каждый отвечается одной фразой.
 - Без штампов: «избранный», «древнее зло», «тайные силы», «судьба мира», если их нет у автора.
-${CONCEPT_LANGUAGE_RULES}`;
+${AUTHOR_FACING_LANGUAGE_RULES}`;
 
 export function buildPitchGeneratorPrompt(input: PitchGeneratorInput): string {
   const count = input.count ?? DEFAULT_COUNT;
